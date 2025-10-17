@@ -8,13 +8,16 @@ class CustomerDisplayHelper {
       String storeId,
       String storeName, {
         String? storeLogoUrl,
+        String? storeBaseUrl,
       }) async {
     print(
-        "🟢 [CustomerDisplayHelper] Updating welcome → storeId: $storeId, storeName: $storeName, logo: $storeLogoUrl");
+        "🟢 [CustomerDisplayHelper] Updating welcome → storeId: $storeId, storeName: $storeName, logo: $storeLogoUrl, baseUrl: $storeBaseUrl");
+
     await CustomerDisplayService.showWelcomeWithStore(
       storeId: storeId,
       storeName: storeName,
       storeLogoUrl: storeLogoUrl,
+      storeBaseUrl: storeBaseUrl,
     );
   }
 

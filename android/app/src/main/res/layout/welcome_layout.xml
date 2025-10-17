@@ -4,42 +4,61 @@
     android:layout_height="match_parent"
     android:background="#3D506E">
 
-    <!-- Foreground Content -->
     <LinearLayout
         android:id="@+id/welcome_root"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:gravity="center_horizontal"
-        android:orientation="vertical"
-        android:padding="16dp"
-        android:scaleX="0.85"
-        android:scaleY="0.85"
-        android:layout_gravity="top"
-        android:layout_marginTop="170dp">
+        android:orientation="horizontal">
 
-        <ImageView
-            android:id="@+id/welcome_logo"
-            android:layout_width="100dp"
-            android:layout_height="wrap_content"
-            android:src="@drawable/pinaka_logo"
-            android:contentDescription="Logo"
-            android:adjustViewBounds="true"
-            android:layout_marginBottom="20dp" />
-
-        <TextView
-            android:id="@+id/welcome_text"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Welcome To Pinaka"
-            android:textSize="50dp"
-            android:textStyle="bold"
-            android:fontFamily="serif"
-            android:textColor="#FFFFFF"
+        <!-- Left half: slideshow -->
+        <FrameLayout
+            android:id="@+id/slideshow_container"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
             android:gravity="center"
-            android:lineSpacingExtra="2dp"
-            android:letterSpacing="0.02"
-            android:singleLine="false"
-            android:breakStrategy="simple" />
+            android:padding="16dp">
+            <ImageView
+                android:id="@+id/slideshow_image"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"/>
+        </FrameLayout>
+
+        <!-- Right half: welcome text/logo -->
+        <LinearLayout
+            android:id="@+id/welcome_info"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <ImageView
+                android:id="@+id/welcome_logo"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:src="@drawable/pinaka_logo"
+                android:contentDescription="Logo"
+                android:adjustViewBounds="true"
+                android:layout_marginBottom="20dp" />
+
+            <TextView
+                android:id="@+id/welcome_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Welcome To Pinaka"
+                android:textSize="36sp"
+                android:textStyle="bold"
+                android:textColor="#FFFFFF"
+                android:gravity="center"
+                android:fontFamily="serif"
+                android:lineSpacingExtra="2dp"
+                android:letterSpacing="0.02"
+                android:breakStrategy="simple" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
@@ -55,5 +74,4 @@
         android:layout_gravity="bottom|center_horizontal"
         android:padding="8dp"
         android:visibility="gone" />
-
 </FrameLayout>

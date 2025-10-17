@@ -11,7 +11,6 @@ import android.view.Display
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -19,8 +18,10 @@ import java.net.URL
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
+import org.json.JSONArray
 import kotlin.math.absoluteValue
 
 class MainActivity : FlutterActivity() {
@@ -30,6 +31,8 @@ class MainActivity : FlutterActivity() {
     private var currentStoreId: String = ""
     private var currentStoreName: String = ""
     private var currentStoreLogoUrl: String? = null
+    private var currentStoreBaseUrl: String = ""
+
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -51,28 +54,60 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
-
                 "showWelcomeWithStore" -> {
                     val storeId = call.argument<String>("storeId") ?: ""
                     val storeName = call.argument<String>("storeName") ?: ""
                     val storeLogoUrl = call.argument<String>("storeLogoUrl")
+                    val storeBaseUrl = call.argument<String>("storeBaseUrl") ?: ""
 
                     Log.d(
                         "CustomerDisplay",
-                        "➡ showWelcomeWithStore invoked → storeId=$storeId, storeName=$storeName, logoUrl=$storeLogoUrl"
+                        "➡ showWelcomeWithStore invoked → storeId=$storeId, storeName=$storeName, logoUrl=$storeLogoUrl, baseUrl=$storeBaseUrl"
                     )
 
                     currentStoreId = storeId
                     currentStoreName = storeName
                     currentStoreLogoUrl = storeLogoUrl
+                    currentStoreBaseUrl = storeBaseUrl
 
+                    // --- Call the slideshow API first to see logs ---
+                    if (storeBaseUrl.isNotEmpty()) {
+                        Thread {
+                            try {
+                                val apiUrl = "$storeBaseUrl/wp-content/plugins/pinaka-pos-wp/promotion_images.php"
+                                val json = URL(apiUrl).readText()
+                                val jsonArray = JSONArray(json)
+
+                                val imageUrls = mutableListOf<String>()
+                                for (i in 0 until jsonArray.length()) {
+                                    val obj = jsonArray.getJSONObject(i)
+                                    val url = obj.getString("url")
+                                    imageUrls.add(url)
+                                }
+
+                                Log.d("CustomerDisplay", "✅ Slideshow API returned ${imageUrls.size} images for store $storeName")
+                                for (url in imageUrls) {
+                                    Log.d("CustomerDisplay", "Slide URL: $url")
+                                }
+
+                            } catch (e: Exception) {
+                                Log.e("CustomerDisplay", "❌ Failed to load slideshow for store $storeName: ${e.message}")
+                            }
+                        }.start()
+                    } else {
+                        Log.e("CustomerDisplay", "❌ storeBaseUrl is empty → cannot load slideshow for store $storeName")
+                    }
+
+                    // --- Show Welcome layout on customer display ---
                     if (customerDisplayPresentation == null) {
                         showWelcomeOnCustomerDisplay()
                     }
-                    customerDisplayPresentation?.showWelcomeLayout(storeId, storeName, storeLogoUrl)
+
+                    customerDisplayPresentation?.showWelcomeLayout(storeId, storeName, storeLogoUrl, storeBaseUrl)
 
                     result.success("Welcome updated with store")
                 }
+
 
                 "showCustomerData" -> {
                     val orderId = call.argument<Int>("orderId") ?: 0
@@ -208,7 +243,6 @@ class MainActivity : FlutterActivity() {
             false
         }
     }
-
     override fun onDestroy() {
         Log.d("CustomerDisplay", "➡ onDestroy called, dismissing CustomerDisplayPresentation")
         customerDisplayPresentation?.dismiss()
@@ -216,7 +250,11 @@ class MainActivity : FlutterActivity() {
     }
 
     // ---------------------- CustomerDisplayPresentation ----------------------
-    class CustomerDisplayPresentation(context: Context, display: Display) : Presentation(context, display) {
+    class CustomerDisplayPresentation(
+        context: Context,
+        display: Display
+    ) : Presentation(context, display) {
+
         private var firstOrderShown = false
 
         private lateinit var orderIdView: TextView
@@ -238,6 +276,9 @@ class MainActivity : FlutterActivity() {
         private var currentStoreId: String = ""
         private var currentStoreName: String = ""
         private var currentStoreLogoUrl: String? = null
+        private var currentStoreBaseUrl: String = ""
+
+        private lateinit var slideshowContainer: LinearLayout
 
         override fun onCreate(savedInstanceState: Bundle?) {
             super.onCreate(savedInstanceState)
@@ -246,17 +287,19 @@ class MainActivity : FlutterActivity() {
             welcomeText = findViewById(R.id.welcome_text)
         }
 
-        fun updateWelcomeWithStore(storeId: String, storeName: String, storeLogoUrl: String? = null) {
-            if (window?.decorView?.findViewById<TextView>(R.id.welcome_text) == null) {
-                setContentView(R.layout.welcome_layout)
-                welcomeText = findViewById(R.id.welcome_text)
-            }
-
+        fun updateWelcomeWithStore(
+            storeId: String,
+            storeName: String,
+            storeLogoUrl: String? = null,
+            storeBaseUrl: String? = null // new param
+        ) {
             currentStoreId = storeId
             currentStoreName = storeName
             currentStoreLogoUrl = storeLogoUrl
+            currentStoreBaseUrl = storeBaseUrl ?: ""
 
             welcomeText.text = if (storeName.isNotEmpty()) "Welcome to $storeName" else "👋 Welcome to Pinaka"
+
             val footerText = findViewById<TextView>(R.id.footer_text)
             footerText?.visibility = if (storeName.isNotEmpty()) View.VISIBLE else View.GONE
 
@@ -281,20 +324,114 @@ class MainActivity : FlutterActivity() {
                 logoView?.setImageResource(R.drawable.pinaka_logo)
                 Log.d("CustomerDisplay", "✅ Using default Welcome logo")
             }
+
+            if (storeName.isNotEmpty()) {
+                loadSlideshowFromApi(currentStoreBaseUrl)
+            }
         }
 
-        fun showWelcomeLayout(storeId: String, storeName: String, storeLogoUrl: String?) {
+        private fun loadSlideshowFromApi(storeBaseUrl: String) {
+            if (storeBaseUrl.isEmpty()) {
+                Log.e("CustomerDisplay", "❌ storeBaseUrl is empty. Slideshow cannot be loaded.")
+                displaySlideshow(emptyList())
+                return
+            }
+
+            Thread {
+                try {
+                    val apiUrl = "$storeBaseUrl/wp-content/plugins/pinaka-pos-wp/promotion_images.php"
+                    val json = URL(apiUrl).readText()
+                    val jsonArray = JSONArray(json)
+
+                    val imageUrls = mutableListOf<String>()
+                    for (i in 0 until jsonArray.length()) {
+                        val obj = jsonArray.getJSONObject(i)
+                        val url = obj.getString("url")
+                        imageUrls.add(url)
+                    }
+
+                    Handler(Looper.getMainLooper()).post {
+                        displaySlideshow(imageUrls)
+                    }
+
+                } catch (e: Exception) {
+                    Log.e("CustomerDisplay", "❌ Failed to load slideshow: ${e.message}")
+                    Handler(Looper.getMainLooper()).post {
+                        displaySlideshow(emptyList())
+                    }
+                }
+            }.start()
+        }
+
+        private lateinit var slideshowImageView: ImageView
+        private var slideshowUrls = listOf<String>()
+        private var currentSlide = 0
+        private var slideshowHandler: Handler? = null
+        private val slideshowInterval = 3000L
+
+        private fun displaySlideshow(imageUrls: List<String>) {
+            slideshowImageView = findViewById(R.id.slideshow_image)
+
+            slideshowUrls = imageUrls
+            if (slideshowHandler == null) slideshowHandler = Handler(Looper.getMainLooper())
+            startSlideshow()
+        }
+
+        private fun startSlideshow() {
+            if (slideshowHandler == null) slideshowHandler = Handler(Looper.getMainLooper())
+
+            slideshowHandler?.post(object : Runnable {
+                override fun run() {
+                    if (slideshowUrls.isEmpty()) {
+                        slideshowImageView.setImageResource(R.drawable.pinaka_logo)
+                        slideshowImageView.scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    } else {
+                        val url = slideshowUrls[currentSlide]
+                        Thread {
+                            try {
+                                val input = URL(url).openStream()
+                                val bitmap = BitmapFactory.decodeStream(input)
+                                Handler(Looper.getMainLooper()).post {
+                                    slideshowImageView.setImageBitmap(bitmap)
+                                    slideshowImageView.scaleType = ImageView.ScaleType.CENTER_CROP
+                                }
+                            } catch (e: Exception) {
+                                Log.e("CustomerDisplay", "❌ Failed to load slide image: ${e.message}")
+                            }
+                        }.start()
+                        currentSlide = (currentSlide + 1) % slideshowUrls.size
+                    }
+                    slideshowHandler?.postDelayed(this, slideshowInterval)
+                }
+            })
+        }
+
+        fun showWelcomeLayout(
+            storeId: String,
+            storeName: String,
+            storeLogoUrl: String?,
+            storeBaseUrl: String? = null
+        ) {
             Log.d("CustomerDisplay", "➡ Switching back to Welcome layout")
 
             Handler(Looper.getMainLooper()).post {
                 setContentView(R.layout.welcome_layout)
 
+                // update current store details
+                currentStoreId = storeId
+                currentStoreName = storeName
+                currentStoreLogoUrl = storeLogoUrl
+                currentStoreBaseUrl = storeBaseUrl ?: ""
+
                 welcomeText = findViewById(R.id.welcome_text)
                 val footerText = findViewById<TextView>(R.id.footer_text)
                 val logoView = findViewById<ImageView>(R.id.welcome_logo)
+                slideshowImageView = findViewById(R.id.slideshow_image) // <-- important
 
                 welcomeText.text = if (storeName.isNotEmpty()) "Welcome to $storeName" else "👋 Welcome to Pinaka"
                 footerText.visibility = if (storeName.isNotEmpty()) View.VISIBLE else View.GONE
+
+                // Load logo
                 if (!storeLogoUrl.isNullOrEmpty()) {
                     Thread {
                         try {
@@ -315,9 +452,19 @@ class MainActivity : FlutterActivity() {
                     logoView.setImageResource(R.drawable.pinaka_logo)
                 }
 
+                // Stop any previous slideshow
+                slideshowHandler?.removeCallbacksAndMessages(null)
+                slideshowHandler = Handler(Looper.getMainLooper())
+
+                // Load slideshow
+                if (!currentStoreBaseUrl.isNullOrEmpty() && storeName.isNotEmpty()) {
+                    loadSlideshowFromApi(currentStoreBaseUrl)
+                }
+
                 firstOrderShown = false
             }
         }
+
         private fun formatCurrency(value: Double): String {
             return if (value < 0) {
                 "- $${"%.2f".format(value.absoluteValue)}"
@@ -400,23 +547,34 @@ class MainActivity : FlutterActivity() {
             currentStoreId = storeId?.takeIf { it.isNotEmpty() } ?: defaultStoreId
             currentStoreName = storeName?.takeIf { it.isNotEmpty() } ?: defaultStoreName
             currentStoreLogoUrl = storeLogoUrl?.takeIf { it?.isNotEmpty() == true } ?: defaultStoreLogoUrl
+
             Log.d("CustomerDisplay", "➡ Showing Customer Display layout")
             setContentView(R.layout.customer_display_layout)
             bindOrderViews()
 
+            // Update store info
             updateStoreInfo(currentStoreId, currentStoreName, currentStoreLogoUrl, orderDate, orderTime)
-            val rootLayout = findViewById<LinearLayout>(R.id.customer_display_root)
-            val rightPanel = findViewById<LinearLayout>(R.id.right_panel)
-            val headerContainer = findViewById<LinearLayout>(R.id.header_container)
 
+            // --- Start slideshow using existing methods ---
+            slideshowImageView = findViewById(R.id.slideshow_image)
+            if (currentStoreBaseUrl.isNotEmpty()) {
+                loadSlideshowFromApi(currentStoreBaseUrl)
+            } else {
+                // Show default Pinaka logo centered
+                slideshowImageView.setImageResource(R.drawable.pinaka_logo)
+                slideshowImageView.scaleType = ImageView.ScaleType.CENTER_INSIDE
+                Log.d("CustomerDisplay", "✅ No storeBaseUrl → showing centered default logo")
+            }
+
+// If no items, show "No items in cart" message instead of navigating
             if (items.isEmpty() || grossTotal == 0.0) {
-                orderIdView.text = ""
-                rightPanel.visibility = View.GONE
-                headerContainer.visibility = View.GONE
-                rootLayout.setBackgroundColor(Color.parseColor("#3D506E"))
+                Log.d("CustomerDisplay", "📢 No order data → showing empty cart message")
 
+                // Clear previous items
                 itemsContainer.removeAllViews()
-                val logoTextContainer = LinearLayout(context).apply {
+
+                // Create a vertical layout to hold the image and the text
+                val emptyLayout = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER
                     layoutParams = LinearLayout.LayoutParams(
@@ -424,54 +582,42 @@ class MainActivity : FlutterActivity() {
                         LinearLayout.LayoutParams.MATCH_PARENT
                     )
                 }
-                val logoView = ImageView(context).apply {
-                    layoutParams = LinearLayout.LayoutParams(200, 200).apply {
-                        topMargin = 120
-                        bottomMargin = 24
-                        gravity = Gravity.CENTER
-                    }
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                }
 
-                if (!currentStoreLogoUrl.isNullOrEmpty()) {
-                    Thread {
-                        try {
-                            val input = URL(currentStoreLogoUrl).openStream()
-                            val bitmap = BitmapFactory.decodeStream(input)
-                            Handler(Looper.getMainLooper()).post {
-                                logoView.setImageBitmap(bitmap)
-                            }
-                        } catch (e: Exception) {
-                            Handler(Looper.getMainLooper()).post {
-                                logoView.setImageResource(R.drawable.pinaka_logo)
-                            }
-                        }
-                    }.start()
-                } else {
-                    logoView.setImageResource(R.drawable.pinaka_logo)
-                }
-
-                val welcomeTextView = TextView(context).apply {
-                    text = "Welcome to $currentStoreName"
-                    textSize = 34f
-                    setTypeface(typeface, Typeface.BOLD)
-                    gravity = Gravity.CENTER
-                    setTextColor(Color.WHITE)
+                // Add the empty cart image
+                val emptyImage = ImageView(context).apply {
+                    setImageResource(R.drawable.empty_cart) // make sure this drawable exists
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
                     layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply {
-                        bottomMargin = 40
+                        bottomMargin = 16
                     }
                 }
-                logoTextContainer.addView(logoView)
-                logoTextContainer.addView(welcomeTextView)
+                emptyLayout.addView(emptyImage)
 
-                itemsContainer.addView(logoTextContainer)
+                // Add the message text
+                val emptyMessage = TextView(context).apply {
+                    text = "No items in the Order panel"
+                    textSize = 22f
+                    setTextColor(Color.BLACK)
+                    gravity = Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                }
+                emptyLayout.addView(emptyMessage)
 
-                Log.d("CustomerDisplay", "📢 No order data → showing welcome message + logo + footer for $currentStoreName")
+                // Add the vertical layout to your container
+                itemsContainer.addView(emptyLayout)
+
+                // Stop further processing
                 return
             }
+
+
+            // --- Populate order items ---
             orderIdView.text = "Order #$orderId"
             itemsContainer.removeAllViews()
             var totalItemCount = 0
@@ -489,12 +635,17 @@ class MainActivity : FlutterActivity() {
                 val cardLayout = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     setPadding(6, 8, 6, 8)
-                    background = context.getDrawable(R.drawable.item_card_background)
+                    setBackgroundColor(Color.WHITE)
+                    background = GradientDrawable().apply {
+                        setColor(Color.WHITE)
+                        setStroke(2, Color.LTGRAY)
+                        cornerRadius = 8f
+                    }
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply {
-                        setMargins(0, 4, 0, 4)
+                        setMargins(0, 2, 0, 2)
                     }
                 }
 
@@ -535,20 +686,25 @@ class MainActivity : FlutterActivity() {
                 }
 
                 val nameQtyView = TextView(context).apply {
-                    textSize = 12f
+                    textSize = 15f
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
-                    text = "$name x$qty"
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    text = "$name  x$qty"
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        topMargin = 4 // moves it slightly down
+                    }
                 }
 
                 val totalView = TextView(context).apply {
-                    textSize = 12f
+                    textSize = 15f
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
                     text = formatCurrency(total)
                     setTextColor(if (total < 0) Color.RED else Color.BLUE)
                     gravity = Gravity.END
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        topMargin = 4
+                    }
                 }
+
 
                 detailsLayout.addView(nameQtyView)
                 detailsLayout.addView(totalView)
@@ -580,6 +736,7 @@ class MainActivity : FlutterActivity() {
             thankYouText.text = "Thank You!"
             visitAgainText.text = "Please Visit Again"
 
+            // Load store logo
             if (!currentStoreLogoUrl.isNullOrEmpty()) {
                 Thread {
                     try {
@@ -587,19 +744,30 @@ class MainActivity : FlutterActivity() {
                         val bitmap = BitmapFactory.decodeStream(input)
                         Handler(Looper.getMainLooper()).post {
                             storeLogoView.setImageBitmap(bitmap)
-                            Log.d("CustomerDisplay", "✅ Thank You store logo loaded successfully from $currentStoreLogoUrl")
                         }
                     } catch (e: Exception) {
                         Handler(Looper.getMainLooper()).post {
                             storeLogoView.setImageResource(R.drawable.pinaka_logo)
-                            Log.e("CustomerDisplay", "❌ Failed to load Thank You store logo from $currentStoreLogoUrl: ${e.message}")
                         }
                     }
                 }.start()
             } else {
                 storeLogoView.setImageResource(R.drawable.pinaka_logo)
-                Log.d("CustomerDisplay", "⚠ No store logo URL provided → using default in Thank You layout")
             }
+
+            // Load slideshow in Thank You layout
+            if (!currentStoreBaseUrl.isNullOrEmpty()) {
+                loadSlideshowFromApi(currentStoreBaseUrl) // <-- add this
+            }
+
+            Handler(Looper.getMainLooper()).postDelayed({
+                showWelcomeLayout(
+                    storeId = currentStoreId,
+                    storeName = currentStoreName,
+                    storeLogoUrl = currentStoreLogoUrl,
+                    storeBaseUrl = currentStoreBaseUrl
+                )
+            }, 6000)
         }
 
         override fun onDetachedFromWindow() {

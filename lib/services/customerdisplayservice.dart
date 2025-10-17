@@ -37,15 +37,17 @@ class CustomerDisplayService {
     required String storeId,
     required String storeName,
     String? storeLogoUrl,
+    String? storeBaseUrl, // new optional param
   }) async {
     try {
       print(
-          "📢 [CustomerDisplayService] showWelcomeWithStore → storeId=$storeId, storeName=$storeName, logo=$storeLogoUrl");
+          "📢 [CustomerDisplayService] showWelcomeWithStore → storeId=$storeId, storeName=$storeName, logo=$storeLogoUrl, baseUrl=$storeBaseUrl");
 
       await _platform.invokeMethod('showWelcomeWithStore', {
         "storeId": storeId,
         "storeName": storeName,
         "storeLogoUrl": storeLogoUrl ?? "",
+        "storeBaseUrl": storeBaseUrl ?? "",
       });
 
       print("✅ [CustomerDisplayService] Store welcome displayed");
@@ -53,6 +55,7 @@ class CustomerDisplayService {
       print("⚠️ [CustomerDisplayService] Failed to show store welcome: $e");
     }
   }
+
   /// 🔹 Send order data to customer display
   static Future<void> showCustomerData({
     required int orderId,

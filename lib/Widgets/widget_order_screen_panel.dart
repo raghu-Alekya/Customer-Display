@@ -2249,9 +2249,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       final decodedImage = img.decodeImage(imageBytes)!;
       // Create a black bottom layer
       // Resize the image to a 130x? thumbnail (maintaining the aspect ratio).
-      img.Image thumbnail = img.copyResize(decodedImage, height: 270);
+      img.Image thumbnail = img.copyResize(decodedImage, height: 280);
       // creates a copy of the original image with set dimensions
-      img.Image originalImg = img.copyResize(decodedImage, width: 460, height: 270);
+      img.Image originalImg = img.copyResize(decodedImage, width: 470, height: 280);
       // fills the original image with a white background
       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
       var padding = (originalImg.width - thumbnail.width) / 2;
@@ -2261,11 +2261,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
       // convert image to grayscale
       var grayscaleImage = img.grayscale(originalImg);
-
-      bytes += ticket.feed(1);
       // bytes += generator.imageRaster(img.decodeImage(imageBytes)!, align: PosAlign.center);
       bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
-      bytes += ticket.feed(1);
     }
 
     //Header
@@ -2333,9 +2330,15 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
             width: 12,
             styles: PosStyles(align: PosAlign.center)),
       ]);
-      bytes += ticket.feed(1);
     }
-
+    bytes += ticket.row([
+      PosColumn(
+        text: "***** INVOICE COPY *****",
+        width: 12,
+        styles: PosStyles(align: PosAlign.center, bold: true),
+      ),
+    ]);
+    bytes += ticket.feed(1);
     //Store Name
     bytes += ticket.row([
       PosColumn(text: "$storeName", width: 12, styles: PosStyles(align: PosAlign.center,bold: true, height: PosTextSize.size2, width: PosTextSize.size2)), //Build #1.0.257: increase font to 5 and bold
@@ -2355,13 +2358,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     ]);
 
     bytes += ticket.feed(1);
-    bytes += ticket.row([
-      PosColumn(
-        text: "***** PRINT INVOICE *****",
-        width: 12,
-        styles: PosStyles(align: PosAlign.center, bold: true),
-      ),
-    ]);
 
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
@@ -2389,16 +2385,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
-    bytes += ticket.feed(1);
+   // bytes += ticket.feed(1);
 
     //Item header
     bytes += ticket.row([
-      PosColumn(text: "#", width: 1),
-      PosColumn(text: "Description", width:5),
-      PosColumn(text: "Qty", width: 1, styles: PosStyles(align: PosAlign.center)),
-      PosColumn(text: "Rate", width: 2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "#", width: 1,styles: PosStyles(align: PosAlign.left,bold:true)),
+      PosColumn(text: "Description", width:5,styles: PosStyles(align: PosAlign.left,bold:true)),
+      PosColumn(text: "Qty", width: 1, styles: PosStyles(align: PosAlign.center,bold:true)),
+      PosColumn(text: "Rate", width: 2, styles: PosStyles(align: PosAlign.right,bold:true)),
       // PosColumn(text: "Dis", width: 1, styles: PosStyles(align: PosAlign.right)), ///removed based on request on 3-Sep-25
-      PosColumn(text: "Amt", width: 3, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "Amt", width: 3, styles: PosStyles(align: PosAlign.right,bold:true)),
     ]);
     bytes += ticket.feed(1);
 
@@ -2462,7 +2458,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
     final grossTotal = GlobalUtility.getGrossTotal(orderItems);
 
-    bytes += ticket.feed(1);
+    //bytes += ticket.feed(1);
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
@@ -2536,8 +2532,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     bytes += ticket.row([
       PosColumn(text: TextConstants.change, width: 10),
       PosColumn(text: "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+
     ]);
-    bytes += ticket.feed(1);
+    bytes += ticket.row([
+    PosColumn(text: "-----------------------------------------------", width: 12),
+    ]);
+    //bytes += ticket.feed(1);
 
     //Footer
     // bytes += ticket.row([

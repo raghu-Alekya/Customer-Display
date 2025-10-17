@@ -385,9 +385,9 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
       final decodedImage = img.decodeImage(imageBytes)!;
       // Create a black bottom layer
       // Resize the image to a 130x? thumbnail (maintaining the aspect ratio).
-      img.Image thumbnail = img.copyResize(decodedImage, height: 270);
+      img.Image thumbnail = img.copyResize(decodedImage, height: 280);
       // creates a copy of the original image with set dimensions
-      img.Image originalImg = img.copyResize(decodedImage, width: 460, height: 270);
+      img.Image originalImg = img.copyResize(decodedImage, width: 470, height: 280);
       // fills the original image with a white background
       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
       var padding = (originalImg.width - thumbnail.width) / 2;
@@ -397,11 +397,8 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
 
       // convert image to grayscale
       var grayscaleImage = img.grayscale(originalImg);
-
-      bytes += ticket.feed(1);
       // bytes += generator.imageRaster(img.decodeImage(imageBytes)!, align: PosAlign.center);
       bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
-      bytes += ticket.feed(1);
     }
 
     //Header
@@ -456,8 +453,15 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
             width: 12,
             styles: PosStyles(align: PosAlign.center)),
       ]);
-      bytes += ticket.feed(1);
     }
+    bytes += ticket.row([
+      PosColumn(
+        text: "***** SAFE-DROP *****",
+        width: 12,
+        styles: PosStyles(align: PosAlign.center, bold: true),
+      ),
+    ]);
+    bytes += ticket.feed(1);
 
     //Store Name
     bytes += ticket.row([
@@ -509,10 +513,11 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
 
     //Item header
     bytes += ticket.row([
-      PosColumn(text: "#", width: 2),
-      PosColumn(text: "Denomination", width:5, styles: PosStyles(align: PosAlign.right)),
-      PosColumn(text: "Qty", width: 2,styles: PosStyles(align: PosAlign.center)),
-      PosColumn(text: "Amt", width: 3, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "#", width: 2,styles: PosStyles(align: PosAlign.left,bold:true)),
+      PosColumn(text: "Denomination", width:5, styles: PosStyles(align: PosAlign.left,bold:true)),
+
+      PosColumn(text: "Qty", width: 2,styles: PosStyles(align: PosAlign.center,bold:true)),
+      PosColumn(text: "Amt", width: 3, styles: PosStyles(align: PosAlign.right,bold:true)),
     ]);
     bytes += ticket.feed(1);
 
@@ -557,7 +562,9 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
     //   PosColumn(text: TextConstants.cash, width: 10),
     //   PosColumn(text: totalCash.toStringAsFixed(2), width:2),
     // ]);
-
+    bytes += ticket.row([
+      PosColumn(text: "-----------------------------------------------", width: 12),
+    ]);
     bytes += ticket.feed(1);
     //Footer
     // bytes += ticket.row([

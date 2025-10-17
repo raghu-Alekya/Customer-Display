@@ -21,21 +21,27 @@ class PinakaPreferences { // Build #1.0.7 , Naveen - added PinakaPreferences cod
     required String storeId,
     required String storeName,
     String? storeLogoUrl,
+    String? storeBaseUrl,
   }) async {
     await _prefs.setString('storeId', storeId);
     await _prefs.setString('storeName', storeName);
     await _prefs.setString('storeLogoUrl', storeLogoUrl ?? '');
+    if (storeBaseUrl != null) {
+      await _prefs.setString('storeBaseUrl', storeBaseUrl);
+    }
   }
 
   static Map<String, String?> getLoggedInStore() {
     final storeId = _prefs.getString('storeId');
     final storeName = _prefs.getString('storeName');
     final storeLogoUrl = _prefs.getString('storeLogoUrl');
+    final storeBaseUrl = _prefs.getString('storeBaseUrl');
     if (storeId != null && storeName != null) {
       return {
         'storeId': storeId,
         'storeName': storeName,
         'storeLogoUrl': storeLogoUrl,
+        'storeBaseUrl': storeBaseUrl,
       };
     }
     return {};

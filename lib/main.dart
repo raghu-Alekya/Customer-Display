@@ -31,11 +31,11 @@ void main() async {
       storeInfo['storeId']!,
       storeInfo['storeName']!,
       storeLogoUrl: storeInfo['storeLogoUrl'],
+      storeBaseUrl: storeInfo['storeBaseUrl'],
     );
   } else {
-    // Show default welcome if no store info
     await CustomerDisplayService.showWelcome();
-  }/// Build #1.0.10: Initialize the database
+  }
   runApp(
     ChangeNotifierProvider(
       create: (_) => themeNotifier,
