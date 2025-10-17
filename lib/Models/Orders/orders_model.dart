@@ -631,6 +631,18 @@ class AddPayoutAsProductRequestModel {
   }
 }
 
+class AddMerchantDiscountRequestModel { // Build #1.0.274: Added for merchant discount api raw body data.
+  final int orderId;
+  final double amount;
+
+  AddMerchantDiscountRequestModel({required this.orderId, required this.amount});
+
+  Map<String, dynamic> toJson() => {
+    'order_id': orderId,
+    'amount': amount,
+  };
+}
+
 class RemoveFeeLinesRequestModel { // Build #1.0.53 : Added; Build #1.0.73: updated
   final List<FeeLine> feeLines;
 

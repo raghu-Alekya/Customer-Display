@@ -1420,7 +1420,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       //Build #1.0.78: API-first approach for orders with serverOrderId
       StreamSubscription? subscription;
 
-      subscription = orderBloc.addPayoutStream.listen((response) async {
+      subscription = orderBloc.addMerchantDiscountStream.listen((response) async {
         if (!mounted) {
           subscription?.cancel();
           return;
@@ -1459,7 +1459,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         }
       });
 
-      await orderBloc.addPayout(orderId: serverOrderId, dbOrderId: orderId, amount: discountAmount, isPayOut: false);
+      // Build #1.0.274 : Updated API call
+      await orderBloc.addMerchantDiscount(orderId: serverOrderId, amount: -discountAmount);
+      //  await orderBloc.addPayout(orderId: serverOrderId, dbOrderId: orderId, amount: discountAmount, isPayOut: false);
     } catch (e) {
       if (kDebugMode) print("Error processing discount: $e");
       setState(() => _isDiscountLoading = false);

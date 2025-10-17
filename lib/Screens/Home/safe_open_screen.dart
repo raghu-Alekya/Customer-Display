@@ -255,7 +255,6 @@ class _SafeOpenScreenState extends State<SafeOpenScreen> with LayoutSelectionMix
     });
   }
 
-
   @override
   Widget build(BuildContext context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);

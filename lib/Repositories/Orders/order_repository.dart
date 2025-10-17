@@ -26,7 +26,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     List<OrderMetaData> metaData;
     int? shiftId = await UserDbHelper().getUserShiftId(); // Build #1.0.149
     if (shiftId == null) {
-    throw Exception("Please start your shift before creating an order");
+      throw Exception("Please start your shift before creating an order");
     }
 
     final deviceDetails = await GlobalUtility.getDeviceDetails();
@@ -35,9 +35,9 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     int userId = userData?[AppDBConst.userId] as int;
 
     metaData = [
-    OrderMetaData(key: OrderMetaData.posDeviceId, value: deviceId),
-    OrderMetaData(key: OrderMetaData.posPlacedBy, value: '$userId'),
-    OrderMetaData(key: OrderMetaData.shiftId, value: shiftId.toString()),
+      OrderMetaData(key: OrderMetaData.posDeviceId, value: deviceId),
+      OrderMetaData(key: OrderMetaData.posPlacedBy, value: '$userId'),
+      OrderMetaData(key: OrderMetaData.shiftId, value: shiftId.toString()),
     ];
 
     final request = CreateOrderRequestModel(metaData: metaData);
@@ -113,7 +113,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     final encodedStatus = Uri.encodeQueryComponent(statusString);
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}"
         "$getOrdersParameter$encodedStatus";
-        //"${UrlParameterConstants.getOrdersEndParameter}"; # Build 1.0.172 removed them so that when applied date filter, data is fetching properly.
+    //"${UrlParameterConstants.getOrdersEndParameter}"; # Build 1.0.172 removed them so that when applied date filter, data is fetching properly.
 
     if (kDebugMode) {
       print("OrderRepository - GET URL: $url");
@@ -165,7 +165,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     // Encode for URL (spaces become '+', commas become '%2C')
     final encodedStatus = Uri.encodeQueryComponent(statusString);
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/${UrlMethodConstants.totalOrders}$getOrdersParameter$encodedStatus";
-        //"${UrlParameterConstants.getOrdersEndParameter}"; # Build 1.0.172 removed them so that when applied date filter, data is fetching properly.
+    //"${UrlParameterConstants.getOrdersEndParameter}"; # Build 1.0.172 removed them so that when applied date filter, data is fetching properly.
 
     if (kDebugMode) {
       print("OrderRepository - GET URL: $url");
@@ -226,7 +226,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         print("OrderRepository - Raw Response: ${response.toString()}");
       }
       if (response is String) {
-          return OrderModel.fromJson(jsonDecode(response));
+        return OrderModel.fromJson(jsonDecode(response));
       }
       // Handle any other unexpected type
       else {
@@ -363,6 +363,36 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       return ApplyDiscountResponse.fromJson(response);
     } else {
       throw Exception("Unexpected response type");
+    }
+  }
+
+  // Build #1.0.274 : Added new function for add merchant discount
+  Future<OrderModel> addMerchantDiscount({required int orderId, required AddMerchantDiscountRequestModel request}) async {
+    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}${EndUrlConstants.addDiscountEndUrl}";
+
+    if (kDebugMode) {
+      print("OrderRepository - POST URL for add merchant discount: $url");
+      print("OrderRepository - Request Body: ${request.toJson()}");
+    }
+
+    final response = await _helper.post(url, request.toJson(), true);
+
+    if (kDebugMode) {
+      print("OrderRepository - Add Merchant Discount Raw Response: $response");
+    }
+
+    if (response is String) {
+      try {
+        final responseData = json.decode(response);
+        return OrderModel.fromJson(responseData);
+      } catch (e) {
+        if (kDebugMode) print("Error parsing add merchant discount response: $e");
+        throw Exception("Failed to parse add merchant discount response");
+      }
+    } else if (response is Map<String, dynamic>) {
+      return OrderModel.fromJson(response);
+    } else {
+      throw Exception("Unexpected response type in add merchant discount POST");
     }
   }
 

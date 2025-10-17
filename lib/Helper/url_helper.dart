@@ -150,5 +150,5 @@ class EndUrlConstants { // Build #1.0.13
   static const String logoutById                  = "/logout-by-id";
   static const String voidOrderEndUrl             = "/void-order";  // Build #1.0.175
   static const String addPayoutEndUrl             = "/add-payout";  // Build #1.0.175
+  static const String addDiscountEndUrl           = "/add-discount"; // Build #1.0.274 : Added for merchant discount API
 }
-

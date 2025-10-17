@@ -108,6 +108,8 @@ class PrinterSettings {
         print(">>>>> PrinterSettings : printerDB is empty");
       }
       return;
+    } else if (printerDB.first[AppDBConst.printerDeviceName].toString().isEmpty){
+      return;
     }
     BluetoothPrinter printer = BluetoothPrinter();
 
@@ -125,7 +127,7 @@ class PrinterSettings {
       print(">>>>> PrinterSettings printer from db is ${printerDB.length}");
       if(printerDB.isNotEmpty){
 
-          print(">>>>> PrinterSettings Retrieved printerDevice '${printerDB.first[AppDBConst.printerDeviceName]}' from DB");
+        print(">>>>> PrinterSettings Retrieved printerDevice '${printerDB.first[AppDBConst.printerDeviceName]}' from DB");
       }
       print(">>>>> PrinterSettings after setSelectedPrinterFromDB: ${selectedPrinter?.deviceName}, ${selectedPrinter?.productId}, ${selectedPrinter?.vendorId}, ${selectedPrinter?.typePrinter}");
     }
@@ -150,7 +152,7 @@ class PrinterSettings {
       print(">>>>> PrinterSettings setSelectedPrinter: ${selectedPrinter?.deviceName}, ${selectedPrinter?.productId}, ${selectedPrinter?.vendorId}, ${selectedPrinter?.typePrinter}");
     }
   }
-///end: custom methods
+  ///end: custom methods
 
   Future<void> selectDevice(BluetoothPrinter device) async {
     if (selectedPrinter != null) {
@@ -186,7 +188,7 @@ class PrinterSettings {
         await printerManager.connect(type: selectedPrinter!.typePrinter, model: TcpPrinterInput(ipAddress: selectedPrinter!.address!));
         isConnected = true;
         break;
-      }
+    }
     await saveSelectedPrinterToDB();
     return isConnected;
   }
@@ -292,4 +294,3 @@ class BluetoothPrinter {
         this.receiptFooterText,
       });
 }
-

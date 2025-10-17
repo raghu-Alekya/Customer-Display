@@ -2318,7 +2318,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                 //   );
                 //   _refreshOrderList();
                 // }
-                await fastKeyDBHelper.saveActiveFastKeyTab(_fastKeyTabId ?? fastKeyTabs[_selectedCategoryIndex ?? 0].fastkeyServerId);
+                if(fastKeyTabs.isNotEmpty) await fastKeyDBHelper.saveActiveFastKeyTab(_fastKeyTabId ?? fastKeyTabs[_selectedCategoryIndex ?? 0].fastkeyServerId);
               } catch (e, s) {
                 if (kDebugMode) print("Exception in onProductSelected: $e, Stack: $s");
                 //  setState(() => isAddingItemLoading = false);

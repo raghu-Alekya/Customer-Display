@@ -111,10 +111,10 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       AppDBConst.orderTable,
       where: '${AppDBConst.userId} = ?',
       whereArgs: [activeUserId ?? 1],
-    /// Build #1.0.161
-    /// If required "asc" orders list, un-comment this line (order id's order low to high)
-    /// Build #1.0.251 : FIXED - latest created order coming middle of all orders, we can use orderServerId rather than orderDate, because latest order id crated by latest time/date only.
-     orderBy: '${AppDBConst.orderServerId} ASC', // Ensure orders are sorted by creation date
+      /// Build #1.0.161
+      /// If required "asc" orders list, un-comment this line (order id's order low to high)
+      /// Build #1.0.251 : FIXED - latest created order coming middle of all orders, we can use orderServerId rather than orderDate, because latest order id crated by latest time/date only.
+      orderBy: '${AppDBConst.orderServerId} ASC', // Ensure orders are sorted by creation date
     );
 
     if (orders.isNotEmpty) {
@@ -235,169 +235,169 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     }
 
     try {
-    final db = await DBHelper.instance.database;
-    activeUserId = await getUserIdFromDB(); // Build #1.0.165: to load user before update order table, to filter user based processing order only
-    // Build #1.0.80: Count orders in the database
-    final dbOrdersCount = await db.query(AppDBConst.orderTable);
-    final apiOrdersCount = apiOrders.length;
+      final db = await DBHelper.instance.database;
+      activeUserId = await getUserIdFromDB(); // Build #1.0.165: to load user before update order table, to filter user based processing order only
+      // Build #1.0.80: Count orders in the database
+      final dbOrdersCount = await db.query(AppDBConst.orderTable);
+      final apiOrdersCount = apiOrders.length;
 
-    if (kDebugMode) {
-      print("#### DEBUG: syncOrdersFromApi - API orders count: $apiOrdersCount, DB orders count: ${dbOrdersCount.length}, activeUserId :${activeUserId ?? 1}");
-    }
+      if (kDebugMode) {
+        print("#### DEBUG: syncOrdersFromApi - API orders count: $apiOrdersCount, DB orders count: ${dbOrdersCount.length}, activeUserId :${activeUserId ?? 1}");
+      }
 
-    // Check if counts match
-    //Build #1.0.165: delete db every time because of user filter logic applied for order table
-    // if (dbOrdersCount.length != apiOrdersCount) {
+      // Check if counts match
+      //Build #1.0.165: delete db every time because of user filter logic applied for order table
+      // if (dbOrdersCount.length != apiOrdersCount) {
       if (kDebugMode) {
         print("#### DEBUG: syncOrdersFromApi - Counts do not match, deleting DB orders");
       }
       // Build #1.0.80: Delete all orders in the database
-     // await db.delete(AppDBConst.orderTable);
-    /// Build #1.0.207: Fixed -> No popup warning for open orders when closing shift via Vendor Payouts [SCRUM- 360]
-    /// When ever navigating to orderPanel to orderScreenPanel related screen's, deleting all orders
-    /// If we go to order screen - prev all processing orders will remove that the cause of checking processing orders while closing shift
-    if (apiOrders.isNotEmpty) {
-      // Check if we're syncing processing orders
-      final isSyncingProcessingOrders = apiOrders.any((order) => order.status == 'processing');
-      if (kDebugMode) {
-        print("#### DEBUG: isSyncingProcessingOrders $isSyncingProcessingOrders");
-      }
-      if (isSyncingProcessingOrders) {
-        // If syncing processing orders, only delete processing orders
-        // when ever orderPanel calls like - fastKey/categories/add screens prev processing orders will remove and re-adding below
-        await db.delete(
-          AppDBConst.orderTable,
-          where: '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} = ?',
-          whereArgs: [activeUserId ?? 1, 'processing'],
-        );
+      // await db.delete(AppDBConst.orderTable);
+      /// Build #1.0.207: Fixed -> No popup warning for open orders when closing shift via Vendor Payouts [SCRUM- 360]
+      /// When ever navigating to orderPanel to orderScreenPanel related screen's, deleting all orders
+      /// If we go to order screen - prev all processing orders will remove that the cause of checking processing orders while closing shift
+      if (apiOrders.isNotEmpty) {
+        // Check if we're syncing processing orders
+        final isSyncingProcessingOrders = apiOrders.any((order) => order.status == 'processing');
+        if (kDebugMode) {
+          print("#### DEBUG: isSyncingProcessingOrders $isSyncingProcessingOrders");
+        }
+        if (isSyncingProcessingOrders) {
+          // If syncing processing orders, only delete processing orders
+          // when ever orderPanel calls like - fastKey/categories/add screens prev processing orders will remove and re-adding below
+          await db.delete(
+            AppDBConst.orderTable,
+            where: '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} = ?',
+            whereArgs: [activeUserId ?? 1, 'processing'],
+          );
+        } else {
+          // If syncing non-processing orders, only delete non-processing orders
+          // when ever orderScreenPanel calls like - order screen prev non-processing orders will remove and re-adding below
+          await db.delete(
+            AppDBConst.orderTable,
+            where: '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} != ?',
+            whereArgs: [activeUserId ?? 1, 'processing'],
+          );
+        }
       } else {
-        // If syncing non-processing orders, only delete non-processing orders
-        // when ever orderScreenPanel calls like - order screen prev non-processing orders will remove and re-adding below
-        await db.delete(
-          AppDBConst.orderTable,
-          where: '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} != ?',
-          whereArgs: [activeUserId ?? 1, 'processing'],
-        );
+        ///  BUILD 1.0.213: FIXED RE-OPENED ISSUE [SCRUM-360]: No popup warning for open orders when closing shift via Vendor Payouts
+        // DON'T delete all orders when apiOrders is empty
+        // Just skip the deletion and proceed with sync (which will do nothing)
+        if (kDebugMode) {
+          print("#### DEBUG: syncOrdersFromApi - No orders to sync, skipping deletion");
+        }
+        // await db.delete(AppDBConst.orderTable); // NO NEED TO DELETE COMPLETE ORDER TABLE
       }
-    } else {
-      ///  BUILD 1.0.213: FIXED RE-OPENED ISSUE [SCRUM-360]: No popup warning for open orders when closing shift via Vendor Payouts
-      // DON'T delete all orders when apiOrders is empty
-      // Just skip the deletion and proceed with sync (which will do nothing)
-      if (kDebugMode) {
-        print("#### DEBUG: syncOrdersFromApi - No orders to sync, skipping deletion");
-      }
-     // await db.delete(AppDBConst.orderTable); // NO NEED TO DELETE COMPLETE ORDER TABLE
-    }
       //  delete purchasedItemsTable related data
-     /// Build #1.0.226: purchasedItemsTable foreign key has ON DELETE CASCADE which means when a parent order is deleted, all child purchased items are automatically deleted
-     // await db.delete(AppDBConst.purchasedItemsTable); // NO NEED HERE
+      /// Build #1.0.226: purchasedItemsTable foreign key has ON DELETE CASCADE which means when a parent order is deleted, all child purchased items are automatically deleted
+      // await db.delete(AppDBConst.purchasedItemsTable); // NO NEED HERE
       OrderHelper.isOrderPanelLoaded = false;/// set 'false' to load 'processing' orders in order panel again, if db is empty by orders screen loading.
-    // }
-    // if(!isProcessing) {
-    //   if (kDebugMode) {
-    //     print("#### DEBUG: syncOrdersFromApi - Counts do not match, deleting DB orders");
-    //   }
-    //   // Build #1.0.80: Delete all orders in the database
-    //   await db.delete(AppDBConst.orderTable, where: '${AppDBConst.orderStatus} != ?', whereArgs: ['processing']);
-    //   //  delete purchasedItemsTable related data
-    //   await db.delete(AppDBConst.purchasedItemsTable, where: '${AppDBConst.orderStatus} != ?', whereArgs: ['processing']);
-    // }
-    // Proceed with syncing only if counts match or after clearing DB
-    if (kDebugMode) {
-      print("#### DEBUG: syncOrdersFromApi - Processing ${apiOrders.length} orders");
-    }
-
-    for (var apiOrder in apiOrders) {
+      // }
+      // if(!isProcessing) {
+      //   if (kDebugMode) {
+      //     print("#### DEBUG: syncOrdersFromApi - Counts do not match, deleting DB orders");
+      //   }
+      //   // Build #1.0.80: Delete all orders in the database
+      //   await db.delete(AppDBConst.orderTable, where: '${AppDBConst.orderStatus} != ?', whereArgs: ['processing']);
+      //   //  delete purchasedItemsTable related data
+      //   await db.delete(AppDBConst.purchasedItemsTable, where: '${AppDBConst.orderStatus} != ?', whereArgs: ['processing']);
+      // }
+      // Proceed with syncing only if counts match or after clearing DB
       if (kDebugMode) {
-        print("#### DEBUG: syncOrdersFromApi - Processing order serverId: ${apiOrder.id}");
-      }
-      // Check if order exists in DB by API id
-      final existingOrders = await db.query(
-        AppDBConst.orderTable,
-        where: '${AppDBConst.orderServerId} = ?', //Build #1.0.78
-        whereArgs: [apiOrder.id],
-      );
-
-      if (kDebugMode) {
-        print("#### DEBUG: syncOrdersFromApi - existingOrders: ${existingOrders.length}");
+        print("#### DEBUG: syncOrdersFromApi - Processing ${apiOrders.length} orders");
       }
 
-      if (existingOrders.isNotEmpty) {
-        await db.update(
+      for (var apiOrder in apiOrders) {
+        if (kDebugMode) {
+          print("#### DEBUG: syncOrdersFromApi - Processing order serverId: ${apiOrder.id}");
+        }
+        // Check if order exists in DB by API id
+        final existingOrders = await db.query(
           AppDBConst.orderTable,
-          {
+          where: '${AppDBConst.orderServerId} = ?', //Build #1.0.78
+          whereArgs: [apiOrder.id],
+        );
+
+        if (kDebugMode) {
+          print("#### DEBUG: syncOrdersFromApi - existingOrders: ${existingOrders.length}");
+        }
+
+        if (existingOrders.isNotEmpty) {
+          await db.update(
+            AppDBConst.orderTable,
+            {
+              AppDBConst.orderServerId: apiOrder.id,
+              AppDBConst.orderTotal: double.tryParse(apiOrder.total) ?? 0.0,
+              AppDBConst.orderStatus: apiOrder.status,
+              AppDBConst.orderDate: apiOrder.dateCreated,
+              AppDBConst.orderTime: apiOrder.dateCreated,
+              AppDBConst.orderPaymentMethod: apiOrder.paymentMethod,
+              AppDBConst.orderDiscount: double.tryParse(apiOrder.discountTotal) ?? 0.0, // Store discount
+              AppDBConst.orderTax: double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
+              AppDBConst.orderAgeRestricted: apiOrder.metaData.firstWhere( //Build #1.0.234: Saving Age Restricted value in order table
+                    (meta) => meta.key == TextConstants.ageRestrictedKey,
+                orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
+              ).value.toString(),
+            },
+            where: '${AppDBConst.orderServerId} = ?',
+            whereArgs: [apiOrder.id],
+          );
+          if (kDebugMode) {
+            print("#### DEBUG: syncOrdersFromApi Updated order with serverId: ${apiOrder.id}, orderTotal: ${apiOrder.total}");
+          }
+        } else {
+          await db.insert(AppDBConst.orderTable, {
+            // AppDBConst.orderId: apiOrder.id,
+            AppDBConst.userId: activeUserId ?? 1,
             AppDBConst.orderServerId: apiOrder.id,
             AppDBConst.orderTotal: double.tryParse(apiOrder.total) ?? 0.0,
             AppDBConst.orderStatus: apiOrder.status,
+            AppDBConst.orderType: apiOrder.createdVia ?? 'in-store',
             AppDBConst.orderDate: apiOrder.dateCreated,
             AppDBConst.orderTime: apiOrder.dateCreated,
             AppDBConst.orderPaymentMethod: apiOrder.paymentMethod,
             AppDBConst.orderDiscount: double.tryParse(apiOrder.discountTotal) ?? 0.0, // Store discount
             AppDBConst.orderTax: double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
-            AppDBConst.orderAgeRestricted: apiOrder.metaData.firstWhere( //Build #1.0.234: Saving Age Restricted value in order table
-                  (meta) => meta.key == TextConstants.ageRestrictedKey,
+            AppDBConst.orderShipping: double.tryParse(apiOrder.shippingTotal) ?? 0.0, // Store shipping
+            AppDBConst.orderAgeRestricted: apiOrder.metaData //Build #1.0.234: Saving Age Restricted value in order table
+                .firstWhere((meta) => meta.key == TextConstants.ageRestrictedKey,
               orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
             ).value.toString(),
-          },
-          where: '${AppDBConst.orderServerId} = ?',
-          whereArgs: [apiOrder.id],
-        );
-        if (kDebugMode) {
-          print("#### DEBUG: syncOrdersFromApi Updated order with serverId: ${apiOrder.id}, orderTotal: ${apiOrder.total}");
+          });
+          if (kDebugMode) {
+            print("#### DEBUG: syncOrdersFromApi Inserted new order with serverId: ${apiOrder.id}, orderTotal: ${apiOrder.total}");
+          }
         }
-      } else {
-        await db.insert(AppDBConst.orderTable, {
-          // AppDBConst.orderId: apiOrder.id,
-          AppDBConst.userId: activeUserId ?? 1,
-          AppDBConst.orderServerId: apiOrder.id,
-          AppDBConst.orderTotal: double.tryParse(apiOrder.total) ?? 0.0,
-          AppDBConst.orderStatus: apiOrder.status,
-          AppDBConst.orderType: apiOrder.createdVia ?? 'in-store',
-          AppDBConst.orderDate: apiOrder.dateCreated,
-          AppDBConst.orderTime: apiOrder.dateCreated,
-          AppDBConst.orderPaymentMethod: apiOrder.paymentMethod,
-          AppDBConst.orderDiscount: double.tryParse(apiOrder.discountTotal) ?? 0.0, // Store discount
-          AppDBConst.orderTax: double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
-          AppDBConst.orderShipping: double.tryParse(apiOrder.shippingTotal) ?? 0.0, // Store shipping
-          AppDBConst.orderAgeRestricted: apiOrder.metaData //Build #1.0.234: Saving Age Restricted value in order table
-              .firstWhere((meta) => meta.key == TextConstants.ageRestrictedKey,
-              orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
-              ).value.toString(),
-        });
-        if (kDebugMode) {
-          print("#### DEBUG: syncOrdersFromApi Inserted new order with serverId: ${apiOrder.id}, orderTotal: ${apiOrder.total}");
-        }
+
+        // Sync line items using API order id
+        await updateOrderItems(apiOrder.id, apiOrder.lineItems);
+        // await updateOrderPayoutItems(apiOrder.id, apiOrder.feeLines ?? []); // Build #1.0.64
+        await updateOrderPayoutItem(apiOrder.id, apiOrder.lineItems); // Build #1.0.198
+        // Build #1.0.207: Fixed Issue - Always Merchant discount showing "0"
+        // Ex: updateOrderPayoutItem modified to lineItems but discount we are getting in fee lines only , we are not using this, that's why merchant discount calculation is 0.
+        await updateOrderMerchantDiscount(apiOrder.id, apiOrder.lineItems ?? []); // Build #1.0.274 : updated fee lines to line items change
+        await updateOrderCouponItems(apiOrder.id, apiOrder.couponLines ?? []);
       }
 
-      // Sync line items using API order id
-      await updateOrderItems(apiOrder.id, apiOrder.lineItems);
-      // await updateOrderPayoutItems(apiOrder.id, apiOrder.feeLines ?? []); // Build #1.0.64
-      await updateOrderPayoutItem(apiOrder.id, apiOrder.lineItems); // Build #1.0.198
-      // Build #1.0.207: Fixed Issue - Always Merchant discount showing "0"
-      // Ex: updateOrderPayoutItem modified to lineItems but discount we are getting in fee lines only , we are not using this, that's why merchant discount calculation is 0.
-      await updateOrderMerchantDiscount(apiOrder.id, apiOrder.feeLines ?? []);
-      await updateOrderCouponItems(apiOrder.id, apiOrder.couponLines ?? []);
-    }
-
-    if (kDebugMode) {
-    // Calculate order total from items
-      for (var order in apiOrders) {
-        final items = await getOrderItems(order.id);
-        for (var item in items) {
+      if (kDebugMode) {
+        // Calculate order total from items
+        for (var order in apiOrders) {
+          final items = await getOrderItems(order.id);
+          for (var item in items) {
             print(
                 "#### DEBUG: Check after insert if Order items ID: ${item[AppDBConst
                     .itemId]},  ${item[AppDBConst
                     .itemServerId]} for order ${order.id} is correct?, loadOrderItems 3");
+          }
         }
+        print("#### DEBUG: syncOrdersFromApi - Refreshing local data");
       }
-      print("#### DEBUG: syncOrdersFromApi - Refreshing local data");
-    }
-    await loadData();
-    // Complete the sync operation
-    if (kDebugMode) {
-      print("#### DEBUG: syncOrdersFromApi - Sync completed successfully");
-    }
-    completer.complete();
+      await loadData();
+      // Complete the sync operation
+      if (kDebugMode) {
+        print("#### DEBUG: syncOrdersFromApi - Sync completed successfully");
+      }
+      completer.complete();
     } catch (e) { // Build 1.0.171
       // Handle errors and propagate them
       if (kDebugMode) {
@@ -434,8 +434,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       print("#### DEBUG: updateOrderItems - Processing ${apiItems.length} items for order $orderId, existing items: ${existingItemsMap.length}");
     }
 
-    for (var apiItem in apiItems) {
-      if(apiItem.name.contains('Payout')){ //Build #1.0.198: do not add payout item again, it is already added by separate function
+    for (var apiItem in apiItems) { // Build #1.0.274 : updated : skip merchant discount adding into order
+      if(apiItem.name.contains('Payout') || apiItem.name == TextConstants.discountText){  //Build #1.0.198: do not add payout item again, it is already added by separate function
         continue;
       }
       final itemId = apiItem.id.toString();
@@ -444,9 +444,9 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       final double itemSumPrice = double.parse(apiItem.subtotal); //Build #1.0.134: updated item sum price using from api response
 
       if (kDebugMode) {
-         print("         salesPrice: ${apiItem.productData.salePrice ?? "0.0"}, "
-             "regularPrice:${apiItem.productData.regularPrice ?? "0.0"},"
-             " unitPrice: ${apiItem.productData.price ?? "0.0"}");
+        print("         salesPrice: ${apiItem.productData.salePrice ?? "0.0"}, "
+            "regularPrice:${apiItem.productData.regularPrice ?? "0.0"},"
+            " unitPrice: ${apiItem.productData.price ?? "0.0"}");
       }
 
       final String variationName = apiItem.productVariationData?.metaData?.firstWhere((e) => e.key == "custom_name", orElse: () => model.MetaData(id: 0, key: "", value: "")).value ?? "";
@@ -490,7 +490,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
             AppDBConst.itemUnitPrice: unitPrice,
             AppDBConst.itemProductId: apiItem.productId, //Build #1.0.128: Update - missed to update productId & variationId
             AppDBConst.itemVariationId: apiItem.variationId,
-           // AppDBConst.itemType: isCustomItem ? ItemType.customProduct.value :  ItemType.product.value,
+            // AppDBConst.itemType: isCustomItem ? ItemType.customProduct.value :  ItemType.product.value,
           },
           where: '${AppDBConst.itemServerId} = ?',
           whereArgs: [existingItem[AppDBConst.itemServerId]], //Build #1.0.128: use itemServerId instead of itemId
@@ -583,7 +583,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     // );
     if (kDebugMode) {
       print("#### DEBUG: updateOrderItems for order id $orderId completed...");
-          // print( "total: $orderTotal, discount: $orderDiscount, tax: $orderTax for order $orderId, items: $items");
+      // print( "total: $orderTotal, discount: $orderDiscount, tax: $orderTax for order $orderId, items: $items");
     }
   }
 
@@ -648,7 +648,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           existingItemsMap.remove(itemId);
         } else {
           await db.insert(AppDBConst.purchasedItemsTable, {
-         //   AppDBConst.itemId: orderId,
+            //   AppDBConst.itemId: orderId,
             AppDBConst.itemServerId: feeLine.id, //Build #1.0.67: updated
             AppDBConst.itemName: feeLine.name ?? 'Payout',
             AppDBConst.itemSKU: '',
@@ -802,16 +802,16 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   // Build #1.0.207: Fixed Issue - Always Merchant discount showing "0"
   // Ex: updateOrderPayoutItem modified to lineItems but discount we are getting in fee lines only , we are not using this, that's why merchant discount calculation is 0.
   // Added this function to handle merchant discounts from feeLines
-  Future<void> updateOrderMerchantDiscount(int orderId, List<model.FeeLine> feeLines) async {
+  Future<void> updateOrderMerchantDiscount(int orderId, List<model.LineItem> lineItems) async { // Build #1.0.274 : updated fee lines to line items
     final db = await DBHelper.instance.database;
     double merchantDiscount = 0.0;
-   // Use a list instead of string concatenation
+    // Use a list instead of string concatenation
     List<String> merchantDiscountIdsList = []; // Build #1.0.216: FIXED Issue - Merchant discount not deleting, showing error "Payout ID not found"
 
-    for (var feeLine in feeLines) {
-      if (feeLine.name == TextConstants.discountText) {
-        merchantDiscount += double.parse(feeLine.total ?? '0.0').abs();
-        merchantDiscountIdsList.add(feeLine.id.toString()); // Added to list
+    for (var lineItem in lineItems) {
+      if (lineItem.name == TextConstants.discountText) {
+        merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
+        merchantDiscountIdsList.add(lineItem.id.toString()); // Added to list
       }
     }
     // Build #1.0.216: Join with commas and ensure no leading comma
@@ -879,7 +879,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         existingItemsMap.remove(itemId);
       } else {
         await db.insert(AppDBConst.purchasedItemsTable, {
-       //   AppDBConst.itemId: orderId,
+          //   AppDBConst.itemId: orderId,
           AppDBConst.itemServerId: coupon.id, //Build #1.0.67: updated
           AppDBConst.itemName: coupon.code ?? 'Coupon',
           AppDBConst.itemSKU: '',
@@ -906,7 +906,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         print("#### DEBUG: Deleted obsolete coupon item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
       }
     }
- }
+  }
 
   // Creates a new order and sets it as active
   Future<int> createOrder({int? serverOrderId}) async { // Build #1.0.11 : updated
@@ -958,7 +958,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       whereArgs: [orderId],
     );
 
-   //  orders.removeWhere((order) => order[AppDBConst.orderServerId] == orderId); // read-only property
+    //  orders.removeWhere((order) => order[AppDBConst.orderServerId] == orderId); // read-only property
     // Build #1.0.189: Remove the orderId from orderIds list
     orderIds.remove(orderId);
 
@@ -1095,7 +1095,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     //   await createOrder();
     // }
     //Build #1.0.68: For default product pass enum item type was product
-  //  type = ItemType.product.value;
+    //  type = ItemType.product.value;
 
     // Debugging log
     if (kDebugMode) {
@@ -1134,7 +1134,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         if(existingItem.isNotEmpty && ((existingItem.first[AppDBConst.itemVariationId] as int) > 0)){
           if (kDebugMode) {
             print(
-              "OrderDBHelper - addItemToOrder Existing item found productID: ${existingItem.first[AppDBConst.itemServerId]}, but variationId: ${existingItem.first[AppDBConst.itemVariationId]} instead $variationId");
+                "OrderDBHelper - addItemToOrder Existing item found productID: ${existingItem.first[AppDBConst.itemServerId]}, but variationId: ${existingItem.first[AppDBConst.itemVariationId]} instead $variationId");
           }
           existingItem = [];
         }
@@ -1249,42 +1249,42 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     }
   }
 
-  // If using a StatefulWidget
-  // Future<void> updateItemQuantity(int itemId, int quantity) async {
-  //   final db = await DBHelper.instance.database;
-  //
-  //   // Calculate the new sum price based on the updated quantity
-  //   final item = await db.query(
-  //     AppDBConst.purchasedItemsTable,
-  //     where: '${AppDBConst.itemId} = ?',
-  //     whereArgs: [itemId],
-  //   );
-  //
-  //   if (item.isNotEmpty) {
-  //     double price = (item.first[AppDBConst.itemPrice] as num).toDouble();
-  //     double newSumPrice = price * quantity;
-  //
-  //     await db.update(
-  //         AppDBConst.purchasedItemsTable,
-  //         {
-  //           AppDBConst.itemCount: quantity,
-  //           AppDBConst.itemSumPrice: newSumPrice
-  //         },
-  //         where: '${AppDBConst.itemId} = ?',
-  //         whereArgs: [itemId]
-  //     );
-  //
-  //     if (kDebugMode) {
-  //       print('#### Item quantity updated: ID=$itemId, Quantity=$quantity');
-  //     }
-  //
-  //     // After database update, refresh the UI
-  //     // setState(() {
-  //     //   // If needed, update any widget state variables here
-  //     // });
-  //
-  //     // Or if using a provider
-  //     // Provider.of<YourProvider>(context, listen: false).refreshItems();
-  //   }
-  // }
+// If using a StatefulWidget
+// Future<void> updateItemQuantity(int itemId, int quantity) async {
+//   final db = await DBHelper.instance.database;
+//
+//   // Calculate the new sum price based on the updated quantity
+//   final item = await db.query(
+//     AppDBConst.purchasedItemsTable,
+//     where: '${AppDBConst.itemId} = ?',
+//     whereArgs: [itemId],
+//   );
+//
+//   if (item.isNotEmpty) {
+//     double price = (item.first[AppDBConst.itemPrice] as num).toDouble();
+//     double newSumPrice = price * quantity;
+//
+//     await db.update(
+//         AppDBConst.purchasedItemsTable,
+//         {
+//           AppDBConst.itemCount: quantity,
+//           AppDBConst.itemSumPrice: newSumPrice
+//         },
+//         where: '${AppDBConst.itemId} = ?',
+//         whereArgs: [itemId]
+//     );
+//
+//     if (kDebugMode) {
+//       print('#### Item quantity updated: ID=$itemId, Quantity=$quantity');
+//     }
+//
+//     // After database update, refresh the UI
+//     // setState(() {
+//     //   // If needed, update any widget state variables here
+//     // });
+//
+//     // Or if using a provider
+//     // Provider.of<YourProvider>(context, listen: false).refreshItems();
+//   }
+// }
 }

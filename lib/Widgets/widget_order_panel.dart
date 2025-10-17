@@ -48,7 +48,9 @@ import '../Repositories/Search/product_search_repository.dart';
 import '../Screens/Home/add_screen.dart';
 import '../Screens/Home/edit_product_screen.dart';
 import '../services/CustomerDisplayService.dart';
+import 'widget_logs_toast.dart';
 
+String logString = "";
 bool isOrderInForeground = true;  ///Add visibility code to check if order panel is visible or not
 class RightOrderPanel extends StatefulWidget {
   final String? formattedDate;
@@ -77,6 +79,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   List<Map<String, dynamic>> orderItems = []; // List of items in the selected order
   final OrderHelper orderHelper = OrderHelper(); // Helper instance to manage orders
   bool _isLoading = false;
+  static bool _isCustomItemLoading = false;
   bool _isPayBtnLoading = false;
   late OrderBloc orderBloc;
   StreamSubscription? _updateOrderSubscription;
@@ -84,6 +87,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   final ProductBloc productBloc = ProductBloc(ProductRepository()); // Build #1.0.44 : Added for barcode scanning
   StreamSubscription? _productBySkuSubscription; // Build #1.0.44 : Added for product stream
   StreamSubscription? _removePayoutOrDiscountSubscription;
+  StreamSubscription? _removeMerchantDiscountSubscription; // Build #1.0.274
   StreamSubscription? _removeCouponSubscription;
   bool _showFullSummary = false;
   late ScaffoldMessengerState _scaffoldMessenger;
@@ -455,6 +459,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     if (kDebugMode) {
       print("##### DEBUG: addNewTab - Creating new order");
     }
+    showLogs = true;
+    logString += "##### DEBUG: addNewTab - Creating new order \n ";
     /// Build #1.0.128: No need here , now we are handling from Order repository class
     // final prefs = await SharedPreferences.getInstance();
     // final shiftId = prefs.getString(TextConstants.shiftId);
@@ -549,7 +555,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       }
     });
 
-    await orderBloc.createOrder(); // Build #1.0.128
+    logString += await orderBloc.createOrder(); // Build #1.0.128
+    setState(() {});
   }
 
   // Scrolls to the last tab to ensure visibility
@@ -913,6 +920,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     _updateOrderSubscription?.cancel(); // Cancel the subscription
     //orderBloc.dispose(); // Dispose the bloc if needed
     _fetchOrdersSubscription?.cancel();
+    _removeMerchantDiscountSubscription?.cancel();
     orderBloc.dispose();
     productBloc.dispose();
     _tabController?.dispose();
@@ -957,7 +965,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
     return null;
   }
-
+//Build #1.0.268: 1. add below function in  BarcodeKeyboardListenerState lib
+  // void callback(String barcode){
+  //   _onBarcodeScannedCallback.call(barcode);
+  // }
+  // final GlobalKey<BarcodeKeyboardListenerState> _scannerKey = GlobalKey();//Build #1.0.268: 2. create global key
   @override
   Widget build(BuildContext context) {
 
@@ -965,532 +977,629 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     return FocusDetector(
       onFocusLost: () { // Build #1.0.219 -> FIXED ISSUE [SCRUM - 366] : Swipe-to-Delete UI State Not Resetting
         // When this widget regains focus, reset slidable states
+        if(!mounted) return;
         setState(() {
           _listVersion++;
         });
       },
       child: BarcodeKeyboardListener( // Build #1.0.44 : Added - Wrap with BarcodeKeyboardListener for barcode scanning
-        bufferDuration: Duration(milliseconds: 5000),
+        // key:  _scannerKey,//Build #1.0.268: 3. Add key for scanner event
+        bufferDuration: Duration(milliseconds: 700),
         //Build #1.0.78: Removed orderHelper.addItemToOrder from the API success block, as it’s now in OrderBloc.updateOrderProducts.
         // Kept local addItemToOrder for non-API orders.
         // Ensured loader is shown during API calls and hidden afterward.
-        useKeyDownEvent: false,
+        useKeyDownEvent: Platform.isWindows,
         caseSensitive: true,
         onBarcodeScanned: (barcode) async {
-          //barcode = barcode.trim().replaceAll(' ', '');
-          if (kDebugMode) {
-            print("##### DEBUG: onBarcodeScanned - Scanned barcode: -$barcode, isOrderInForeground = $isOrderInForeground");
-          }
-          if(!isOrderInForeground){ // to restrict order panel in background to scanner events
-            return;
-          }
-
-          if (barcode.isNotEmpty) {
-            var dobScanned = "";
-            /// Testing code: not working, Scanner will generate multiple tap events and call when scanned driving licence with PDF417 format irrespective of this code here
-            // if (barcode.startsWith('@') || barcode.contains('\n') || barcode.startsWith('ansi') || barcode.startsWith('2') || barcode.startsWith('DBB')) {
-            //   // if (barcode.startsWith('@') || barcode.contains('\n')) {
-            //   // PDF417 often includes structured data with newlines or starts with '@' (AAMVA standard)
-            //   if (kDebugMode) {
-            //     print('PDF417 Detected: $barcode');
-            //   }
-            //   var date = parseDOBFromBarcode(barcode);
-            //   dobScanned = "${date?.month}/${date?.day}/${date?.year}";
-            //   if (kDebugMode) {
-            //     print("##### DEBUG: onBarcodeScanned - Scanned barcode: $barcode, $dobScanned");
-            //   }
-            //   return;
-            // } else {
-            //   if (kDebugMode) {
-            //     print('Non-PDF417 Barcode: $barcode');
-            //   }
-            // }
+          ///Added logs to show while executing scanning operation
+          try{
+            //barcode = barcode.trim().replaceAll(' ', '');
             if (kDebugMode) {
-              print("##### DEBUG: onBarcodeScanned - Scanned barcode: $barcode, $dobScanned");
+              print("##### DEBUG: onBarcodeScanned - Scanned barcode: -$barcode, isOrderInForeground = $isOrderInForeground, _isLoading: $_isLoading, _isCustomItemLoading: $_isCustomItemLoading");
             }
-
-            // Create new order if none exists
-            if (tabs.isEmpty) {
-              addNewTab();
+            showLogs = true;
+            logString += "##### DEBUG: onBarcodeScanned - Scanned barcode: -$barcode, isOrderInForeground = $isOrderInForeground, _isLoading: $_isLoading, _isCustomItemLoading: $_isCustomItemLoading \n ";
+            if(!isOrderInForeground){ // to restrict order panel in background to scanner events
+              return;
+            }
+            if (_isLoading) return; // Build #1.0.256: Prevent multiple simultaneous scans
+            if (_isCustomItemLoading) return;
+            if(_productBySkuSubscription != null) {
+              // _productBySkuSubscription?.cancel();
+              logString += "##### DEBUG: onBarcodeScanned - Cancelled _productBySkuSubscription \n ";
+            }
+            if (barcode.isNotEmpty) {
+              var dobScanned = "";
+              /// Testing code: not working, Scanner will generate multiple tap events and call when scanned driving licence with PDF417 format irrespective of this code here
+              // if (barcode.startsWith('@') || barcode.contains('\n') || barcode.startsWith('ansi') || barcode.startsWith('2') || barcode.startsWith('DBB')) {
+              //   // if (barcode.startsWith('@') || barcode.contains('\n')) {
+              //   // PDF417 often includes structured data with newlines or starts with '@' (AAMVA standard)
+              //   if (kDebugMode) {
+              //     print('PDF417 Detected: $barcode');
+              //   }
+              //   var date = parseDOBFromBarcode(barcode);
+              //   dobScanned = "${date?.month}/${date?.day}/${date?.year}";
+              //   if (kDebugMode) {
+              //     print("##### DEBUG: onBarcodeScanned - Scanned barcode: $barcode, $dobScanned");
+              //   }
+              //   return;
+              // } else {
+              //   if (kDebugMode) {
+              //     print('Non-PDF417 Barcode: $barcode');
+              //   }
+              // }
               if (kDebugMode) {
-                print("##### DEBUG: onBarcodeScanned - No tabs, creating new order");
+                print("##### DEBUG: onBarcodeScanned - Scanned barcode: $barcode, $dobScanned");
               }
-            }
-            setState(() => _isLoading = true); // Show loader
-            productBloc.fetchProductBySku(barcode);
-            _productBySkuSubscription?.cancel();
-            _productBySkuSubscription = productBloc.productBySkuStream.listen((response) async {
-
-              if (response.status == Status.COMPLETED && response.data!.isNotEmpty) {
-                setState(() => _isLoading = false); //Build #1.0.92
-                final product = response.data!.first;
+              logString += "##### DEBUG: onBarcodeScanned - Scanned barcode: $barcode \n ";
+              // Create new order if none exists
+              if (tabs.isEmpty) {
+                // addNewTab(); // Build #1.0.256: No need to create order here - updateOrderProducts will handle it if orderId is null time.
                 if (kDebugMode) {
-                  print("##### DEBUG: onBarcodeScanned - Product found: ${product.name}, variations: ${product.variations.length}");
+                  print("##### DEBUG: onBarcodeScanned - No tabs are available");
                 }
-                // Build #1.0.80: MISSED CODE ADDED
-                /// use product id:22, sku:woo-fashion-socks
-                // var isVerified = await _ageRestrictedProduct(product);
-                // Use the new provider to check for age restriction
-                if(!mounted) {
-                  return;
-                }
-                //Build #1.0.234: Checking stored age restriction before verifying -> Age
-                final order = orderHelper.orders.firstWhere(
-                      (order) => order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-                  orElse: () => {},
-                );
-                final String ageRestrictedValue = order[AppDBConst.orderAgeRestricted]?.toString() ?? 'false';
-                final bool isAgeRestricted = ageRestrictedValue.toLowerCase() == 'true' || ageRestrictedValue == "1";
-
-                if (!isAgeRestricted) {
-                  ///Age Verification code
-                  final ageVerificationProvider = AgeVerificationProvider();
-                  var isVerified = await ageVerificationProvider.ageRestrictedProduct(context, product);
-
-                  /// Verify Age and proceed else return
-                  if(!isVerified){
+                logString += "##### DEBUG: onBarcodeScanned - No tabs are available \n ";
+              }
+              _isLoading = true;// Show loader
+              setState(() {});
+              _productBySkuSubscription?.cancel();
+              _productBySkuSubscription = productBloc.productBySkuStream.listen((response) async {
+                logString += "##### DEBUG: onBarcodeScanned - response.status : ${response.status} \n ";
+                if(response.status == Status.LOADING){
+                  logString += "##### DEBUG: onBarcodeScanned - fetchProductBySku LOADING started";
+                } else if (response.status == Status.COMPLETED && response.data!.isNotEmpty) {
+                  _isLoading = false;
+                  _productBySkuSubscription?.cancel();
+                  _productBySkuSubscription = null; // Fixed Scanner issue creating two order in order panel
+                  setState(() {}); //Build #1.0.92
+                  final product = response.data!.first;
+                  if (kDebugMode) {
+                    print("##### DEBUG: onBarcodeScanned - Product found: ${product.name}, variations: ${product.variations.length}");
+                  }
+                  logString += "##### DEBUG: onBarcodeScanned - Product found: ${product.name}, variations: ${product.variations.length} \n ";
+                  // Build #1.0.80: MISSED CODE ADDED
+                  /// use product id:22, sku:woo-fashion-socks
+                  // var isVerified = await _ageRestrictedProduct(product);
+                  // Use the new provider to check for age restriction
+                  if(!mounted) {
                     return;
                   }
-                }
-                ///Todo: Need to call variation service before adding product to the order
-                if (product.variations.isNotEmpty) {
-                  ///1. Call _productBloc.fetchProductVariations(product.id!);
-                  ///2. load Variation popup
-                  ///3. On add button from variation popup -> add to order list
-                  VariationPopup(product.id, product.name, orderHelper, onProductSelected: ({required bool isVariant}) {
-                    if (kDebugMode) {
-                      print("VariationPopup returned with isVariant $isVariant");
-                    }
-                    Navigator.pop(context);
-                    fetchOrderItems(); //onItemTapped(index, variantAdded: isVariant); //Build #1.0.78: Pass isVariant to onItemTapped
-                  },
-                  ).showVariantDialog(context: context);
+                  //Build #1.0.234: Checking stored age restriction before verifying -> Age
+                  final order = orderHelper.orders.firstWhere(
+                        (order) => order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
+                    orElse: () => {},
+                  );
+                  final String ageRestrictedValue = order[AppDBConst.orderAgeRestricted]?.toString() ?? 'false';
+                  final bool isAgeRestricted = ageRestrictedValue.toLowerCase() == 'true' || ageRestrictedValue == "1";
 
-                  // Show variants dialog for products with variations
-                  if (kDebugMode) {
-                    print("##### DEBUG: onBarcodeScanned - Showing variants dialog");
+                  if (!isAgeRestricted) {
+                    ///Age Verification code
+                    final ageVerificationProvider = AgeVerificationProvider();
+                    var isVerified = await ageVerificationProvider.ageRestrictedProduct(context, product);
+
+                    /// Verify Age and proceed else return
+                    if(!isVerified){
+                      return;
+                    }
+                  }
+                  ///Todo: Need to call variation service before adding product to the order
+                  if (product.variations.isNotEmpty) {
+                    ///1. Call _productBloc.fetchProductVariations(product.id!);
+                    ///2. load Variation popup
+                    ///3. On add button from variation popup -> add to order list
+                    VariationPopup(product.id, product.name, orderHelper, onProductSelected: ({required bool isVariant}) async {
+                      if (kDebugMode) {
+                        print("VariationPopup returned with isVariant $isVariant");
+                      }
+                      logString += " VariationPopup returned with isVariant $isVariant \n ";
+                      Navigator.pop(context);
+                      // fetchOrderItems(); //onItemTapped(index, variantAdded: isVariant); //Build #1.0.78: Pass isVariant to onItemTapped
+                      final serverOrderId = orderHelper.activeOrderId;
+                      if (serverOrderId != null) {
+                        await fetchOrderItems();
+                      } else {
+                        await _getOrderTabs(); //Build #1.0.258: fix loading order tab when product is getting scanned with no order available
+                      }
+                    },
+                    ).showVariantDialog(context: context);
+
+                    // Show variants dialog for products with variations
+                    if (kDebugMode) {
+                      print("##### DEBUG: onBarcodeScanned - Showing variants dialog");
+                    }
+                    logString += " ##### DEBUG: onBarcodeScanned - Showing variants dialog \n ";
+                  } else {
+
+                    ///Comment below code not we are using only server order id as to check orders, skip checking db order id
+                    // final order = orderHelper.orders.firstWhere(
+                    //       (order) => order[AppDBConst.orderId] == orderHelper.activeOrderId,
+                    //   orElse: () => {},
+                    // );
+                    final serverOrderId = orderHelper.activeOrderId;//order[AppDBConst.orderServerId] as int?;
+                    final dbOrderId = orderHelper.activeOrderId;
+                    if (product.id != null) { // Build #1.0.128
+                      setState(() => _isLoading = true);
+                      _updateOrderSubscription?.cancel();
+                      _updateOrderSubscription = orderBloc.updateOrderStream.listen((response) async {
+                        if (response.status == Status.LOADING) { // Build #1.0.80
+                          const Center(child: CircularProgressIndicator()); // Added Loader
+                        }else if (response.status == Status.COMPLETED) {
+                          if (kDebugMode) {
+                            print("##### DEBUG: onBarcodeScanned - Product added successfully");
+                          }
+                          logString += "##### DEBUG: onBarcodeScanned - Product added successfully \n ";
+                          if (serverOrderId != null) {
+                            await fetchOrderItems();
+                          } else {
+                            await _getOrderTabs(); //Build #1.0.258: fix loading order tab when product is getting scanned with no order available
+                          }
+                          setState(() {
+                            _isLoading = false;
+                            // barcode = "";
+                          });
+                          if (Misc.showDebugSnackBar) { // Build #1.0.254
+                            _scaffoldMessenger.showSnackBar(
+                              SnackBar(
+                                content: Text("Product added successfully"),
+                                backgroundColor: Colors.green,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        } else if (response.status == Status.ERROR) {
+                          setState(() {
+                            _isLoading = false;
+                            // barcode = "";
+                          }); //Build #1.0.99 : Hide loader
+                          if (response.message!.contains('Unauthorised')) {
+                            if (kDebugMode) {
+                              print("categories 4 ---- Unauthorised : ${response.message!}");
+                            }
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                Navigator.pushReplacement(context,
+                                    MaterialPageRoute(builder: (context) => LoginScreen()));
+
+                                if (kDebugMode) {
+                                  print("message 4 --- ${response.message}");
+                                }
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                        "Unauthorised. Session is expired on this device."),
+                                    backgroundColor: Colors.red,
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            });
+                          }
+                          else {
+
+                            if (kDebugMode) {
+                              print("##### ERROR: onBarcodeScanned - Failed to add product: ${response.message}");
+                            }
+                            logString += "##### ERROR: onBarcodeScanned - Failed to add product: ${response.message} \n ";
+                            _scaffoldMessenger.showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                    response.message ?? "Failed to add product"),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        }
+                      });
+                      logString += await orderBloc.updateOrderProducts(
+                        orderId: serverOrderId,
+                        dbOrderId: dbOrderId,
+                        lineItems: [
+                          OrderLineItem(
+                            productId: product.id,
+                            quantity: 1,
+                            // sku: product.sku ?? '',
+                          ),
+                        ],
+                      );
+                      setState(() {});
+                    } else {
+                      // Add product directly to order
+                      if (kDebugMode) {
+                        print("##### DEBUG: onBarcodeScanned - Not Adding product to DB directly: ${product.name}");
+                      }
+                      logString += "##### DEBUG: onBarcodeScanned - Not Adding product to DB directly: ${product.name} \n ";
+                      // await orderHelper.addItemToOrder(
+                      //   product.id,
+                      //   product.name,
+                      //   product.images.isNotEmpty ? product.images.first.src : '',
+                      //   double.parse(product.price.isNotEmpty ? product.price : '0.0'),
+                      //   1,
+                      //   product.sku ?? barcode,
+                      //   type: ItemType.product.value,
+                      //   onItemAdded: (){
+                      //     if (kDebugMode) {
+                      //       print("Item Added stop loading ");
+                      //       _isLoading = false;
+                      //       setState(() {
+                      //
+                      //       });
+                      //     }
+                      //   }
+                      // );
+                      await fetchOrderItems();
+                      _scaffoldMessenger.showSnackBar(
+                        SnackBar(
+                          content: Text("Product did not added to order. OrderId not found."),
+                          backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                      setState(() {
+                        _isLoading = false;
+                        // barcode = "";
+                      });
+                    }
                   }
                 } else {
+                  // Show error if product not found
+                  if (kDebugMode) {
+                    print("##### DEBUG: onBarcodeScanned - Product not found for SKU: $barcode, _isCustomItemLoading: $_isCustomItemLoading");
+                  }
+                  logString += "##### DEBUG: onBarcodeScanned - Product not found for SKU: $barcode, _isCustomItemLoading: $_isCustomItemLoading \n ";
+                  _isLoading = false;
+                  _productBySkuSubscription?.cancel();
+                  _productBySkuSubscription = null; // Fixed Scanner issue creating two order in order panel
+                  setState(() {
+                    // barcode = "";
+                  });
+                  if (!mounted) return;
+                  if (!_isCustomItemLoading) {
+                    _isCustomItemLoading = true; // added to avoid showing dialog twice as per scan
 
-                  ///Comment below code not we are using only server order id as to check orders, skip checking db order id
-                  // final order = orderHelper.orders.firstWhere(
-                  //       (order) => order[AppDBConst.orderId] == orderHelper.activeOrderId,
-                  //   orElse: () => {},
-                  // );
-                  final serverOrderId = orderHelper.activeOrderId;//order[AppDBConst.orderServerId] as int?;
-                  final dbOrderId = orderHelper.activeOrderId;
-                  if (product.id != null) { // Build #1.0.128
-                    setState(() => _isLoading = true);
-                    _updateOrderSubscription?.cancel();
-                    _updateOrderSubscription = orderBloc.updateOrderStream.listen((response) async {
-                      if (response.status == Status.LOADING) { // Build #1.0.80
-                        const Center(child: CircularProgressIndicator()); // Added Loader
-                      }else if (response.status == Status.COMPLETED) {
-                        if (kDebugMode) {
-                          print("##### DEBUG: onBarcodeScanned - Product added successfully");
-                        }
-                        await fetchOrderItems();
-                        setState(() {
-                          _isLoading = false;
-                        });
-                        if (Misc.showDebugSnackBar) { // Build #1.0.254
-                          _scaffoldMessenger.showSnackBar(
-                            SnackBar(
-                              content: Text("Product added successfully"),
-                              backgroundColor: Colors.green,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      } else if (response.status == Status.ERROR) {
-                        if (response.message!.contains('Unauthorised')) {
-                          if (kDebugMode) {
-                            print("categories 4 ---- Unauthorised : ${response.message!}");
-                          }
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) {
-                              Navigator.pushReplacement(context,
-                                  MaterialPageRoute(builder: (context) => LoginScreen()));
-
-                              if (kDebugMode) {
-                                print("message 4 --- ${response.message}");
-                              }
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                      "Unauthorised. Session is expired on this device."),
-                                  backgroundColor: Colors.red,
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                            }
-                          });
-                        }
-                        else {
-                          setState(() =>
-                          _isLoading = false); //Build #1.0.99 : Hide loader
-                          if (kDebugMode) {
-                            print(
-                                "##### ERROR: onBarcodeScanned - Failed to add product: ${response
-                                    .message}");
-                          }
-                          _scaffoldMessenger.showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  response.message ?? "Failed to add product"),
-                              backgroundColor: Colors.red,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        }
+                    await CustomDialog.showCustomItemNotAdded(
+                        context, onRetry: () {
+                      // Navigate to AddScreen when "Let's Try Again" is pressed
+                      Navigator.of(context).pop();
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              AddScreen(
+                                barcode: barcode,
+                                selectedTabIndex: 2, // Custom items tab
+                              ),
+                        ),(route) => false,
+                      );
+                    }).then((_) { //Build #1.0.54: added
+                      if (kDebugMode) {
+                        print(
+                            "OrderPanel CustomDialog.showCustomItemNotAdded is dismissed and _isCustomItemLoading was $_isCustomItemLoading");
                       }
+                      _isCustomItemLoading = false;
                     });
-                    await orderBloc.updateOrderProducts(
-                      orderId: serverOrderId,
-                      dbOrderId: dbOrderId,
-                      lineItems: [
-                        OrderLineItem(
-                          productId: product.id,
-                          quantity: 1,
-                          // sku: product.sku ?? '',
-                        ),
-                      ],
-                    );
-                  } else {
-                    // Add product directly to order
-                    if (kDebugMode) {
-                      print("##### DEBUG: onBarcodeScanned - Not Adding product to DB directly: ${product.name}");
-                    }
-                    // await orderHelper.addItemToOrder(
-                    //   product.id,
-                    //   product.name,
-                    //   product.images.isNotEmpty ? product.images.first.src : '',
-                    //   double.parse(product.price.isNotEmpty ? product.price : '0.0'),
-                    //   1,
-                    //   product.sku ?? barcode,
-                    //   type: ItemType.product.value,
-                    //   onItemAdded: (){
-                    //     if (kDebugMode) {
-                    //       print("Item Added stop loading ");
-                    //       _isLoading = false;
-                    //       setState(() {
-                    //
-                    //       });
-                    //     }
-                    //   }
-                    // );
-                    await fetchOrderItems();
-                    _scaffoldMessenger.showSnackBar(
-                      SnackBar(
-                        content: Text("Product did not added to order. OrderId not found."),
-                        backgroundColor: Colors.green,
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                    setState(() => _isLoading = false);
                   }
                 }
-              } else {
-                // Show error if product not found
+              });
+              _productBySkuSubscription?.onError((handleError){
                 if (kDebugMode) {
-                  print("##### DEBUG: onBarcodeScanned - Product not found for SKU: $barcode");
+                  print("Error while scanning custom item handleError : $handleError");
                 }
-                if (!mounted) return;
-                await CustomDialog.showCustomItemNotAdded(context,onRetry: (){
-                  // Navigate to AddScreen when "Let's Try Again" is pressed
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => AddScreen(
-                        barcode: barcode,
-                        selectedTabIndex: 2, // Custom items tab
-                      ),
-                    ),
-                  );
-                }).then((_) { //Build #1.0.54: added
-
-                });
-                setState(() => _isLoading = false);
-              }
+                logString += "Error while scanning custom item handleError : $handleError \n";
+              });
+              logString += await productBloc.fetchProductBySku(barcode);
+              logString += "##### DEBUG: onBarcodeScanned - fetchProductBySku completed";
+              setState(() {});
+            }
+          } catch(e,s) {
+            if (kDebugMode) {
+              print("Exception in Barcode scanning : $e,\n Stack: $s");
+            }
+            logString += "Exception in Barcode scanning : $e,\n *** Stack: $s ***\n ";
+            //1. Stop loading
+            setState(() {
+              _isLoading = false;
             });
+
+            //2. Show toast with error message
+            _scaffoldMessenger.showSnackBar(
+              SnackBar(
+                content: Text("Failed to add product, Exception: $e, Stack: $s"), ///remove this exception from toast message
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+
           }
         },
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.31,
-          padding: const EdgeInsets.fromLTRB(2, 0, 10, 10),
-          child: Card(
-            //elevation: 4,
-            margin: const EdgeInsets.only(top: 10),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12), // Card corners
-            ),
-            color: themeHelper.themeMode == ThemeMode.dark
-                ? ThemeNotifier.primaryBackground
-                : Colors.white,
-            child: tabs.isNotEmpty
-                ? Column(
-              children: [
-                // Top tabs container
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: themeHelper.themeMode == ThemeMode.dark
-                        ? ThemeNotifier.primaryBackground
-                        : Colors.transparent,
-                    // borderRadius: const BorderRadius.only(
-                    //   topLeft: Radius.circular(20),
-                    //   topRight: Radius.circular(20),
-                    // ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Tabs scroll
-                      Expanded(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          controller: _scrollController,
-                          child: Row(
-                            children: List.generate(tabs.length, (index) {
-                              final bool isSelected = _tabController!.index == index;
-                              return Padding(
-                                // padding: const EdgeInsets.fromLTRB(4, 5, 4, 0), // same for all tabs padding between tab and calender all
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                                child: GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      _tabController!.index = index;
-                                    });
-                                  },
-                                  child: Container(
-                                    height: isSelected
-                                        ? 50
-                                        : 50, // selected tab taller
-                                    // padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: isSelected
-                                          ? 12
-                                          : 12, // adjust internal padding only
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: isSelected
-                                          ? (themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? Color(
-                                          0xFFFCDFDC) // selected top bar in dark
-                                          : const Color(0xFFFCDFDC))
-                                          : (themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? Color(
-                                          0xFF31354A) // order panel tob bar and unselected tab color in dark
-                                          : const Color(
-                                          0xFFEFEEEE)), // unselected tab in light
-                                      // color: isSelected ?  ThemeNotifier.orderPanelTabSelection : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.orderPanelTabBackground : Colors.grey.shade400,
+        child: Stack(
+          children: [
+            // 🔹 Main Order Panel (Card + Tabs)
+            Container(
+              width: MediaQuery.of(context).size.width * 0.30,
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+              child: Card(
+                elevation: 4,
+                margin: const EdgeInsets.only(top: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  children: [
+                    // 🔹 Tabs header
+                    Container(
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.primaryBackground
+                          : null,
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              controller: _scrollController,
+                              child: Row(
+                                children: List.generate(tabs.length, (index) {
+                                  final bool isSelected =
+                                      _tabController!.index == index;
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 4, vertical: 4),
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _tabController!.index = index;
+                                        });
+                                      },
+                                      child: Container(
+                                        height: isSelected
+                                            ? 50
+                                            : 50, // selected tab taller
+                                        // padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: isSelected
+                                              ? 12
+                                              : 12, // adjust internal padding only
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? (themeHelper.themeMode ==
+                                              ThemeMode.dark
+                                              ? Color(
+                                              0xFFFCDFDC) // selected top bar in dark
+                                              : const Color(0xFFFCDFDC))
+                                              : (themeHelper.themeMode ==
+                                              ThemeMode.dark
+                                              ? Color(
+                                              0xFF31354A) // order panel tob bar and unselected tab color in dark
+                                              : const Color(
+                                              0xFFEFEEEE)), // unselected tab in light
+                                          // color: isSelected ?  ThemeNotifier.orderPanelTabSelection : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.orderPanelTabBackground : Colors.grey.shade400,
 
-                                      // color: isSelected ?  ThemeNotifier.orderPanelTabSelection : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.orderPanelTabBackground : Colors.grey.shade400,
-                                      //borderRadius: BorderRadius.circular(10),
-                                      borderRadius: BorderRadius.only(
-                                        topLeft: Radius.circular(10),
-                                        topRight: Radius.circular(10),
-                                        //bottomLeft: isSelected ? Radius.circular(0) : Radius.circular(10),
-                                        // bottomRight: isSelected ? Radius.circular(0) : Radius.circular(10),
-                                        bottomLeft: isSelected
-                                            ? const Radius.circular(10)
-                                            : const Radius.circular(10),
-                                        bottomRight: isSelected
-                                            ? const Radius.circular(10)
-                                            : const Radius.circular(10),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Column(
-                                          mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                          crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                          // color: isSelected ?  ThemeNotifier.orderPanelTabSelection : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.orderPanelTabBackground : Colors.grey.shade400,
+                                          //borderRadius: BorderRadius.circular(10),
+                                          borderRadius: BorderRadius.only(
+                                            topLeft: Radius.circular(10),
+                                            topRight: Radius.circular(10),
+                                            //bottomLeft: isSelected ? Radius.circular(0) : Radius.circular(10),
+                                            // bottomRight: isSelected ? Radius.circular(0) : Radius.circular(10),
+                                            bottomLeft: isSelected
+                                                ? const Radius.circular(10)
+                                                : const Radius.circular(10),
+                                            bottomRight: isSelected
+                                                ? const Radius.circular(10)
+                                                : const Radius.circular(10),
+                                          ),
+                                        ),
+                                        child: Row(
                                           children: [
-                                            Text(
-                                              tabs[index]["title"] as String,
-                                              style: TextStyle(
-                                                color: isSelected
-                                                    ? const Color(0xFFFE6464)
-                                                    : const Color(0xFF999393),
-                                                fontWeight: isSelected
-                                                    ? FontWeight.bold
-                                                    : FontWeight.w500,
-                                                fontSize: isSelected ? 15 : 14,
-                                              ),
-                                              // style: TextStyle(color: isSelected ? Colors.black : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight, fontWeight: FontWeight.bold),
+                                            Column(
+                                              crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  tabs[index]["title"] as String,
+                                                  style: TextStyle(
+                                                    color: isSelected
+                                                        ? const Color(0xFFFE6464)
+                                                        : const Color(0xFF999393),
+                                                    fontWeight: isSelected
+                                                        ? FontWeight.bold
+                                                        : FontWeight.w500,
+                                                    fontSize: isSelected ? 15 : 14,
+                                                  ),
+                                                ),
+                                                // Text(
+                                                //   tabs[index]["subtitle"] as String,
+                                                //   style: TextStyle(
+                                                //     color: isSelected
+                                                //         ? Colors.black54
+                                                //         : themeHelper.themeMode ==
+                                                //         ThemeMode.dark
+                                                //         ? ThemeNotifier.textDark
+                                                //         : Colors.black54,
+                                                //     fontSize: 12,
+                                                //   ),
+                                                // ),
+                                              ],
                                             ),
-                                            // Text(
-                                            //tabs[index]["subtitle"] as String,
-                                            // style: TextStyle(color: isSelected ? Colors.black54 : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.black54, fontSize: 12),
-                                            // ),
+                                            const SizedBox(width: 40),
+                                            GestureDetector(
+                                              onTap: () {
+                                                CustomDialog.showAreYouSure(context,
+                                                    confirm: () {
+                                                      removeTab(index);
+                                                    });
+                                              },
+                                              child: isSelected
+                                                  ? Image.asset(
+                                                "assets/deletecircle.png",
+                                                width: 20,
+                                                height: 20,
+                                              )
+                                                  : SizedBox
+                                                  .shrink(), // hides the widget when not selected
+                                            ),
                                           ],
                                         ),
-                                        const SizedBox(width: 8),
-                                        // Always show the close button
-                                        GestureDetector(
-                                          ///ToDo: Change the status of order to 'cancelled' here
-                                          onTap: () {
-                                            if (kDebugMode) {
-                                              print(
-                                                  "Tab $index, close button tapped");
-                                            }
-
-                                            ///call alert  box before delete
-                                            CustomDialog.showAreYouSure(context,
-                                                confirm: () {
-                                                  removeTab(index);
-                                                });
-                                          },
-                                          child: isSelected
-                                              ? Image.asset(
-                                            "assets/deletecircle.png",
-                                            width: 20,
-                                            height: 20,
-                                          )
-                                              : SizedBox
-                                              .shrink(), // hides the widget when not selected
-
-                                          // child: const Icon(Icons.close, size: 18, color: Colors.red),
-                                        ),
-                                      ],
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              );
-                            }),
+                                  );
+                                }),
+                              ),
+                            ),
                           ),
+                          if(tabs.isNotEmpty)
+                            ElevatedButton(
+                              onPressed: addNewTab,
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.only(right: 4),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                backgroundColor: Colors.transparent, // so container decoration shows
+                                shadowColor: Colors.transparent, // to remove default shadow if any
+                              ),
+                              child: Container(
+                                width: 85,
+                                height: 50,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: themeHelper.themeMode == ThemeMode.dark
+                                      ? const Color(0xFF000000)
+                                      : const Color(0xFFFFFFFF),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: const Color(0xFFFE6464),
+                                    width: 1.0,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: themeHelper.themeMode == ThemeMode.dark
+                                          ? const Color(0xFF525252)
+                                          : const Color(0xFFB2AFAF),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 4),
+                                      spreadRadius: 0,
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      width: 22,
+                                      height: 22,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: const Color(0xFFFE6464),
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.add,
+                                        size: 16,
+                                        color: const Color(0xFFFE6464),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      "New",
+                                      style: TextStyle(
+                                        color: const Color(0xFFFE6464),
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    // 🔹 Content area (Order items)
+                    Expanded(child: buildCurrentOrder()),
+                  ],
+                ),
+              ),
+            ),
+
+            // 🔹 Empty Order Panel Overlay (when tabs list is empty)
+            if (tabs.isEmpty)
+              Positioned.fill(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Image.asset(
+                        'assets/scannerandsearch.png',
+                        width: 100,
+                        height: 100,
+                        fit: BoxFit.contain,
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'No items in the Order panel',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: themeHelper.themeMode == ThemeMode.dark
+                              ? Colors.white
+                              : const Color(0xFF373535),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      if (tabs.isNotEmpty)
-                        ElevatedButton(
-                          onPressed: addNewTab,
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.only(right: 4),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            backgroundColor: Colors.transparent, // so container decoration shows
-                            shadowColor: Colors.transparent, // to remove default shadow if any
-                          ),
-                          child: Container(
-                            width: 85,
-                            height: 50,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: themeHelper.themeMode == ThemeMode.dark
-                                  ? const Color(0xFF000000)
-                                  : const Color(0xFFFFFFFF),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: const Color(0xFFFE6464),
-                                width: 1.0,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: themeHelper.themeMode == ThemeMode.dark
-                                      ? const Color(0xFF525252)
-                                      : const Color(0xFFB2AFAF),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 4),
-                                  spreadRadius: 0,
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                  width: 22,
-                                  height: 22,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: const Color(0xFFFE6464),
-                                      width: 2,
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    Icons.add,
-                                    size: 16,
-                                    color: const Color(0xFFFE6464),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  "New",
-                                  style: TextStyle(
-                                    color: const Color(0xFFFE6464),
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-
+                      const SizedBox(height: 8),
+                      Text(
+                        'Order panel is empty. Add items by scanning,\nsearching, or selecting from the list.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: themeHelper.themeMode == ThemeMode.dark
+                              ? Colors.grey[400]
+                              : Colors.grey.shade500,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          height: 1.4,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                // Current order section
-                Expanded(child: buildCurrentOrder()),
-              ],
-            )
-                : Container(
-              padding: const EdgeInsets.all(
-                  16), // same inner padding as the card
-              child: Column(
-                children: [
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Image.asset(
-                          'assets/scannerandsearch.png',
-                          width: 100,
-                          height: 100,
-                          fit: BoxFit.contain,
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          'No items in the Order panel',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: themeHelper.themeMode == ThemeMode.dark
-                                ? Colors.white
-                                : const Color(0xFF373535),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Order panel is empty. Add items by scanning,\nsearching, or selecting from the list.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: themeHelper.themeMode == ThemeMode.dark
-                                ? Colors.grey[400]
-                                : Colors.grey.shade500,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
               ),
-            ),
-          ),
+          ],
         ),
       ),
+    );
+  }
+
+  //Build #1.0.268: 5. (optional) to show logs on screen
+  bool showLogs = false;
+  Widget _showLogString(){
+    return Container(
+      width: MediaQuery.of(context).size.width * 0.30,
+      color: const Color(0x7A000000),
+      child:
+      Stack(children: [
+        Text(logString,style: TextStyle(color: Colors.white70),),
+        Positioned(
+            top: 2,
+            right: 2,
+            child: CloseButton(onPressed: (){
+              showLogs = false;
+              logString = "";
+              setState(() {
+
+              });
+            },))
+        ,
+      ]),
     );
   }
 
@@ -1805,20 +1914,55 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 children: [
                   if (orderHelper.activeOrderId != null)
                     Row(
-                        spacing: 4,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SvgPicture.asset('assets/svg/calendar.svg',width: 22,height: 22,),
-                          Text(displayDate,  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.secondaryHeaderColor)),
-                          const SizedBox(width: 80),
-                          SvgPicture.asset('assets/svg/clock.svg',width: 22,height: 22,),
-                          Text(displayTime ,style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.secondaryHeaderColor)),
-                        ],
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SvgPicture.asset(
+                          'assets/svg/calendar.svg',
+                          width: 20,
+                          height: 20,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Color(0xFF656161), // or your light mode color
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          displayDate,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color:
+                            Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white
+                                : Color(0xFF656161),
+                          ),
+                        ),
+                        const SizedBox(width: 120),
+                        SvgPicture.asset(
+                          'assets/svg/clock.svg',
+                          width: 20,
+                          height: 20,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Color(0xFF656161),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          displayTime,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color:
+                            Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white
+                                : Color(0xFF656161),
+                          ),
+                        ),
+                      ],
                     ),
                 ],
               ),
             ),
+            if(tabs.isNotEmpty)
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 10),
               child: DottedLine(
@@ -1828,12 +1972,14 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 dashColor: theme.secondaryHeaderColor,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 10),
             Expanded(
-              child: Container(
+              child: (orderItems.isEmpty)
+                  ? Container() ///Add your widget if needed to show empty tab contents
+                  : Container(
                 color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground: null,
                 child: Padding(
-                  padding: const EdgeInsets.only(left:3, right: 3),
+                  padding: const EdgeInsets.only(left:0, right: 0),
                   child: Scrollbar(
                     controller: scrollController,
                     scrollbarOrientation: ScrollbarOrientation.right,
@@ -1890,10 +2036,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         }
                         /// Set display name based on item type
                         String displayName = originalName;
-                        // if (isPayout) {
-                        //   displayName = '';
-                        // } else
-                        if (isCoupon) {
+                        if (isPayout) {
+                          displayName = '';
+                        } else if (isCoupon) {
                           final visiblePartLength = 4;
                           final nameLength = originalName.length;
                           if (nameLength > visiblePartLength) {
@@ -1918,14 +2063,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                         return ClipRRect(
                           // Build #1.0.151: FIXED - change ensures that sliding an item in one order does not affect the Slidable state of items at the same index in other orders.
-                          key: ValueKey('${orderItem[AppDBConst.itemServerId]}_$_listVersion'), // Build 1.0.214: Fixed Issue [SCRUM - 366] -> Swipe-to-Delete UI State Not Resetting After Add/Delete Operations // Updated key to include order ID
+                          key: ValueKey('${orderItem[AppDBConst.itemServerId]}_${_listVersion}_ClipRRect_$index'), // Build 1.0.214: Fixed Issue [SCRUM - 366] -> Swipe-to-Delete UI State Not Resetting After Add/Delete Operations // Updated key to include order ID
                           borderRadius: BorderRadius.circular(20),
                           child: SizedBox(
-                            height: 70,
-                            //height: MediaQuery.of(context).size.height * 0.12,
+                            height: MediaQuery.of(context).size.height * 0.10,
                             child: Slidable(
                               // Build #1.0.151: FIXED - change ensures that sliding an item in one order does not affect the Slidable state of items at the same index in other orders.
-                              key: ValueKey('${orderItem[AppDBConst.itemServerId]}_$_listVersion'), // Build 1.0.214: Fixed Issue [SCRUM - 366] -> Swipe-to-Delete UI State Not Resetting After Add/Delete Operations // Updated key to include order ID
+                              key: ValueKey('${orderItem[AppDBConst.itemServerId]}_${_listVersion}_Slidable_$index'), // Build 1.0.214: Fixed Issue [SCRUM - 366] -> Swipe-to-Delete UI State Not Resetting After Add/Delete Operations // Updated key to include order ID
                               closeOnScroll: true,
                               direction: Axis.horizontal,
                               endActionPane: ActionPane(
@@ -2024,13 +2168,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                     setState(() => _isLoading = false); //Build #1.0.92, Fixed Issue: Loader in order panel does not stop on edit item
 
                                                     await fetchOrderItems();
-                                                    _scaffoldMessenger.showSnackBar(
-                                                      SnackBar(
-                                                        content: Text("Quantity updated successfully"),
-                                                        backgroundColor: Colors.green,
-                                                        duration: const Duration(seconds: 2),
-                                                      ),
-                                                    );
+                                                    if (Misc.showDebugSnackBar) { // Build #1.0.254
+                                                      _scaffoldMessenger.showSnackBar(
+                                                        SnackBar(
+                                                          content: Text("Quantity updated successfully"),
+                                                          backgroundColor: Colors.green,
+                                                          duration: const Duration(seconds: 2),
+                                                        ),
+                                                      );
+                                                    }
                                                   } else if (response.status == Status.ERROR) {
                                                     await fetchOrderItems(); // Build 1.0.214: Fixed Issue [SCRUM - 364] -> Item reappears in cart after being deleted while edit screen is open
                                                     if (response.message!.contains('Unauthorised')) {
@@ -2174,13 +2320,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                       setState(() => _isLoading = false); //Build #1.0.92, Fixed Issue: Loader in order panel does not stop on edit item
 
                                                       await fetchOrderItems();
-                                                      _scaffoldMessenger.showSnackBar(
-                                                        SnackBar(
-                                                          content: Text("Quantity updated successfully"),
-                                                          backgroundColor: Colors.green,
-                                                          duration: const Duration(seconds: 2),
-                                                        ),
-                                                      );
+                                                      if (Misc.showDebugSnackBar) { // Build #1.0.254
+                                                        _scaffoldMessenger.showSnackBar(
+                                                          SnackBar(
+                                                            content: Text("Quantity updated successfully"),
+                                                            backgroundColor: Colors.green,
+                                                            duration: const Duration(seconds: 2),
+                                                          ),
+                                                        );
+                                                      }
                                                     } else if (response.status == Status.ERROR) {
                                                       await fetchOrderItems(); // Build 1.0.214: Fixed Issue [SCRUM - 364] -> Item reappears in cart after being deleted while edit screen is open
                                                       if (response.message!.contains('Unauthorised')) {
@@ -2269,8 +2417,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                                 },
                                 child: Container(
-                                  margin: const EdgeInsets.symmetric(
-                                      vertical: 1, horizontal: 8),
+                                  margin: const EdgeInsets.symmetric(vertical: 1, horizontal: 8),
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
                                     color: themeHelper.themeMode ==
@@ -2278,124 +2425,55 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                         ? Color(0xFF252837)
                                         : Color(0xFFE8E8E8), // ThemeNotifier.secondaryBackground color of items in order panel
                                     borderRadius: BorderRadius.circular(8),
-                                    // boxShadow: const [
-                                    //BoxShadow(
-                                    //  color: Colors.black12,
-                                    //blurRadius: 1,
-                                    // spreadRadius: 1,
-                                    // )
-                                    //],
                                   ),
                                   child: Row(
                                     children: [
                                       ClipRRect(
                                         borderRadius: BorderRadius.circular(5),
-                                        child: orderItem[AppDBConst.itemImage]
-                                            .toString()
-                                            .startsWith('http')
+                                        child: orderItem[AppDBConst.itemImage].toString().startsWith('http')
                                             ? SizedBox(
-                                          height: MediaQuery.of(context)
-                                              .size
-                                              .height *
-                                              0.08,
-                                          width: MediaQuery.of(context)
-                                              .size
-                                              .height *
-                                              0.075,
+                                          height: MediaQuery.of(context).size.height * 0.08,
+                                          width: MediaQuery.of(context).size.height * 0.075,
                                           child: Image.network(
-                                            orderItem[
-                                            AppDBConst.itemImage],
-                                            height: MediaQuery.of(context)
-                                                .size
-                                                .height *
-                                                0.08,
-                                            width: MediaQuery.of(context)
-                                                .size
-                                                .height *
-                                                0.075,
+                                            orderItem[AppDBConst.itemImage],
+                                            height: MediaQuery.of(context).size.height * 0.08,
+                                            width: MediaQuery.of(context).size.height * 0.075,
                                             fit: BoxFit.cover,
                                             errorBuilder: (context, error,
                                                 stackTrace) {
                                               return SvgPicture.asset(
                                                 'assets/svg/password_placeholder.svg',
-                                                height:
-                                                MediaQuery.of(context)
-                                                    .size
-                                                    .height *
-                                                    0.08,
-                                                width:
-                                                MediaQuery.of(context)
-                                                    .size
-                                                    .height *
-                                                    0.08,
+                                                height: MediaQuery.of(context).size.height * 0.08,
+                                                width: MediaQuery.of(context).size.height * 0.08,
                                                 fit: BoxFit.cover,
                                               );
                                             },
                                           ),
                                         )
-                                            : orderItem[AppDBConst.itemImage]
-                                            .toString()
-                                            .startsWith('assets/')
+                                            : orderItem[AppDBConst.itemImage].toString().startsWith('assets/')
                                             ? SvgPicture.asset(
-                                          orderItem[
-                                          AppDBConst.itemImage],
-                                          height:
-                                          MediaQuery.of(context)
-                                              .size
-                                              .height *
-                                              0.08,
-                                          width:
-                                          MediaQuery.of(context)
-                                              .size
-                                              .height *
-                                              0.075,
+                                          orderItem[AppDBConst.itemImage],
+                                          height: MediaQuery.of(context).size.height * 0.08,
+                                          width: MediaQuery.of(context).size.height * 0.075,
                                           fit: BoxFit.cover,
                                         )
                                             : Platform.isWindows
                                             ? Image.asset(
                                           'assets/default.png',
-                                          height: MediaQuery.of(
-                                              context)
-                                              .size
-                                              .height *
-                                              0.08,
-                                          width: MediaQuery.of(
-                                              context)
-                                              .size
-                                              .height *
-                                              0.075,
+                                          height: MediaQuery.of(context).size.height * 0.08,
+                                          width: MediaQuery.of(context).size.height * 0.075,
                                           fit: BoxFit.cover,
                                         )
                                             : Image.file(
-                                          File(orderItem[
-                                          AppDBConst
-                                              .itemImage]),
-                                          height: MediaQuery.of(
-                                              context)
-                                              .size
-                                              .height *
-                                              0.08,
-                                          width: MediaQuery.of(
-                                              context)
-                                              .size
-                                              .height *
-                                              0.075,
+                                          File(orderItem[AppDBConst.itemImage]),
+                                          height: MediaQuery.of(context).size.height * 0.08,
+                                          width: MediaQuery.of(context).size.height * 0.075,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (context,
-                                              error, stackTrace) {
-                                            return SvgPicture
-                                                .asset(
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return SvgPicture.asset(
                                               'assets/svg/password_placeholder.svg',
-                                              height: MediaQuery.of(
-                                                  context)
-                                                  .size
-                                                  .height *
-                                                  0.08,
-                                              width: MediaQuery.of(
-                                                  context)
-                                                  .size
-                                                  .height *
-                                                  0.075,
+                                              height: MediaQuery.of(context).size.height * 0.08,
+                                              width: MediaQuery.of(context).size.height * 0.075,
                                               fit: BoxFit.cover,
                                             );
                                           },
@@ -2404,17 +2482,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                          mainAxisAlignment:
-                                          MainAxisAlignment.spaceEvenly,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                           children: [
                                             /// TODO: Change here to apply meta values for (mix & match) "combo" and "variation"
                                             Column(
-                                              crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                              mainAxisAlignment:
-                                              MainAxisAlignment.start,
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              mainAxisAlignment: MainAxisAlignment.start,
                                               children: [
                                                 RichText(
                                                   maxLines: 2,
@@ -2424,81 +2498,42 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                       TextSpan(
                                                         text: displayName,
                                                         style: TextStyle(
-                                                            fontFamily: 'inter',
                                                             fontSize: 12,
-                                                            fontWeight:
-                                                            FontWeight.w700,
-                                                            color: themeHelper
-                                                                .themeMode ==
-                                                                ThemeMode
-                                                                    .dark
-                                                                ? ThemeNotifier
-                                                                .textDark
-                                                                : ThemeNotifier
-                                                                .textLight),
+                                                            fontFamily: 'inter',
+                                                            fontWeight: FontWeight.bold,
+                                                            color: themeHelper.themeMode == ThemeMode.dark
+                                                                ? ThemeNotifier.textDark
+                                                                : ThemeNotifier.textLight
+                                                        ),
                                                       ),
                                                       TextSpan(
-                                                        text:
-
-                                                        ///Todo: use combo here
-                                                        combo == ''
-                                                            ? ''
-                                                            : " (Combo)",
-                                                        style: TextStyle(
-                                                            fontSize: 8,
-                                                            color: Colors.cyan),
+                                                        text:///Todo: use combo here
+                                                        combo == '' ? '' : " (Combo)",
+                                                        style: TextStyle(fontSize: 8, color: Colors.cyan),
                                                       ),
                                                     ],
                                                   ),
                                                 ),
-                                                variationCount == 0
-                                                    ? SizedBox(
-                                                  width: 0,
-                                                )
-                                                    : Row(
+                                                variationCount == 0 ? SizedBox(width: 0,) : Row(
                                                   children: [
                                                     Text(
                                                       ///Todo: use variation name here
-                                                      variationName == ''
-                                                          ? ""
-                                                          : "(${variationName ?? ''})",
-                                                      overflow:
-                                                      TextOverflow
-                                                          .ellipsis,
-                                                      style: TextStyle(
-                                                          fontSize: 10,
-                                                          color: themeHelper
-                                                              .themeMode ==
-                                                              ThemeMode
-                                                                  .dark
-                                                              ? ThemeNotifier
-                                                              .textDark
-                                                              : Colors
-                                                              .grey),
+                                                      variationName == '' ? "" : "(${variationName ?? ''})",
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(fontSize: 10, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey),
                                                     ),
                                                     SizedBox(
                                                       width: 4,
                                                     ),
-
                                                     ///Todo: show variation icon if variation count is no zero
-                                                    SvgPicture.asset(
-                                                      "assets/svg/variation.svg",
-                                                      height: 10,
-                                                      width: 10,
-                                                    ),
+                                                    SvgPicture.asset("assets/svg/variation.svg",height: 10, width: 10,),
                                                     SizedBox(
                                                       width: 4,
                                                     ),
-                                                    Text(
-                                                      ///Todo: show variation count if no zero
+                                                    Text(///Todo: show variation count if no zero
                                                       "${variationCount ?? 0}",
-                                                      overflow:
-                                                      TextOverflow
-                                                          .ellipsis,
-                                                      style: TextStyle(
-                                                          fontSize: 10,
-                                                          color: Color(
-                                                              0xFFFE6464)),
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(fontSize: 10, color: Color(0xFFFE6464)),
                                                     ),
                                                   ],
                                                 ),
@@ -2506,31 +2541,26 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                             ),
                                             // Build #1.0.181: Fixed - Quantity for Custom Item Not Displayed After Switching Screens [JIRA #319]
                                             // we have to show price * qty for custom item also / condition updated, only dont show for payout and coupons
-                                            if (!isCouponOrPayout)
+                                            if (!isPayoutOrCouponOrCustomItem)
                                               Text(
-                                                  "${TextConstants.currencySymbol} ${regularPrice.toStringAsFixed(2)} x ${orderItem[AppDBConst.itemCount]}", // changed * to ×
-                                                  style: TextStyle(
-                                                      color: themeHelper.themeMode == ThemeMode.dark
-                                                          ? ThemeNotifier.textDark
-                                                          : Colors.black54,
-                                                      fontSize:10,
-                                                      ),
-                                                  ),
+                                                "${TextConstants.currencySymbol} ${regularPrice.toStringAsFixed(2)} × ${orderItem[AppDBConst.itemCount]}", // changed * to ×
+                                                style: TextStyle(
+                                                  color: themeHelper.themeMode == ThemeMode.dark
+                                                      ? ThemeNotifier.textDark
+                                                      : Colors.black54,
+                                                  fontSize: 10,
+                                                ),
+                                              ),
                                           ],
                                         ),
                                       ),
-                                      // SizedBox(width: 8),
+                                      // SizedBox(width: 8,),
                                       // if (!isCouponOrPayout)
                                       //   Text(
                                       //     "${TextConstants.currencySymbol} ${(regularPrice * orderItem[AppDBConst.itemCount]).toStringAsFixed(2)}",
-                                      //     style: TextStyle(
-                                      //         color: themeHelper.themeMode ==
-                                      //             ThemeMode.dark
-                                      //             ? ThemeNotifier.textDark
-                                      //             : Colors.blueGrey,
-                                      //         fontSize: 14),
+                                      //     style: TextStyle(color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.blueGrey, fontSize: 14),
                                       //   ),
-                                      SizedBox(width: 20),
+                                      SizedBox(width: 20,),
                                       Text(
                                         isCouponOrPayout
                                             ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice]).toStringAsFixed(2)}"
@@ -2539,13 +2569,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                           fontSize: 14,
                                           fontWeight: FontWeight.bold,
                                           // Build #1.0.181: Fixed - show price value red for payout and coupons only , not custom item
-                                          color: isCouponOrPayout
-                                              ? Colors.red
-                                              : themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                              ? ThemeNotifier.textDark
-                                              : ThemeNotifier
-                                              .textLight, // Added: Red color for Payout/Coupon
+                                          color: isCouponOrPayout ? Colors.red : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight, // Added: Red color for Payout/Coupon
                                         ),
                                       ),
                                     ],
@@ -2575,15 +2599,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                       curve: Curves.easeInOut,
                       child: (!isKeyboardVisible && _showFullSummary)
                           ? Container(
-                        margin: const EdgeInsets.only(
-                            top: 8, right: 6, left: 6),
+                        margin: const EdgeInsets.only(top: 8, right: 6, left: 6),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.only(
-                              topRight: Radius.circular(8),
-                              topLeft: Radius.circular(8)),
-                          color: themeHelper.themeMode == ThemeMode.dark
-                              ? ThemeNotifier.orderPanelSummary
-                              : Colors.white,
+                            borderRadius: BorderRadius.only(topRight: Radius.circular(8), topLeft: Radius.circular(8)),
+                            color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.orderPanelSummary : Colors.white,
                           boxShadow: [
                             // Shadow at the bottom
                             BoxShadow(
@@ -2620,313 +2639,203 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  TextConstants.grossTotal,
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 18,
-                                      color: themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? ThemeNotifier.textDark
-                                          : ThemeNotifier.textLight),
-                                ),
-                                Text(
-                                    "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", //Build #1.0.68
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                        color: themeHelper.themeMode ==
-                                            ThemeMode.dark
-                                            ? ThemeNotifier.textDark
-                                            : ThemeNotifier.textLight)),
+                                Text(TextConstants.grossTotal, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight), ),
+                                Text("${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", //Build #1.0.68
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
                               ],
                             ),
                             SizedBox(height: 2),
                             Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Row(
                                   spacing: 5,
                                   children: [
-                                    SvgPicture.asset(
-                                        "assets/svg/discount_star.svg",
-                                        height: 12,
-                                        width: 12),
-                                    Text(TextConstants.discountText,
-                                        style: TextStyle(
-                                            color: Color(0xFF05B10C),
-                                            fontSize:
-                                            14)), // font size increased according to new figma design
+                                    SvgPicture.asset("assets/svg/discount_star.svg", height: 12, width: 12),
+                                    Text(TextConstants.discountText, style: TextStyle(color: Colors.green, fontSize: 14)),
                                   ],
                                 ),
-                                Text(
-                                    "-${TextConstants.currencySymbol}${orderDiscount.toStringAsFixed(2)}",
-                                    style: TextStyle(
-                                        color: Color(0xFF05B10C),
-                                        fontSize:
-                                        14)), // the font size increased based on new figma design10-14
+                                Text("-${TextConstants.currencySymbol}${orderDiscount.toStringAsFixed(2)}",
+                                    style: TextStyle(color: Color(0xFF05B10C), fontSize: 12)),
                               ],
                             ),
                             SizedBox(height: 2),
                             Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Row(
                                   spacing: 5,
                                   children: [
-                                    SvgPicture.asset(
-                                        "assets/svg/discount_star.svg",
-                                        height: 12,
-                                        width: 12,
-                                        color: Colors.blue),
-                                    Text(TextConstants.merchantDiscount,
-                                        style: TextStyle(
-                                            color: Color(0xFF007BFF),
-                                            fontSize:
-                                            14)), // changes as per new design
-                                    merchantDiscount.toStringAsFixed(2) ==
-                                        '0.00'
-                                        ? SizedBox()
-                                        : GestureDetector(
+                                    SvgPicture.asset("assets/svg/discount_star.svg",
+                                      height: 12, width: 12,
+                                      colorFilter: ColorFilter.mode(Colors.blueAccent, BlendMode.srcIn),),
+                                    Text(TextConstants.merchantDiscount, style: TextStyle(color: Color(0xFF007BFF), fontSize: 14)),
+                                    merchantDiscount.toStringAsFixed(2) == '0.00' ? SizedBox() : GestureDetector(
                                       onTap: () async {
                                         //Passed dbOrderId to removeFeeLines.
                                         // Removed database operations, as they’re now in OrderBloc.removeFeeLines.
                                         // Ensured loader is shown during API calls.
                                         if (kDebugMode) {
-                                          print(
-                                              "####################### Merchant Discount onTap");
+                                          print("####################### Merchant Discount onTap");
                                         }
-                                        if (orderHelper
-                                            .activeOrderId !=
-                                            null) {
+                                        if (orderHelper.activeOrderId != null) {
                                           // Step 1: Show confirmation dialog
-                                          await CustomDialog
-                                              .showRemoveSpecialOrderItemsConfirmation(
-                                              context, confirm:
-                                              () async {
+                                          await CustomDialog.showRemoveSpecialOrderItemsConfirmation(context, confirm: () async {
                                             // Step 2: Show loader
-                                            setState(() =>
-                                            _isLoading = true);
+                                            setState(() => _isLoading = true);
                                             // final order = orderHelper.orders.firstWhere(
                                             //       (order) => order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
                                             //   orElse: () => {},
                                             // );
-                                            final serverOrderId =
-                                                orderHelper
-                                                    .activeOrderId; //order[AppDBConst.orderServerId] as int?;
-                                            final dbOrderId =
-                                            orderHelper
-                                                .activeOrderId!;
+                                            final serverOrderId = orderHelper.activeOrderId;//order[AppDBConst.orderServerId] as int?;
+                                            final dbOrderId = orderHelper.activeOrderId!;
 
-                                            if (serverOrderId !=
-                                                null) {
-                                              final db =
-                                              await DBHelper
-                                                  .instance
-                                                  .database;
-
+                                            if (serverOrderId != null) {
+                                              final db = await DBHelper.instance.database;
                                               ///TODO : Update below table code for new discount id code
-                                              final merchantDiscountValue =
-                                              await db.query(
-                                                AppDBConst
-                                                    .orderTable,
-                                                where:
-                                                '${AppDBConst.orderServerId} = ? AND ${AppDBConst.merchantDiscount} = ?',
-                                                whereArgs: [
-                                                  dbOrderId,
-                                                  merchantDiscount
-                                                ],
+                                              final merchantDiscountValue = await db.query(
+                                                AppDBConst.orderTable,
+                                                where: '${AppDBConst.orderServerId} = ? AND ${AppDBConst.merchantDiscount} = ?',
+                                                whereArgs: [dbOrderId, merchantDiscount],
                                               );
 
-                                              if (merchantDiscountValue
-                                                  .isNotEmpty) {
-                                                final payoutIds = merchantDiscountValue
-                                                    .first[AppDBConst
-                                                    .merchantDiscountIds]
-                                                    .toString()
-                                                    .split(
-                                                    ',') ??
-                                                    [];
-                                                //remove the empty id
-                                                payoutIds
-                                                    .removeAt(0);
+                                              if (merchantDiscountValue.isNotEmpty) {
+                                                // final payoutIds = merchantDiscountValue.first[AppDBConst.merchantDiscountIds].toString().split(',') ?? [];
+                                                // //remove the empty id
+                                                // payoutIds.removeAt(0);
+                                                // With this fixed version:
+                                                // Build #1.0.216: FIXED Issue - Merchant discount not deleting, showing error "Payout ID not found"
+                                                String discountIdsString = merchantDiscountValue.first[AppDBConst.merchantDiscountIds].toString();
+                                                List<String> discountIds = discountIdsString.split(',').where((id) => id.isNotEmpty).toList();
                                                 if (kDebugMode) {
-                                                  print(
-                                                      "OrderPanel - payouts to delete $payoutIds");
+                                                  print("OrderPanel - payouts to delete $discountIds");
                                                 }
-                                                if (payoutIds
-                                                    .isNotEmpty) {
+                                                if (discountIds.isNotEmpty) {
                                                   //Build #1.0.99: Cancel any existing subscription to prevent multiple listeners
-                                                  _removePayoutOrDiscountSubscription
-                                                      ?.cancel();
+                                                  _removeMerchantDiscountSubscription?.cancel();
                                                   retryCallback() async {
-                                                    setState(() =>
-                                                    _isLoading =
-                                                    true);
-                                                    await orderBloc.removeFeeLines(
-                                                        orderId:
-                                                        serverOrderId,
-                                                        feeLineIds:
-                                                        payoutIds);
+                                                    setState(() => _isLoading = true);
+                                                    //  await orderBloc.removeFeeLines(orderId: serverOrderId, feeLineIds: payoutIds);
+                                                    // Creating line items for deletion (quantity = 0 to remove)
+                                                    List<OrderLineItem> merchantDiscountToDelete = discountIds.map((id) =>
+                                                        OrderLineItem(id: int.parse(id), quantity: 0)
+                                                    ).toList();
+                                                    await orderBloc.deleteOrderItem( // Build #1.0.274: Updated to deleteOrderItem api call for removing merchant discount
+                                                      orderId: serverOrderId,
+                                                      lineItems: merchantDiscountToDelete,
+                                                      //  dbItemId: int.parse(discountIds.first) // No need for merchant Discount // Using first ID as representative
+                                                    );
                                                     // Dismiss dialog after retry
-                                                    Navigator.of(
-                                                        context,
-                                                        rootNavigator:
-                                                        true)
-                                                        .pop();
-                                                  }
-
-                                                  ;
-                                                  _removePayoutOrDiscountSubscription =
-                                                      orderBloc
-                                                          .removePayoutStream
-                                                          .listen(
-                                                              (response) async {
-                                                            if (response
-                                                                .status ==
-                                                                Status
-                                                                    .COMPLETED) {
-                                                              setState(() =>
-                                                              _isLoading =
-                                                              false); //Build #1.0.92
-                                                              await fetchOrderItems();
-                                                              widget
-                                                                  .refreshOrderList
-                                                                  ?.call();
-                                                              _scaffoldMessenger
-                                                                  .showSnackBar(
-                                                                SnackBar(
-                                                                  content: Text(
-                                                                      "Merchant Discount removed successfully"),
-                                                                  backgroundColor:
-                                                                  Colors
-                                                                      .green,
-                                                                  duration: const Duration(
-                                                                      seconds:
-                                                                      2),
-                                                                ),
-                                                              );
-                                                            } else if (response
-                                                                .status ==
-                                                                Status
-                                                                    .ERROR) {
-                                                              if (kDebugMode) {
-                                                                print(
-                                                                    "###### Delete Discount API error");
-                                                              }
-                                                              setState(() =>
-                                                              _isLoading =
-                                                              false);
-                                                              _scaffoldMessenger
-                                                                  .showSnackBar(
-                                                                SnackBar(
-                                                                  content: Text(
-                                                                      "Failed to remove discount"),
-                                                                  backgroundColor:
-                                                                  Colors
-                                                                      .red,
-                                                                  duration: const Duration(
-                                                                      seconds:
-                                                                      2),
-                                                                ),
-                                                              );
-                                                              await CustomDialog
-                                                                  .showDiscountNotApplied(
-                                                                context,
-                                                                errorMessageTitle:
-                                                                TextConstants
-                                                                    .removeDiscountFailed,
-                                                                errorMessageDes: response
-                                                                    .message ??
-                                                                    TextConstants
-                                                                        .discountNotAppliedDescription,
-                                                                onRetry:
-                                                                retryCallback,
-                                                              );
+                                                    Navigator.of(context, rootNavigator: true).pop();
+                                                  };
+                                                  _removeMerchantDiscountSubscription =
+                                                      orderBloc.deleteOrderItemStream.listen((response) async {
+                                                        if (response.status == Status.COMPLETED) {
+                                                          setState(() => _isLoading = false); //Build #1.0.92
+                                                          await fetchOrderItems();
+                                                          widget.refreshOrderList?.call();
+                                                          if (Misc.showDebugSnackBar) { // Build #1.0.254
+                                                            _scaffoldMessenger.showSnackBar(
+                                                              SnackBar(content: Text("Merchant Discount removed successfully"),
+                                                                backgroundColor: Colors.green,
+                                                                duration: const Duration(seconds: 2),
+                                                              ),
+                                                            );
+                                                          }
+                                                        } else if (response.status == Status.ERROR) {
+                                                          if (response.message!.contains('Unauthorised')) {
+                                                            if (kDebugMode) {
+                                                              print("categories screen 7 ---- Unauthorised : ${response.message!}");
                                                             }
-                                                          });
-                                                  await orderBloc
-                                                      .removeFeeLines(
-                                                      orderId:
-                                                      serverOrderId,
-                                                      feeLineIds:
-                                                      payoutIds);
+                                                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                                                              if (mounted) {
+                                                                Navigator.pushReplacement(context,
+                                                                    MaterialPageRoute(builder: (context) => LoginScreen()));
+
+                                                                if (kDebugMode) {
+                                                                  print("message 7 --- ${response.message}");
+                                                                }
+                                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                                  const SnackBar(
+                                                                    content: Text("Unauthorised. Session is expired on this device."),
+                                                                    backgroundColor: Colors.red,
+                                                                    duration: Duration(seconds: 2),
+                                                                  ),
+                                                                );
+                                                              }
+                                                            });
+                                                          } else {
+                                                            if (kDebugMode) {
+                                                              print("###### Delete Discount API error");
+                                                            }
+                                                            setState(() => _isLoading = false);
+                                                            _scaffoldMessenger.showSnackBar(
+                                                              SnackBar(
+                                                                content: Text("Failed to remove discount"),
+                                                                backgroundColor: Colors.red,
+                                                                duration: const Duration(seconds: 2),
+                                                              ),
+                                                            );
+                                                          }
+                                                          await CustomDialog.showDiscountNotApplied(context,
+                                                            errorMessageTitle: TextConstants.removeDiscountFailed,
+                                                            errorMessageDes: response.message ?? TextConstants.discountNotAppliedDescription,
+                                                            onRetry: retryCallback,
+                                                          );
+                                                        }
+                                                      });
+                                                  // Creating line items for deletion (quantity = 0 to remove)
+                                                  List<OrderLineItem> merchantDiscountToDelete = discountIds.map((id) =>
+                                                      OrderLineItem(id: int.parse(id), quantity: 0)
+                                                  ).toList();
+
+                                                  await orderBloc.deleteOrderItem( // Build #1.0.274 : Added api call
+                                                    orderId: serverOrderId,
+                                                    lineItems: merchantDiscountToDelete,
+                                                    // dbItemId: int.parse(discountIds.first) // No need for merchant Discount // Using first ID as representative
+                                                  );
+                                                  //  await orderBloc.removeFeeLines(orderId: serverOrderId,feeLineIds: discountIds);
                                                 } else {
-                                                  setState(() =>
-                                                  _isLoading =
-                                                  false);
-                                                  _scaffoldMessenger
-                                                      .showSnackBar(
+                                                  setState(() => _isLoading = false);
+                                                  _scaffoldMessenger.showSnackBar(
                                                     SnackBar(
-                                                      content: Text(
-                                                          "Payout ID not found"),
-                                                      backgroundColor:
-                                                      Colors
-                                                          .red,
-                                                      duration:
-                                                      const Duration(
-                                                          seconds:
-                                                          2),
+                                                      content: Text("Payout ID not found"),
+                                                      backgroundColor: Colors.red,
+                                                      duration: const Duration(seconds: 2),
                                                     ),
                                                   );
                                                 }
                                               } else {
-                                                setState(() =>
-                                                _isLoading =
-                                                false);
-                                                _scaffoldMessenger
-                                                    .showSnackBar(
+                                                setState(() => _isLoading = false);
+                                                _scaffoldMessenger.showSnackBar(
                                                   SnackBar(
-                                                    content: Text(
-                                                        "No payout found for this order"),
-                                                    backgroundColor:
-                                                    Colors.red,
-                                                    duration:
-                                                    const Duration(
-                                                        seconds:
-                                                        2),
+                                                    content: Text("No payout found for this order"),
+                                                    backgroundColor: Colors.red,
+                                                    duration: const Duration(seconds: 2),
                                                   ),
                                                 );
                                               }
                                             } else {
-                                              setState(() =>
-                                              _isLoading =
-                                              false);
-                                              _scaffoldMessenger
-                                                  .showSnackBar(
+                                              setState(() => _isLoading = false);
+                                              _scaffoldMessenger.showSnackBar(
                                                 SnackBar(
-                                                  content: Text(
-                                                      "Server Order ID not found"),
-                                                  backgroundColor:
-                                                  Colors.red,
-                                                  duration:
-                                                  const Duration(
-                                                      seconds:
-                                                      2),
+                                                  content: Text("Server Order ID not found"),
+                                                  backgroundColor: Colors.red,
+                                                  duration: const Duration(seconds: 2),
                                                 ),
                                               );
                                             }
                                           });
                                         }
                                       },
-                                      child: Image.asset(
-                                        "assets/delete.png",
-                                        height: 24,
-                                        width: 24,
-                                      ),
+                                      child: SvgPicture.asset("assets/svg/delete.svg", height: 24, width: 24),
                                     ),
                                   ],
                                 ),
-                                Text(
-                                    "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
-                                    style: TextStyle(
-                                        color: Colors.blue,
-                                        fontSize: 14)),
+                                Text("-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
+                                    style: TextStyle(color: Colors.blue, fontSize: 12)),
                               ],
                             ),
                             SizedBox(height: 2),
@@ -2963,65 +2872,27 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                     .black, // ✅ ensures gradient works correctly
                               ),
                             ),
-
                             SizedBox(height: 2),
                             Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment:
-                              CrossAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                Text(
-                                  TextConstants.netTotalText,
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                      color: themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? ThemeNotifier.textDark
-                                          : ThemeNotifier.textLight),
-                                ),
-                                Text(
-                                    "${TextConstants.currencySymbol}${netTotal.toStringAsFixed(2)}",
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
-                                        color: themeHelper.themeMode ==
-                                            ThemeMode.dark
-                                            ? ThemeNotifier.textDark
-                                            : ThemeNotifier.textLight)),
+                                Text(TextConstants.netTotalText,style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight),),
+                                Text("${TextConstants.currencySymbol}${netTotal.toStringAsFixed(2)}",
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
                               ],
                             ),
                             SizedBox(height: 2),
                             Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment:
-                              CrossAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                Text(
-                                  TextConstants.taxText,
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                      color: themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? Colors.white54
-                                          : Colors.grey),
-                                ),
-                                Text(
-                                    "${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}", //Build #1.0.92: removed minus "-"
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
-                                        color: themeHelper.themeMode ==
-                                            ThemeMode.dark
-                                            ? Colors.white54
-                                            : Colors.grey)),
+                                Text(TextConstants.taxText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12,color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 : Colors.grey),),
+                                Text("${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}", //Build #1.0.92: removed minus "-"
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 :Colors.grey)),
                               ],
                             ),
                             SizedBox(height: 2),
-                            // const DottedLine(),
                             ShaderMask(
                               shaderCallback: (Rect bounds) {
                                 return LinearGradient(
@@ -3055,30 +2926,14 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                     .black, // ✅ ensures gradient works correctly
                               ),
                             ),
-
                             SizedBox(height: 2),
                             Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment:
-                              CrossAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                Text(TextConstants.netPayable,
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
-                                        color: themeHelper.themeMode ==
-                                            ThemeMode.dark
-                                            ? ThemeNotifier.textDark
-                                            : ThemeNotifier.textLight)),
-                                Text(
-                                    "${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: themeHelper.themeMode ==
-                                            ThemeMode.dark
-                                            ? ThemeNotifier.textDark
-                                            : ThemeNotifier.textLight)),
+                                Text(TextConstants.netPayable, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
+                                Text("${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
+                                    style: TextStyle(fontWeight: FontWeight.bold, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
                               ],
                             ),
                           ],
@@ -3090,17 +2945,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                     GestureDetector(
                       onTap: isKeyboardVisible ? null : _toggleSummary,
                       child: Container(
-                        margin:
-                        const EdgeInsets.only(top: 0, right: 6, left: 6),
+                        margin: const EdgeInsets.only(top: 0, right: 6, left: 6),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.only(
-                              bottomRight: Radius.circular(8),
-                              bottomLeft: Radius.circular(8)),
-                          // color: themeHelper.themeMode == ThemeMode.dark ?const Color(0xFF393C48) : Colors.grey.shade300
+                            borderRadius: BorderRadius.only(bottomRight: Radius.circular(8), bottomLeft: Radius.circular(8)),
                           color: themeHelper.themeMode == ThemeMode.dark
                               ? const Color(
                               0xFF2A2C36) // ✅ dark mode background 393C48
-                              : Colors.grey.shade300, // ✅ light mode background
+                              : Colors.grey.shade300,
                           boxShadow: [
                             // Shadow at the bottom
                             BoxShadow(
@@ -3118,42 +2969,46 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             ),
                           ],
                         ),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 5),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                                "${TextConstants.totalItemsText}: ${orderItems.length}",
-                                style: TextStyle(
-                                    fontSize: 12, fontWeight: FontWeight.bold)),
+                            Text("${TextConstants.totalItemsText}: ${orderItems.length}",
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                             Row(
                               children: [
                                 Text(
                                     _showFullSummary
                                         ? 'Net Payable : ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}'
                                         : 'Net Payable : ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold)),
-                                const SizedBox(width: 4),
-                                Icon(_showFullSummary
-                                    ? Icons.keyboard_arrow_down
-                                    : Icons.keyboard_arrow_up),
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                const SizedBox(width: 8),
+                                Icon(_showFullSummary ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up),
                               ],
                             ),
                           ],
                         ),
                       ),
                     ),
-                  const SizedBox(height: 4),
 
                   // Payment button - outside the container
                   if (tabs.isNotEmpty)
                     Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                       width: double.infinity,
-                      height: MediaQuery.of(context).size.height * 0.0575,
+                      height: MediaQuery.of(context).size.height * 0.0585,
+                      // 👇 outer container adds shadow
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        // boxShadow: [
+                        //   BoxShadow(
+                        //     color: Colors.black.withOpacity(0.5),
+                        //     offset: const Offset(0, 4), // push shadow downward
+                        //     blurRadius: 4, // soft, natural spread
+                        //     spreadRadius: 0, // makes shadow fuller
+                        //   ),
+                        // ],
+                      ),
                       child: ElevatedButton( //Build 1.1.36: on pay tap calling updateOrderProducts api call
                         onPressed: /*netPayable >= 0 && */orderItems.isNotEmpty
                             ? () async {
@@ -3247,7 +3102,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                           "Pay ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
                           style: TextStyle(
                             fontSize: 16,
-                            fontWeight: FontWeight.w900,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),

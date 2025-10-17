@@ -28,6 +28,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
   late  StreamController<APIResponse<model.OrderModel>> _removePayoutController;
   late StreamController<APIResponse<model.OrderModel>> _removeCouponController;
   late StreamController<APIResponse<TotalOrdersResponseModel>> _fetchTotalOrdersController;
+  late StreamController<APIResponse<model.OrderModel>> _addMerchantDiscountController; // Build #1.0.274
 
   // Build #1.0.53 : updated code -  Constructor ---
   OrderBloc(this._orderRepository) {
@@ -42,6 +43,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
     _removePayoutController = StreamController<APIResponse<model.OrderModel>>.broadcast();
     _removeCouponController = StreamController<APIResponse<model.OrderModel>>.broadcast();
     _fetchTotalOrdersController = StreamController<APIResponse<TotalOrdersResponseModel>>.broadcast();
+    _addMerchantDiscountController = StreamController<APIResponse<model.OrderModel>>.broadcast(); // Build #1.0.274
     if (kDebugMode) {
       print("OrderBloc Initialized with all stream controllers.");
     }
@@ -83,12 +85,15 @@ class OrderBloc { // Build #1.0.25 - added by naveen
   // Remove Payout
   StreamSink<APIResponse<model.OrderModel>> get removePayoutSink => _removePayoutController.sink;
   Stream<APIResponse<model.OrderModel>> get removePayoutStream => _removePayoutController.stream;
-   // Remove Coupon
+  // Remove Coupon
   StreamSink<APIResponse<model.OrderModel>> get removeCouponSink => _removeCouponController.sink;
   Stream<APIResponse<model.OrderModel>> get removeCouponStream => _removeCouponController.stream;
-   //
+  //
   StreamSink<APIResponse<TotalOrdersResponseModel>> get fetchTotalOrdersSink => _fetchTotalOrdersController.sink;
   Stream<APIResponse<TotalOrdersResponseModel>> get fetchTotalOrdersStream => _fetchTotalOrdersController.stream;
+  // Build #1.0.274 : added merchant discount api
+  StreamSink<APIResponse<model.OrderModel>> get addMerchantDiscountSink => _addMerchantDiscountController.sink;
+  Stream<APIResponse<model.OrderModel>> get addMerchantDiscountStream => _addMerchantDiscountController.stream;
 
   // 1. Create Order
   Future<String> createOrder({bool isUpdateOrder = false}) async { //Build #1.0.128: Updated - metadata using from _orderRepository
@@ -101,7 +106,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
 
     createOrderSink.add(APIResponse.loading(TextConstants.loading));
     try {
-     // final request = CreateOrderRequestModel(metaData: metaData);
+      // final request = CreateOrderRequestModel(metaData: metaData);
       //Build #1.0.128: Updated - metadata using from _orderRepository
       final response = await _orderRepository.createOrder();
 
@@ -236,12 +241,12 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             whereArgs: [serverOrderId, item.productId, ItemType.product.value],
           );
           if(existingItem.isEmpty) { // Build #1.0.187: Fixed - Updating Quantity of Custom Item Creates Duplicate Line Item
-          existingItem = await db.query(
-            AppDBConst.purchasedItemsTable,
-            where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemType} = ?',
-            whereArgs: [serverOrderId, item.productId, ItemType.customProduct.value],
-          );
-         }
+            existingItem = await db.query(
+              AppDBConst.purchasedItemsTable,
+              where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemType} = ?',
+              whereArgs: [serverOrderId, item.productId, ItemType.customProduct.value],
+            );
+          }
           if((existingItem.isNotEmpty && (existingItem.first[AppDBConst.itemVariationId] as int) > 0)){
             if (kDebugMode) {
               print(
@@ -304,6 +309,8 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       //Build 1.1.36: working on updating order items in db getting issue.....
       //Build #1.0.78: Update DB after successful API response
       OrderHelper orderHelper = OrderHelper();
+      double merchantDiscount = 0.0; // Build #1.0.278: Updating merchant discount data into order table
+      var merchantDiscountIds = "";
       // Clear existing items for this order
       await orderHelper.clearOrderItems(serverOrderId);
       //Build #1.0.78: Add updated items from the API response
@@ -313,47 +320,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             " totalTax:${double.tryParse(response.totalTax) ?? 0.0}");
         print("#### OrderBloc - updateOrderProducts -> couponLines count : ${response.couponLines.length}"); // Build #1.0.181: Debug print
       }
-      await db.update(
-        AppDBConst.orderTable,
-        {
-          AppDBConst.orderTotal: double.tryParse(response.total) ?? 0.0,
-          AppDBConst.orderStatus: response.status,
-          AppDBConst.orderType: response.createdVia ?? 'in-store',
-          AppDBConst.orderDate: response.dateCreated,
-          AppDBConst.orderTime: response.dateCreated,
-          AppDBConst.orderPaymentMethod: response.paymentMethod,
-          AppDBConst.orderDiscount: double.tryParse(response.discountTotal) ?? 0.0, // Store discount
-          AppDBConst.orderTax: double.tryParse(response.totalTax) ?? 0.0, // Store tax
-          AppDBConst.orderShipping: double.tryParse(response.shippingTotal) ?? 0.0, // Store shipping
-          //Build #1.0.234: Saving Age Restricted value in order table
-          AppDBConst.orderAgeRestricted: response.metaData.firstWhere(
-                (meta) => meta.key == TextConstants.ageRestrictedKey,
-                orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
-               ).value.toString(),
-        },
-        where: '${AppDBConst.orderServerId} = ?',
-        whereArgs: [serverOrderId],
-      );
-
-      //DEBUG : query and print the updated data to verify
-      final updatedOrder = await db.query(
-        AppDBConst.orderTable,
-        where: '${AppDBConst.orderServerId} = ?',
-        whereArgs: [serverOrderId],
-      );
-
-      if (updatedOrder.isNotEmpty && kDebugMode) {
-        if (kDebugMode) {
-        print("#### OrderBloc - AFTER UPDATE - Order data for orderId $serverOrderId:");
-        print("Total: ${updatedOrder[0][AppDBConst.orderTotal]}");
-        print("Status: ${updatedOrder[0][AppDBConst.orderStatus]}");
-        print("Type: ${updatedOrder[0][AppDBConst.orderType]}");
-        print("Discount: ${updatedOrder[0][AppDBConst.orderDiscount]}");
-        print("Tax: ${updatedOrder[0][AppDBConst.orderTax]}");
-        print("Shipping: ${updatedOrder[0][AppDBConst.orderShipping]}");
-        print("========================================");
-      }
-     }
       // LineItems
       for (var lineItem in response.lineItems) {
         final String variationName = lineItem.productVariationData?.metaData?.firstWhere((e) => e.key == "custom_name", orElse: () => model.MetaData(id: 0, key: "", value: "")).value ?? "";
@@ -389,7 +355,16 @@ class OrderBloc { // Build #1.0.25 - added by naveen
           print("#### Start adding lineItem ${lineItem.id}, orderId:$serverOrderId , ProductId:${lineItem.productId}, VariationId:${lineItem.variationId}");
           print("variationName $variationName, variationCount:$variationCount, combo:$combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
         }
-        if ((lineItem.name == TextConstants.payout)) {  /// Build #1.0.205: payout is added as product so while updating order table check here as well
+        if (lineItem.name == TextConstants.discountText) { // Build #1.0.278: Updating merchant discount data into order table  // Updated: Detect 'Discount' in line_items
+          if (kDebugMode) {
+            print("#### OrderBloc - Adding merchant discount item: id: ${lineItem.id}, total: ${lineItem.total}");
+          }
+          merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
+          merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
+          if (kDebugMode) {
+            print("#### TEST 0000  - $merchantDiscountIds");
+          }
+        }else if ((lineItem.name == TextConstants.payout)) {  /// Build #1.0.205: payout is added as product so while updating order table check here as well
           if (kDebugMode) {
             print("#### OrderBloc - Adding payout item: id: ${response.lineItems!.last.id}, total: ${response.lineItems!.last.total}");
           }
@@ -403,7 +378,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             serverOrderId,
             type: ItemType.payout.value,
           );
-        } else {
+        } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name,
@@ -430,9 +405,9 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       if (kDebugMode) {
         var itemsInDB = await OrderHelper().getOrderItems(serverOrderId);
         for(var item in itemsInDB){
-            print("#### updateOrderProducts getOrderItems after adding : "
-                "dbOrderId-> $dbOrderId, orderId:$serverOrderId, orderHelper.activeOrderId!: ${orderHelper.activeOrderId!} "
-                "productId-> ${item[AppDBConst.itemProductId]}, variationId-> ${item[AppDBConst.itemVariationId]}, "
+          print("#### updateOrderProducts getOrderItems after adding : "
+              "dbOrderId-> $dbOrderId, orderId:$serverOrderId, orderHelper.activeOrderId!: ${orderHelper.activeOrderId!} "
+              "productId-> ${item[AppDBConst.itemProductId]}, variationId-> ${item[AppDBConst.itemVariationId]}, "
               "itemId-> ${item[AppDBConst.itemServerId]}");
         }
       }
@@ -469,6 +444,52 @@ class OrderBloc { // Build #1.0.25 - added by naveen
           serverOrderId,
           type: ItemType.coupon.value,
         );
+      }
+
+      // Build #1.0.278: Updating merchant discount data into order table
+      // replaced placement from above to here , because we have to collect merchantDiscount, merchantDiscountIds then append into order table
+      await db.update(
+        AppDBConst.orderTable,
+        {
+          AppDBConst.orderTotal: double.tryParse(response.total) ?? 0.0,
+          AppDBConst.orderStatus: response.status,
+          AppDBConst.orderType: response.createdVia ?? 'in-store',
+          AppDBConst.orderDate: response.dateCreated,
+          AppDBConst.orderTime: response.dateCreated,
+          AppDBConst.orderPaymentMethod: response.paymentMethod,
+          AppDBConst.orderDiscount: double.tryParse(response.discountTotal) ?? 0.0, // Store discount
+          AppDBConst.orderTax: double.tryParse(response.totalTax) ?? 0.0, // Store tax
+          AppDBConst.orderShipping: double.tryParse(response.shippingTotal) ?? 0.0, // Store shipping
+          //Build #1.0.234: Saving Age Restricted value in order table
+          AppDBConst.orderAgeRestricted: response.metaData.firstWhere(
+                (meta) => meta.key == TextConstants.ageRestrictedKey,
+            orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
+          ).value.toString(),
+          AppDBConst.merchantDiscount: merchantDiscount,
+          AppDBConst.merchantDiscountIds: merchantDiscountIds,
+        },
+        where: '${AppDBConst.orderServerId} = ?',
+        whereArgs: [serverOrderId],
+      );
+
+      //DEBUG : query and print the updated data to verify
+      final updatedOrder = await db.query(
+        AppDBConst.orderTable,
+        where: '${AppDBConst.orderServerId} = ?',
+        whereArgs: [serverOrderId],
+      );
+
+      if (updatedOrder.isNotEmpty && kDebugMode) {
+        if (kDebugMode) {
+          print("#### OrderBloc - AFTER UPDATE - Order data for orderId $serverOrderId:");
+          print("Total: ${updatedOrder[0][AppDBConst.orderTotal]}");
+          print("Status: ${updatedOrder[0][AppDBConst.orderStatus]}");
+          print("Type: ${updatedOrder[0][AppDBConst.orderType]}");
+          print("Discount: ${updatedOrder[0][AppDBConst.orderDiscount]}");
+          print("Tax: ${updatedOrder[0][AppDBConst.orderTax]}");
+          print("Shipping: ${updatedOrder[0][AppDBConst.orderShipping]}");
+          print("========================================");
+        }
       }
       await CustomerDisplayHelper.updateCustomerDisplay(serverOrderId);
 
@@ -510,7 +531,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       if (kDebugMode) {
         print("OrderBloc - fetchOrders calling syncOrdersFromApi with ${response.orders.length} orders");
       }
-       // Build #1.0.219 -> FIXED ISSUE [SCRUM - 370] : Same Order ID displayed in fast keys, after successfully payment done with completed status.
+      // Build #1.0.219 -> FIXED ISSUE [SCRUM - 370] : Same Order ID displayed in fast keys, after successfully payment done with completed status.
       if(response.orders.isEmpty) {
         if (orderHelper.activeOrderId != null) {
           if (kDebugMode) {
@@ -664,27 +685,9 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       if (kDebugMode) {
         print("#### OrderBloc - Updating order table for orderId $orderId, total: ${double.tryParse(response.total) ?? 0.0}, discount: ${double.tryParse(response.discountTotal) ?? 0.0}");
       }
-      await db.update(
-        AppDBConst.orderTable,
-        {
-          AppDBConst.orderTotal: double.tryParse(response.total) ?? 0.0,
-          AppDBConst.orderStatus: response.status,
-          AppDBConst.orderType: response.createdVia ?? 'in-store',
-          AppDBConst.orderDate: response.dateCreated,
-          AppDBConst.orderTime: response.dateCreated,
-          AppDBConst.orderPaymentMethod: response.paymentMethod,
-          AppDBConst.orderDiscount: double.tryParse(response.discountTotal) ?? 0.0,
-          AppDBConst.orderTax: double.tryParse(response.totalTax) ?? 0.0,
-          AppDBConst.orderShipping: double.tryParse(response.shippingTotal) ?? 0.0,
-          AppDBConst.orderAgeRestricted: response.metaData.firstWhere( //Build #1.0.234: Saving Age Restricted value in order table
-                (meta) => meta.key == TextConstants.ageRestrictedKey,
-            orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
-          ).value.toString(),
-        },
-        where: '${AppDBConst.orderServerId} = ?',
-        whereArgs: [orderId],
-      );
-
+      // Update merchantDiscount id & value
+      double merchantDiscount = 0.0;  // Build #1.0.278: Updating merchant discount data into order table
+      var merchantDiscountIds = "";
       // Build #1.0.92: Clear existing coupon items and add new ones from response
       await db.delete(
         AppDBConst.purchasedItemsTable,
@@ -720,8 +723,17 @@ class OrderBloc { // Build #1.0.25 - added by naveen
           print("#### OrderBloc - applyCouponToOrder: Adding lineItem ${lineItem.id}, orderId: $orderId, ProductId: ${lineItem.productId}, VariationId: ${lineItem.variationId}");
           print("#### OrderBloc - applyCouponToOrder: variationName $variationName, variationCount: $variationCount, combo: $combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
         }
-
-        if ((lineItem.name == TextConstants.payout)) {  /// Build #1.0.205: payout is added as product so while updating order table check here as well
+        // Build #1.0.278: Updating merchant discount data into order table
+        if (lineItem.name == TextConstants.discountText) { // Updated: Detect 'Discount' in line_items
+          if (kDebugMode) {
+            print("#### OrderBloc - Adding merchant discount item: id: ${lineItem.id}, total: ${lineItem.total}");
+          }
+          merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
+          merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
+          if (kDebugMode) {
+            print("#### TEST 1111  - $merchantDiscountIds");
+          }
+        }else if ((lineItem.name == TextConstants.payout)) {  /// Build #1.0.205: payout is added as product so while updating order table check here as well
           if (kDebugMode) {
             print("#### OrderBloc - Adding payout item: id: ${response.lineItems!.last.id}, total: ${response.lineItems!.last.total}");
           }
@@ -735,7 +747,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             type: ItemType.payout.value,
           );
-        } else {
+        } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name,
@@ -772,6 +784,31 @@ class OrderBloc { // Build #1.0.25 - added by naveen
           type: ItemType.coupon.value,
         );
       }
+
+      // Build #1.0.278: Updating merchant discount data into order table
+      // replaced placement from above to here , because we have to collect merchantDiscount, merchantDiscountIds then append into order table
+      await db.update(
+        AppDBConst.orderTable,
+        {
+          AppDBConst.orderTotal: double.tryParse(response.total) ?? 0.0,
+          AppDBConst.orderStatus: response.status,
+          AppDBConst.orderType: response.createdVia ?? 'in-store',
+          AppDBConst.orderDate: response.dateCreated,
+          AppDBConst.orderTime: response.dateCreated,
+          AppDBConst.orderPaymentMethod: response.paymentMethod,
+          AppDBConst.orderDiscount: double.tryParse(response.discountTotal) ?? 0.0,
+          AppDBConst.orderTax: double.tryParse(response.totalTax) ?? 0.0,
+          AppDBConst.orderShipping: double.tryParse(response.shippingTotal) ?? 0.0,
+          AppDBConst.orderAgeRestricted: response.metaData.firstWhere( //Build #1.0.234: Saving Age Restricted value in order table
+                (meta) => meta.key == TextConstants.ageRestrictedKey,
+            orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
+          ).value.toString(),
+          AppDBConst.merchantDiscount: merchantDiscount,
+          AppDBConst.merchantDiscountIds: merchantDiscountIds,
+        },
+        where: '${AppDBConst.orderServerId} = ?',
+        whereArgs: [orderId],
+      );
       await CustomerDisplayHelper.updateCustomerDisplay(orderId);
 
       if (kDebugMode) {
@@ -821,7 +858,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
   }
   // 5. Delete Order Item
   /// Build #1.0.192: Fixed -> After Deleting Item/Payout/Coupon/Discount , update response to db and update UI
-  Future<void> deleteOrderItem({required int orderId, required List<OrderLineItem> lineItems, required int dbItemId}) async {
+  Future<void> deleteOrderItem({required int orderId, required List<OrderLineItem> lineItems, int? dbItemId}) async {
     if (_deleteOrderItemController.isClosed) return;
 
     deleteOrderItemSink.add(APIResponse.loading(TextConstants.loading));
@@ -850,8 +887,9 @@ class OrderBloc { // Build #1.0.25 - added by naveen
 
       // Build #1.0.78: Delete specific item from DB after successful API response
       OrderHelper orderHelper = OrderHelper();
-      await orderHelper.deleteItem(dbItemId);
-
+      if((dbItemId != null) || (dbItemId != 0)) { // Build #1.0.274 : delete only product items not for merchant discount
+        await orderHelper.deleteItem(dbItemId ?? 0);
+      }
       // Clear existing items for this order
       await orderHelper.clearOrderItems(orderId);
 
@@ -864,13 +902,13 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       final db = await DBHelper.instance.database;
       double merchantDiscount = 0.0;
       String merchantDiscountIds = "";
-      if (response.feeLines != null && response.feeLines!.isNotEmpty) {
-        for (var feeLine in response.feeLines!) {
-          if (feeLine.name == TextConstants.discountText) {
-            merchantDiscount += double.tryParse(feeLine.total ?? '0.0')?.abs() ?? 0.0;
-            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${feeLine.id}" : "$merchantDiscountIds,${feeLine.id}";
+      if (response.lineItems.isNotEmpty) {
+        for (var lineItem in response.lineItems) { // Build #1.0.274 : updated feelines to line items
+          if (lineItem.name == TextConstants.discountText) {
+            merchantDiscount += double.tryParse(lineItem.total ?? '0.0')?.abs() ?? 0.0;
+            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
             if (kDebugMode) {
-              print("#### OrderBloc - deleteOrderItem: Adding to merchantDiscount: ${feeLine.total}, new total: $merchantDiscount");
+              print("#### OrderBloc - deleteOrderItem: Adding to merchantDiscount: ${lineItem.total}, new total: $merchantDiscount");
             }
           }
         }
@@ -947,7 +985,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             type: ItemType.payout.value,
           );
-        } else {
+        } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name,
@@ -1014,6 +1052,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
         }
       }
       await CustomerDisplayHelper.updateCustomerDisplay(orderId);
+
       deleteOrderItemSink.add(APIResponse.completed(response));
     } catch (e) {
       if (e.toString().contains('Unauthorised')) {
@@ -1052,6 +1091,173 @@ class OrderBloc { // Build #1.0.25 - added by naveen
         applyDiscountSink.add(APIResponse.error(_extractErrorMessage(e))); // Build #1.0.80
       }
       if (kDebugMode) print("ProductBloc - Exception in applyDiscount: $e");
+    }
+  }
+
+  // Build #1.0.274 : Added API call
+  // New function for add merchant discount (similar to addPayoutAsProduct)
+  Future<void> addMerchantDiscount({required int orderId, required double amount}) async {
+    if (_addMerchantDiscountController.isClosed) return;
+
+    addMerchantDiscountSink.add(APIResponse.loading(TextConstants.loading));
+    try {
+      final AddMerchantDiscountRequestModel request = AddMerchantDiscountRequestModel(
+        orderId: orderId,
+        amount: amount,
+      );
+      final response = await _orderRepository.addMerchantDiscount(orderId: orderId, request: request);
+
+      if (kDebugMode) {
+        print("OrderBloc - Merchant Discount added to order ID: ${response.id}");
+        print("OrderBloc - New total: ${response.total}");
+        print("OrderBloc - Line items count: ${response.lineItems.length ?? 0}");
+      }
+
+      // Updated: Handle adding to DB as ItemType.discount after successful API response
+      // Clear existing items for this order
+      OrderHelper orderHelper = OrderHelper();
+      await orderHelper.clearOrderItems(orderId);
+
+      final db = await DBHelper.instance.database;
+      double merchantDiscount = 0.0;
+      var merchantDiscountIds = "";
+      // if (response.lineItems.isNotEmpty) { // Build #1.0.278: No need for loop two times, below already doing,  updated code their!
+      //   for (var lineItem in response.lineItems) {
+      //     if (lineItem.name == TextConstants.discountText) { // Updated: Detect 'Discount' in line_items
+      //       if (kDebugMode) {
+      //         print("#### OrderBloc - Adding merchant discount item: id: ${lineItem.id}, total: ${lineItem.total}");
+      //       }
+      //       merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
+      //       merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
+      //     }
+      //   }
+      //   if (kDebugMode) {
+      //     print("#### OrderBloc - addMerchantDiscount Setting merchantDiscount to $merchantDiscount AND discountsIds to $merchantDiscountIds for orderId $orderId");
+      //   }
+      // }
+      // Added updated line items from the API response
+      for (var lineItem in response.lineItems) {
+        final String variationName = lineItem.productVariationData?.metaData?.firstWhere(
+              (e) => e.key == "custom_name",
+          orElse: () => model.MetaData(id: 0, key: "", value: ""),
+        ).value ?? "";
+        final int variationCount = lineItem.productData.variations?.length ?? 0;
+        final String combo = lineItem.metaData.firstWhere(
+              (e) => e.value.contains('Combo'),
+          orElse: () => model.MetaData(id: 0, key: "", value: ""),
+        ).value.split(' ').first ?? "";
+        final bool hasVariations = lineItem.productData.variations != null && lineItem.productData.variations!.isNotEmpty;
+        final double salesPrice = hasVariations
+            ? double.tryParse(lineItem.productVariationData?.salePrice?.isNotEmpty == true ? lineItem.productVariationData!.salePrice! : "0.0") ?? 0.0
+            : double.tryParse(lineItem.productData.salePrice?.isNotEmpty == true ? lineItem.productData.salePrice! : "0.0") ?? 0.0;
+        final double regularPrice = hasVariations
+            ? double.tryParse(lineItem.productVariationData?.regularPrice?.isNotEmpty == true ? lineItem.productVariationData!.regularPrice! : "0.0") ?? 0.0
+            : double.tryParse(lineItem.productData.regularPrice?.isNotEmpty == true ? lineItem.productData.regularPrice! : "0.0") ?? 0.0;
+        final double unitPrice = hasVariations
+            ? double.tryParse(lineItem.productVariationData?.price?.isNotEmpty == true ? lineItem.productVariationData!.price! : "0.0") ?? 0.0
+            : double.tryParse(lineItem.productData.price?.isNotEmpty == true ? lineItem.productData.price! : "0.0") ?? 0.0;
+        final double itemPrice = double.tryParse(lineItem.subtotal.isNotEmpty == true ? lineItem.subtotal : '0.0') ?? 0.0;
+        bool isCustomItem = lineItem.productData.tags.any((tag) => tag.name == TextConstants.customItem);
+
+        if (kDebugMode) {
+          print("#### OrderBloc - addMerchantDiscount: Adding lineItem ${lineItem.id}, orderId: $orderId, ProductId: ${lineItem.productId}, VariationId: ${lineItem.variationId}");
+          print("#### OrderBloc - addMerchantDiscount: variationName $variationName, variationCount: $variationCount, combo: $combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
+        }
+        // Build #1.0.278: Updating merchant discount data into order table
+        if (lineItem.name == TextConstants.discountText) { // Updated: Detect 'Discount' in line_items
+          if (kDebugMode) {
+            print("#### OrderBloc - Adding merchant discount item: id: ${lineItem.id}, total: ${lineItem.total}");
+          }
+          merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
+          merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
+          if (kDebugMode) {
+            print("#### TEST 4444  - $merchantDiscountIds");
+          }
+        }else if ((lineItem.name == TextConstants.payout)) {  /// Build #1.0.205: payout is added as product so while updating order table check here as well
+          if (kDebugMode) {
+            print("#### OrderBloc - Adding payout item: id: ${response.lineItems!.last.id}, total: ${response.lineItems!.last.total}");
+          }
+          await orderHelper.addItemToOrder(
+            lineItem.id,
+            lineItem.name ?? '',
+            'assets/svg/payout.svg',
+            double.parse(lineItem.total ?? '0.0'),
+            1,
+            '',
+            orderId,
+            type: ItemType.payout.value,
+          );
+        } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
+          await orderHelper.addItemToOrder(
+            lineItem.id,
+            lineItem.name,
+            lineItem.image.src ?? '',
+            itemPrice,
+            lineItem.quantity,
+            lineItem.sku ?? '',
+            orderId,
+            productId: lineItem.productId,
+            variationId: lineItem.variationId,
+            type: isCustomItem ? ItemType.customProduct.value : ItemType.product.value,
+            variationName: variationName,
+            variationCount: variationCount,
+            combo: combo,
+            salesPrice: salesPrice,
+            regularPrice: regularPrice,
+            unitPrice: unitPrice,
+          );
+        }
+      }
+
+      for (var couponLine in response.couponLines) {
+        if (kDebugMode) {
+          print("#### OrderBloc - Adding coupon line: id: ${couponLine.id}, code: ${couponLine.code}, amount: ${couponLine.nominalAmount}");
+        }
+        await orderHelper.addItemToOrder(
+          couponLine.id,
+          couponLine.code ?? '',
+          'assets/svg/coupon.svg',
+          double.parse(couponLine.nominalAmount?.toString() ?? '0.0'),
+          1,
+          '',
+          orderId,
+          type: ItemType.coupon.value,
+        );
+      }
+
+      // Updated: Update order table with merchant discount from line_items
+      await db.update(
+        AppDBConst.orderTable,
+        {
+          AppDBConst.orderTotal: double.tryParse(response.total) ?? 0.0,
+          AppDBConst.orderStatus: response.status,
+          AppDBConst.orderType: response.createdVia ?? 'in-store',
+          AppDBConst.orderDate: response.dateCreated,
+          AppDBConst.orderTime: response.dateCreated,
+          AppDBConst.orderPaymentMethod: response.paymentMethod,
+          AppDBConst.orderDiscount: double.tryParse(response.discountTotal) ?? 0.0,
+          AppDBConst.orderTax: double.tryParse(response.totalTax) ?? 0.0,
+          AppDBConst.orderShipping: double.tryParse(response.shippingTotal) ?? 0.0,
+          AppDBConst.merchantDiscount: merchantDiscount,
+          AppDBConst.merchantDiscountIds: merchantDiscountIds,
+          AppDBConst.orderAgeRestricted: response.metaData.firstWhere(
+                (meta) => meta.key == TextConstants.ageRestrictedKey,
+            orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
+          ).value.toString(),
+        },
+        where: '${AppDBConst.orderServerId} = ?',
+        whereArgs: [orderId],
+      );
+      await CustomerDisplayHelper.updateCustomerDisplay(orderId);
+
+      addMerchantDiscountSink.add(APIResponse.completed(response));
+    } catch (e, s) {
+      if (e.toString().contains('Unauthorised')) {
+        addMerchantDiscountSink.add(APIResponse.error("Unauthorised. Session is expired."));
+      } else {
+        addMerchantDiscountSink.add(APIResponse.error(_extractErrorMessage(e)));
+      }
+      if (kDebugMode) print("Exception in addMerchantDiscount: $e, Stack: $s");
     }
   }
 
@@ -1096,14 +1302,14 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       final db = await DBHelper.instance.database;
       double merchantDiscount = 0.0;
       var merchantDiscountIds = "";
-      if (response.feeLines!.isNotEmpty) {
-        for (var feeLine in response.feeLines!) {
-          if (feeLine.name == TextConstants.discountText) {
+      if (response.lineItems.isNotEmpty) {
+        for (var lineItem in response.lineItems) { // Build #1.0.274 : updated fee lines to line items
+          if (lineItem.name == TextConstants.discountText) {
             if (kDebugMode) {
               print("#### TEST 2121");
             }
-            merchantDiscount += double.parse(feeLine.total ?? '0.0').abs();
-            merchantDiscountIds = "$merchantDiscountIds,${feeLine.id}";
+            merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
+            merchantDiscountIds = "$merchantDiscountIds,${lineItem.id}";
           }
           /// NO NEED TO CHECK PAYOUT CODE IN FEE LINE
           // if (isPayOut && (feeLine.name == TextConstants.payout)) {  /// Build #1.0.138: check with 'AND' condition to check correctly , otherwise some times discount also adding into orderPanel as item issue
@@ -1194,7 +1400,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             type: ItemType.payout.value,
           );
-        } else {
+        } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name,
@@ -1270,7 +1476,17 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       var merchantDiscountIds = "";
       if (response.lineItems!.isNotEmpty) {
         for (var lineItem in response.lineItems!) {
-          if (isPayOut && (lineItem.name == TextConstants.payout)) {  /// Build #1.0.138: check with 'AND' condition to check correctly , otherwise some times discount also adding into orderPanel as item issue
+          // Build #1.0.278: Updating merchant discount data into order table
+          if (lineItem.name == TextConstants.discountText) { // Updated: Detect 'Discount' in line_items
+            if (kDebugMode) {
+              print("#### OrderBloc - Adding merchant discount item: id: ${lineItem.id}, total: ${lineItem.total}");
+            }
+            merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
+            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
+            if (kDebugMode) {
+              print("#### TEST 4444  - $merchantDiscountIds");
+            }
+          }else if (isPayOut && (lineItem.name == TextConstants.payout)) {  /// Build #1.0.138: check with 'AND' condition to check correctly , otherwise some times discount also adding into orderPanel as item issue
             if (kDebugMode) {
               print("#### OrderBloc - Adding payout item: id: ${response.lineItems!.last.id}, total: ${response.lineItems!.last.total}");
             }
@@ -1309,8 +1525,10 @@ class OrderBloc { // Build #1.0.25 - added by naveen
           ).value.toString(),
           ///In this API update we do not need to add merchant discount update as Payout is coming from line item instead of fee lines
           ///So comment below line, as they will remove merchant discount otherwise from UI
-          // AppDBConst.merchantDiscount: merchantDiscount,
-          // AppDBConst.merchantDiscountIds: merchantDiscountIds,
+          // Build #1.0.278: REQUIRED : Updating merchant discount data into order table
+          // we have to update merchant id every response , because from backend id was updating!
+          AppDBConst.merchantDiscount: merchantDiscount,
+          AppDBConst.merchantDiscountIds: merchantDiscountIds,
         },
         where: '${AppDBConst.orderServerId} = ?',
         whereArgs: [orderId],
@@ -1364,13 +1582,13 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       // Calculate merchant discount from remaining fee lines
       double merchantDiscount = 0.0;
       String merchantDiscountIds = "";
-      if (response.feeLines != null && response.feeLines!.isNotEmpty) {
-        for (var feeLine in response.feeLines!) {
-          if (feeLine.name == TextConstants.discountText) {
-            merchantDiscount += double.tryParse(feeLine.total ?? '0.0')?.abs() ?? 0.0;
-            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${feeLine.id}" : "$merchantDiscountIds,${feeLine.id}";
+      if (response.lineItems.isNotEmpty) {
+        for (var lineItem in response.lineItems) { // Build #1.0.274 : updated
+          if (lineItem.name == TextConstants.discountText) {
+            merchantDiscount += double.tryParse(lineItem.total ?? '0.0')?.abs() ?? 0.0;
+            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
             if (kDebugMode) {
-              print("#### OrderBloc - removeFeeLine: Adding to merchantDiscount: ${feeLine.total}, new total: $merchantDiscount");
+              print("#### OrderBloc - removeFeeLine: Adding to merchantDiscount: ${lineItem.total}, new total: $merchantDiscount");
             }
           }
         }
@@ -1462,25 +1680,25 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             type: ItemType.payout.value,
           );
-        } else {
-        await orderHelper.addItemToOrder(
-          lineItem.id,
-          lineItem.name,
-          lineItem.image.src ?? '',
-          itemPrice,
-          lineItem.quantity,
-          lineItem.sku ?? '',
-          orderId,
-          productId: lineItem.productId,
-          variationId: lineItem.variationId,
-          type: isCustomItem ? ItemType.customProduct.value : ItemType.product.value,
-          variationName: variationName,
-          variationCount: variationCount,
-          combo: combo,
-          salesPrice: salesPrice,
-          regularPrice: regularPrice,
-          unitPrice: unitPrice,
-        );
+        } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
+          await orderHelper.addItemToOrder(
+            lineItem.id,
+            lineItem.name,
+            lineItem.image.src ?? '',
+            itemPrice,
+            lineItem.quantity,
+            lineItem.sku ?? '',
+            orderId,
+            productId: lineItem.productId,
+            variationId: lineItem.variationId,
+            type: isCustomItem ? ItemType.customProduct.value : ItemType.product.value,
+            variationName: variationName,
+            variationCount: variationCount,
+            combo: combo,
+            salesPrice: salesPrice,
+            regularPrice: regularPrice,
+            unitPrice: unitPrice,
+          );
         }
       }
 
@@ -1578,13 +1796,13 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       // Calculate merchant discount from remaining fee lines
       double merchantDiscount = 0.0;
       String merchantDiscountIds = "";
-      if (response.feeLines != null && response.feeLines!.isNotEmpty) {
-        for (var feeLine in response.feeLines!) {
-          if (feeLine.name == TextConstants.discountText) {
-            merchantDiscount += double.tryParse(feeLine.total ?? '0.0')?.abs() ?? 0.0;
-            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${feeLine.id}" : "$merchantDiscountIds,${feeLine.id}";
+      if (response.lineItems.isNotEmpty) {
+        for (var lineItem in response.lineItems) { // Build #1.0.274 : updated
+          if (lineItem.name == TextConstants.discountText) {
+            merchantDiscount += double.tryParse(lineItem.total ?? '0.0')?.abs() ?? 0.0;
+            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
             if (kDebugMode) {
-              print("#### OrderBloc - removeFeeLines: Adding to merchantDiscount: ${feeLine.total}, new total: $merchantDiscount");
+              print("#### OrderBloc - removeFeeLines: Adding to merchantDiscount: ${lineItem.total}, new total: $merchantDiscount");
             }
           }
         }
@@ -1678,7 +1896,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             type: ItemType.payout.value,
           );
-        } else {
+        } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name,
@@ -1789,13 +2007,13 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       // Calculate merchant discount from remaining fee lines
       double merchantDiscount = 0.0;
       String merchantDiscountIds = "";
-      if (response.feeLines != null && response.feeLines!.isNotEmpty) {
-        for (var feeLine in response.feeLines!) {
-          if (feeLine.name == TextConstants.discountText) {
-            merchantDiscount += double.tryParse(feeLine.total ?? '0.0')?.abs() ?? 0.0;
-            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${feeLine.id}" : "$merchantDiscountIds,${feeLine.id}";
+      if (response.lineItems.isNotEmpty) {
+        for (var lineItem in response.lineItems) { // Build #1.0.274 : updated
+          if (lineItem.name == TextConstants.discountText) {
+            merchantDiscount += double.tryParse(lineItem.total ?? '0.0')?.abs() ?? 0.0;
+            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
             if (kDebugMode) {
-              print("#### OrderBloc - removeCoupon: Adding to merchantDiscount: ${feeLine.total}, new total: $merchantDiscount");
+              print("#### OrderBloc - removeCoupon: Adding to merchantDiscount: ${lineItem.total}, new total: $merchantDiscount");
             }
           }
         }
@@ -1887,7 +2105,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             type: ItemType.payout.value,
           );
-        } else {
+        } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name,
