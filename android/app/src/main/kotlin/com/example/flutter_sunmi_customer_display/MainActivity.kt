@@ -293,6 +293,7 @@ class MainActivity : FlutterActivity() {
             storeLogoUrl: String? = null,
             storeBaseUrl: String? = null // new param
         ) {
+            stopSlideshow()
             currentStoreId = storeId
             currentStoreName = storeName
             currentStoreLogoUrl = storeLogoUrl
@@ -329,7 +330,6 @@ class MainActivity : FlutterActivity() {
                 loadSlideshowFromApi(currentStoreBaseUrl)
             }
         }
-
         private fun loadSlideshowFromApi(storeBaseUrl: String) {
             if (storeBaseUrl.isEmpty()) {
                 Log.e("CustomerDisplay", "❌ storeBaseUrl is empty. Slideshow cannot be loaded.")
@@ -378,6 +378,7 @@ class MainActivity : FlutterActivity() {
         }
 
         private fun startSlideshow() {
+            stopSlideshow()
             if (slideshowHandler == null) slideshowHandler = Handler(Looper.getMainLooper())
 
             slideshowHandler?.post(object : Runnable {
@@ -412,6 +413,7 @@ class MainActivity : FlutterActivity() {
             storeLogoUrl: String?,
             storeBaseUrl: String? = null
         ) {
+            stopSlideshow()
             Log.d("CustomerDisplay", "➡ Switching back to Welcome layout")
 
             Handler(Looper.getMainLooper()).post {
@@ -727,6 +729,7 @@ class MainActivity : FlutterActivity() {
         }
 
         fun showThankYouLayout() {
+            stopSlideshow()
             setContentView(R.layout.thank_you_layout)
 
             val storeLogoView = findViewById<ImageView>(R.id.thank_you_store_logo)
@@ -767,7 +770,13 @@ class MainActivity : FlutterActivity() {
                     storeLogoUrl = currentStoreLogoUrl,
                     storeBaseUrl = currentStoreBaseUrl
                 )
-            }, 6000)
+            }, 3000)
+        }
+        private fun stopSlideshow() {
+            slideshowHandler?.removeCallbacksAndMessages(null)
+            slideshowHandler = null
+            currentSlide = 0
+            Log.d("CustomerDisplay", "🛑 Slideshow stopped")
         }
 
         override fun onDetachedFromWindow() {

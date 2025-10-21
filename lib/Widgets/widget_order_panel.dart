@@ -1937,7 +1937,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 : Color(0xFF656161),
                           ),
                         ),
-                        const SizedBox(width: 120),
+                        const SizedBox(width: 127),
                         SvgPicture.asset(
                           'assets/svg/clock.svg',
                           width: 20,
@@ -2541,7 +2541,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                             ),
                                             // Build #1.0.181: Fixed - Quantity for Custom Item Not Displayed After Switching Screens [JIRA #319]
                                             // we have to show price * qty for custom item also / condition updated, only dont show for payout and coupons
-                                            if (!isPayoutOrCouponOrCustomItem)
+                                            if (!isCouponOrPayout)
                                               Text(
                                                 "${TextConstants.currencySymbol} ${regularPrice.toStringAsFixed(2)} × ${orderItem[AppDBConst.itemCount]}", // changed * to ×
                                                 style: TextStyle(
