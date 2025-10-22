@@ -398,7 +398,7 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
       // convert image to grayscale
       var grayscaleImage = img.grayscale(originalImg);
       // bytes += generator.imageRaster(img.decodeImage(imageBytes)!, align: PosAlign.center);
-      bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
+      // bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
     }
 
     //Header

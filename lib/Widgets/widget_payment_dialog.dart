@@ -59,16 +59,16 @@ class PaymentDialog extends StatefulWidget {
       onExitConfirm: onVoidConfirm,
     );
   }
-  // factory PaymentDialog.exitConfirmation({
-  //   VoidCallback? onExitCancel,
-  //   VoidCallback? onExitConfirm
-  // }) {
-  //   return PaymentDialog(
-  //     status: PaymentStatus.exitConfirmation,
-  //     onExitCancel: onExitCancel,
-  //     onExitConfirm: onExitConfirm,
-  //   );
-  // }
+// factory PaymentDialog.exitConfirmation({
+//   VoidCallback? onExitCancel,
+//   VoidCallback? onExitConfirm
+// }) {
+//   return PaymentDialog(
+//     status: PaymentStatus.exitConfirmation,
+//     onExitCancel: onExitCancel,
+//     onExitConfirm: onExitConfirm,
+//   );
+// }
 }
 
 class _PaymentDialogState extends State<PaymentDialog> {
@@ -545,18 +545,18 @@ class _PaymentDialogState extends State<PaymentDialog> {
                     child: _buildButton(
                       TextConstants.done, // "Done" button
                           () {
-                            final contactInfo = _contactController.text.trim();
-                            bool isValid = true;
-                            // Validate only if Email or SMS is selected
-                            if (_selectedOption == TextConstants.email || _selectedOption == TextConstants.sms) {
-                              if (contactInfo.isEmpty) {
-                                setState(() {
-                                  _validationError = 'Please enter a valid ${_selectedOption.toLowerCase()}.';
-                                });
-                                isValid = false;
-                              }
-                            }
-                         // If valid, proceed with the action
+                        final contactInfo = _contactController.text.trim();
+                        bool isValid = true;
+                        // Validate only if Email or SMS is selected
+                        if (_selectedOption == TextConstants.email || _selectedOption == TextConstants.sms) {
+                          if (contactInfo.isEmpty) {
+                            setState(() {
+                              _validationError = 'Please enter a valid ${_selectedOption.toLowerCase()}.';
+                            });
+                            isValid = false;
+                          }
+                        }
+                        // If valid, proceed with the action
                         if (isValid) {
                           if (kDebugMode) {
                             print(
@@ -566,9 +566,9 @@ class _PaymentDialogState extends State<PaymentDialog> {
                             _isDoneLoading = true; // Show loader on button
                           });
                           if (_selectedOption == TextConstants.print) {
-                            widget.onPrint?.call(); // Call print callback if selected
-                            widget.onDone?.call(_selectedOption);
-                          } else if (_selectedOption == TextConstants.email) {
+                            widget.onDone?.call(_selectedOption); // Let onDone handle printing
+                          }
+                          else if (_selectedOption == TextConstants.email) {
                             widget.onEmail?.call(contactInfo); // Email receipt
                             widget.onDone?.call(_selectedOption, email: contactInfo); // Build #1.0.159: Pass email to onDone btn action
                           } else if (_selectedOption == TextConstants.sms) {
@@ -589,30 +589,104 @@ class _PaymentDialogState extends State<PaymentDialog> {
         ],
       );
     }
-
     // For successful and partial payment states
     return Center(
       child: SizedBox(
-        width: MediaQuery.of(context).size.width * 0.3, // Responsive width
+        width: MediaQuery.of(context).size.width * 0.3,
         child: Row(
           children: [
+            // Void button
             Expanded(
               child: _buildButton(
                 TextConstants.vOid,
                 isVoidable ? () {} : widget.onVoid ?? () {},
-                backgroundColor:  isVoidable ? Colors.grey : const Color(0xFFFE6464),
+                backgroundColor: isVoidable ? Colors.grey : const Color(0xFFFE6464),
               ),
             ),
-            const SizedBox(width: 16), // Horizontal spacing
+
+            // Only show "No Receipt" button if payment is successful
+            if (widget.status == PaymentStatus.successful) ...[
+              const SizedBox(width: 8), // spacing
+              Expanded(
+                child: _buildButton(
+                  TextConstants.noReceipt,
+                      () async {
+                    if (kDebugMode) print("DEBUG: No receipt button pressed");
+
+                    setState(() {
+                      _isNoReceiptLoading = true;
+                    });
+
+                    await PrinterSettings.openDrawer(context: context);
+                    widget.onNoReceipt?.call();
+
+                    Future.delayed(const Duration(milliseconds: 500), () {
+                      if (mounted) {
+                        setState(() {
+                          _isNoReceiptLoading = false;
+                        });
+                      }
+                    });
+                  },
+                  backgroundColor: Colors.grey[200]!,
+                  textColor: Colors.blueGrey[700]!,
+                  isLoading: _isNoReceiptLoading,
+                ),
+              ),
+            ],
+
+            const SizedBox(width: 16), // spacing before Print/Next Payment button
+
+            // Print / Next Payment button
             Expanded(
               child: _buildButton(
+                // Dynamic label based on status
                 widget.status == PaymentStatus.successful
-                    ? TextConstants.print // "Print" for successful payment
-                    : TextConstants.nextPayment, // "Next Payment" for partial
+                    ? TextConstants.print
+                    : widget.status == PaymentStatus.partial
+                    ? TextConstants.nextPayment
+                    : TextConstants.print, // fallback
+
+                // Dynamic callback based on status
                 widget.status == PaymentStatus.successful
-                    ? (widget.onPrint ?? () {}) // Print callback for successful
-                    : (widget.onNextPayment ?? () {}), // Next payment callback for partial
-                backgroundColor: const Color(0xFF1BA672), // Green button
+                    ? () {
+                  final contactInfo = _contactController.text.trim();
+                  bool isValid = true;
+
+                  if (_selectedOption == TextConstants.email || _selectedOption == TextConstants.sms) {
+                    if (contactInfo.isEmpty) {
+                      setState(() {
+                        _validationError = 'Please enter a valid ${_selectedOption.toLowerCase()}.';
+                      });
+                      isValid = false;
+                    }
+                  }
+
+                  if (isValid) {
+                    if (kDebugMode) print("DEBUG: Done button pressed, selectedOption: $_selectedOption");
+
+                    setState(() {
+                      _isDoneLoading = true;
+                    });
+
+                    if (_selectedOption == TextConstants.print) {
+                      widget.onDone?.call(_selectedOption); // Let onDone handle printing
+                    }
+                    else if (_selectedOption == TextConstants.email) {
+                      widget.onEmail?.call(contactInfo);
+                      widget.onDone?.call(_selectedOption, email: contactInfo);
+                    } else if (_selectedOption == TextConstants.sms) {
+                      widget.onSMS?.call(contactInfo);
+                      widget.onDone?.call(_selectedOption);
+                    }
+                  }
+                }
+                    : widget.status == PaymentStatus.partial
+                    ? (widget.onNextPayment ?? () {}) // Next payment for partial
+                    : () {},
+
+                backgroundColor: const Color(0xFF1BA672),
+                isLoading: _isDoneLoading,
               ),
             ),
           ],

@@ -26,8 +26,10 @@ import '../../Database/store_db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/api_response.dart';
+import '../../Helper/customerdisplayhelper.dart';
 import '../../Models/Payment/payment_model.dart';
 import '../../Models/Payment/void_payment_model.dart';
+import '../../Preferences/pinaka_preferences.dart';
 import '../../Repositories/Orders/order_repository.dart';
 import '../../Repositories/Payment/payment_repository.dart';
 import '../../Utilities/global_utility.dart';
@@ -35,6 +37,7 @@ import '../../Utilities/responsive_layout.dart';
 import '../../Utilities/result_utility.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_payment_dialog.dart';
+import '../../services/CustomerDisplayService.dart';
 import '../Auth/login_screen.dart';
 import 'Settings/image_utils.dart';
 import 'Settings/printer_setup_screen.dart';
@@ -2223,6 +2226,35 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     if (kDebugMode) {
       print("Showing Payment Dialog: amount=$amount, showChange=$showChange, changeAmount=$changeAmount");
     }
+
+    // Function to update customer display with logging
+    Future<void> _updateCustomerDisplayWelcome() async {
+      final storeInfo = PinakaPreferences.getLoggedInStore();
+
+      if (storeInfo.isNotEmpty) {
+        // Log all store info fields
+        if (kDebugMode) {
+          print(">>> Updating Customer Display with store info:");
+          print("Store ID: ${storeInfo['storeId']}");
+          print("Store Name: ${storeInfo['storeName']}");
+          print("Store Logo URL: ${storeInfo['storeLogoUrl']}");
+          print("Store Base URL: ${storeInfo['storeBaseUrl']}");
+        }
+
+        await CustomerDisplayHelper.updateWelcomeWithStore(
+          storeInfo['storeId']!,
+          storeInfo['storeName']!,
+          storeLogoUrl: storeInfo['storeLogoUrl'],
+          storeBaseUrl: storeInfo['storeBaseUrl'],
+        );
+      } else {
+        if (kDebugMode) {
+          print(">>> No store info found, showing default welcome screen");
+        }
+        await CustomerDisplayService.showWelcome();
+      }
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -2231,16 +2263,54 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         mode: PaymentMode.cash,
         amount: amount,
         changeAmount: showChange ? changeAmount : null,
-        onVoid: () => showVoidExitConfirmation(context,false), /// pass false as this order is completed but canceled by user, change status to canceled by backend
-        onPrint: () {
+        onVoid: () => showVoidExitConfirmation(context, false),
+
+        onNoReceipt: () async {
+          if (kDebugMode) print(">>> NoReceipt pressed");
+          await _updateCustomerDisplayWelcome(); // Update display first
+          changeStatusToCompletedAndExit(false); // Then complete order
+        },
+
+        onDone: (selectedOption, {String? email}) async {
           if (kDebugMode) {
-            print("Print receipt for amount: $amount");
+            print("DEBUG 0011 : $selectedOption, $email, ${email?.isNotEmpty}");
           }
-          Navigator.of(context).pop();
-          _showReceiptDialog(context, amount);
-          if(!Misc.disablePrinter) {
-            _preparePrintTicket();
+
+          // Handle email separately
+          if (selectedOption == TextConstants.email && email != null && email.isNotEmpty) {
+            if (orderId == null || orderId == 0) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(TextConstants.canNotSendEmail),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+              return;
+            }
+
+            paymentBloc.sendOrderDetails(orderId!, email);
+            StreamSubscription? subscription;
+            subscription = paymentBloc.sendOrderDetailsStream.listen((response) async {
+              subscription?.cancel();
+              if (kDebugMode) print(">>> Email sent, updating customer display");
+              await _updateCustomerDisplayWelcome();
+              changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
+            });
+            return;
           }
+
+          // Print option
+          if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
+            if (kDebugMode) print(">>> Printing receipt");
+            await _preparePrintTicket();
+            await _printTicket(manual: true); // only one print
+          }
+
+          // Update customer display and complete order
+          if (kDebugMode) print(">>> Updating customer display before completing order");
+          await _updateCustomerDisplayWelcome();
+          changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
         },
       ),
     );
@@ -2314,7 +2384,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       // convert image to grayscale
       var grayscaleImage = img.grayscale(originalImg);
       // bytes += generator.imageRaster(img.decodeImage(imageBytes)!, align: PosAlign.center);
-      bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
+      //bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
     }
 
     //Header
@@ -2590,53 +2660,99 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
   }
 
-  Future _printTicket() async{
-    // if(true) return;
-    final ticket =  await _printerSettings.getTicket();
+  // Future _printTicket() async{
+  //   // if(true) return;
+  //   final ticket =  await _printerSettings.getTicket();
+  //   final result = await _printerSettings.printTicket(bytes, ticket);
+  //
+  //   if (kDebugMode) {
+  //     print(">>>> PrintTicket result $result");
+  //   }
+  //   switch (result) {
+  //     case Ok<BluetoothPrinter>():
+  //     // BluetoothPrinter printer = result.value;
+  //       break;
+  //     case Error<BluetoothPrinter>():
+  //       WidgetsBinding.instance.addPostFrameCallback((_) { // Build #1.0.16
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //           SnackBar(
+  //             content: Text(
+  //               result.error.getMessage,
+  //               style: const TextStyle(color: Colors.red),
+  //             ),
+  //             backgroundColor: Colors.black, // ✅ Black background
+  //             duration: const Duration(seconds: 3),
+  //           ),
+  //         );
+  //         /// call printer setup screen
+  //         if (kDebugMode) {
+  //           print("call printer setup screen");
+  //         }
+  //         Navigator.push(context, MaterialPageRoute(
+  //           builder: (context) => PrinterSetup(),
+  //         )).then((result) {
+  //           if (result == TextConstants.refresh) { // Build #1.0.175: added TextConstants
+  //             _printerSettings.loadPrinter();
+  //             setState(() {
+  //               // Update state to refresh the UI
+  //               if (kDebugMode) {
+  //                 print("OrderSummaryScreen - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
+  //               }
+  //               if(!Misc.disablePrinter) {
+  //                 _printTicket();
+  //               }
+  //             });
+  //           } else {
+  //             if (kDebugMode) {
+  //               print("OrderSummaryScreen - printer setup is NOT done, or user cancels printer setup");
+  //             }
+  //             // Build #1.0.168: If user cancels printer setup, show receipt dialog again
+  //             if(mounted) {
+  //               _showReceiptDialog(context, paidAmount);
+  //             }
+  //           }
+  //         });
+  //       });
+  //       break;
+  //   }
+  // }
+  Future _printTicket({bool manual = false}) async {
+    final ticket = await _printerSettings.getTicket();
     final result = await _printerSettings.printTicket(bytes, ticket);
 
     if (kDebugMode) {
       print(">>>> PrintTicket result $result");
     }
+
     switch (result) {
       case Ok<BluetoothPrinter>():
-      // BluetoothPrinter printer = result.value;
         break;
       case Error<BluetoothPrinter>():
-        WidgetsBinding.instance.addPostFrameCallback((_) { // Build #1.0.16
+        if (manual) return; // ✅ Stop retry when called manually
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
                 result.error.getMessage,
                 style: const TextStyle(color: Colors.red),
               ),
-              backgroundColor: Colors.black, // ✅ Black background
+              backgroundColor: Colors.black,
               duration: const Duration(seconds: 3),
             ),
           );
-          /// call printer setup screen
-          if (kDebugMode) {
-            print("call printer setup screen");
-          }
+
           Navigator.push(context, MaterialPageRoute(
             builder: (context) => PrinterSetup(),
           )).then((result) {
-            if (result == TextConstants.refresh) { // Build #1.0.175: added TextConstants
+            if (result == TextConstants.refresh) {
               _printerSettings.loadPrinter();
               setState(() {
-                // Update state to refresh the UI
-                if (kDebugMode) {
-                  print("OrderSummaryScreen - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
-                }
                 if(!Misc.disablePrinter) {
-                  _printTicket();
+                  _printTicket(); // retry only when NOT manual
                 }
               });
             } else {
-              if (kDebugMode) {
-                print("OrderSummaryScreen - printer setup is NOT done, or user cancels printer setup");
-              }
-              // Build #1.0.168: If user cancels printer setup, show receipt dialog again
               if(mounted) {
                 _showReceiptDialog(context, paidAmount);
               }
@@ -2820,26 +2936,30 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       print("OrderSummaryScreen _showReceiptDialog Done call print receipt = $isReceipt");
     }
 
-    if (selectedOption == TextConstants.print) {
-      // Call print callback if selected
-      if (isReceipt) {
-        if(!Misc.disablePrinter) {
-          _printTicket();
-        }
-        if (kDebugMode) {
-          print("printing the ticket --- $isReceipt");
-        }
-      }
-      // } else if (selectedOption == TextConstants.email) { // Build #1.0.159: Email receipt -> No need
-      //   ScaffoldMessenger.of(context).showSnackBar(
-      //     SnackBar(
-      //       content: Text(TextConstants.emailConfiguration),
-      //       backgroundColor: Colors.red,
-      //       duration: const Duration(seconds: 2),
-      //     ),
-      //   );
-
-    } else if (selectedOption == TextConstants.sms) {// SMS receipt
+    // if (selectedOption == TextConstants.print) {
+    //   // Call print callback if selected
+    //   if (isReceipt) {
+    //     if(!Misc.disablePrinter) {
+    //       _printTicket();
+    //     }
+    //     if (kDebugMode) {
+    //       print("printing the ticket --- $isReceipt");
+    //     }
+    //   }
+    //   // } else if (selectedOption == TextConstants.email) { // Build #1.0.159: Email receipt -> No need
+    //   //   ScaffoldMessenger.of(context).showSnackBar(
+    //   //     SnackBar(
+    //   //       content: Text(TextConstants.emailConfiguration),
+    //   //       backgroundColor: Colors.red,
+    //   //       duration: const Duration(seconds: 2),
+    //   //     ),
+    //   //   );
+    //
+    // }
+    if (kDebugMode) {
+      print("changeStatusToCompletedAndExit called with isReceipt=$isReceipt, selectedOption=$selectedOption");
+    }
+    else if (selectedOption == TextConstants.sms) {// SMS receipt
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(TextConstants.smsConfiguration),

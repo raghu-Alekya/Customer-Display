@@ -19,12 +19,15 @@ import '../Helper/Extentions/theme_notifier.dart';
 import '../Constants/text.dart';
 import '../Blocs/Auth/logout_bloc.dart';
 import '../Helper/api_response.dart';
+import '../Helper/customerdisplayhelper.dart';
+import '../Preferences/pinaka_preferences.dart';
 import '../Repositories/Auth/logout_repository.dart';
 import '../Screens/Home/add_screen.dart';
 import '../Screens/Home/Settings/settings_screen.dart';
 import '../Screens/Home/shift_open_close_balance.dart';
 import '../Screens/Home/total_orders_screen.dart';
 import '../Utilities/svg_images_utility.dart';
+import '../services/CustomerDisplayService.dart';
 import 'widget_alert_popup_dialogs.dart';
 
 class NavigationBar extends StatelessWidget {
@@ -943,7 +946,7 @@ class NavigationBar extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(6), // ✅ reduced border radius
                                 ),
                               ),
-                              onPressed: () {
+                              onPressed: () async {
                                 if (kDebugMode) {
                                   print("Logout confirmed, initiating logout process");
                                 }
@@ -952,11 +955,22 @@ class NavigationBar extends StatelessWidget {
                                   context: context,
                                   barrierDismissible: false,
                                   builder: (BuildContext context) {
-                                    bool isLoading = true;
-                                    logoutBloc.logoutStream.listen((response) {
+                                    logoutBloc.logoutStream.listen((response) async {
                                       if (response.status == Status.COMPLETED) {
                                         if (kDebugMode) {
                                           print("Logout successful, navigating to LoginScreen");
+                                        }
+
+                                        final storeInfo = PinakaPreferences.getLoggedInStore();
+                                        if (storeInfo.isNotEmpty) {
+                                          await CustomerDisplayHelper.updateWelcomeWithStore(
+                                            storeInfo['storeId']!,
+                                            storeInfo['storeName']!,
+                                            storeLogoUrl: storeInfo['storeLogoUrl'],
+                                            storeBaseUrl: storeInfo['storeBaseUrl'],
+                                          );
+                                        } else {
+                                          await CustomerDisplayService.showWelcome();
                                         }
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(
@@ -967,19 +981,19 @@ class NavigationBar extends StatelessWidget {
                                             duration: const Duration(seconds: 2),
                                           ),
                                         );
-                                        isLoading = false;
+
                                         Navigator.of(context).pop(); // Close loader
-                                        Navigator.of(context).pop(); // Close alert
+                                        Navigator.of(context).pop(); // Close logout dialog
                                         Navigator.pushReplacement(
                                           context,
                                           MaterialPageRoute(builder: (context) => LoginScreen()),
                                         );
+
                                       } else if (response.status == Status.ERROR) {
                                         if (response.message!.contains('Unauthorised')) {
                                           if (kDebugMode) {
                                             print("Nav bar -- Unauthorised : ${response.message!}");
                                           }
-                                          isLoading = false;
                                           Navigator.of(context).pop();
                                           WidgetsBinding.instance.addPostFrameCallback((_) {
                                             Navigator.pushReplacement(
@@ -1007,9 +1021,8 @@ class NavigationBar extends StatelessWidget {
                                               duration: const Duration(seconds: 2),
                                             ),
                                           );
+                                          Navigator.of(context).pop();
                                         }
-                                        isLoading = false;
-                                        Navigator.of(context).pop();
                                       }
                                     });
 

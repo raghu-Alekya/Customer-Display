@@ -2548,7 +2548,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                   color: themeHelper.themeMode == ThemeMode.dark
                                                       ? ThemeNotifier.textDark
                                                       : Colors.black54,
-                                                  fontSize: 10,
+                                                  fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
                                                 ),
                                               ),
                                           ],

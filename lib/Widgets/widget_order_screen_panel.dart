@@ -895,7 +895,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                       children: [
                         SvgPicture.asset('assets/svg/calendar.svg',width: 22,height: 22,),
                         Text(displayDate,  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.secondaryHeaderColor)),
-                        const SizedBox(width: 60),
+                        const SizedBox(width: 105),
                         SvgPicture.asset('assets/svg/clock.svg',width: 22,height: 22,),
                         Text(displayTime ,style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.secondaryHeaderColor)),
                       ],
@@ -2262,7 +2262,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       // convert image to grayscale
       var grayscaleImage = img.grayscale(originalImg);
       // bytes += generator.imageRaster(img.decodeImage(imageBytes)!, align: PosAlign.center);
-      bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
+      //bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
     }
 
     //Header

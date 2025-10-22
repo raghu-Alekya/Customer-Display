@@ -738,8 +738,6 @@ class MainActivity : FlutterActivity() {
 
             thankYouText.text = "Thank You!"
             visitAgainText.text = "Please Visit Again"
-
-            // Load store logo
             if (!currentStoreLogoUrl.isNullOrEmpty()) {
                 Thread {
                     try {
@@ -757,20 +755,9 @@ class MainActivity : FlutterActivity() {
             } else {
                 storeLogoView.setImageResource(R.drawable.pinaka_logo)
             }
-
-            // Load slideshow in Thank You layout
             if (!currentStoreBaseUrl.isNullOrEmpty()) {
-                loadSlideshowFromApi(currentStoreBaseUrl) // <-- add this
+                loadSlideshowFromApi(currentStoreBaseUrl)
             }
-
-            Handler(Looper.getMainLooper()).postDelayed({
-                showWelcomeLayout(
-                    storeId = currentStoreId,
-                    storeName = currentStoreName,
-                    storeLogoUrl = currentStoreLogoUrl,
-                    storeBaseUrl = currentStoreBaseUrl
-                )
-            }, 3000)
         }
         private fun stopSlideshow() {
             slideshowHandler?.removeCallbacksAndMessages(null)
