@@ -526,7 +526,6 @@ class MainActivity : FlutterActivity() {
                 Log.d("CustomerDisplay", "✅ Using default store logo")
             }
         }
-
         fun updateCustomerData(
             orderId: Int,
             storeId: String?,
@@ -544,7 +543,7 @@ class MainActivity : FlutterActivity() {
         ) {
             val defaultStoreId = "STORE001"
             val defaultStoreName = "Pinaka"
-            val defaultStoreLogoUrl = null
+            val defaultStoreLogoUrl: String? = null
 
             currentStoreId = storeId?.takeIf { it.isNotEmpty() } ?: defaultStoreId
             currentStoreName = storeName?.takeIf { it.isNotEmpty() } ?: defaultStoreName
@@ -557,25 +556,21 @@ class MainActivity : FlutterActivity() {
             // Update store info
             updateStoreInfo(currentStoreId, currentStoreName, currentStoreLogoUrl, orderDate, orderTime)
 
-            // --- Start slideshow using existing methods ---
+            // --- Start slideshow ---
             slideshowImageView = findViewById(R.id.slideshow_image)
             if (currentStoreBaseUrl.isNotEmpty()) {
                 loadSlideshowFromApi(currentStoreBaseUrl)
             } else {
-                // Show default Pinaka logo centered
                 slideshowImageView.setImageResource(R.drawable.pinaka_logo)
                 slideshowImageView.scaleType = ImageView.ScaleType.CENTER_INSIDE
                 Log.d("CustomerDisplay", "✅ No storeBaseUrl → showing centered default logo")
             }
 
-// If no items, show "No items in cart" message instead of navigating
+            // --- Empty cart handling ---
+            itemsContainer.removeAllViews()
             if (items.isEmpty() || grossTotal == 0.0) {
                 Log.d("CustomerDisplay", "📢 No order data → showing empty cart message")
 
-                // Clear previous items
-                itemsContainer.removeAllViews()
-
-                // Create a vertical layout to hold the image and the text
                 val emptyLayout = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER
@@ -585,46 +580,34 @@ class MainActivity : FlutterActivity() {
                     )
                 }
 
-                // Add the empty cart image
                 val emptyImage = ImageView(context).apply {
-                    setImageResource(R.drawable.empty_cart) // make sure this drawable exists
+                    setImageResource(R.drawable.empty_cart)
                     scaleType = ImageView.ScaleType.CENTER_INSIDE
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        bottomMargin = 16
-                    }
+                    ).apply { bottomMargin = 16 }
                 }
-                emptyLayout.addView(emptyImage)
 
-                // Add the message text
                 val emptyMessage = TextView(context).apply {
                     text = "No items in the Order panel"
                     textSize = 22f
                     setTextColor(Color.BLACK)
                     gravity = Gravity.CENTER
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
                 }
+
+                emptyLayout.addView(emptyImage)
                 emptyLayout.addView(emptyMessage)
-
-                // Add the vertical layout to your container
                 itemsContainer.addView(emptyLayout)
-
-                // Stop further processing
                 return
             }
-
 
             // --- Populate order items ---
             orderIdView.text = "Order #$orderId"
             itemsContainer.removeAllViews()
             var totalItemCount = 0
 
-            for (item in items) {
+            for ((index, item) in items.withIndex()) {
                 val name = (item["name"] as? String) ?: ""
                 val qty = (item["qty"] as? Number)?.toInt() ?: 0
                 val price = (item["price"] as? Number)?.toDouble() ?: 0.0
@@ -634,26 +617,28 @@ class MainActivity : FlutterActivity() {
                     totalItemCount += qty
                 }
 
-                val cardLayout = LinearLayout(context).apply {
+                // --- Item layout ---
+                val itemLayout = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
-                    setPadding(6, 8, 6, 8)
-                    setBackgroundColor(Color.WHITE)
-                    background = GradientDrawable().apply {
-                        setColor(Color.WHITE)
-                        setStroke(2, Color.LTGRAY)
-                        cornerRadius = 8f
-                    }
+                    // Remove padding for no gaps
+                    setPadding(0, 0, 0, 0)
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        setMargins(0, 2, 0, 2)
-                    }
+                    )
+                    gravity = Gravity.CENTER_VERTICAL
+                    setBackgroundColor(Color.WHITE)
                 }
 
+                // --- Image ---
                 val imageView = ImageView(context).apply {
-                    layoutParams = LinearLayout.LayoutParams(70, 70)
+                    layoutParams = LinearLayout.LayoutParams(80, 80).apply { rightMargin = 16 }
                     scaleType = ImageView.ScaleType.CENTER_CROP
+                    clipToOutline = true
+                    background = GradientDrawable().apply {
+                        cornerRadius = 12f
+                        setColor(Color.TRANSPARENT)
+                    }
                 }
 
                 when {
@@ -678,43 +663,68 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
+                // --- Details layout ---
                 val detailsLayout = LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { setMargins(8, 0, 0, 0) }
-                    weightSum = 2f
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
 
-                val nameQtyView = TextView(context).apply {
+                val displayName = if (name.length > 20) name.take(20) + "..." else name
+
+                val nameView = TextView(context).apply {
                     textSize = 15f
-                    setTypeface(typeface, android.graphics.Typeface.BOLD)
-                    text = "$name  x$qty"
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                        topMargin = 4 // moves it slightly down
-                    }
+                    setTypeface(typeface, Typeface.BOLD)
+                    text = displayName
+                    setTextColor(Color.BLACK)
                 }
 
+                val qtyPriceView = TextView(context).apply {
+                    textSize = 15f
+                    text = "${formatCurrency(price)} × $qty"
+                    setTextColor(Color.DKGRAY)
+                }
+
+                detailsLayout.addView(nameView)
+                detailsLayout.addView(qtyPriceView)
+
+                // --- Total price ---
                 val totalView = TextView(context).apply {
-                    textSize = 15f
-                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    textSize = 16f
+                    setTypeface(typeface, Typeface.BOLD)
                     text = formatCurrency(total)
-                    setTextColor(if (total < 0) Color.RED else Color.BLUE)
                     gravity = Gravity.END
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                        topMargin = 4
-                    }
+                    setTextColor(Color.BLACK)
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
                 }
 
+                // --- Add views to item layout ---
+                itemLayout.addView(imageView)
+                itemLayout.addView(detailsLayout)
+                itemLayout.addView(totalView)
 
-                detailsLayout.addView(nameQtyView)
-                detailsLayout.addView(totalView)
-                cardLayout.addView(imageView)
-                cardLayout.addView(detailsLayout)
-                itemsContainer.addView(cardLayout)
+                // --- Add item layout ---
+                itemsContainer.addView(itemLayout)
+
+                // --- Add divider only between items ---
+                if (index < items.size - 1) {
+                    val divider = View(context).apply {
+                        setBackgroundColor(Color.BLACK)
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            1 // divider height
+                        ).apply {
+                            topMargin = 1 // 1px space above
+                            bottomMargin = 1 // 1px space below
+                        }
+                    }
+                    itemsContainer.addView(divider)
+                }
             }
 
+            // --- Update totals ---
             findViewById<TextView>(R.id.label_total_items).text = "Total Items : $totalItemCount"
             grossView.text = formatCurrency(grossTotal)
             discountView.text = formatCurrency(-discount)
@@ -725,7 +735,7 @@ class MainActivity : FlutterActivity() {
             paymentDate.text = orderDate
             paymentTime.text = orderTime
 
-            Log.d("CustomerDisplay", "✔ Order #$orderId totals updated on display, Total Items: $totalItemCount")
+            Log.d("CustomerDisplay", "✔ Order #$orderId totals updated, Total Items: $totalItemCount")
         }
 
         fun showThankYouLayout() {

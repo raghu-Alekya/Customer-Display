@@ -606,7 +606,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
             // Only show "No Receipt" button if payment is successful
             if (widget.status == PaymentStatus.successful) ...[
-              const SizedBox(width: 8), // spacing
+              const SizedBox(width: 10), // spacing
               Expanded(
                 child: _buildButton(
                   TextConstants.noReceipt,

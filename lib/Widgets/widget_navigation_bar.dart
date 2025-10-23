@@ -1141,7 +1141,7 @@ class SidebarButton extends StatelessWidget {
                       ? Colors.grey.shade800
                       : Colors.white70,
                   fontWeight: FontWeight.bold,
-                  fontSize: isSelected ? 10.0 : 9.0, // Increase if selected
+                  fontSize: isSelected ? 11.0 : 10.0, // Increase if selected
                 ),
                 textAlign: TextAlign.center,
               ),

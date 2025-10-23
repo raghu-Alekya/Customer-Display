@@ -648,12 +648,24 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 // Date
                 Row(
                   children: [
-                    Icon(Icons.calendar_month_rounded, size: ResponsiveLayout.getIconSize(14),),
+                    SvgPicture.asset(
+                      'assets/svg/calendar.svg',
+                      width: 20,
+                      height: 20,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : Colors.black, // or your light mode color
+                    ),
                     SizedBox(width: ResponsiveLayout.getWidth(4)),
                     Text(
                       _displayDate, //'Sunday, 16 March 2025',
-                      style: TextStyle(color: theme.secondaryHeaderColor,
-                        fontSize: ResponsiveLayout.getFontSize(14),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : Colors.black,
                       ),
 
                     ),
@@ -663,13 +675,25 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 // Time
                 Row(
                   children: [
-                    Icon(Icons.access_time, size: ResponsiveLayout.getIconSize(14),),
+                    SvgPicture.asset(
+                      'assets/svg/clock.svg',
+                      width: 20,
+                      height: 20,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : Colors.black,
+                    ),
                     SizedBox(width: ResponsiveLayout.getWidth(4)),
                     Text(
                       _displayTime,//'11:41 A.M',
                       style: TextStyle(
-                          color: theme.secondaryHeaderColor, fontWeight: FontWeight.bold, fontSize: ResponsiveLayout.getFontSize(14)),
-                    ),
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : Colors.black,
+                      ),),
                   ],
                 ),
               ],
@@ -721,16 +745,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   Text(
                     '${TextConstants.orderId} #$orderId', // Build #1.0.29: orderId(serverId) from db
                     style: TextStyle(
-                      fontSize: ResponsiveLayout.getFontSize(16),
-                      fontWeight: FontWeight.w500,
-                      color: themeHelper.themeMode == ThemeMode.dark ? Colors.white70 : Colors.black87,
-                    ),
-                  ),
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : Colors.black,
+                    ),),
                   Text(
                     TextConstants.paymentSummary,
                     style: TextStyle(
-                      color:themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark :Colors.grey[600],
-                      fontSize: ResponsiveLayout.getFontSize(12),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : Colors.grey,
                     ),
                   ),
                 ],
@@ -812,7 +842,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         _buildOrderCalculation(TextConstants.merchantDiscount, '-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}'),
                         _buildOrderCalculation(TextConstants.taxText, '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'), // Build #1.0.80: updated tax dynamically
                         //SizedBox(height: ResponsiveLayout.getHeight(3)),
-                        DottedLine(),
+                      DottedLine(
+                        dashColor: themeHelper.themeMode == ThemeMode.dark
+                            ? Colors.grey
+                            : Colors.black54,
+                        lineThickness: 1.5,
+                        dashGapLength: 4,
+                      ),
                         //SizedBox(height: ResponsiveLayout.getHeight(3)),
                         _buildOrderCalculation(TextConstants.netPayable, '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}', // Build #1.0.80: updated balance amount dynamically
                             isTotal: true),
@@ -857,7 +893,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text("${TextConstants.totalItemsText}: ${orderItems.length}",
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
 
                       Row(
                         children: [
@@ -866,7 +902,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 ? ' ${TextConstants.netPayable} : ${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}'
                                 : '${TextConstants.netPayable} ${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 14,
                               fontWeight: FontWeight.bold,
                               color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
                             ),
@@ -1254,7 +1290,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               TextSpan(
                                 text: orderItem[AppDBConst.itemName],
                                 style: TextStyle(
-                                    fontSize: 10,
+                                    fontSize: 13,
                                     fontWeight: FontWeight.bold,
                                     color: themeHelper.themeMode == ThemeMode.dark
                                         ? ThemeNotifier.textDark
@@ -1293,10 +1329,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     ),
                     if (!isCouponOrPayout) //Build #1.0.187
                       Text(
-                        "${TextConstants.currencySymbol} ${regularPrice.toStringAsFixed(2)} * ${orderItem[AppDBConst.itemCount]}", // Build #1.0.12: now item count will update in order panel
+                        "${TextConstants.currencySymbol} ${regularPrice.toStringAsFixed(2)} x ${orderItem[AppDBConst.itemCount]}", // Build #1.0.12: now item count will update in order panel
                         style: TextStyle(
                           color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.black87,
-                          fontSize: ResponsiveLayout.getFontSize(10),
+                          fontSize: ResponsiveLayout.getFontSize(13),
                         ),
                       ),
                   ],
@@ -1304,17 +1340,17 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               ),
               // Regular Price
 
-              if (!isCouponOrPayout)
-                Text(
-                  "${TextConstants.currencySymbol} ${(regularPrice * orderItem[AppDBConst.itemCount]).toStringAsFixed(2)}",
-                  // "${TextConstants.currencySymbol}${regularPrice.toStringAsFixed(2) * orderItem[AppDBConst.itemCount]}",
-                  style: TextStyle(
-                      color: themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.textDark
-                          : Colors.blueGrey,
-                      fontSize: 14),
-                ),
-              SizedBox(width: 20,),
+              // if (!isCouponOrPayout)
+              //   Text(
+              //     "${TextConstants.currencySymbol} ${(regularPrice * orderItem[AppDBConst.itemCount]).toStringAsFixed(2)}",
+              //     // "${TextConstants.currencySymbol}${regularPrice.toStringAsFixed(2) * orderItem[AppDBConst.itemCount]}",
+              //     style: TextStyle(
+              //         color: themeHelper.themeMode == ThemeMode.dark
+              //             ? ThemeNotifier.textDark
+              //             : Colors.blueGrey,
+              //         fontSize: 14),
+              //   ),
+               SizedBox(width: 20,),
               //  Sale Price
               Text(
                 isCouponOrPayout

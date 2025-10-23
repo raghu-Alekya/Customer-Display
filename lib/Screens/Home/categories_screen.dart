@@ -1010,7 +1010,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
                               decoration: BoxDecoration(
                                 color: Theme.of(context).brightness ==
                                     Brightness.dark
-                                    ? const Color(0xFF1C1C1E) // dark background
+                                    ? const Color(0xFF1D1C2C) // dark background
                                     : Colors.white, // light background
                                 borderRadius: BorderRadius.circular(12),
                                 boxShadow: [

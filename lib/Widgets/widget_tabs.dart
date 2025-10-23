@@ -195,7 +195,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
           decoration: BoxDecoration(
             color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.white,
             borderRadius: BorderRadius.circular(16.0),
-            border: Border.all(color: Colors.grey.shade500),
+            border: Border.all(color: themeHelper.themeMode == ThemeMode.dark ? Color(0xFF1A1A1A) : Color(0xFFE1E1E1)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.05),
@@ -758,7 +758,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     //     borderRadius: BorderRadius.circular(16),
     //   ),
     return Padding(
-      padding: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.only(top: 10),
       child:  Column(
         children: [
           Text(
@@ -769,7 +769,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Color(0xFF1E2745),
             ),
           ),
-          const SizedBox(height: 20,),
+          const SizedBox(height: 5),
           Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.spaceAround,

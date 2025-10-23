@@ -1324,145 +1324,94 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Column(
-                  children: [
-                    // 🔹 Tabs header
-                    Container(
-                      color: themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.primaryBackground
-                          : null,
-                      padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              controller: _scrollController,
-                              child: Row(
-                                children: List.generate(tabs.length, (index) {
-                                  final bool isSelected =
-                                      _tabController!.index == index;
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 4, vertical: 4),
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        setState(() {
-                                          _tabController!.index = index;
-                                        });
-                                      },
-                                      child: Container(
-                                        height: isSelected
-                                            ? 50
-                                            : 50, // selected tab taller
-                                        // padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: isSelected
-                                              ? 12
-                                              : 12, // adjust internal padding only
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: isSelected
-                                              ? (themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                              ? Color(
-                                              0xFFFCDFDC) // selected top bar in dark
-                                              : const Color(0xFFFCDFDC))
-                                              : (themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                              ? Color(
-                                              0xFF31354A) // order panel tob bar and unselected tab color in dark
-                                              : const Color(
-                                              0xFFEFEEEE)), // unselected tab in light
-                                          // color: isSelected ?  ThemeNotifier.orderPanelTabSelection : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.orderPanelTabBackground : Colors.grey.shade400,
-
-                                          // color: isSelected ?  ThemeNotifier.orderPanelTabSelection : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.orderPanelTabBackground : Colors.grey.shade400,
-                                          //borderRadius: BorderRadius.circular(10),
-                                          borderRadius: BorderRadius.only(
-                                            topLeft: Radius.circular(10),
-                                            topRight: Radius.circular(10),
-                                            //bottomLeft: isSelected ? Radius.circular(0) : Radius.circular(10),
-                                            // bottomRight: isSelected ? Radius.circular(0) : Radius.circular(10),
-                                            bottomLeft: isSelected
-                                                ? const Radius.circular(10)
-                                                : const Radius.circular(10),
-                                            bottomRight: isSelected
-                                                ? const Radius.circular(10)
-                                                : const Radius.circular(10),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Column(
+                    children: [
+                      // 🔹 Tabs header
+                      Container(
+                        color: themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.primaryBackground
+                            : null,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // 🔹 Tabs row
+                            Expanded(
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                controller: _scrollController,
+                                child: Row(
+                                  children: List.generate(tabs.length, (index) {
+                                    final bool isSelected = _tabController!.index == index;
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _tabController!.index = index;
+                                          });
+                                        },
+                                        child: Container(
+                                          height: 50,
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                          decoration: BoxDecoration(
+                                            color: isSelected
+                                                ? const Color(0xFFFCDFDC)
+                                                : (themeHelper.themeMode == ThemeMode.dark
+                                                ? const Color(0xFF31354A)
+                                                : const Color(0xFFEFEEEE)),
+                                            borderRadius: BorderRadius.circular(10),
                                           ),
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Column(
-                                              crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  tabs[index]["title"] as String,
-                                                  style: TextStyle(
-                                                    color: isSelected
-                                                        ? const Color(0xFFFE6464)
-                                                        : const Color(0xFF999393),
-                                                    fontWeight: isSelected
-                                                        ? FontWeight.bold
-                                                        : FontWeight.w500,
-                                                    fontSize: isSelected ? 15 : 14,
-                                                  ),
+                                          child: Row(
+                                            children: [
+                                              Text(
+                                                tabs[index]["title"] as String,
+                                                style: TextStyle(
+                                                  color: isSelected
+                                                      ? const Color(0xFFFE6464)
+                                                      : const Color(0xFF999393),
+                                                  fontWeight:
+                                                  isSelected ? FontWeight.bold : FontWeight.w500,
+                                                  fontSize: isSelected ? 15 : 14,
                                                 ),
-                                                // Text(
-                                                //   tabs[index]["subtitle"] as String,
-                                                //   style: TextStyle(
-                                                //     color: isSelected
-                                                //         ? Colors.black54
-                                                //         : themeHelper.themeMode ==
-                                                //         ThemeMode.dark
-                                                //         ? ThemeNotifier.textDark
-                                                //         : Colors.black54,
-                                                //     fontSize: 12,
-                                                //   ),
-                                                // ),
-                                              ],
-                                            ),
-                                            const SizedBox(width: 40),
-                                            GestureDetector(
-                                              onTap: () {
-                                                CustomDialog.showAreYouSure(context,
-                                                    confirm: () {
+                                              ),
+                                              const SizedBox(width: 40),
+                                              if (isSelected)
+                                                GestureDetector(
+                                                  onTap: () {
+                                                    CustomDialog.showAreYouSure(context, confirm: () {
                                                       removeTab(index);
                                                     });
-                                              },
-                                              child: isSelected
-                                                  ? Image.asset(
-                                                "assets/deletecircle.png",
-                                                width: 20,
-                                                height: 20,
-                                              )
-                                                  : SizedBox
-                                                  .shrink(), // hides the widget when not selected
-                                            ),
-                                          ],
+                                                  },
+                                                  child: Image.asset(
+                                                    "assets/deletecircle.png",
+                                                    width: 20,
+                                                    height: 20,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  );
-                                }),
+                                    );
+                                  }),
+                                ),
                               ),
                             ),
-                          ),
-                          if(tabs.isNotEmpty)
+
+                            // 🔹 New tab button
                             ElevatedButton(
                               onPressed: addNewTab,
                               style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.only(right: 4),
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
                                 elevation: 0,
+                                padding: const EdgeInsets.only(right: 4),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),
-                                backgroundColor: Colors.transparent, // so container decoration shows
-                                shadowColor: Colors.transparent, // to remove default shadow if any
                               ),
                               child: Container(
                                 width: 85,
@@ -1484,7 +1433,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                           : const Color(0xFFB2AFAF),
                                       blurRadius: 4,
                                       offset: const Offset(0, 4),
-                                      spreadRadius: 0,
                                     ),
                                   ],
                                 ),
@@ -1504,14 +1452,14 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                       child: const Icon(
                                         Icons.add,
                                         size: 16,
-                                        color: const Color(0xFFFE6464),
+                                        color: Color(0xFFFE6464),
                                       ),
                                     ),
                                     const SizedBox(width: 8),
                                     const Text(
                                       "New",
                                       style: TextStyle(
-                                        color: const Color(0xFFFE6464),
+                                        color: Color(0xFFFE6464),
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
                                       ),
@@ -1520,12 +1468,14 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 ),
                               ),
                             ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    // 🔹 Content area (Order items)
-                    Expanded(child: buildCurrentOrder()),
-                  ],
+
+                      // 🔹 Content area
+                      Expanded(child: buildCurrentOrder()),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1923,38 +1873,39 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                           height: 20,
                           color: Theme.of(context).brightness == Brightness.dark
                               ? Colors.white
-                              : Color(0xFF656161), // or your light mode color
+                              : Colors.black, // or your light mode color
                         ),
                         const SizedBox(width: 4),
                         Text(
                           displayDate,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 14,
                             fontWeight: FontWeight.bold,
                             color:
                             Theme.of(context).brightness == Brightness.dark
                                 ? Colors.white
-                                : Color(0xFF656161),
+                                : Colors.black,
                           ),
                         ),
-                        const SizedBox(width: 127),
+                        const SizedBox(width: 112),
                         SvgPicture.asset(
                           'assets/svg/clock.svg',
                           width: 20,
                           height: 20,
                           color: Theme.of(context).brightness == Brightness.dark
                               ? Colors.white
-                              : Color(0xFF656161),
+                              : Colors.black,
                         ),
                         const SizedBox(width: 4),
                         Text(
                           displayTime,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
                             color:
                             Theme.of(context).brightness == Brightness.dark
                                 ? Colors.white
-                                : Color(0xFF656161),
+                                : Colors.black,
                           ),
                         ),
                       ],
@@ -2975,14 +2926,14 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text("${TextConstants.totalItemsText}: ${orderItems.length}",
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                             Row(
                               children: [
                                 Text(
                                     _showFullSummary
-                                        ? 'Net Payable : ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}'
-                                        : 'Net Payable : ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}',
-                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        ? 'Net Payable: ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}'
+                                        : 'Net Payable: ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}',
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                                 const SizedBox(width: 8),
                                 Icon(_showFullSummary ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up),
                               ],
@@ -3100,10 +3051,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         child: _isPayBtnLoading  //Build 1.1.36: added loader for pay button in order panel
                             ? CircularProgressIndicator(color: Colors.white)
                             : Text(
-                          "Pay ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
+                          "Pay  ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
                           style: TextStyle(
                             fontSize: 16,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),

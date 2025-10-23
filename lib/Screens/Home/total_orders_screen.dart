@@ -1289,7 +1289,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   Widget _buildSortableColumn(String label, String columnKey) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return SizedBox(
-      width: MediaQuery.of(context).size.width * 0.103,
+      width: MediaQuery.of(context).size.width * 0.100,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 0.0, horizontal: 4.0),
         child: InkWell(
@@ -1355,7 +1355,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   Widget _buildDataCell(String text, {bool isStatus = false}) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return SizedBox(
-      width: MediaQuery.of(context).size.width * 0.103,
+      width: MediaQuery.of(context).size.width * 0.100,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0),
         child: isStatus
