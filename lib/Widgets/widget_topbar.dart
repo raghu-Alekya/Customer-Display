@@ -1146,22 +1146,41 @@ class _TopBarState extends State<TopBar> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   GestureDetector(
+                    // onTap: widget.onThemeChanged,
                     onTap: () async {
-                      final profile =
-                      await CapabilityProfile.load(name: 'XP-N160I');
-                      var bytes = Generator(PaperSize.mm80, profile)
-                          .drawer(); // open drawer
+                      ///Deprecated code, moved to PrinterSettings now
+                      //  // final profile = await CapabilityProfile.load(name: 'default');
+                      //  // var bytes = Generator(PaperSize.mm80, profile).drawer(pin: PosDrawer.pin5); /// open drawer
+                      //  // if (kDebugMode) {
+                      //  //   print("TopBar onTap of cash drawer open tapped with profile: ${profile.name} and bytes return $bytes");
+                      //  // }
+                      // // var sunmi = SunmiPrinterPlus();
+                      // // SunmiDrawer.openDrawer();
+                      // var result = await SunmiPrinterPlusPlatform.instance.openDrawer();
+                      // // sunmi.openDrawer();
+                      //  // bool isOpen = await sunmi.isDrawerOpen();
+                      //  if (kDebugMode) {
+                      //    print("Drawer is open $result");
+                      //  }
+                      //  ScaffoldMessenger.of(context).showSnackBar(
+                      //    const SnackBar(
+                      //      content: Text(TextConstants.cashDrawerIsOpening),
+                      //      backgroundColor: Colors.orange,
+                      //      duration: Duration(seconds: 2),
+                      //    ),
+                      //  );
+
+                      ///Use below code if only openDrawer is needed
+                      // PrinterSettings.openDrawer(context: context);
+                      ///As per Shravan's suggestion, we are now calling printTicket to open drawer from topbar which will automatically invoke open drawer
+                      await PrinterSettings.openDrawer(context: context);
+                      List<int> bytes = [];
+                      final ticket =  await _printerSettings.getTicket();
+                      bytes += ticket.feed(1);
+                      final result = await _printerSettings.printTicket(bytes, ticket);
                       if (kDebugMode) {
-                        print(
-                            "TopBar onTap of cash drawer open tapped with profile: ${profile.name} and bytes return $bytes");
+                        print(">>>> TopBar printer result $result");
                       }
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(TextConstants.cashDrawerIsOpening),
-                          backgroundColor: Colors.orange,
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
                     },
                     child: Container(
                       padding:
@@ -1199,16 +1218,16 @@ class _TopBarState extends State<TopBar> {
                         colorFilter: ColorFilter.mode(
                           themeHelper.themeMode == ThemeMode.dark
                               ? ThemeNotifier.lightBackground
-                              : Colors.grey, //0xFF5ED1BA
+                              : Colors.grey, //0xFFD5A52B
                           BlendMode.srcIn,
                         ),
                       ),
                     ),
                   ),
-                  //const SizedBox(height: 4),
-                  // const Text(
-                  //TextConstants.lightText,
-                  // style: TextStyle(fontSize: 8),
+                  //  const SizedBox(height: 4), // space between icon and label
+                  //const Text(
+                  //  TextConstants.modeText,
+                  //style: TextStyle(fontSize: 8),
                   // ),
                 ],
               ),

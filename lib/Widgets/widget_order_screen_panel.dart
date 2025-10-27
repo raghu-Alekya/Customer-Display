@@ -1045,7 +1045,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                         /// Set display name based on item type
                         String displayName = originalName;
                         if (isPayout) {
-                          displayName = '';
+                          displayName = 'Payout';
                         } else if (isCoupon) {
                           final visiblePartLength = 4;
                           final nameLength = originalName.length;
@@ -1412,22 +1412,36 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                         mainAxisAlignment:
                                         MainAxisAlignment.center,
                                         children: [
+                                          // Text(
+                                          //   isCouponOrPayout
+                                          //       ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice]).toStringAsFixed(2)}"
+                                          //       : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * salesPrice).toStringAsFixed(2)}", //Build #1.0.134: itemTotalPrice updated
+                                          //   style: TextStyle(
+                                          //     fontSize: 14,
+                                          //     fontWeight: FontWeight.bold,
+                                          //     color:
+                                          //     isPayoutOrCouponOrCustomItem
+                                          //         ? Colors.red
+                                          //         : themeHelper.themeMode ==
+                                          //         ThemeMode.dark
+                                          //         ? ThemeNotifier
+                                          //         .textDark
+                                          //         : ThemeNotifier
+                                          //         .textLight, // Added: Red color for Payout/Coupon
+                                          //   ),
+                                          // ),
                                           Text(
-                                            isCouponOrPayout
-                                                ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice]).toStringAsFixed(2)}"
-                                                : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * salesPrice).toStringAsFixed(2)}", //Build #1.0.134: itemTotalPrice updated
+                                            isPayout
+                                                ? "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! * orderItem[AppDBConst.itemPrice]!.abs()).toStringAsFixed(2)}"
+                                                : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! * (isCoupon ? orderItem[AppDBConst.itemPrice]!.abs() : salesPrice)).toStringAsFixed(2)}",
                                             style: TextStyle(
                                               fontSize: 14,
                                               fontWeight: FontWeight.bold,
-                                              color:
-                                              isPayoutOrCouponOrCustomItem
+                                              color: isPayout || isCoupon
                                                   ? Colors.red
-                                                  : themeHelper.themeMode ==
-                                                  ThemeMode.dark
-                                                  ? ThemeNotifier
-                                                  .textDark
-                                                  : ThemeNotifier
-                                                  .textLight, // Added: Red color for Payout/Coupon
+                                                  : themeHelper.themeMode == ThemeMode.dark
+                                                  ? ThemeNotifier.textDark
+                                                  : ThemeNotifier.textLight,
                                             ),
                                           ),
                                         ],

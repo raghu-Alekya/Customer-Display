@@ -103,6 +103,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   // Determine the date and time to display
   String _displayDate = "";
   String _displayTime = "";
+  int _rawAmount = 0; // holds value in paise/cents, e.g. 2345
 
   @override
   void initState() {
@@ -1354,12 +1355,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               //  Sale Price
               Text(
                 isCouponOrPayout
-                    ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice]).toStringAsFixed(2)}"
+                    ? (isPayout
+                    ? "${(orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice]) < 0
+                    ? '-'
+                    : '-'}${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice]).abs().toStringAsFixed(2)}"
+                    : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice]).toStringAsFixed(2)}")
                     : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * salesPrice).toStringAsFixed(2)}",
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: ResponsiveLayout.getFontSize(16),
-                  color: isCouponOrPayout ? Colors.red : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight, // Added: Red color for Payout/Coupon
+                  color: isCouponOrPayout
+                      ? Colors.red
+                      : themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.textDark
+                      : ThemeNotifier.textLight,
                 ),
               ),
             ],
@@ -1627,6 +1636,118 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                                       SizedBox(height: ResponsiveLayout.getHeight(12)),
 
+            //                           // Expanded numpad to fill remaining space
+            //                           Expanded(
+            //                             child: CustomNumPad(
+            //                               numPadType: NumPadType.payment,
+            //                               isDarkTheme: themeHelper.themeMode == ThemeMode.dark,
+            //                               getPaidAmount: () => amountController.text,
+            //                               balanceAmount: balanceAmount,
+            //                               onDigitPressed: (value) {
+            //                                 if (balanceAmount <= 0) return;
+            //
+            //                                 if (_amountErrorText != null) {
+            //                                   setState(() {
+            //                                     _amountErrorText = null;
+            //                                   });
+            //                                 }
+            //
+            //                                 // Convert string to int digit
+            //                                 int digit = int.tryParse(value) ?? 0;
+            //
+            //                                 // Shift left by one digit (like adding a new cent)
+            //                                 _rawAmount = (_rawAmount * 10 + digit) % 100000000; // prevents overflow
+            //
+            //                                 double displayValue = _rawAmount / 100.0;
+            //                                 amountController.text = '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+            //
+            //                                 setState(() {});
+            //                               },
+            //                               // onDigitPressed: (value) {
+            //                               //   if (balanceAmount <= 0) {
+            //                               //     return;
+            //                               //   }
+            //                               //   if (_amountErrorText != null) {
+            //                               //     setState(() {
+            //                               //       _amountErrorText = null;
+            //                               //     });
+            //                               //   }
+            //                               //   String cleanText = amountController.text.replaceAll(TextConstants.currencySymbol, '');
+            //                               //   amountController.text = '${TextConstants.currencySymbol}' + cleanText + value;
+            //                               //   setState(() {});
+            //                               // },
+            //                               // onClearPressed: () {
+            //                               //   if (_amountErrorText != null) {
+            //                               //     setState(() {
+            //                               //       _amountErrorText = null;
+            //                               //     });
+            //                               //   }
+            //                               //   amountController.clear();
+            //                               //   setState(() {});
+            //                               // },
+            //                               // onDeletePressed: () {
+            //                               //   if (amountController.text.isNotEmpty) {
+            //                               //     amountController.text = amountController.text.substring(0, amountController.text.length - 1);
+            //                               //     setState(() {});
+            //                               //   }
+            //                               // },
+            //                               onClearPressed: () {
+            //                                 _rawAmount = 0;
+            //                                 amountController.text = '${TextConstants.currencySymbol}0.00';
+            //                                 if (_amountErrorText != null) {
+            //                                   setState(() {
+            //                                     _amountErrorText = null;
+            //                                   });
+            //                                 }
+            //                                 setState(() {});
+            //                               },
+            //                               onDeletePressed: () {
+            //                                 // Remove last digit (rightmost)
+            //                                 _rawAmount = _rawAmount ~/ 10;
+            //                                 double displayValue = _rawAmount / 100.0;
+            //                                 amountController.text = '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+            //                                 setState(() {});
+            //                               },
+            //
+            //
+            //                               onPayPressed: () {
+            //                                 if (balanceAmount <= 0) {
+            //                                   setState(() {
+            //                                     _amountErrorText = null;
+            //                                     _callCreatePaymentAPI(amount: 0.0);
+            //                                   });
+            //                                 } else {
+            //                                   String paidAmount = amountController.text;
+            //                                   String cleanAmount = paidAmount.replaceAll('${TextConstants.currencySymbol}', '').trim();
+            //                                   double amount = double.tryParse(cleanAmount) ?? 0.0;
+            //
+            //                                   setState(() {
+            //                                     if (amount == 0.0) {
+            //                                       _amountErrorText = TextConstants.amountValidation;
+            //                                     } else {
+            //                                       _amountErrorText = null;
+            //                                       _callCreatePaymentAPI();
+            //                                     }
+            //                                   });
+            //                                 }
+            //                               },
+            //                               isLoading: isLoading,
+            //                             ),
+            //                           ),
+            //                         ],
+            //                       ),
+            //                     ),
+            //                   ),
+            //                 ],
+            //               ),
+            //             ),
+            //             SizedBox(width: ResponsiveLayout.getWidth(16)),
+            //           ],
+            //         ),
+            //       ),
+            //     ],
+            //   ),
+            // ),
                                       // Expanded numpad to fill remaining space
                                       Expanded(
                                         child: CustomNumPad(
@@ -2263,12 +2384,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       print("Showing Payment Dialog: amount=$amount, showChange=$showChange, changeAmount=$changeAmount");
     }
 
-    // Function to update customer display with logging
-    Future<void> _updateCustomerDisplayWelcome() async {
-      final storeInfo = PinakaPreferences.getLoggedInStore();
+    // Fetch store info once at dialog open
+    final storeInfo = PinakaPreferences.getLoggedInStore();
 
+    // Function to update customer display with explicit store info
+    Future<void> _updateCustomerDisplayWelcome(Map<String, String?> storeInfo) async {
       if (storeInfo.isNotEmpty) {
-        // Log all store info fields
         if (kDebugMode) {
           print(">>> Updating Customer Display with store info:");
           print("Store ID: ${storeInfo['storeId']}");
@@ -2278,10 +2399,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         }
 
         await CustomerDisplayHelper.updateWelcomeWithStore(
-          storeInfo['storeId']!,
-          storeInfo['storeName']!,
-          storeLogoUrl: storeInfo['storeLogoUrl'],
-          storeBaseUrl: storeInfo['storeBaseUrl'],
+          storeInfo['storeId'] ?? '0',
+          storeInfo['storeName'] ?? 'Store',
+          storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
+          storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
         );
       } else {
         if (kDebugMode) {
@@ -2301,12 +2422,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         changeAmount: showChange ? changeAmount : null,
         onVoid: () => showVoidExitConfirmation(context, false),
 
+        // --- No Receipt Flow ---
         onNoReceipt: () async {
           if (kDebugMode) print(">>> NoReceipt pressed");
-          await _updateCustomerDisplayWelcome(); // Update display first
-          changeStatusToCompletedAndExit(false); // Then complete order
+          await _updateCustomerDisplayWelcome(storeInfo); // Pass store info explicitly
+          changeStatusToCompletedAndExit(false); // Complete order
         },
 
+        // --- Done / Email / Print Flow ---
         onDone: (selectedOption, {String? email}) async {
           if (kDebugMode) {
             print("DEBUG 0011 : $selectedOption, $email, ${email?.isNotEmpty}");
@@ -2330,7 +2453,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             subscription = paymentBloc.sendOrderDetailsStream.listen((response) async {
               subscription?.cancel();
               if (kDebugMode) print(">>> Email sent, updating customer display");
-              await _updateCustomerDisplayWelcome();
+              await _updateCustomerDisplayWelcome(storeInfo);
               changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
             });
             return;
@@ -2345,7 +2468,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
           // Update customer display and complete order
           if (kDebugMode) print(">>> Updating customer display before completing order");
-          await _updateCustomerDisplayWelcome();
+          await _updateCustomerDisplayWelcome(storeInfo);
           changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
         },
       ),

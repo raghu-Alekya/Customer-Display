@@ -1988,7 +1988,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         /// Set display name based on item type
                         String displayName = originalName;
                         if (isPayout) {
-                          displayName = '';
+                          displayName = 'Payout';
                         } else if (isCoupon) {
                           final visiblePartLength = 4;
                           final nameLength = originalName.length;
@@ -2514,15 +2514,18 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                       //   ),
                                       SizedBox(width: 20,),
                                       Text(
-                                        isCouponOrPayout
-                                            ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice]).toStringAsFixed(2)}"
-                                            : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * salesPrice).toStringAsFixed(2)}",
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          // Build #1.0.181: Fixed - show price value red for payout and coupons only , not custom item
-                                          color: isCouponOrPayout ? Colors.red : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight, // Added: Red color for Payout/Coupon
-                                        ),
+                                          isPayout
+                                              ? "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! * orderItem[AppDBConst.itemPrice]!.abs()).toStringAsFixed(2)}"
+                                              : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! * (isCoupon ? orderItem[AppDBConst.itemPrice]!.abs() : salesPrice)).toStringAsFixed(2)}",
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            color: isPayout || isCoupon
+                                                ? Colors.red
+                                                : themeHelper.themeMode == ThemeMode.dark
+                                                ? ThemeNotifier.textDark
+                                                : ThemeNotifier.textLight,
+                                          ),
                                       ),
                                     ],
                                   ),

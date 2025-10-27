@@ -655,7 +655,7 @@ class MainActivity : FlutterActivity() {
                                     }
                                 } catch (e: Exception) {
                                     Handler(Looper.getMainLooper()).post {
-                                        imageView.setImageResource(android.R.drawable.ic_menu_report_image)
+                                        imageView.setImageResource(android.R.drawable.ic_menu_gallery)
                                     }
                                 }
                             }.start()
@@ -672,35 +672,41 @@ class MainActivity : FlutterActivity() {
                 val displayName = if (name.length > 20) name.take(20) + "..." else name
 
                 val nameView = TextView(context).apply {
-                    textSize = 15f
+                    textSize = 17f
                     setTypeface(typeface, Typeface.BOLD)
                     text = displayName
                     setTextColor(Color.BLACK)
+                    val params = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    params.bottomMargin = 4
+                    layoutParams = params
                 }
 
                 val qtyPriceView = TextView(context).apply {
-                    textSize = 15f
+                    textSize = 17f
                     text = "${formatCurrency(price)} × $qty"
                     setTextColor(Color.DKGRAY)
                 }
 
                 detailsLayout.addView(nameView)
                 detailsLayout.addView(qtyPriceView)
-
-                // --- Total price ---
                 val totalView = TextView(context).apply {
-                    textSize = 16f
+                    textSize = 18f
                     setTypeface(typeface, Typeface.BOLD)
                     text = formatCurrency(total)
                     gravity = Gravity.END
                     setTextColor(Color.BLACK)
+
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
+                    ).apply {
+                        setMargins(0, 0, 10, 0)
+                    }
                 }
 
-                // --- Add views to item layout ---
                 itemLayout.addView(imageView)
                 itemLayout.addView(detailsLayout)
                 itemLayout.addView(totalView)
