@@ -77,6 +77,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
   // Add this boolean variable to track when user is entering item price
   bool _isEnteringItemPrice = false;
+  bool _isAmountEntered=false;
 
   // Function to check if the item name is empty
   bool _isItemNameEmpty() {
@@ -352,73 +353,144 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   // DISCOUNTS TAB
   Widget _buildDiscountsTab() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
+
     return Padding(
       padding: const EdgeInsets.only(top: 20),
       child: Column(
         children: [
-          // Title
+          // 🏷️ Title
           Text(
             TextConstants.applyDiscountToSale,
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Color(0xFF1E2745),
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.textDark
+                  : const Color(0xFF1E2745),
             ),
           ),
 
           const SizedBox(height: 20),
 
-          // Discount Input Toggle
+          // 🔘 Toggle Between % / ₹
           _buildDiscountToggle(),
 
-          const SizedBox(height: 10),
+          const SizedBox(height: 20),
 
-          // Discount Value Display
-          _buildDiscountDisplay(),
+          // 💬 Discount Entry Field (Styled like payout, centered)
+          Container(
+            width: MediaQuery.of(context).size.width / 2.75,
+            height: MediaQuery.of(context).size.height / 12,
+            margin: const EdgeInsets.only(top: 10),
+            child: TextField(
+              readOnly: true,
+              textAlign: TextAlign.center, // ✅ Center alignment
+              controller: TextEditingController(
+                text: _isPercentageSelected
+                    ? "${_discountValue.replaceAll('%', '')}%"
+                    : "${TextConstants.currencySymbol}${_discountValue.replaceAll(TextConstants.currencySymbol, '')}",
+              ),
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.textDark
+                    : const Color(0xFF1E2745),
+              ),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.paymentEntryContainerColor
+                    : Colors.white,
+                contentPadding:
+                const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF1E2745),
+                    width: 1,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF1E2745),
+                    width: 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
 
-          const SizedBox(height: 10),
+          const SizedBox(height: 20),
 
-          // Custom Numpad
+          // 🔢 Custom Numpad
           SizedBox(
             width: MediaQuery.of(context).size.width / 2.75,
-            height: MediaQuery.of(context).size.height / 2.5,
+            height: MediaQuery.of(context).size.height / 2.25,
             child: CustomNumPad(
               onDigitPressed: (digit) {
-                setState(() { // Build #1.0.53 : updated code
-                  String currentValue = _discountValue.replaceAll('%', '').replaceAll(TextConstants.currencySymbol, '');
-                  if (currentValue == "0.00" || currentValue == "0") {
-                    currentValue = digit;
+                setState(() {
+                  String cleanValue = _discountValue
+                      .replaceAll('%', '')
+                      .replaceAll(TextConstants.currencySymbol, '')
+                      .trim();
+
+                  int rawValue =
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+
+                  // ✅ Handle both "digit" and "00" properly like payout tab
+                  if (digit == '00') {
+                    rawValue = (rawValue * 100) % 100000000;
                   } else {
-                    currentValue += digit;
+                    int d = int.tryParse(digit) ?? 0;
+                    rawValue = (rawValue * 10 + d) % 100000000;
                   }
-                  _discountValue = _isPercentageSelected ? "$currentValue%" : currentValue;
+
+                  double displayValue = rawValue / 100.0;
+                  _discountValue = displayValue.toStringAsFixed(2);
+
+                  if (_isPercentageSelected) {
+                    _discountValue = "$_discountValue%";
+                  }
                 });
               },
+
+              onDeletePressed: () {
+                setState(() {
+                  String cleanValue = _discountValue
+                      .replaceAll('%', '')
+                      .replaceAll(TextConstants.currencySymbol, '')
+                      .trim();
+
+                  int rawValue =
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                  rawValue = rawValue ~/ 10;
+
+                  double displayValue = rawValue / 100.0;
+                  _discountValue = displayValue.toStringAsFixed(2);
+
+                  if (_isPercentageSelected) {
+                    _discountValue = "$_discountValue%";
+                  }
+                });
+              },
+
               onClearPressed: () {
                 setState(() {
-                  _discountValue = _isPercentageSelected ? "0.00%" : "0.00";
+                  _discountValue = "0.00";
+                  if (_isPercentageSelected) {
+                    _discountValue = "0.00%";
+                  }
                 });
               },
-              onDeletePressed: () { // Build #1.0.53 : updated code
-                setState(() {
-                  String currentValue = _discountValue.replaceAll('%', '').replaceAll(TextConstants.currencySymbol, ''); // Build #1.0.181: 1. Replaced Hard coded ‘\$’ with TextConstants.currencySymbol
-                  if (currentValue.isNotEmpty && currentValue != "0.00") {
-                    currentValue = currentValue.substring(0, currentValue.length - 1);
-                    if (currentValue.isEmpty) {
-                      currentValue = "0.00";
-                    }
-                  } else {
-                    currentValue = "0.00";
-                  } _discountValue = _isPercentageSelected ? "$currentValue%" : currentValue;
-                });
-              },
+
               actionButtonType: ActionButtonType.add,
               onAddPressed: _handleAddDiscount,
               isLoading: _isDiscountLoading,
-              isDarkTheme: true,
+              isDarkTheme: themeHelper.themeMode == ThemeMode.dark,
               numPadType: NumPadType.payment,
               showAddInsteadOfPay: true,
-
             ),
           ),
         ],
@@ -814,47 +886,92 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         child: CustomNumPad(
           onDigitPressed: (digit) {
             setState(() {
-              // Set highlighting to true when user starts entering price
-              _isEnteringItemPrice = true;
-              if (_customItemPrice == "0.00") {
-                _customItemPrice = digit;
-                _customItemPriceController.text = digit;
+              // Extract numeric part from current value (ignore ₹ or commas)
+              String cleanValue = _customItemPrice.replaceAll(RegExp(r'[^\d.]'), '');
+
+              // Convert current value (e.g. "12.34") to integer cents → 1234
+              int rawAmount = ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+
+              // Append digit(s)
+              if (digit == '00') {
+                rawAmount = (rawAmount * 100) % 100000000; // shift left two digits
               } else {
-                _customItemPrice += digit;
-                _customItemPriceController.text = _customItemPrice;
+                int d = int.tryParse(digit) ?? 0;
+                rawAmount = (rawAmount * 10 + d) % 100000000; // shift left one digit
               }
+
+              // Convert back to display value
+              double displayValue = rawAmount / 100.0;
+
+              // Update both internal value and controller text
+              _customItemPrice = displayValue.toStringAsFixed(2);
+              _customItemPriceController.text =
+              "${TextConstants.currencySymbol}${_customItemPrice}";
+
+              // Highlight only when price > 0
+              _isEnteringItemPrice = rawAmount > 0;
             });
           },
+
           onClearPressed: () {
             setState(() {
-              // dismiss the highlight when clearing
+              _customItemPrice = "0.00";
+              _customItemPriceController.text =
+              "${TextConstants.currencySymbol}0.00";
               _isEnteringItemPrice = false;
-              _customItemPrice = "";
-              _customItemPriceController.text = "";
             });
           },
+
           onDeletePressed: () {
             setState(() {
-              // Keep highlighting when deleting
-              _isEnteringItemPrice = true;
-              if (_customItemPrice.isNotEmpty) {
-                _customItemPrice =
-                    _customItemPrice.substring(0, _customItemPrice.length - 1);
-                _customItemPriceController.text = _customItemPrice;
-              }
+              // Extract numeric value (ignore ₹ or commas)
+              String cleanValue = _customItemPrice.replaceAll(RegExp(r'[^\d.]'), '');
+
+              // Convert to integer cents
+              int rawAmount = ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+
+              // Remove one digit from the end
+              rawAmount = rawAmount ~/ 10;
+
+              // Convert back to display value
+              double displayValue = rawAmount / 100.0;
+
+              // Update UI + controller
+              _customItemPrice = displayValue.toStringAsFixed(2);
+              _customItemPriceController.text =
+              "${TextConstants.currencySymbol}${_customItemPrice}";
+
+              _isEnteringItemPrice = rawAmount > 0;
             });
           },
+
           actionButtonType: ActionButtonType.add,
           onAddPressed: () {
             if (kDebugMode) {
-              print("#### DEBUG 11@33 onAddPressed");
+              print("✅ onAddPressed triggered — raw price: $_customItemPrice");
             }
-            // Remove highlighting when add is pressed (interaction complete)
+
             setState(() {
               _isEnteringItemPrice = false;
             });
+
+            // Remove symbols, spaces, etc.
+            final cleanedPrice = _customItemPrice.replaceAll(RegExp(r'[^0-9.]'), '');
+            double? price = double.tryParse(cleanedPrice);
+
+            if (price == null || price <= 0) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Enter valid price')),
+              );
+              return;
+            }
+
+            // Update the variable with cleaned numeric string
+            _customItemPrice = price.toString();
+
             _handleAddCustomItem();
           },
+
           isLoading: _isCustomItemLoading,
           isDarkTheme: true,
           numPadType: NumPadType.payment,
@@ -1055,10 +1172,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
 
 
-
-  // PAYOUTS TAB
   Widget _buildPayoutsTab() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
+
     return Padding(
       padding: const EdgeInsets.only(top: 20),
       child: Column(
@@ -1068,13 +1184,14 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Color(0xFF1E2745),
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.textDark
+                  : const Color(0xFF1E2745),
             ),
           ),
-          // Floating label input field
-          SizedBox(
-            height: 20,
-          ),
+          const SizedBox(height: 20),
+
+          // 💰 Payout Display
           Container(
             width: MediaQuery.of(context).size.width / 2.75,
             height: MediaQuery.of(context).size.height / 12,
@@ -1082,26 +1199,26 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
             child: TextField(
               readOnly: true,
               controller: TextEditingController(
-                text: _payoutAmount.isEmpty ? "${TextConstants.currencySymbol}0.00" : "${TextConstants.currencySymbol}$_payoutAmount",
+                // ✅ Add the symbol only here
+                text:
+                "${TextConstants.currencySymbol}${_payoutAmount.isEmpty ? "0.00" : _payoutAmount}",
               ),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 24,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                _isAmountEntered ? FontWeight.bold : FontWeight.normal,
                 color: _payoutAmount.isEmpty
-                    ? Colors.grey.shade400 : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark
+                    ? Colors.grey.shade400
+                    : themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.textDark
                     : const Color(0xFF1E2745),
               ),
               decoration: InputDecoration(
-                floatingLabelAlignment: FloatingLabelAlignment.center,
-                //labelText: TextConstants.addPaymentAmount,
-                labelStyle: TextStyle(
-                  fontSize: 20,
-                  color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey,
-                  fontWeight: FontWeight.bold,
-                ),
                 filled: true,
-                fillColor:themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.paymentEntryContainerColor : Colors.white,
+                fillColor: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.paymentEntryContainerColor
+                    : Colors.white,
                 contentPadding: const EdgeInsets.symmetric(vertical: 16),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -1120,34 +1237,54 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               ),
             ),
           ),
+
           const SizedBox(height: 20),
 
-          // Custom Numpad
+          // 🔢 Custom Numpad
           SizedBox(
             width: MediaQuery.of(context).size.width / 2.75,
             height: MediaQuery.of(context).size.height / 2.25,
             child: CustomNumPad(
               onDigitPressed: (digit) {
                 setState(() {
-                  if (_payoutAmount == "0.00" || _payoutAmount.isEmpty) {
-                    _payoutAmount = digit;
+                  // Clean numeric part only
+                  String cleanValue = _payoutAmount.replaceAll(',', '').trim();
+                  int rawAmount =
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+
+                  if (digit == '00') {
+                    rawAmount = (rawAmount * 100) % 100000000;
                   } else {
-                    _payoutAmount += digit;
+                    int d = int.tryParse(digit) ?? 0;
+                    rawAmount = (rawAmount * 10 + d) % 100000000;
                   }
+
+                  double displayValue = rawAmount / 100.0;
+                  _payoutAmount = displayValue.toStringAsFixed(2); // ✅ no symbol
+                  _isAmountEntered = rawAmount != 0;
                 });
               },
-              onClearPressed: () {
-                setState(() {
-                  _payoutAmount = "";
-                });
-              },
+
               onDeletePressed: () {
                 setState(() {
-                  _payoutAmount = _payoutAmount.isNotEmpty
-                      ? _payoutAmount.substring(0, _payoutAmount.length - 1)
-                      : "";
+                  String cleanValue = _payoutAmount.replaceAll(',', '').trim();
+                  int rawAmount =
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                  rawAmount = rawAmount ~/ 10;
+
+                  double displayValue = rawAmount / 100.0;
+                  _payoutAmount = displayValue.toStringAsFixed(2); // ✅ no symbol
+                  _isAmountEntered = rawAmount != 0;
                 });
               },
+
+              onClearPressed: () {
+                setState(() {
+                  _payoutAmount = "0.00"; // ✅ no symbol
+                  _isAmountEntered = false;
+                });
+              },
+
               actionButtonType: ActionButtonType.add,
               onAddPressed: _handleAddPayout,
               isLoading: _isPayoutLoading,

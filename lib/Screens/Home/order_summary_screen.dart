@@ -99,6 +99,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   late OrderBloc orderBloc;
   bool _showFullSummary = false;
   String? _amountErrorText;
+  bool _isAmountEntered = false;
 
   // Determine the date and time to display
   String _displayDate = "";
@@ -1586,6 +1587,31 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                   ? Colors.red
                                                   : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.borderColor : Colors.grey.shade300),
                                             ),
+                                            // child: TextField(
+                                            //   controller: amountController,
+                                            //   readOnly: true,
+                                            //   textAlign: TextAlign.right,
+                                            //   enabled: false,
+                                            //   decoration: InputDecoration(
+                                            //     contentPadding: EdgeInsets.only(right: ResponsiveLayout.getPadding(16)),
+                                            //     border: InputBorder.none,
+                                            //     hintText: '${TextConstants.currencySymbol}0.00',
+                                            //     hintStyle: TextStyle(
+                                            //       color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey[400],
+                                            //       fontSize: ResponsiveLayout.getFontSize(20),
+                                            //       fontWeight: FontWeight.bold,
+                                            //     ),
+                                            //   ),
+                                            //   style: TextStyle(
+                                            //     color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey[800],
+                                            //     fontSize: ResponsiveLayout.getFontSize(20),
+                                            //     fontWeight: FontWeight.bold,
+                                            //   ),
+                                            //   keyboardType: TextInputType.none,
+                                            //   onTap: () {
+                                            //     FocusScope.of(context).unfocus();
+                                            //   },
+                                            // ),
                                             child: TextField(
                                               controller: amountController,
                                               readOnly: true,
@@ -1596,15 +1622,23 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                 border: InputBorder.none,
                                                 hintText: '${TextConstants.currencySymbol}0.00',
                                                 hintStyle: TextStyle(
-                                                  color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey[400],
+                                                  color: themeHelper.themeMode == ThemeMode.dark
+                                                      ? ThemeNotifier.textDark
+                                                      : Colors.grey[400],
                                                   fontSize: ResponsiveLayout.getFontSize(20),
-                                                  fontWeight: FontWeight.bold,
+                                                  fontWeight: FontWeight.normal, // hint is normal
                                                 ),
                                               ),
                                               style: TextStyle(
-                                                color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey[800],
+                                                color: _isAmountEntered
+                                                    ? (themeHelper.themeMode == ThemeMode.dark
+                                                    ? ThemeNotifier.textDark
+                                                    : Colors.grey[800])
+                                                    : (themeHelper.themeMode == ThemeMode.dark
+                                                    ? ThemeNotifier.textDark
+                                                    : Colors.grey[400]), // same as hint color when cleared
                                                 fontSize: ResponsiveLayout.getFontSize(20),
-                                                fontWeight: FontWeight.bold,
+                                                fontWeight: _isAmountEntered ? FontWeight.bold : FontWeight.normal, // bold only when digits entered
                                               ),
                                               keyboardType: TextInputType.none,
                                               onTap: () {
@@ -1635,153 +1669,86 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                         ),
 
                                       SizedBox(height: ResponsiveLayout.getHeight(12)),
-
-            //                           // Expanded numpad to fill remaining space
-            //                           Expanded(
-            //                             child: CustomNumPad(
-            //                               numPadType: NumPadType.payment,
-            //                               isDarkTheme: themeHelper.themeMode == ThemeMode.dark,
-            //                               getPaidAmount: () => amountController.text,
-            //                               balanceAmount: balanceAmount,
-            //                               onDigitPressed: (value) {
-            //                                 if (balanceAmount <= 0) return;
-            //
-            //                                 if (_amountErrorText != null) {
-            //                                   setState(() {
-            //                                     _amountErrorText = null;
-            //                                   });
-            //                                 }
-            //
-            //                                 // Convert string to int digit
-            //                                 int digit = int.tryParse(value) ?? 0;
-            //
-            //                                 // Shift left by one digit (like adding a new cent)
-            //                                 _rawAmount = (_rawAmount * 10 + digit) % 100000000; // prevents overflow
-            //
-            //                                 double displayValue = _rawAmount / 100.0;
-            //                                 amountController.text = '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
-            //
-            //                                 setState(() {});
-            //                               },
-            //                               // onDigitPressed: (value) {
-            //                               //   if (balanceAmount <= 0) {
-            //                               //     return;
-            //                               //   }
-            //                               //   if (_amountErrorText != null) {
-            //                               //     setState(() {
-            //                               //       _amountErrorText = null;
-            //                               //     });
-            //                               //   }
-            //                               //   String cleanText = amountController.text.replaceAll(TextConstants.currencySymbol, '');
-            //                               //   amountController.text = '${TextConstants.currencySymbol}' + cleanText + value;
-            //                               //   setState(() {});
-            //                               // },
-            //                               // onClearPressed: () {
-            //                               //   if (_amountErrorText != null) {
-            //                               //     setState(() {
-            //                               //       _amountErrorText = null;
-            //                               //     });
-            //                               //   }
-            //                               //   amountController.clear();
-            //                               //   setState(() {});
-            //                               // },
-            //                               // onDeletePressed: () {
-            //                               //   if (amountController.text.isNotEmpty) {
-            //                               //     amountController.text = amountController.text.substring(0, amountController.text.length - 1);
-            //                               //     setState(() {});
-            //                               //   }
-            //                               // },
-            //                               onClearPressed: () {
-            //                                 _rawAmount = 0;
-            //                                 amountController.text = '${TextConstants.currencySymbol}0.00';
-            //                                 if (_amountErrorText != null) {
-            //                                   setState(() {
-            //                                     _amountErrorText = null;
-            //                                   });
-            //                                 }
-            //                                 setState(() {});
-            //                               },
-            //                               onDeletePressed: () {
-            //                                 // Remove last digit (rightmost)
-            //                                 _rawAmount = _rawAmount ~/ 10;
-            //                                 double displayValue = _rawAmount / 100.0;
-            //                                 amountController.text = '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
-            //                                 setState(() {});
-            //                               },
-            //
-            //
-            //                               onPayPressed: () {
-            //                                 if (balanceAmount <= 0) {
-            //                                   setState(() {
-            //                                     _amountErrorText = null;
-            //                                     _callCreatePaymentAPI(amount: 0.0);
-            //                                   });
-            //                                 } else {
-            //                                   String paidAmount = amountController.text;
-            //                                   String cleanAmount = paidAmount.replaceAll('${TextConstants.currencySymbol}', '').trim();
-            //                                   double amount = double.tryParse(cleanAmount) ?? 0.0;
-            //
-            //                                   setState(() {
-            //                                     if (amount == 0.0) {
-            //                                       _amountErrorText = TextConstants.amountValidation;
-            //                                     } else {
-            //                                       _amountErrorText = null;
-            //                                       _callCreatePaymentAPI();
-            //                                     }
-            //                                   });
-            //                                 }
-            //                               },
-            //                               isLoading: isLoading,
-            //                             ),
-            //                           ),
-            //                         ],
-            //                       ),
-            //                     ),
-            //                   ),
-            //                 ],
-            //               ),
-            //             ),
-            //             SizedBox(width: ResponsiveLayout.getWidth(16)),
-            //           ],
-            //         ),
-            //       ),
-            //     ],
-            //   ),
-            // ),
-                                      // Expanded numpad to fill remaining space
                                       Expanded(
                                         child: CustomNumPad(
                                           numPadType: NumPadType.payment,
                                           isDarkTheme: themeHelper.themeMode == ThemeMode.dark,
                                           getPaidAmount: () => amountController.text,
                                           balanceAmount: balanceAmount,
+                                          // onDigitPressed: (value) {
+                                          //   if (balanceAmount <= 0) {
+                                          //     return;
+                                          //   }
+                                          //   if (_amountErrorText != null) {
+                                          //     setState(() {
+                                          //       _amountErrorText = null;
+                                          //     });
+                                          //   }
+                                          //   String cleanText = amountController.text.replaceAll(TextConstants.currencySymbol, '');
+                                          //   amountController.text = '${TextConstants.currencySymbol}' + cleanText + value;
+                                          //   setState(() {});
+                                          // },
                                           onDigitPressed: (value) {
-                                            if (balanceAmount <= 0) {
-                                              return;
-                                            }
+                                            if (balanceAmount <= 0) return;
+
                                             if (_amountErrorText != null) {
                                               setState(() {
                                                 _amountErrorText = null;
                                               });
                                             }
-                                            String cleanText = amountController.text.replaceAll(TextConstants.currencySymbol, '');
-                                            amountController.text = '${TextConstants.currencySymbol}' + cleanText + value;
-                                            setState(() {});
+
+                                            // Handle both "0" and "00"
+                                            if (value == '00') {
+                                              _rawAmount = (_rawAmount * 100) % 100000000; // shift by 2 digits
+                                            } else {
+                                              int digit = int.tryParse(value) ?? 0;
+                                              _rawAmount = (_rawAmount * 10 + digit) % 100000000;
+                                            }
+
+                                            double displayValue = _rawAmount / 100.0;
+                                            amountController.text =
+                                            '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+
+                                            setState(() {
+                                              _isAmountEntered = _rawAmount != 0;
+                                            });
                                           },
+
+                                          // onClearPressed: () {
+                                          //   if (_amountErrorText != null) {
+                                          //     setState(() {
+                                          //       _amountErrorText = null;
+                                          //     });
+                                          //   }
+                                          //   amountController.clear();
+                                          //   setState(() {});
+                                          // },
                                           onClearPressed: () {
+                                            _rawAmount = 0;
+                                            amountController.text = '${TextConstants.currencySymbol}0.00';
                                             if (_amountErrorText != null) {
                                               setState(() {
                                                 _amountErrorText = null;
                                               });
                                             }
-                                            amountController.clear();
-                                            setState(() {});
+                                            setState(() {
+                                              _isAmountEntered = false; // make unbold after clear
+                                            });
                                           },
+                                          // onDeletePressed: () {
+                                          //   if (amountController.text.isNotEmpty) {
+                                          //     amountController.text = amountController.text.substring(0, amountController.text.length - 1);
+                                          //     setState(() {});
+                                          //   }
+                                          // },
                                           onDeletePressed: () {
-                                            if (amountController.text.isNotEmpty) {
-                                              amountController.text = amountController.text.substring(0, amountController.text.length - 1);
-                                              setState(() {});
-                                            }
+                                            // Remove last digit (rightmost)
+                                            _rawAmount = _rawAmount ~/ 10;
+                                            double displayValue = _rawAmount / 100.0;
+                                            amountController.text = '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+                                            setState(() {
+                                              _isAmountEntered = _rawAmount != 0;
+                                            });
                                           },
                                           onPayPressed: () {
                                             if (balanceAmount <= 0) {
@@ -1807,6 +1774,65 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           isLoading: isLoading,
                                         ),
                                       ),
+                                      // Expanded numpad to fill remaining space
+                                      // Expanded(
+                                      //   child: CustomNumPad(
+                                      //     numPadType: NumPadType.payment,
+                                      //     isDarkTheme: themeHelper.themeMode == ThemeMode.dark,
+                                      //     getPaidAmount: () => amountController.text,
+                                      //     balanceAmount: balanceAmount,
+                                      //     onDigitPressed: (value) {
+                                      //       if (balanceAmount <= 0) {
+                                      //         return;
+                                      //       }
+                                      //       if (_amountErrorText != null) {
+                                      //         setState(() {
+                                      //           _amountErrorText = null;
+                                      //         });
+                                      //       }
+                                      //       String cleanText = amountController.text.replaceAll(TextConstants.currencySymbol, '');
+                                      //       amountController.text = '${TextConstants.currencySymbol}' + cleanText + value;
+                                      //       setState(() {});
+                                      //     },
+                                      //     onClearPressed: () {
+                                      //       if (_amountErrorText != null) {
+                                      //         setState(() {
+                                      //           _amountErrorText = null;
+                                      //         });
+                                      //       }
+                                      //       amountController.clear();
+                                      //       setState(() {});
+                                      //     },
+                                      //     onDeletePressed: () {
+                                      //       if (amountController.text.isNotEmpty) {
+                                      //         amountController.text = amountController.text.substring(0, amountController.text.length - 1);
+                                      //         setState(() {});
+                                      //       }
+                                      //     },
+                                      //     onPayPressed: () {
+                                      //       if (balanceAmount <= 0) {
+                                      //         setState(() {
+                                      //           _amountErrorText = null;
+                                      //           _callCreatePaymentAPI(amount: 0.0);
+                                      //         });
+                                      //       } else {
+                                      //         String paidAmount = amountController.text;
+                                      //         String cleanAmount = paidAmount.replaceAll('${TextConstants.currencySymbol}', '').trim();
+                                      //         double amount = double.tryParse(cleanAmount) ?? 0.0;
+                                      //
+                                      //         setState(() {
+                                      //           if (amount == 0.0) {
+                                      //             _amountErrorText = TextConstants.amountValidation;
+                                      //           } else {
+                                      //             _amountErrorText = null;
+                                      //             _callCreatePaymentAPI();
+                                      //           }
+                                      //         });
+                                      //       }
+                                      //     },
+                                      //     isLoading: isLoading,
+                                      //   ),
+                                      // ),
                                     ],
                                   ),
                                 ),
@@ -2379,15 +2405,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       double amount, {
         double? changeAmount,
         required bool showChange,
-      }) {
+      }) async {
     if (kDebugMode) {
       print("Showing Payment Dialog: amount=$amount, showChange=$showChange, changeAmount=$changeAmount");
     }
-
-    // Fetch store info once at dialog open
     final storeInfo = PinakaPreferences.getLoggedInStore();
-
-    // Function to update customer display with explicit store info
     Future<void> _updateCustomerDisplayWelcome(Map<String, String?> storeInfo) async {
       if (storeInfo.isNotEmpty) {
         if (kDebugMode) {
@@ -2411,7 +2433,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         await CustomerDisplayService.showWelcome();
       }
     }
-
+    try {
+      if (kDebugMode) print(">>> Showing THANK YOU screen before receipt options");
+      await CustomerDisplayService.showThankYou();
+    } catch (e) {
+      if (kDebugMode) print(">>> Error showing Thank You screen: $e");
+    }
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -2421,21 +2448,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         amount: amount,
         changeAmount: showChange ? changeAmount : null,
         onVoid: () => showVoidExitConfirmation(context, false),
-
-        // --- No Receipt Flow ---
         onNoReceipt: () async {
           if (kDebugMode) print(">>> NoReceipt pressed");
-          await _updateCustomerDisplayWelcome(storeInfo); // Pass store info explicitly
-          changeStatusToCompletedAndExit(false); // Complete order
+          await _updateCustomerDisplayWelcome(storeInfo);
+          changeStatusToCompletedAndExit(false);
         },
-
-        // --- Done / Email / Print Flow ---
         onDone: (selectedOption, {String? email}) async {
           if (kDebugMode) {
             print("DEBUG 0011 : $selectedOption, $email, ${email?.isNotEmpty}");
           }
-
-          // Handle email separately
           if (selectedOption == TextConstants.email && email != null && email.isNotEmpty) {
             if (orderId == null || orderId == 0) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -2458,16 +2479,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             });
             return;
           }
-
-          // Print option
           if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
             if (kDebugMode) print(">>> Printing receipt");
             await _preparePrintTicket();
-            await _printTicket(manual: true); // only one print
+            await _printTicket(manual: true);
           }
-
-          // Update customer display and complete order
-          if (kDebugMode) print(">>> Updating customer display before completing order");
+          if (kDebugMode) print(">>> Returning to Welcome after Thank You");
           await _updateCustomerDisplayWelcome(storeInfo);
           changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
         },

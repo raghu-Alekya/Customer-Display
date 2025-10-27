@@ -74,7 +74,7 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
       //     "payment_id": 3592,
       //     "message": "Payment Created Successfully"
       // }
-      await CustomerDisplayService.showThankYou();
+      //await CustomerDisplayService.showThankYou();
       createPaymentSink.add(APIResponse.completed(response));
     } catch (e) {
       //Build #1.0.180

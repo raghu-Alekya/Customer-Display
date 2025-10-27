@@ -65,6 +65,24 @@ class _PrinterSetupState extends State<PrinterSetup> {
   static BluetoothPrinter? selectedPrinter; /// remove this
   final PrinterSettings _printerSettings = PrinterSettings();
 
+  /// Build #1.0.279: Added this list for Usb Printer Testing purpose
+  // final List<BluetoothPrinter> testUsbPrinters = [
+  //   BluetoothPrinter(
+  //     deviceName: "USB-Thermal-Printer-80mm",
+  //     productId: "1155",
+  //     vendorId: "22339",
+  //     typePrinter: PrinterType.usb,
+  //     isBle: false,
+  //   ),
+  //   BluetoothPrinter(
+  //     deviceName: "USB-Receipt-Printer-58mm",
+  //     productId: "1156",
+  //     vendorId: "22340",
+  //     typePrinter: PrinterType.usb,
+  //     isBle: false,
+  //   ),
+  // ];
+
   @override
   void initState() {
     if (Platform.isWindows) defaultPrinterType = PrinterType.usb;
@@ -135,6 +153,15 @@ class _PrinterSetupState extends State<PrinterSetup> {
   // method to scan devices according PrinterType
   void _scan() {
     devices.clear();
+
+    /// Build #1.0.279: ADDED THIS -> Test USB printers when type is USB
+    // if (defaultPrinterType == PrinterType.usb) {
+    //   devices.addAll(testUsbPrinters);
+    //   if (kDebugMode) {
+    //     print("#### Added ${testUsbPrinters.length} test USB printers");
+    //   }
+    // }
+
     _subscription = printerManager.discovery(type: defaultPrinterType, isBle: _isBle)
         .listen((device) {
       if (kDebugMode) {
@@ -325,6 +352,7 @@ class _PrinterSetupState extends State<PrinterSetup> {
       }
     } else {
       printerManager.send(type: bluetoothPrinter.typePrinter, bytes: bytes);
+      print("windows print ${bluetoothPrinter.typePrinter}");
     }
   }
 

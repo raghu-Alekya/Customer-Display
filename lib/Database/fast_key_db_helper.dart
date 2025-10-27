@@ -122,6 +122,9 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
 
   Future<void> deleteFastKeyTab(int tabId) async {
     final db = await DBHelper.instance.database;
+    //Build #1.0.279: Fixed Issue - Delete all products of the deleted fastKey first then delete fastKey tab!
+    await deleteAllFastKeyProductItems(tabId);
+
     await db.delete(
       AppDBConst.fastKeyTable,
       where: '${AppDBConst.fastKeyServerId} = ?',
@@ -136,9 +139,9 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   Future<void> deleteAllFastKeyTab(int userId) async {
     final db = await DBHelper.instance.database;
     await db.delete(
-      AppDBConst.fastKeyTable,
-      where: '${AppDBConst.userIdForeignKey} = ?',
-      whereArgs: [userId]
+        AppDBConst.fastKeyTable,
+        where: '${AppDBConst.userIdForeignKey} = ?',
+        whereArgs: [userId]
     );
 
     if (kDebugMode) {

@@ -504,11 +504,18 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
 
   // Build #1.0.87: code updated , db handing inside bloc only, remove here
   Future<void> _addFastKeyTab(String title, String image) async {
+
+    //Build #1.0.279: Fixed Issue - after creating fastkey it is showing default icon
+    String imageToSend = image;
+    if (image.startsWith('assets/')) {
+      imageToSend = '';
+    }
+
     if (kDebugMode) {
-      print("### FastKeyScreen: _addFastKeyTab started with title: $title, image: $image");
+      print("### FastKeyScreen: _addFastKeyTab started with title: $title, image: $imageToSend");
     }
     // Call API to create FastKey on server via BLoC
-    _fastKeyBloc.createFastKey(title: title, index: fastKeyTabs.length+1, imageUrl: image, userId: userId ?? 1);
+    _fastKeyBloc.createFastKey(title: title, index: fastKeyTabs.length+1, imageUrl: imageToSend, userId: userId ?? 1);
 
     // Listen for API response
     final response = await _fastKeyBloc.createFastKeyStream.firstWhere((response) => response.status == Status.COMPLETED || response.status == Status.ERROR);
@@ -593,6 +600,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
         }
       }
       _editingCategoryIndex = null; //Build 1.1.36: Clear edit mode
+      fastKeyProductItems.clear(); //Build #1.0.279: Fixed Issue - Deleted Fast Key Products Are Shifting to Next Fast Key
       if (kDebugMode) {
         print("### FastKeyScreen: Updated UI after tab deletion, new tab count: ${fastKeyTabs.length}");
       }
