@@ -162,27 +162,24 @@ class _PrinterSetupState extends State<PrinterSetup> {
     //   }
     // }
 
-    _subscription = printerManager.discovery(type: defaultPrinterType, isBle: _isBle)
-        .listen((device) {
+    _subscription = printerManager.discovery(
+      type: defaultPrinterType,
+      isBle: _isBle,
+    ).listen((device) {
       if (kDebugMode) {
-        print("device ${device.name}, $device");
+        print("device found: ${device.name}, address: ${device.address}");
       }
+
       devices.add(BluetoothPrinter(
-        deviceName: device.name,
-        address: device.address,
+        deviceName: device.name ?? "Unknown Printer",
+        address: device.address ?? "USB001",
         isBle: _isBle,
-        vendorId: device.vendorId,
-        productId: device.productId,
+        vendorId: Platform.isWindows ? (device.name ?? "WindowsPrinter") : device.vendorId,
+        productId: Platform.isWindows ? (device.address ?? "USB001") : device.productId,
         typePrinter: defaultPrinterType,
       ));
       setState(() {});
-    },
-      // onError: (error){
-      //     if (kDebugMode) {
-      //       print("Error while scanning $error");
-      //     }
-      // },
-    );
+    });
   }
 
   Future<void> setPort(String value) async {
