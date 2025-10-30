@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:hive/hive.dart';
+import 'package:hive_flutter/adapters.dart';
 import 'package:pinaka_pos/services/CustomerDisplayService.dart';
 import 'package:provider/provider.dart';
 import 'Constants/misc_features.dart';
@@ -13,6 +15,11 @@ import 'package:flutter/services.dart';
 void main() async {
 
   WidgetsFlutterBinding.ensureInitialized(); // Ensure Flutter services are ready
+  await Hive.initFlutter();
+
+  await Hive.openBox('categoryCache');
+  await Hive.openBox('productCache');
+  await Hive.openBox('offlineOrders');
   await PinakaPreferences.prepareSharedPref(); //Build #1.0.7: Initialize SharedPref
 
   /// Build #1.0.187: Required -> Disable device back button completely

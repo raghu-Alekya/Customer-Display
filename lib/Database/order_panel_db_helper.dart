@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:hive/hive.dart';
 import 'package:pinaka_pos/Blocs/Orders/order_bloc.dart';
 import 'package:pinaka_pos/Database/user_db_helper.dart';
 import 'package:pinaka_pos/Models/Orders/orders_model.dart';
@@ -93,51 +95,83 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   // Loads order data from the local database and shared preferences
   Future<void> loadData() async {
     final prefs = await SharedPreferences.getInstance();
-    activeOrderId = prefs.getInt('activeOrderId'); // Retrieve the saved active order ID
+    activeOrderId = prefs.getInt('activeOrderId');
     activeUserId = await getUserIdFromDB();
-    // Build #1.0.189: Clear First
+
     orderIds = [];
     orders = [];
-    // Debugging logs
-    if (kDebugMode) {
-      print("#### Order Panel DB helper loadData: before activeOrderId = $activeOrderId, activeUserId= $activeUserId ");
-      print("#### DEBUG orders: $orders"); // Build #1.0.189
-      print("#### DEBUG orders length >>>>> : ${orders.length}");
-      print("#### DEBUG orderIds >>>>> : $orderIds");
-    }
-    // Fetch the user's orders from the database
-    final db = await DBHelper.instance.database;
-    orders = await db.query(
-      AppDBConst.orderTable,
-      where: '${AppDBConst.userId} = ?',
-      whereArgs: [activeUserId ?? 1],
-      /// Build #1.0.161
-      /// If required "asc" orders list, un-comment this line (order id's order low to high)
-      /// Build #1.0.251 : FIXED - latest created order coming middle of all orders, we can use orderServerId rather than orderDate, because latest order id crated by latest time/date only.
-      orderBy: '${AppDBConst.orderServerId} ASC', // Ensure orders are sorted by creation date
-    );
 
-    if (orders.isNotEmpty) {
-      // Convert order list from DB into a list of order IDs
-      orderIds = orders.map((order) => order[AppDBConst.orderServerId] as int).toList();
-      // If activeOrderId is null or invalid, set it to the last available order ID
-      if (activeOrderId == null || !orderIds.contains(activeOrderId)) {
-        activeOrderId = orders.last[AppDBConst.orderServerId];///changed to order server id
-        await prefs.setInt('activeOrderId', activeOrderId!);
+    final connectivity = await Connectivity().checkConnectivity();
+
+    if (connectivity == ConnectivityResult.none) {
+      // -------- OFFLINE MODE --------
+      if (kDebugMode) print("📴 Loading offline orders from Hive");
+
+      final box = Hive.box('offlineOrders');
+      final allOfflineOrders = box.toMap();
+
+      // Filter only valid Map-type entries
+      final validEntries = allOfflineOrders.entries
+          .where((entry) => entry.value is Map)
+          .map((entry) => MapEntry(
+        entry.key,
+        Map<String, dynamic>.from(entry.value as Map),
+      ))
+          .toList();
+
+      if (validEntries.isNotEmpty) {
+        orders = validEntries.map((e) => e.value).toList();
+
+        // Try to extract order IDs safely (from map or key)
+        orderIds = validEntries.map((e) {
+          final map = e.value;
+          if (map.containsKey('order_id')) return map['order_id'] as int;
+          if (map.containsKey('id')) return map['id'] as int;
+          return int.tryParse(e.key.toString());
+        }).whereType<int>().toList();
+
+        if (activeOrderId == null || !orderIds.contains(activeOrderId)) {
+          activeOrderId = orderIds.isNotEmpty ? orderIds.last : null;
+          if (activeOrderId != null) await prefs.setInt('activeOrderId', activeOrderId!);
+        }
+      } else {
+        if (kDebugMode) print("⚠️ No valid offline order maps found in Hive");
+        activeOrderId = null;
+        orderIds = [];
+        orders = [];
       }
-    } else {
-      // No orders found, reset values
-      activeOrderId = null;
-      orderIds = [];
-      orders = [];
     }
 
-    // Debugging logs
+    else {
+      // -------- ONLINE MODE (SQLite) --------
+      final db = await DBHelper.instance.database;
+      orders = await db.query(
+        AppDBConst.orderTable,
+        where: '${AppDBConst.userId} = ?',
+        whereArgs: [activeUserId ?? 1],
+        orderBy: '${AppDBConst.orderServerId} ASC',
+      );
+
+      if (orders.isNotEmpty) {
+        orderIds = orders.map((order) => order[AppDBConst.orderServerId] as int).toList();
+        if (activeOrderId == null || !orderIds.contains(activeOrderId)) {
+          activeOrderId = orders.last[AppDBConst.orderServerId];
+          await prefs.setInt('activeOrderId', activeOrderId!);
+        }
+      } else {
+        activeOrderId = null;
+        orderIds = [];
+        orders = [];
+      }
+    }
+
     if (kDebugMode) {
       print("#### Order Panel DB helper loadData: activeOrderId = $activeOrderId");
-      print("#### Order Panel DB helper loadData: orderIds = $orderIds, activeUserId: $activeUserId");
+      print("#### Order Panel DB helper loadData: orderIds = $orderIds");
+      print("#### Total Orders Loaded: ${orders.length}");
     }
   }
+
 
   Future<int> getUserIdFromDB() async {
     var userId = 0;
@@ -1078,41 +1112,151 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   }
 
   // Adds an item to the currently active order; creates an order if none exists
-  Future<void> addItemToOrder( // Build #1.0.80: updated
+  Future<void> addItemToOrder(
       int? serverItemId,
       String name,
       String image,
       double price,
       int quantity,
       String sku,
-      int orderId,
-      {
-        VoidCallback? onItemAdded, String? type ,int? productId = -1, int? variationId = -1,
-        String? variationName, int? variationCount, String? combo, double? salesPrice, double? regularPrice, double? unitPrice,
+      int orderId, {
+        VoidCallback? onItemAdded,
+        String? type,
+        int? productId = -1,
+        int? variationId = -1,
+        String? variationName,
+        int? variationCount,
+        String? combo,
+        double? salesPrice,
+        double? regularPrice,
+        double? unitPrice,
       }) async {
-    ///Build #1.0.128: No need here , we are already doing createOrder in orderBloc of updateOrderProducts
-    // if (orderId == null) {
-    //   await createOrder();
-    // }
-    //Build #1.0.68: For default product pass enum item type was product
-    //  type = ItemType.product.value;
+    final connectivity = await Connectivity().checkConnectivity();
 
-    // Debugging log
-    if (kDebugMode) {
-      print("#### Adding item to order: $orderId, productId:$productId, variationId:$variationId, SKU: $sku, Type: $type, Quantity: $quantity");
-      print("variationName $variationName, variationCount:$variationCount, combo:$combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
+    if (connectivity == ConnectivityResult.none) {
+      final box = Hive.box('offlineOrders');
+      final order = box.get(orderId.toString());
+
+      if (order == null) {
+        if (kDebugMode) print("⚠️ No offline order found for $orderId");
+        return;
+      }
+
+      final List<Map<String, dynamic>> products = (order['products'] ?? [])
+          .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
+          .toList();
+
+      final normProductId = (productId ?? -1).toInt();
+      final normVariationId = (variationId ?? 0).toInt();
+
+      // ✅ Strict match (must match both product_id and variation_id)
+      final existingIndex = products.indexWhere((p) {
+        final storedProductId = (p['product_id'] ?? -1).toInt();
+        final storedVariationId = (p['variation_id'] ?? 0).toInt();
+        return storedProductId == normProductId &&
+            storedVariationId == normVariationId;
+      });
+
+      if (existingIndex != -1) {
+        final existing = products[existingIndex];
+        final oldQty = (existing['quantity'] ?? 0).toInt();
+        final newQty = oldQty + quantity;
+
+        products[existingIndex] = {
+          ...existing,
+          'quantity': newQty,
+          'price': price,
+        };
+
+        if (kDebugMode) {
+          print("🔁 Updated existing offline product: $name (Qty: $oldQty → $newQty)");
+        }
+      } else {
+        products.add({
+          'server_item_id': serverItemId,
+          'name': name,
+          'image': image,
+          'price': price,
+          'quantity': quantity,
+          'sku': sku,
+          'type': type ?? 'product',
+          'product_id': productId,
+          'variation_id': variationId,
+          'variation_name': variationName,
+          'variation_count': variationCount,
+          'combo': combo,
+          'sales_price': salesPrice,
+          'regular_price': regularPrice,
+          'unit_price': unitPrice,
+        });
+
+        if (kDebugMode) print("🆕 Added new offline product: $name");
+      }
+
+      await box.put(orderId.toString(), {...order, 'products': products});
+
+      // ✅ Sync SQLite
+      final db = await DBHelper.instance.database;
+
+      // ❌ WRONG (old):
+      // '${AppDBConst.itemProductId} = ? OR ${AppDBConst.itemVariationId} = ?'
+
+      // ✅ FIXED: strict AND comparison
+      final existingInDb = await db.query(
+        AppDBConst.purchasedItemsTable,
+        where:
+        '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemVariationId} = ?',
+        whereArgs: [orderId, normProductId, normVariationId],
+      );
+
+      if (existingInDb.isNotEmpty) {
+        final existingRow = existingInDb.first;
+        final oldQty = existingRow[AppDBConst.itemCount] as int;
+        final newQty = oldQty + quantity;
+
+        await db.update(
+          AppDBConst.purchasedItemsTable,
+          {
+            AppDBConst.itemCount: newQty,
+            AppDBConst.itemSumPrice: price * newQty,
+          },
+          where:
+          '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemVariationId} = ?',
+          whereArgs: [orderId, normProductId, normVariationId],
+        );
+      } else {
+        await db.insert(AppDBConst.purchasedItemsTable, {
+          AppDBConst.itemServerId: serverItemId,
+          AppDBConst.itemName: name,
+          AppDBConst.itemImage: image,
+          AppDBConst.itemPrice: price,
+          AppDBConst.itemCount: quantity,
+          AppDBConst.itemSumPrice: price,
+          AppDBConst.orderIdForeignKey: orderId,
+          AppDBConst.itemSKU: sku,
+          AppDBConst.itemType: type,
+          AppDBConst.itemProductId: normProductId,
+          AppDBConst.itemVariationId: normVariationId,
+          AppDBConst.itemVariationCustomName: variationName,
+          AppDBConst.itemVariationCount: variationCount,
+          AppDBConst.itemCombo: combo,
+          AppDBConst.itemSalesPrice: salesPrice,
+          AppDBConst.itemRegularPrice: regularPrice,
+          AppDBConst.itemUnitPrice: unitPrice,
+        });
+      }
+
+      await loadData();
+      if (onItemAdded != null) onItemAdded();
+      return;
     }
-    // if (activeOrderId == null) {
-    //   await createOrder();
-    // }
-    // var order = await getOrderById(activeOrderId!);
-    // orderId = order.first[AppDBConst.orderServerId];
-    // List<Map<String, dynamic>> items = await getOrderItems(order.first[AppDBConst.orderServerId]);
 
+
+    // -------- ONLINE MODE -------- (keep your existing SQLite logic)
     final db = await DBHelper.instance.database;
     var existingItem = [];
 
-    if(variationId! > 0) {
+    if (variationId! > 0) {
       existingItem = await db.query(
         AppDBConst.purchasedItemsTable,
         where:
@@ -1120,31 +1264,16 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         whereArgs: [orderId, variationId, type ?? ItemType.product.value],
       );
     }
-    if(existingItem.isEmpty){
-      if (kDebugMode) {
-        print("HELPER existingItem not found with variation id");
-      }
-      if(productId! > 0){
-        existingItem = await db.query(
-          AppDBConst.purchasedItemsTable,
-          where:
-          '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemType} = ?',
-          whereArgs: [orderId, productId, type ?? ItemType.product.value],
-        );
-        if(existingItem.isNotEmpty && ((existingItem.first[AppDBConst.itemVariationId] as int) > 0)){
-          if (kDebugMode) {
-            print(
-                "OrderDBHelper - addItemToOrder Existing item found productID: ${existingItem.first[AppDBConst.itemServerId]}, but variationId: ${existingItem.first[AppDBConst.itemVariationId]} instead $variationId");
-          }
-          existingItem = [];
-        }
-      }
+    if (existingItem.isEmpty && productId! > 0) {
+      existingItem = await db.query(
+        AppDBConst.purchasedItemsTable,
+        where:
+        '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemType} = ?',
+        whereArgs: [orderId, productId, type ?? ItemType.product.value],
+      );
     }
 
     if (existingItem.isNotEmpty) {
-      if (kDebugMode) {
-        print("HELPER existingItem");
-      }
       await db.rawUpdate('''
       UPDATE ${AppDBConst.purchasedItemsTable}
       SET ${AppDBConst.itemCount} = ?,
@@ -1155,54 +1284,33 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           ${AppDBConst.itemRegularPrice} = ?,
           ${AppDBConst.itemUnitPrice} = ?
       WHERE ${AppDBConst.itemServerId} = ?
-    ''', [quantity, price, productId, variationId, salesPrice, regularPrice, unitPrice, serverItemId]); //Build #1.0.146: Fixed Issue: We don't need to multiply with qty because we are already getting from line items sub total value
+    ''', [quantity, price, productId, variationId, salesPrice, regularPrice, unitPrice, serverItemId]);
     } else {
-      if (kDebugMode) {
-        print("HELPER NOT existingItem");
-      }
       await db.insert(AppDBConst.purchasedItemsTable, {
         AppDBConst.itemServerId: serverItemId,
         AppDBConst.itemName: name,
         AppDBConst.itemImage: image,
         AppDBConst.itemPrice: price,
         AppDBConst.itemCount: quantity,
-        AppDBConst.itemSumPrice: price, //Build #1.0.146: Fixed Issue: We don't need to multiply with qty because we are already getting from line items sub total value
+        AppDBConst.itemSumPrice: price,
         AppDBConst.orderIdForeignKey: orderId,
         AppDBConst.itemSKU: sku,
         AppDBConst.itemType: type,
-        AppDBConst.itemProductId: productId, // Build #1.0.80: added
+        AppDBConst.itemProductId: productId,
         AppDBConst.itemVariationId: variationId,
         AppDBConst.itemVariationCustomName: variationName,
         AppDBConst.itemVariationCount: variationCount,
         AppDBConst.itemCombo: combo,
         AppDBConst.itemSalesPrice: salesPrice,
-        AppDBConst.itemRegularPrice: regularPrice, // Build #1.0.80: added
+        AppDBConst.itemRegularPrice: regularPrice,
         AppDBConst.itemUnitPrice: unitPrice,
       });
     }
 
-    //Build #1.0.78: Update order total
-    // final items = await getOrderItems(orderId);
-    // final orderTotal = items.fold(0.0, (sum, item) => (item[AppDBConst.itemSumPrice] as num).toDouble());
-    // if (kDebugMode) {
-    //   print("orderTotal $orderTotal");
-    // }
-    // await db.update(
-    //   AppDBConst.orderTable,
-    //   {AppDBConst.orderTotal: orderTotal},
-    //   where: '${AppDBConst.orderServerId} = ?',
-    //   whereArgs: [orderId],
-    // );
-
     loadData();
-    if (onItemAdded != null) {
-      onItemAdded();
-    }
-
-    if (kDebugMode) {
-      print('#### Item added to order: $orderId, SKU: $sku, Type: $type, Quantity: $quantity, name:$name, serverItemId: $serverItemId, productId: $productId, variationId: $variationId, Type: $type');
-    }
+    if (onItemAdded != null) onItemAdded();
   }
+
 
   @Deprecated("Removed from current version, please use Rest API to update")
   //Build 1.1.36: required this func for issue of Edit item not updating count in order panel

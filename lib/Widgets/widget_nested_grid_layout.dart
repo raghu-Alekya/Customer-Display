@@ -740,10 +740,13 @@
 //     );
 //   }
 // }
+import 'dart:convert';
 import 'dart:io';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:hive/hive.dart';
 import 'package:pinaka_pos/Helper/auto_search.dart';
 import 'package:pinaka_pos/Widgets/widget_age_verification_popup_dialog.dart';
 import 'package:pinaka_pos/Widgets/widget_variants_dialog.dart';
@@ -759,6 +762,7 @@ import '../Helper/api_response.dart';
 import '../Models/Search/product_variation_model.dart';
 import '../Providers/Age/age_verification_provider.dart';
 import '../Providers/Auth/product_variation_provider.dart';
+import '../Repositories/Orders/order_repository.dart';
 import '../Utilities/shimmer_effect.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import '../Utilities/svg_images_utility.dart';
@@ -774,7 +778,8 @@ class NestedGridWidget extends StatelessWidget {
   final List<int?> reorderedIndices;
   final VoidCallback? onAddButtonPressed;
   final VoidCallback? onBackButtonPressed; // Callback for "Back to Categories"
-  final Function(int, {bool variantAdded}) onItemTapped; // Update the callback to accept a named parameter
+  final Function(int, {bool variantAdded})
+      onItemTapped; // Update the callback to accept a named parameter
   final Function(int, int) onReorder;
   final Function(int) onDeleteItem;
   final bool showDeleteButton;
@@ -811,43 +816,43 @@ class NestedGridWidget extends StatelessWidget {
   Widget _buildImage(String imagePath) {
     final imageWidget = imagePath.startsWith("http")
         ? SizedBox(
-      width: 75,
-      height: 75,
-      child: Image.network(
-        imagePath,
-        width: 75,
-        height: 75,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
             width: 75,
             height: 75,
-            color: Colors.grey.shade300,
-            child: const Icon(Icons.broken_image, color: Colors.grey),
-          );
-        },
-      ),
-    )
+            child: Image.network(
+              imagePath,
+              width: 75,
+              height: 75,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  width: 75,
+                  height: 75,
+                  color: Colors.grey.shade300,
+                  child: const Icon(Icons.broken_image, color: Colors.grey),
+                );
+              },
+            ),
+          )
         : Platform.isWindows
-        ? Image.asset(
-      'assets/default.png',
-      height: 75,
-      width: 75,
-    )
-        : Image.file(
-      File(imagePath),
-      width: 75,
-      height: 75,
-      fit: BoxFit.cover,
-      errorBuilder: (context, error, stackTrace) {
-        return Container(
-          width: 75,
-          height: 75,
-          color: Colors.grey.shade300,
-          child: const Icon(Icons.broken_image, color: Colors.grey),
-        );
-      },
-    );
+            ? Image.asset(
+                'assets/default.png',
+                height: 75,
+                width: 75,
+              )
+            : Image.file(
+                File(imagePath),
+                width: 75,
+                height: 75,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: 75,
+                    height: 75,
+                    color: Colors.grey.shade300,
+                    child: const Icon(Icons.broken_image, color: Colors.grey),
+                  );
+                },
+              );
     return ClipRRect(
       borderRadius: BorderRadius.circular(5),
       child: imageWidget,
@@ -856,329 +861,375 @@ class NestedGridWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totalCount = (showAddButton ? 1 : 0) + (showBackButton ? 1 : 0) + items.length;
+    final totalCount =
+        (showAddButton ? 1 : 0) + (showBackButton ? 1 : 0) + items.length;
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
     return Expanded(
       child: Container(
         margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
-        height: MediaQuery.of(context).size.height /2,
+        height: MediaQuery.of(context).size.height / 2,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
-          color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.white,
+          color: themeHelper.themeMode == ThemeMode.dark
+              ? ThemeNotifier.primaryBackground
+              : Colors.white,
         ),
         child: isLoading
             ? ShimmerEffect.rectangular(height: 200)
             : Material(
-          color: Colors.transparent,
-          child: ReorderableGridView.builder(
-            padding: const EdgeInsets.all(8),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-              childAspectRatio: 2.2,
-            ),
-            itemCount: totalCount,
-            dragEnabled: Misc.enableReordering, // Build #1.0.204: Disable Re-Order for grid & Added this line to control drag functionality
-            onReorder: Misc.enableReordering ? onReorder : (oldIndex, newIndex) {}, // Disable reorder callback if not enabled
-            itemBuilder: (context, index) {
-              // Handle "Add" button if enabled
-              if (showAddButton && index == 0) {
-                return Container(
-                  key: const ValueKey('add_button'),
-                  child: GestureDetector(
-                    onTap: onAddButtonPressed ?? () {},
-                    child: _getCardWidget(Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.add, size: 40, color: Color(0xFFFE6464)),
-                        //SizedBox(height: 2),
-                        Text(TextConstants.addProductText, style: TextStyle(color: Color(0xFFFE6464))),
-                      ],
-                    ),themeHelper, accentColor: Colors.redAccent),
+                color: Colors.transparent,
+                child: ReorderableGridView.builder(
+                  padding: const EdgeInsets.all(8),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: 2.2,
                   ),
-                );
-              }
-
-              // Handle "Back to Categories" button if enabled
-              if (showBackButton && index == (showAddButton ? 1 : 0)) {
-                return Container(
-                  key: const ValueKey('back_button'),
-                  child: GestureDetector(
-                    onTap: onBackButtonPressed ?? () {},
-                    child: _getCardWidget(Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.arrow_back, size: 50, color: Colors.blue),
-                        SizedBox(height: 5),
-                        Text(TextConstants.backToCategories, style: TextStyle(color: Colors.blue)),
-                      ],
-                    ), themeHelper),
-                  ),
-                );
-              }
-
-              // Adjust the index based on the presence of "Add" and "Back" buttons
-              final itemIndex = index - (showAddButton ? 1 : 0) - (showBackButton ? 1 : 0);
-              if (itemIndex < 0 || itemIndex >= items.length) {
-                return const SizedBox.shrink();
-              }
-
-              final isReordered = reorderedIndices.isNotEmpty && reorderedIndices[itemIndex] != null;
-              final item = items[itemIndex];
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                decoration: BoxDecoration(
-                  border: isReordered ? Border.all(color: Colors.blue, width: 3) : null,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                key: ValueKey('grid_item_${itemIndex}_${item["fast_key_item_name"]}'),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    GestureDetector( //Build 1.1.36: updated code for variations dialog conditions
-                      onTap: () async {
-                        if (productBloc == null) {
-                          if (kDebugMode) {
-                            print("NestedGridWidget - productBloc is null, cannot fetch variations");
-                          }
-                          onItemTapped(index);
-                          return;
-                        }
-
-                        final productId = int.tryParse(item["fast_key_product_id"].toString()) ?? -1; //Build #1.0.54: fixed variant dialog issue
-                        if (kDebugMode) {
-                          print("NestedGridWidget - Product tapped: ${item['fast_key_item_name']}, ID: $productId, (${item["fast_key_product_id"]})");
-                          print("NestedGridWidget - minAge ${item[AppDBConst.fastKeyItemMinAge] ?? 0}");
-                          print("TEST 11 - fast_key_item_has_variant ${item[AppDBConst.fastKeyItemHasVariant]}");
-                        }
-                        /// use product id:22, sku:woo-fashion-socks
-                        //var isVerified = await _ageRestrictedProduct(context, minAge: item[AppDBConst.fastKeyItemMinAge] ?? 0);
-                        //Build #1.0.234: Checking stored age restriction before verifying -> Age
-                        final order = orderHelper?.orders.firstWhere(
-                              (order) => order[AppDBConst.orderServerId] == orderHelper?.activeOrderId,
-                          orElse: () => {},
-                        );
-                        final String ageRestrictedValue = order?[AppDBConst.orderAgeRestricted]?.toString() ?? 'false';
-                        final bool isAgeRestricted = ageRestrictedValue.toLowerCase() == 'true' || ageRestrictedValue == "1";
-
-                        if (!isAgeRestricted) { // Fixed: only if !isAgeRestricted
-                          if (kDebugMode) {
-                            print("NestedGridWidget - Starting Age Verification for product ID: $productId");
-                          }
-
-                          Stopwatch? ageCheckStopwatch;
-                          if (Misc.enableUILogMessages) { // Build #1.0.256
-                            ageCheckStopwatch = Stopwatch()..start(); // Start timer before verifyAge
-                          }
-                          final ageVerificationProvider = AgeVerificationProvider();
-                          final isVerified = await ageVerificationProvider.verifyAge(context, minAge: item[AppDBConst.fastKeyItemMinAge] ?? 0);
-
-                          if (Misc.enableUILogMessages && ageCheckStopwatch != null) {
-                            ageCheckStopwatch.stop(); // Stop after verifyAge
-                            globalProcessSteps.add(ProcessStep(
-                              name: TextConstants.ageVerificationProcess,
-                              timeTaken: ageCheckStopwatch.elapsedMilliseconds / 1000.0,
-                            ));
-                          }
-                          if (!isVerified) {
-                            if (kDebugMode) {
-                              print("NestedGridWidget - Age Verification failed for product ID: $productId");
-                            }
-                            return;
-                          }
-                        }
-                        /// Build #1.0.157: Added to check before calling variation API for saving loading time issue
-                        //  if (item['type'] == 'variable' || item['fast_key_item_has_variant'] == 1) {
-                        //    if (kDebugMode) {
-                        //      print("##### NestedGridWidget - Item Type: ${item['type']}, productId: $productId");
-                        //    }
-                        //    VariationPopup(productId, item['fast_key_item_name'], orderHelper!, onProductSelected: ({required bool isVariant}) {
-                        //
-                        //      onItemTapped(index, variantAdded: isVariant);
-                        //      if (kDebugMode) {
-                        //        print("##### NestedGridWidget - Variant $isVariant");
-                        //      }
-                        //    }).showVariantDialog(context: context);
-                        //  } else {
-                        //    if (kDebugMode) {
-                        //      print("##### NestedGridWidget - NO Variant, productId: $productId");
-                        //    }
-                        // //   Center(child: CircularProgressIndicator());
-                        //    onItemTapped(index, variantAdded: false);
-                        //  }
-
-                        VariationPopup(productId, item['fast_key_item_name'], orderHelper!,onProductSelected: ({required bool isVariant}) {
-                          // Navigator.pop(context); // Build #1.0.148: loader/dialog popping after product adds into order panel in _onItemSelected in fastKey/categories screen
-                          onItemTapped(index, variantAdded: isVariant); //Build #1.0.78: Pass isVariant to onItemTapped
-                        },
-                        ).showVariantDialog(context: context);
-                        // // Fetch variations for the product
-                        // productBloc!.fetchProductVariations(productId);
-                        //
-                        // // Show dialog and listen to the variation stream
-                        // if (context.mounted) {
-                        //   showDialog(
-                        //     context: context,
-                        //     builder: (context) => StreamBuilder<APIResponse<List<ProductVariation>>>(
-                        //       stream: productBloc!.variationStream,
-                        //       builder: (context, snapshot) {
-                        //         if (!snapshot.hasData) {
-                        //           if (kDebugMode) {
-                        //             print("NestedGridWidget - No data in stream, waiting...");
-                        //           }
-                        //           return const Center(child: CircularProgressIndicator());
-                        //         }
-                        //
-                        //         final response = snapshot.data!;
-                        //         if (response.status == Status.LOADING) {
-                        //           return const Center(child: CircularProgressIndicator());
-                        //         } else if (response.status == Status.COMPLETED) {
-                        //           final variations = response.data!;
-                        //           if (variations.isNotEmpty) {
-                        //             if (kDebugMode) {
-                        //               print("NestedGridWidget - Variations found: ${variations.length}");
-                        //             }
-                        //             return VariantsDialog(
-                        //               title: item["fast_key_item_name"],
-                        //               variations: variations
-                        //                   .map((v) => {
-                        //                 "id": v.id,
-                        //                 "name": v.name,
-                        //                 "price": v.regularPrice,
-                        //                 "image": v.image.src,
-                        //               }).toList(),
-                        //               onAddVariant: (variant, quantity) {
-                        //                 if (kDebugMode) {
-                        //                   print("NestedGridWidget - Adding variant to order: ID=${variant['id']}, Name=${variant['name']}, Quantity=$quantity");
-                        //                 }
-                        //                 orderHelper?.addItemToOrder(
-                        //                   variant["name"],
-                        //                   variant["image"],
-                        //                   double.tryParse(variant["price"].toString()) ?? 0.0,
-                        //                   quantity,
-                        //                   'SKU${variant["name"]}',
-                        //                   onItemAdded: () {
-                        //                     Navigator.pop(context);
-                        //                     onItemTapped(index, variantAdded: true);
-                        //                   },
-                        //                 );
-                        //               },
-                        //             );
-                        //           } else {
-                        //             if (kDebugMode) {
-                        //               print("NestedGridWidget - No variations found, proceeding with product");
-                        //             }
-                        //             Navigator.pop(context);
-                        //             onItemTapped(index);
-                        //             return const SizedBox.shrink();
-                        //           }
-                        //         } else {
-                        //           if (kDebugMode) {
-                        //             print("NestedGridWidget - Error fetching variations: ${response.message}");
-                        //           }
-                        //           Navigator.pop(context);
-                        //           onItemTapped(index);
-                        //           return const SizedBox.shrink();
-                        //         }
-                        //       },
-                        //     ),
-                        //   );
-                        // }
-                      },
-                      onLongPress: () {
-                        if (onLongPress != null) { // Build #1.0.204
-                          onLongPress!(itemIndex); // Safe to use ! since we checked for null
-                          if (kDebugMode) {
-                            print("### TEST onLongPress");
-                          }
-                        } else {
-                          if (kDebugMode) {
-                            print("### onLongPress is null, skipping");
-                          }
-                        }
-                      },
-                      child: _getCardWidget(Padding(
-                        padding: const EdgeInsets.all(10.0),
-                        child: Row(
-                          children: [
-                            _buildImage(item["fast_key_item_image"]),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  itemCount: totalCount,
+                  dragEnabled: Misc
+                      .enableReordering, // Build #1.0.204: Disable Re-Order for grid & Added this line to control drag functionality
+                  onReorder: Misc.enableReordering
+                      ? onReorder
+                      : (oldIndex,
+                          newIndex) {}, // Disable reorder callback if not enabled
+                  itemBuilder: (context, index) {
+                    // Handle "Add" button if enabled
+                    if (showAddButton && index == 0) {
+                      return Container(
+                        key: const ValueKey('add_button'),
+                        child: GestureDetector(
+                          onTap: onAddButtonPressed ?? () {},
+                          child: _getCardWidget(
+                              Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    item["fast_key_item_name"],
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      //fontWeight: FontWeight.bold,
-                                      color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  Row(
-                                    children: [
-                                      Text(
-                                        '${TextConstants.currencySymbol}${double.tryParse(item["fast_key_item_price"].toString())?.toStringAsFixed(2) ?? "0.00"}',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
-                                        ),
+                                  const Icon(Icons.add,
+                                      size: 40, color: Color(0xFFFE6464)),
+                                  //SizedBox(height: 2),
+                                  Text(TextConstants.addProductText,
+                                      style:
+                                          TextStyle(color: Color(0xFFFE6464))),
+                                ],
+                              ),
+                              themeHelper,
+                              accentColor: Colors.redAccent),
+                        ),
+                      );
+                    }
+
+                    // Handle "Back to Categories" button if enabled
+                    if (showBackButton && index == (showAddButton ? 1 : 0)) {
+                      return Container(
+                        key: const ValueKey('back_button'),
+                        child: GestureDetector(
+                          onTap: onBackButtonPressed ?? () {},
+                          child: _getCardWidget(
+                              Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: const [
+                                  Icon(Icons.arrow_back,
+                                      size: 50, color: Colors.blue),
+                                  SizedBox(height: 5),
+                                  Text(TextConstants.backToCategories,
+                                      style: TextStyle(color: Colors.blue)),
+                                ],
+                              ),
+                              themeHelper),
+                        ),
+                      );
+                    }
+
+                    // Adjust the index based on the presence of "Add" and "Back" buttons
+                    final itemIndex = index -
+                        (showAddButton ? 1 : 0) -
+                        (showBackButton ? 1 : 0);
+                    if (itemIndex < 0 || itemIndex >= items.length) {
+                      return const SizedBox.shrink();
+                    }
+
+                    final isReordered = reorderedIndices.isNotEmpty &&
+                        reorderedIndices[itemIndex] != null;
+                    final item = items[itemIndex];
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      decoration: BoxDecoration(
+                        border: isReordered
+                            ? Border.all(color: Colors.blue, width: 3)
+                            : null,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      key: ValueKey(
+                          'grid_item_${itemIndex}_${item["fast_key_item_name"]}'),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          GestureDetector(
+                            onTap: () async {
+                              final connectivity = await Connectivity().checkConnectivity();
+
+                              final productId =
+                                  int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
+                              final productName = item["fast_key_item_name"] ?? "Unnamed Product";
+                              final productPrice =
+                                  double.tryParse(item["fast_key_item_price"].toString()) ?? 0.0;
+                              final productSku = item["fast_key_item_sku"] ?? "SKU-$productId";
+                              final productImage = item["fast_key_item_image"] ?? "";
+
+                              final hasVariants = (item["has_variants"] == true ||
+                                  (item["variations"] != null && item["variations"].isNotEmpty));
+
+                              final hasAgeRestriction = item["has_age_restriction"] == true;
+
+                              // 🔹 OFFLINE MODE
+                               if (connectivity == ConnectivityResult.none) {
+                                try {
+                                  final box = Hive.box('offlineOrders');
+                                  int activeOrderId = orderHelper?.activeOrderId ??
+                                      Hive.box('offlineOrders').get('lastOrderId', defaultValue: 1000);
+
+                                  if (orderHelper?.activeOrderId == null) {
+                                    orderHelper?.activeOrderId = activeOrderId;
+                                  }
+
+                                  // ✅ Show variant dialog even in offline mode if product has variants
+                                  if (hasVariants) {
+                                    if (kDebugMode) {
+                                      print("🧩 Showing offline variant dialog for $productName");
+                                    }
+
+                                    List<Map<String, dynamic>> offlineVariations = [];
+
+                                    try {
+                                      // ✅ Load from productCache instead of item["variations"]
+                                      final productBox = Hive.box('productCache');
+                                      final cacheKey = "product_${productId}_variations";
+                                      final cachedData = productBox.get(cacheKey);
+                                      final variationsData = cachedData?["variations"];
+
+                                      if (variationsData is List) {
+                                        offlineVariations = variationsData.map((v) {
+                                          if (v is Map) {
+                                            return v.map((key, value) => MapEntry(key.toString(), value));
+                                          }
+                                          if (v is String) {
+                                            try {
+                                              final decoded = jsonDecode(v);
+                                              if (decoded is Map) {
+                                                return decoded.map((key, value) => MapEntry(key.toString(), value));
+                                              }
+                                            } catch (_) {}
+                                          }
+                                          return <String, dynamic>{};
+                                        }).where((v) => v.isNotEmpty).toList();
+                                      }
+
+                                      if (kDebugMode) {
+                                        print("📦 Restored ${offlineVariations.length} offline variations for product $productId");
+                                      }
+                                    } catch (e) {
+                                      if (kDebugMode) print("⚠️ Error decoding offline variations: $e");
+                                    }
+
+                                    await showDialog(
+                                      context: context,
+                                      builder: (ctx) => VariantsDialog(
+                                        title: productName,
+                                        variations: offlineVariations,
+                                        onAddVariant: (selectedVariant, qty) async {
+                                          final variantId = int.tryParse(selectedVariant["id"].toString()) ?? -1;
+                                          final variantName = selectedVariant["name"] ?? "Variant";
+                                          final variantPrice = double.tryParse(selectedVariant["price"].toString()) ?? productPrice;
+                                          final variantSku = selectedVariant["sku"] ?? productSku;
+                                          final variantImage = selectedVariant["image"] ?? productImage;
+
+                                          await orderHelper?.addItemToOrder(
+                                            0,
+                                            "$productName - $variantName",
+                                            variantImage,
+                                            variantPrice,
+                                            qty,
+                                            variantSku,
+                                            activeOrderId,
+                                            type: 'variant',
+                                            productId: productId,
+                                            variationId: variantId,
+                                            variationName: variantName,
+                                            salesPrice: variantPrice,
+                                            regularPrice: variantPrice,
+                                            unitPrice: variantPrice,
+                                            onItemAdded: () async {
+                                              onItemTapped(index, variantAdded: true);
+                                              await orderHelper?.loadData();
+                                            },
+                                          );
+
+                                          if (kDebugMode) {
+                                            print("🛒 Offline variant added: $variantName -> Order $activeOrderId");
+                                          }
+                                        },
                                       ),
-                                      const SizedBox(width: 16), // Space between price and variations
-                                      if (item['variations'] != null && item['variations'].isNotEmpty) // Build #1.0.157: show variationIcon with count
-                                        Row(
+                                    );
+                                  } else {
+                                    // 🧠 No variants → Add base product directly offline
+                                    await orderHelper?.addItemToOrder(
+                                      0,
+                                      productName,
+                                      productImage,
+                                      productPrice,
+                                      1,
+                                      productSku,
+                                      activeOrderId,
+                                      type: 'product',
+                                      productId: productId,
+                                      variationId: -1,
+                                      salesPrice: productPrice,
+                                      regularPrice: productPrice,
+                                      unitPrice: productPrice,
+                                      onItemAdded: () async {
+                                        if (kDebugMode) print("✅ Offline item now visible in order panel");
+                                        onItemTapped(index, variantAdded: true);
+                                        await orderHelper?.loadData();
+                                      },
+                                    );
+                                  }
+                                } catch (e, s) {
+                                  if (kDebugMode) print("❌ Error adding product offline: $e\n$s");
+                                }
+                              }
+
+                              // 🌐 ONLINE MODE
+                              else {
+                                VariationPopup(
+                                  productId,
+                                  productName,
+                                  orderHelper!,
+                                  onProductSelected: ({required bool isVariant}) {
+                                    onItemTapped(index, variantAdded: isVariant);
+                                  },
+                                ).showVariantDialog(context: context);
+                              }
+                            },
+
+                            onLongPress: () {
+                              if (onLongPress != null) {
+                                // Build #1.0.204
+                                onLongPress!(
+                                    itemIndex); // Safe to use ! since we checked for null
+                                if (kDebugMode) {
+                                  print("### TEST onLongPress");
+                                }
+                              } else {
+                                if (kDebugMode) {
+                                  print("### onLongPress is null, skipping");
+                                }
+                              }
+                            },
+                            child: _getCardWidget(
+                                Padding(
+                                  padding: const EdgeInsets.all(10.0),
+                                  child: Row(
+                                    children: [
+                                      _buildImage(item["fast_key_item_image"]),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceAround,
                                           children: [
-                                            SvgPicture.asset(SvgUtils.variationIcon, height: 10, width: 10),
-                                            // SizedBox(width: 4),
-                                            // Text(
-                                            //   '${item["variations"].length}',
-                                            //   style: TextStyle(
-                                            //     fontSize: 12,
-                                            //     color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
-                                            //   ),
-                                            // ),
+                                            Text(
+                                              item["fast_key_item_name"],
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                //fontWeight: FontWeight.bold,
+                                                color: themeHelper.themeMode ==
+                                                        ThemeMode.dark
+                                                    ? ThemeNotifier.textDark
+                                                    : ThemeNotifier.textLight,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  '${TextConstants.currencySymbol}${double.tryParse(item["fast_key_item_price"].toString())?.toStringAsFixed(2) ?? "0.00"}',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: themeHelper
+                                                                .themeMode ==
+                                                            ThemeMode.dark
+                                                        ? ThemeNotifier.textDark
+                                                        : ThemeNotifier
+                                                            .textLight,
+                                                  ),
+                                                ),
+                                                const SizedBox(
+                                                    width:
+                                                        16), // Space between price and variations
+                                                if (item['variations'] !=
+                                                        null &&
+                                                    item['variations']
+                                                        .isNotEmpty) // Build #1.0.157: show variationIcon with count
+                                                  Row(
+                                                    children: [
+                                                      SvgPicture.asset(
+                                                          SvgUtils
+                                                              .variationIcon,
+                                                          height: 10,
+                                                          width: 10),
+                                                      // SizedBox(width: 4),
+                                                      // Text(
+                                                      //   '${item["variations"].length}',
+                                                      //   style: TextStyle(
+                                                      //     fontSize: 12,
+                                                      //     color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
+                                                      //   ),
+                                                      // ),
+                                                    ],
+                                                  ),
+                                              ],
+                                            ),
                                           ],
                                         ),
+                                      ),
                                     ],
+                                  ),
+                                ),
+                                themeHelper),
+                          ),
+                          if (enableIcons == true &&
+                              itemIndex ==
+                                  selectedItemIndex) // Build #1.0.204: Show icons only for long-pressed item
+                            Positioned(
+                              top: -5,
+                              right: -2,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (showDeleteButton)
+                                    IconButton(
+                                      icon: const Icon(Icons.delete,
+                                          color: Colors.red, size: 20),
+                                      onPressed: () => onDeleteItem(itemIndex),
+                                    ),
+                                  IconButton(
+                                    icon: const Icon(Icons.close,
+                                        color: Colors.grey, size: 20),
+                                    onPressed: onCancelReorder,
                                   ),
                                 ],
                               ),
                             ),
-                          ],
-                        ),
-                      ), themeHelper),
-                    ),
-                    if (enableIcons == true && itemIndex == selectedItemIndex) // Build #1.0.204: Show icons only for long-pressed item
-                      Positioned(
-                        top: -5,
-                        right: -2,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (showDeleteButton)
-                              IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red, size: 20),
-                                onPressed: () => onDeleteItem(itemIndex),
-                              ),
-                            IconButton(
-                              icon: const Icon(Icons.close, color: Colors.grey, size: 20),
-                              onPressed: onCancelReorder,
-                            ),
-                          ],
-                        ),
+                        ],
                       ),
-                  ],
+                    );
+                  },
                 ),
-              );
-            },
-          ),
-
-        ),
+              ),
       ),
     );
   }
@@ -1187,24 +1238,37 @@ class NestedGridWidget extends StatelessWidget {
   // pass widget - contents of the card
   // themeHelper - to support dark and light theme background
   // optional accentColor - to apply changes in shadow and border color
-  Widget _getCardWidget(Widget widget, ThemeNotifier themeHelper, {MaterialAccentColor accentColor = Colors.blueAccent}){
+  Widget _getCardWidget(Widget widget, ThemeNotifier themeHelper,
+      {MaterialAccentColor accentColor = Colors.blueAccent}) {
     return Card(
-      color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground :Colors.white,/// card color
+      color: themeHelper.themeMode == ThemeMode.dark
+          ? ThemeNotifier.secondaryBackground
+          : Colors.white,
+
+      /// card color
       elevation: 5,
-      shadowColor: accentColor, /// card shadow color
-      clipBehavior: Clip.antiAliasWithSaveLayer ,
-      shape: RoundedRectangleBorder( /// Optional: remove if no border required
+      shadowColor: accentColor,
+
+      /// card shadow color
+      clipBehavior: Clip.antiAliasWithSaveLayer,
+      shape: RoundedRectangleBorder(
+        /// Optional: remove if no border required
         side: BorderSide(
-          color: accentColor, /// Color of the border
-          width: 0.5,         /// Thickness of the border
+          color: accentColor,
+
+          /// Color of the border
+          width: 0.5,
+
+          /// Thickness of the border
         ),
-        borderRadius: BorderRadius.circular(15.0), // Optional: for rounded corners
+        borderRadius:
+            BorderRadius.circular(15.0), // Optional: for rounded corners
       ),
       child: widget,
     );
   }
 
-  Future<void> updateOrderPanel(int index) async{
+  Future<void> updateOrderPanel(int index) async {
     // Navigator.pop(context);
     onItemTapped(index, variantAdded: true);
   }

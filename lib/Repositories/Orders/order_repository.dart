@@ -1,7 +1,9 @@
 // repositories/order_repository.dart
 import 'dart:convert';
 import 'dart:ffi';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../Constants/text.dart';
 import '../../Database/db_helper.dart';
@@ -21,49 +23,183 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   Future<CreateOrderResponseModel> createOrder() async {
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
 
-    ///Build #1.0.128: metadata directly using from here , no need to add every class
-    // Create metadata if no request is provided
-    List<OrderMetaData> metaData;
-    int? shiftId = await UserDbHelper().getUserShiftId(); // Build #1.0.149
+    int? shiftId = await UserDbHelper().getUserShiftId();
     if (shiftId == null) {
       throw Exception("Please start your shift before creating an order");
     }
 
     final deviceDetails = await GlobalUtility.getDeviceDetails();
-    String deviceId = deviceDetails['device_id'] ?? 'unknown';
+    final deviceId = deviceDetails['device_id'] ?? 'unknown';
     final userData = await UserDbHelper().getUserData();
-    int userId = userData?[AppDBConst.userId] as int;
+    final userId = userData?[AppDBConst.userId] as int;
 
-    metaData = [
+    final metaData = [
       OrderMetaData(key: OrderMetaData.posDeviceId, value: deviceId),
       OrderMetaData(key: OrderMetaData.posPlacedBy, value: '$userId'),
       OrderMetaData(key: OrderMetaData.shiftId, value: shiftId.toString()),
     ];
 
     final request = CreateOrderRequestModel(metaData: metaData);
-    if (kDebugMode) {
-      print("OrderRepository - POST URL: $url");
-      print("OrderRepository - Request Body: ${request.toJson()}");
-    }
 
-    final response = await _helper.post(url, request.toJson(), true);
+    final connectivity = await Connectivity().checkConnectivity();
 
-    if (kDebugMode) {
-      print("OrderRepository - Raw Response: $response");
-    }
+    if (connectivity == ConnectivityResult.none) {
+      // ---------- OFFLINE MODE ----------
+      final box = Hive.box('offlineOrders');
 
-    if (response is String) {
-      try {
+      // Generate 4-digit order ID
+      int lastOrderId = box.get('lastOrderId', defaultValue: 1000);
+      int newOrderId = lastOrderId + 1;
+      box.put('lastOrderId', newOrderId);
+
+      final localOrder = {
+        'order_id': newOrderId,
+        'request': request.toJson(),
+        'created_at': DateTime.now().toIso8601String(),
+        'synced': false,
+        'products': [],
+      };
+
+      await box.put(newOrderId.toString(), localOrder);
+
+      if (kDebugMode) {
+        print("📦 Saved offline order: $localOrder");
+      }
+
+      // Return local response for UI consistency
+      return CreateOrderResponseModel(
+        id: newOrderId,
+        parentId: 0,
+        status: "pending_offline",
+        currency: "INR",
+        discountTotal: "0",
+        total: "0",
+        metaData: metaData,
+        lineItems: [],
+        taxLines: [],
+        shippingLines: [],
+        feeLines: [],
+        couponLines: [],
+      );
+    } else {
+      // ---------- ONLINE MODE ----------
+      if (kDebugMode) {
+        print("OrderRepository - POST URL: $url");
+        print("OrderRepository - Request Body: ${request.toJson()}");
+      }
+
+      final response = await _helper.post(url, request.toJson(), true);
+
+      if (response is String) {
         final responseData = json.decode(response);
         return CreateOrderResponseModel.fromJson(responseData);
-      } catch (e) {
-        if (kDebugMode) print("Error parsing order response: $e");
-        throw Exception("Failed to parse order response");
+      } else if (response is Map<String, dynamic>) {
+        return CreateOrderResponseModel.fromJson(response);
+      } else {
+        throw Exception("Unexpected response type in order POST");
       }
-    } else if (response is Map<String, dynamic>) {
-      return CreateOrderResponseModel.fromJson(response);
+    }
+  }
+
+  Future<void> addProductToOfflineOrder({
+    required int orderId,
+    required Map<String, dynamic> product,
+  }) async {
+    final box = Hive.box('offlineOrders');
+    final order = box.get(orderId.toString());
+
+    if (order == null) {
+      throw Exception("Offline order $orderId not found");
+    }
+
+    final List<Map<String, dynamic>> products = (order['products'] ?? [])
+        .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
+        .toList();
+
+    final newProductId = product['product_id'] ?? -1;
+    final newVariationId = product['variation_id'] ?? 0;
+
+    final existingIndex = products.indexWhere((p) {
+      final storedProductId = p['product_id'] ?? -1;
+      final storedVariationId = p['variation_id'] ?? 0;
+
+      // ✅ Only match if both product_id and variation_id match exactly
+      return storedProductId == newProductId &&
+          storedVariationId == newVariationId;
+    });
+
+    if (existingIndex != -1) {
+      // 🧮 Increase quantity if exact match found
+      final existing = products[existingIndex];
+      final oldQty = (existing['quantity'] ?? 0).toInt();
+      final newQty = oldQty + (product['quantity'] ?? 1);
+
+      products[existingIndex] = {
+        ...existing,
+        'quantity': newQty,
+      };
+
+      if (kDebugMode) {
+        print("🔁 Updated existing offline product: ${product['name']} (Qty: $oldQty → $newQty)");
+      }
     } else {
-      throw Exception("Unexpected response type in order POST");
+      // 🆕 Add as new product
+      products.add(Map<String, dynamic>.from(product));
+
+      if (kDebugMode) {
+        print("🆕 Added new offline product: ${product['name']} (ID: $newProductId / Var: $newVariationId)");
+      }
+    }
+
+    await box.put(orderId.toString(), {
+      ...order,
+      'products': products,
+    });
+
+    if (kDebugMode) {
+      print("📦 Offline order updated -> Total products: ${products.length}");
+    }
+  }
+
+
+  /// 🌀 Sync all offline orders when online
+  Future<void> syncOfflineOrders() async {
+    final connectivity = await Connectivity().checkConnectivity();
+    if (connectivity == ConnectivityResult.none) return;
+
+    final box = Hive.box('offlineOrders');
+    final orders = box.toMap();
+
+    for (final entry in orders.entries) {
+      if (entry.key == 'lastOrderId') continue;
+
+      final order = entry.value;
+      if (order['synced'] == true) continue;
+
+      try {
+        final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
+        final response = await _helper.post(url, order['request'], true);
+
+        if (response is String) {
+          final responseData = json.decode(response);
+          if (responseData['id'] != null) {
+            await box.delete(entry.key);
+            if (kDebugMode) {
+              print("✅ Synced order ${order['order_id']} successfully");
+            }
+          }
+        } else if (response is Map<String, dynamic> &&
+            response['id'] != null) {
+          await box.delete(entry.key);
+          if (kDebugMode) {
+            print("✅ Synced order ${order['order_id']} successfully");
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print("❌ Failed to sync order ${order['order_id']}: $e");
+        }
+      }
     }
   }
 

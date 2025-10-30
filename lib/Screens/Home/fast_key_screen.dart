@@ -1266,13 +1266,14 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
   //   }
   // }
 
-  void _refreshOrderList() {
+  Future<void> _refreshOrderList() async {
     setState(() { // Build #1.0.128
       if (kDebugMode) {
         print("##### _refreshOrderList: Incrementing _refreshCounter to $_refreshCounter to trigger RightOrderPanel refresh");
       }
       _refreshCounter++; //Build #1.0.170: Increment to signal refresh, causing didUpdateWidget to load with loader
     });
+    await orderHelper.loadData();
 
     // Build #1.0.256: Stop stopwatch and add to steps only if enabled
     if (Misc.enableUILogMessages && refreshUIStopwatch != null) {
