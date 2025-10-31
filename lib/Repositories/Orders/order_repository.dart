@@ -21,8 +21,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
   // 1. Create Order
   Future<CreateOrderResponseModel> createOrder() async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
-
+    // 🔹 Get local user and device info
     int? shiftId = await UserDbHelper().getUserShiftId();
     if (shiftId == null) {
       throw Exception("Please start your shift before creating an order");
@@ -41,64 +40,43 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
     final request = CreateOrderRequestModel(metaData: metaData);
 
-    final connectivity = await Connectivity().checkConnectivity();
+    // ---------- OFFLINE MODE ONLY ----------
+    final box = Hive.box('offlineOrders');
 
-    if (connectivity == ConnectivityResult.none) {
-      // ---------- OFFLINE MODE ----------
-      final box = Hive.box('offlineOrders');
+    // Generate a 4-digit order ID that increments each time
+    int lastOrderId = box.get('lastOrderId', defaultValue: 1000);
+    int newOrderId = lastOrderId + 1;
+    box.put('lastOrderId', newOrderId);
 
-      // Generate 4-digit order ID
-      int lastOrderId = box.get('lastOrderId', defaultValue: 1000);
-      int newOrderId = lastOrderId + 1;
-      box.put('lastOrderId', newOrderId);
+    final localOrder = {
+      'order_id': newOrderId,
+      'request': request.toJson(),
+      'created_at': DateTime.now().toIso8601String(),
+      'synced': false,
+      'products': [],
+    };
 
-      final localOrder = {
-        'order_id': newOrderId,
-        'request': request.toJson(),
-        'created_at': DateTime.now().toIso8601String(),
-        'synced': false,
-        'products': [],
-      };
+    await box.put(newOrderId.toString(), localOrder);
 
-      await box.put(newOrderId.toString(), localOrder);
-
-      if (kDebugMode) {
-        print("📦 Saved offline order: $localOrder");
-      }
-
-      // Return local response for UI consistency
-      return CreateOrderResponseModel(
-        id: newOrderId,
-        parentId: 0,
-        status: "pending_offline",
-        currency: "INR",
-        discountTotal: "0",
-        total: "0",
-        metaData: metaData,
-        lineItems: [],
-        taxLines: [],
-        shippingLines: [],
-        feeLines: [],
-        couponLines: [],
-      );
-    } else {
-      // ---------- ONLINE MODE ----------
-      if (kDebugMode) {
-        print("OrderRepository - POST URL: $url");
-        print("OrderRepository - Request Body: ${request.toJson()}");
-      }
-
-      final response = await _helper.post(url, request.toJson(), true);
-
-      if (response is String) {
-        final responseData = json.decode(response);
-        return CreateOrderResponseModel.fromJson(responseData);
-      } else if (response is Map<String, dynamic>) {
-        return CreateOrderResponseModel.fromJson(response);
-      } else {
-        throw Exception("Unexpected response type in order POST");
-      }
+    if (kDebugMode) {
+      print("📦 Saved offline order: $localOrder");
     }
+
+    // 🔹 Return local response for UI consistency
+    return CreateOrderResponseModel(
+      id: newOrderId,
+      parentId: 0,
+      status: "pending_offline",
+      currency: "INR",
+      discountTotal: "0",
+      total: "0",
+      metaData: metaData,
+      lineItems: [],
+      taxLines: [],
+      shippingLines: [],
+      feeLines: [],
+      couponLines: [],
+    );
   }
 
   Future<void> addProductToOfflineOrder({

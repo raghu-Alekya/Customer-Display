@@ -7,6 +7,7 @@ import '../../Helper/api_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Category/category_model.dart';
 import '../../Models/Category/category_product_model.dart';
+import '../Search/product_search_repository.dart';
 
 const String categoryBoxName = 'categoryCache';
 const String productBoxName = 'productCache';
@@ -57,7 +58,6 @@ class CategoryRepository {
     return CategoryListResponse.fromJson(categoryList);
   }
 
-  /// ✅ Load Products by Category — with Hive Cache
   Future<CategoryProductListResponse> getProductsByCategory(int categoryId) async {
     final url =
         "${UrlHelper.componentVersionUrl}${UrlMethodConstants.productByCategories}/$categoryId";
@@ -65,6 +65,7 @@ class CategoryRepository {
     final box = Hive.box(productBoxName);
     final cacheKey = "products_$categoryId";
     final cachedData = box.get(cacheKey);
+
     if (cachedData != null) {
       final cacheTimestamp = DateTime.parse(cachedData['timestamp']);
       final isExpired = DateTime.now().difference(cacheTimestamp) > cacheDuration;
@@ -77,6 +78,7 @@ class CategoryRepository {
         if (kDebugMode) print("⚠️ Cache expired for products (category: $categoryId)");
       }
     }
+
     if (kDebugMode) print("🌍 Fetching products from API: $url");
     final response = await _helper.get(url, true);
 
@@ -98,8 +100,58 @@ class CategoryRepository {
 
     if (kDebugMode) print("💾 Products cached in Hive for category: $categoryId");
 
+    // 💾 Also pre-cache variations for offline use
+    final productCacheBox = Hive.box('productCache');
+    final productRepo = ProductRepository(); // ✅ use this
+
+    for (final product in productList) {
+      final productId = product['id'];
+      final hasEmbeddedVariants =
+          product['variations'] != null && product['variations'].isNotEmpty;
+
+      if (hasEmbeddedVariants) {
+        // Normalize embedded variations before saving
+        final normalized = product['variations'].map<Map<String, dynamic>>((v) {
+          final image = (v["image"] is Map && v["image"]["src"] != null)
+              ? v["image"]["src"]
+              : (v["image"] is String ? v["image"] : "");
+          final name = (v["name"] is Map && v["name"]["rendered"] != null)
+              ? v["name"]["rendered"]
+              : (v["name"] is String ? v["name"] : "Unnamed Variant");
+          final price = v["price"]?.toString() ?? "0";
+
+          return {
+            "id": v["id"],
+            "name": name,
+            "price": price,
+            "sku": v["sku"] ?? "",
+            "image": image,
+          };
+        }).toList();
+
+        await productCacheBox.put("product_${productId}_variations", {
+          'variations': normalized,
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+
+        if (kDebugMode) {
+          print("💾 Cached embedded variations for product $productId");
+        }
+      } else {
+        // Fetch and cache from WC API
+        try {
+          await productRepo.fetchProductVariations(productId); // ✅ fixed call
+        } catch (e) {
+          if (kDebugMode) {
+            print("⚠️ Failed to fetch variations for product $productId: $e");
+          }
+        }
+      }
+    }
+
     return CategoryProductListResponse.fromJson(productList);
   }
+
 
   /// 🧹 Optional: Clear cache (manual refresh)
   Future<void> clearCache() async {

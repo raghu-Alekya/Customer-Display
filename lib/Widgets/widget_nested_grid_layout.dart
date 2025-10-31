@@ -971,11 +971,15 @@ class NestedGridWidget extends StatelessWidget {
 
                               final productId =
                                   int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
-                              final productName = item["fast_key_item_name"] ?? "Unnamed Product";
+                              final productName = (item["fast_key_item_name"] is String)
+                                  ? item["fast_key_item_name"]
+                                  : item["fast_key_item_name"]?["rendered"] ?? "Unnamed Product";
                               final productPrice =
                                   double.tryParse(item["fast_key_item_price"].toString()) ?? 0.0;
                               final productSku = item["fast_key_item_sku"] ?? "SKU-$productId";
-                              final productImage = item["fast_key_item_image"] ?? "";
+                              final productImage = (item["fast_key_item_image"] is String)
+                                  ? item["fast_key_item_image"]
+                                  : item["fast_key_item_image"]?["src"] ?? "";
 
                               final hasVariants = (item["has_variants"] == true ||
                                   (item["variations"] != null && item["variations"].isNotEmpty));
@@ -1002,33 +1006,67 @@ class NestedGridWidget extends StatelessWidget {
                                     List<Map<String, dynamic>> offlineVariations = [];
 
                                     try {
-                                      // ✅ Load from productCache instead of item["variations"]
                                       final productBox = Hive.box('productCache');
                                       final cacheKey = "product_${productId}_variations";
                                       final cachedData = productBox.get(cacheKey);
-                                      final variationsData = cachedData?["variations"];
 
-                                      if (variationsData is List) {
-                                        offlineVariations = variationsData.map((v) {
-                                          if (v is Map) {
-                                            return v.map((key, value) => MapEntry(key.toString(), value));
+                                      List rawVariations = [];
+
+                                      // 🔹 Handle all possible cached formats
+                                      if (cachedData is List) {
+                                        rawVariations = cachedData;
+                                      } else if (cachedData is Map) {
+                                        if (cachedData.containsKey("variations") && cachedData["variations"] is List) {
+                                          rawVariations = cachedData["variations"];
+                                        } else {
+                                          // maybe the cache itself is a map of variants
+                                          rawVariations = cachedData.values.toList();
+                                        }
+                                      } else if (cachedData is String) {
+                                        try {
+                                          final decoded = jsonDecode(cachedData);
+                                          if (decoded is List) rawVariations = decoded;
+                                          if (decoded is Map && decoded.containsKey("variations")) {
+                                            rawVariations = decoded["variations"];
                                           }
-                                          if (v is String) {
-                                            try {
-                                              final decoded = jsonDecode(v);
-                                              if (decoded is Map) {
-                                                return decoded.map((key, value) => MapEntry(key.toString(), value));
-                                              }
-                                            } catch (_) {}
-                                          }
-                                          return <String, dynamic>{};
-                                        }).where((v) => v.isNotEmpty).toList();
+                                        } catch (_) {}
                                       }
+
+                                      // 🔹 Normalize variants for UI
+                                      offlineVariations = rawVariations.map<Map<String, dynamic>>((v) {
+                                        if (v is String) {
+                                          try {
+                                            v = jsonDecode(v);
+                                          } catch (_) {}
+                                        }
+
+                                        if (v is Map) {
+                                          final map = v.map((key, value) => MapEntry(key.toString(), value));
+
+                                          map["image"] = (map["image"] is Map && map["image"]["src"] != null)
+                                              ? map["image"]["src"]
+                                              : (map["image"] is String ? map["image"] : "");
+
+                                          map["name"] = (map["name"] is Map && map["name"]["rendered"] != null)
+                                              ? map["name"]["rendered"]
+                                              : (map["name"] is String ? map["name"] : "Unnamed Variant");
+
+                                          map["price"] = map["price"]?.toString() ?? "0";
+
+                                          return map;
+                                        }
+                                        return <String, dynamic>{};
+                                      }).where((v) => v.isNotEmpty).toList();
 
                                       if (kDebugMode) {
                                         print("📦 Restored ${offlineVariations.length} offline variations for product $productId");
                                       }
-                                    } catch (e) {
+
+                                      if (offlineVariations.isEmpty) {
+                                        print("⚠️ No offline variants found — maybe not cached yet for product $productId");
+                                      }
+                                    }
+                                    catch (e) {
                                       if (kDebugMode) print("⚠️ Error decoding offline variations: $e");
                                     }
 
