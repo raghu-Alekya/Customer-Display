@@ -91,8 +91,6 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       print("#### Order Panel DB helper loadData: orderIds = $orderIds, activeUserId: $activeUserId");
     }
   }
-
-  // Loads order data from the local database and shared preferences
   Future<void> loadData() async {
     final prefs = await SharedPreferences.getInstance();
     activeOrderId = prefs.getInt('activeOrderId');
@@ -101,74 +99,81 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     orderIds = [];
     orders = [];
 
-    final connectivity = await Connectivity().checkConnectivity();
+    // Always offline
+    if (kDebugMode) print("📴 Loading offline orders from Hive");
 
-    if (connectivity == ConnectivityResult.none) {
-      // -------- OFFLINE MODE --------
-      if (kDebugMode) print("📴 Loading offline orders from Hive");
+    final box = Hive.box('offlineOrders');
+    final allOfflineOrders = box.toMap();
 
-      final box = Hive.box('offlineOrders');
-      final allOfflineOrders = box.toMap();
+    final validEntries = allOfflineOrders.entries
+        .where((entry) => entry.value is Map)
+        .map((entry) {
+      // ✅ Normalize the root map
+      final normalized = Map<String, dynamic>.from(entry.value as Map);
 
-      // Filter only valid Map-type entries
-      final validEntries = allOfflineOrders.entries
-          .where((entry) => entry.value is Map)
-          .map((entry) => MapEntry(
-        entry.key,
-        Map<String, dynamic>.from(entry.value as Map),
-      ))
-          .toList();
-
-      if (validEntries.isNotEmpty) {
-        orders = validEntries.map((e) => e.value).toList();
-
-        // Try to extract order IDs safely (from map or key)
-        orderIds = validEntries.map((e) {
-          final map = e.value;
-          if (map.containsKey('order_id')) return map['order_id'] as int;
-          if (map.containsKey('id')) return map['id'] as int;
-          return int.tryParse(e.key.toString());
-        }).whereType<int>().toList();
-
-        if (activeOrderId == null || !orderIds.contains(activeOrderId)) {
-          activeOrderId = orderIds.isNotEmpty ? orderIds.last : null;
-          if (activeOrderId != null) await prefs.setInt('activeOrderId', activeOrderId!);
-        }
+      // ✅ Normalize nested 'products' list if present
+      if (normalized['products'] is List) {
+        final rawProducts = normalized['products'] as List;
+        normalized['products'] = rawProducts
+            .whereType<Map>()
+            .map((p) => Map<String, dynamic>.from(p))
+            .toList();
       } else {
-        if (kDebugMode) print("⚠️ No valid offline order maps found in Hive");
-        activeOrderId = null;
-        orderIds = [];
-        orders = [];
+        normalized['products'] = <Map<String, dynamic>>[];
       }
-    }
 
-    else {
-      // -------- ONLINE MODE (SQLite) --------
-      final db = await DBHelper.instance.database;
-      orders = await db.query(
-        AppDBConst.orderTable,
-        where: '${AppDBConst.userId} = ?',
-        whereArgs: [activeUserId ?? 1],
-        orderBy: '${AppDBConst.orderServerId} ASC',
-      );
+      // ✅ Normalize nested 'request' if present
+      if (normalized['request'] is Map) {
+        normalized['request'] =
+        Map<String, dynamic>.from(normalized['request'] as Map);
+      }
 
-      if (orders.isNotEmpty) {
-        orderIds = orders.map((order) => order[AppDBConst.orderServerId] as int).toList();
-        if (activeOrderId == null || !orderIds.contains(activeOrderId)) {
-          activeOrderId = orders.last[AppDBConst.orderServerId];
+      // ✅ Normalize nested 'customer' if present
+      if (normalized['customer'] is Map) {
+        normalized['customer'] =
+        Map<String, dynamic>.from(normalized['customer'] as Map);
+      }
+
+      // ✅ Normalize 'totals' or other nested objects if exist
+      if (normalized['totals'] is Map) {
+        normalized['totals'] =
+        Map<String, dynamic>.from(normalized['totals'] as Map);
+      }
+
+      return MapEntry(entry.key, normalized);
+    })
+        .toList();
+
+    if (validEntries.isNotEmpty) {
+      orders = validEntries.map((e) => e.value).toList();
+
+      // ✅ Extract order IDs safely
+      orderIds = validEntries.map((e) {
+        final map = e.value;
+        if (map.containsKey('order_id')) return map['order_id'] as int?;
+        if (map.containsKey('id')) return map['id'] as int?;
+        return int.tryParse(e.key.toString());
+      }).whereType<int>().toList();
+
+      // ✅ Set active order ID if not found
+      if (activeOrderId == null || !orderIds.contains(activeOrderId)) {
+        activeOrderId = orderIds.isNotEmpty ? orderIds.last : null;
+        if (activeOrderId != null) {
           await prefs.setInt('activeOrderId', activeOrderId!);
         }
-      } else {
-        activeOrderId = null;
-        orderIds = [];
-        orders = [];
       }
+    } else {
+      if (kDebugMode) print("⚠️ No valid offline order maps found in Hive");
+      activeOrderId = null;
+      orderIds = [];
+      orders = [];
     }
 
     if (kDebugMode) {
-      print("#### Order Panel DB helper loadData: activeOrderId = $activeOrderId");
-      print("#### Order Panel DB helper loadData: orderIds = $orderIds");
-      print("#### Total Orders Loaded: ${orders.length}");
+      print("#### Offline Orders Loaded ####");
+      print("Active Order ID: $activeOrderId");
+      print("Order IDs: $orderIds");
+      print("Total Orders Loaded: ${orders.length}");
     }
   }
 
@@ -1112,6 +1117,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   }
 
   // Adds an item to the currently active order; creates an order if none exists
+
+  // Adds an item to the currently active order; creates an order if none exists
   Future<void> addItemToOrder(
       int? serverItemId,
       String name,
@@ -1131,160 +1138,100 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         double? regularPrice,
         double? unitPrice,
       }) async {
-    final connectivity = await Connectivity().checkConnectivity();
+    final box = Hive.box('offlineOrders');
+    final order = box.get(orderId.toString());
 
-    if (connectivity == ConnectivityResult.none) {
-      final box = Hive.box('offlineOrders');
-      final order = box.get(orderId.toString());
+    if (order == null) {
+      if (kDebugMode) print("⚠️ No offline order found for $orderId");
+      return;
+    }
 
-      if (order == null) {
-        if (kDebugMode) print("⚠️ No offline order found for $orderId");
-        return;
+    // Clone existing products
+    final List<Map<String, dynamic>> products = (order['products'] ?? [])
+        .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
+        .toList();
+
+    final normProductId = (productId ?? -1).toInt();
+    final normVariationId = (variationId ?? 0).toInt();
+
+    // ✅ Check if product already exists (strict match)
+    final existingIndex = products.indexWhere((p) {
+      final storedProductId = (p['product_id'] ?? -1).toInt();
+      final storedVariationId = (p['variation_id'] ?? 0).toInt();
+      return storedProductId == normProductId &&
+          storedVariationId == normVariationId;
+    });
+
+    if (existingIndex != -1) {
+      // 🔁 Update existing product quantity
+      final existing = products[existingIndex];
+      final oldQty = (existing['quantity'] ?? 0).toInt();
+      final newQty = oldQty + quantity;
+
+      products[existingIndex] = {
+        ...existing,
+        'quantity': newQty,
+        'price': price,
+      };
+
+      if (kDebugMode) {
+        print("🔁 Updated existing product: $name (Qty: $oldQty → $newQty)");
       }
-
-      final List<Map<String, dynamic>> products = (order['products'] ?? [])
-          .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
-          .toList();
-
-      final normProductId = (productId ?? -1).toInt();
-      final normVariationId = (variationId ?? 0).toInt();
-
-      // ✅ Strict match (must match both product_id and variation_id)
-      final existingIndex = products.indexWhere((p) {
-        final storedProductId = (p['product_id'] ?? -1).toInt();
-        final storedVariationId = (p['variation_id'] ?? 0).toInt();
-        return storedProductId == normProductId &&
-            storedVariationId == normVariationId;
+    } else {
+      // 🆕 Add new product
+      products.add({
+        'server_item_id': serverItemId,
+        'name': name,
+        'image': image,
+        'price': price,
+        'quantity': quantity,
+        'sku': sku,
+        'type': type ?? 'product',
+        'product_id': productId,
+        'variation_id': variationId,
+        'variation_name': variationName,
+        'variation_count': variationCount,
+        'combo': combo,
+        'sales_price': salesPrice,
+        'regular_price': regularPrice,
+        'unit_price': unitPrice,
       });
 
-      if (existingIndex != -1) {
-        final existing = products[existingIndex];
-        final oldQty = (existing['quantity'] ?? 0).toInt();
-        final newQty = oldQty + quantity;
+      if (kDebugMode) print("🆕 Added new product: $name");
+    }
 
-        products[existingIndex] = {
-          ...existing,
-          'quantity': newQty,
-          'price': price,
-        };
+    // 💾 Update Hive order
+    await box.put(orderId.toString(), {...order, 'products': products});
 
-        if (kDebugMode) {
-          print("🔁 Updated existing offline product: $name (Qty: $oldQty → $newQty)");
-        }
-      } else {
-        products.add({
-          'server_item_id': serverItemId,
-          'name': name,
-          'image': image,
-          'price': price,
-          'quantity': quantity,
-          'sku': sku,
-          'type': type ?? 'product',
-          'product_id': productId,
-          'variation_id': variationId,
-          'variation_name': variationName,
-          'variation_count': variationCount,
-          'combo': combo,
-          'sales_price': salesPrice,
-          'regular_price': regularPrice,
-          'unit_price': unitPrice,
-        });
+    // 💾 Sync with SQLite
+    final db = await DBHelper.instance.database;
 
-        if (kDebugMode) print("🆕 Added new offline product: $name");
-      }
+    final existingInDb = await db.query(
+      AppDBConst.purchasedItemsTable,
+      where:
+      '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemVariationId} = ?',
+      whereArgs: [orderId, normProductId, normVariationId],
+    );
 
-      await box.put(orderId.toString(), {...order, 'products': products});
+    if (existingInDb.isNotEmpty) {
+      final existingRow = existingInDb.first;
+      final oldQty = existingRow[AppDBConst.itemCount] as int;
+      final newQty = oldQty + quantity;
 
-      // ✅ Sync SQLite
-      final db = await DBHelper.instance.database;
-
-      // ❌ WRONG (old):
-      // '${AppDBConst.itemProductId} = ? OR ${AppDBConst.itemVariationId} = ?'
-
-      // ✅ FIXED: strict AND comparison
-      final existingInDb = await db.query(
+      await db.update(
         AppDBConst.purchasedItemsTable,
+        {
+          AppDBConst.itemCount: newQty,
+          AppDBConst.itemSumPrice: price * newQty,
+        },
         where:
         '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemVariationId} = ?',
         whereArgs: [orderId, normProductId, normVariationId],
       );
 
-      if (existingInDb.isNotEmpty) {
-        final existingRow = existingInDb.first;
-        final oldQty = existingRow[AppDBConst.itemCount] as int;
-        final newQty = oldQty + quantity;
-
-        await db.update(
-          AppDBConst.purchasedItemsTable,
-          {
-            AppDBConst.itemCount: newQty,
-            AppDBConst.itemSumPrice: price * newQty,
-          },
-          where:
-          '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemVariationId} = ?',
-          whereArgs: [orderId, normProductId, normVariationId],
-        );
-      } else {
-        await db.insert(AppDBConst.purchasedItemsTable, {
-          AppDBConst.itemServerId: serverItemId,
-          AppDBConst.itemName: name,
-          AppDBConst.itemImage: image,
-          AppDBConst.itemPrice: price,
-          AppDBConst.itemCount: quantity,
-          AppDBConst.itemSumPrice: price,
-          AppDBConst.orderIdForeignKey: orderId,
-          AppDBConst.itemSKU: sku,
-          AppDBConst.itemType: type,
-          AppDBConst.itemProductId: normProductId,
-          AppDBConst.itemVariationId: normVariationId,
-          AppDBConst.itemVariationCustomName: variationName,
-          AppDBConst.itemVariationCount: variationCount,
-          AppDBConst.itemCombo: combo,
-          AppDBConst.itemSalesPrice: salesPrice,
-          AppDBConst.itemRegularPrice: regularPrice,
-          AppDBConst.itemUnitPrice: unitPrice,
-        });
+      if (kDebugMode) {
+        print("🧮 SQLite updated: $name (Qty: $oldQty → $newQty)");
       }
-
-      await loadData();
-      if (onItemAdded != null) onItemAdded();
-      return;
-    }
-
-
-    // -------- ONLINE MODE -------- (keep your existing SQLite logic)
-    final db = await DBHelper.instance.database;
-    var existingItem = [];
-
-    if (variationId! > 0) {
-      existingItem = await db.query(
-        AppDBConst.purchasedItemsTable,
-        where:
-        '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemVariationId} = ? AND ${AppDBConst.itemType} = ?',
-        whereArgs: [orderId, variationId, type ?? ItemType.product.value],
-      );
-    }
-    if (existingItem.isEmpty && productId! > 0) {
-      existingItem = await db.query(
-        AppDBConst.purchasedItemsTable,
-        where:
-        '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemType} = ?',
-        whereArgs: [orderId, productId, type ?? ItemType.product.value],
-      );
-    }
-
-    if (existingItem.isNotEmpty) {
-      await db.rawUpdate('''
-      UPDATE ${AppDBConst.purchasedItemsTable}
-      SET ${AppDBConst.itemCount} = ?,
-          ${AppDBConst.itemSumPrice} = ?,
-          ${AppDBConst.itemProductId} = ?,
-          ${AppDBConst.itemVariationId} = ?,
-          ${AppDBConst.itemSalesPrice} = ?,
-          ${AppDBConst.itemRegularPrice} = ?,
-          ${AppDBConst.itemUnitPrice} = ?
-      WHERE ${AppDBConst.itemServerId} = ?
-    ''', [quantity, price, productId, variationId, salesPrice, regularPrice, unitPrice, serverItemId]);
     } else {
       await db.insert(AppDBConst.purchasedItemsTable, {
         AppDBConst.itemServerId: serverItemId,
@@ -1296,8 +1243,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         AppDBConst.orderIdForeignKey: orderId,
         AppDBConst.itemSKU: sku,
         AppDBConst.itemType: type,
-        AppDBConst.itemProductId: productId,
-        AppDBConst.itemVariationId: variationId,
+        AppDBConst.itemProductId: normProductId,
+        AppDBConst.itemVariationId: normVariationId,
         AppDBConst.itemVariationCustomName: variationName,
         AppDBConst.itemVariationCount: variationCount,
         AppDBConst.itemCombo: combo,
@@ -1305,9 +1252,12 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         AppDBConst.itemRegularPrice: regularPrice,
         AppDBConst.itemUnitPrice: unitPrice,
       });
+
+      if (kDebugMode) print("💾 Inserted new product in SQLite: $name");
     }
 
-    loadData();
+    await loadData();
+
     if (onItemAdded != null) onItemAdded();
   }
 

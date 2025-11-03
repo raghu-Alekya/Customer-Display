@@ -1765,82 +1765,111 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       print("display time === $displayTime");
     }
 
-    // Update the calculation section in buildCurrentOrder:
     if (orderHelper.activeOrderId != null) {
+      final offlineBox = Hive.box('offlineOrders');
+      final rawOfflineOrder = offlineBox.get(orderHelper.activeOrderId.toString());
 
-      // var orders = await orderHelper.getOrderById(orderHelper.activeOrderId!);
-      // var order = orders.first;
-      final order = orderHelper.orders.firstWhere(
-            (order) => order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-        orElse: () => {},
-      );
-      if (orderItems.isNotEmpty && order.isNotEmpty) {
-        // Get values from order or default to 0
-        orderDiscount = order[AppDBConst.orderDiscount] as double? ?? 0.0;
-        merchantDiscount = order[AppDBConst.merchantDiscount] as double? ?? 0.0;
-        orderTax = order[AppDBConst.orderTax] as double? ?? 0.0;
+      if (rawOfflineOrder != null) {
+        // 🟠 OFFLINE ORDER FLOW
+        if (kDebugMode) print(
+            "📦 Detected offline order (${orderHelper.activeOrderId})");
 
-        // Build #1.0.138: Calculate net total
-        netTotal = grossTotal - orderDiscount; // Build #1.0.137
+        final Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(
+            rawOfflineOrder);
+        final offlineProducts = ((offlineOrder['products'] ?? []) as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
 
-        //Build #1.0.146: Apply merchant discount (this is typically a separate discount)
-        netTotal = netTotal - merchantDiscount;
+        // Recalculate totals
+        grossTotal = offlineProducts.fold<num>(0, (sum, item) {
+          final price = double.tryParse(item['price']?.toString() ?? '0') ??
+              0.0;
+          final qty = double.tryParse(item['quantity']?.toString() ?? '0') ??
+              0.0;
+          return sum + (price * qty);
+        });
 
-        ///map total with netPayable
-        netPayable =  order[AppDBConst.orderTotal] as double? ?? 0.0;
-
-        // Ensure netPayable is not negative
-        // Build #1.0.138: Ensure no negative values
-        netTotal = netTotal; //< 0 ? 0.0 : netTotal;
-        netPayable = netPayable; // < 0 ? 0.0 : netPayable;
-
-        // Determine the date and time to display from order data
-        if (order.isNotEmpty && order[AppDBConst.orderDate] != null) {
-          try {
-            final DateTime createdDateTime = DateTime.parse(order[AppDBConst.orderDate].toString());
-            displayDate = DateFormat(TextConstants.dateFormat).format(createdDateTime);
-            displayTime = DateFormat(TextConstants.timeFormat).format(createdDateTime);
-          } catch (e) {
-            if (kDebugMode) {
-              print("Error parsing order creation date: $e");
-            }
-            // Fallback to raw data or default if parsing fails
-            displayDate = order[AppDBConst.orderDate].toString().split(' ').first;
-          }
-        }
-      } else {
-        if (kDebugMode) {
-          print("#### Reset values when orderItems is empty");
-          print("#### Order Items is empty -> ${orderItems.isNotEmpty} , Order is empty -> ${order.isNotEmpty}");
-          print("#### Discount ${order[AppDBConst.orderDiscount] as double? ?? 0.0}");
-          print("#### Tax ${order[AppDBConst.orderTax] as double? ?? 0.0}");
-          print("#### Total ${order[AppDBConst.orderTotal] as double? ?? 0.0}");
-        }
-        // Build #1.0.197: Fixed [SCRUM - 347] -> Net payable amount not updating to 0 when item quantity is set to zero
-        // Reset values when orderItems is empty
         orderDiscount = 0.0;
         merchantDiscount = 0.0;
         orderTax = 0.0;
-        netTotal = 0.0;
-        netPayable = 0.0;
 
-        /// Optional : If required un-comment and use it !
-        // final db = await DBHelper.instance.database;
-        // await db.update(
-        //   AppDBConst.orderTable,
-        //   {
-        //     AppDBConst.orderTotal: 0.0,
-        //     AppDBConst.orderTax: 0.0,
-        //     AppDBConst.orderDiscount: 0.0,
-        //     AppDBConst.merchantDiscount: 0.0,
-        //   },
-        //   where: '${AppDBConst.orderServerId} = ?',
-        //   whereArgs: [orderHelper.activeOrderId],
-        // );
+        netTotal = grossTotal - orderDiscount - merchantDiscount;
+        netPayable = netTotal + orderTax;
+
+        // Parse created_at safely
+        if (offlineOrder['created_at'] != null) {
+          try {
+            final createdAt = DateTime.parse(offlineOrder['created_at']);
+            displayDate =
+                DateFormat(TextConstants.dateFormat).format(createdAt);
+            displayTime =
+                DateFormat(TextConstants.timeFormat).format(createdAt);
+          } catch (e) {
+            if (kDebugMode) print("⚠️ Failed to parse offline order date: $e");
+          }
+        }
+
+        if (kDebugMode) {
+          print("💾 Offline Order Calculation:");
+          print("   grossTotal: $grossTotal");
+          print("   netTotal: $netTotal");
+          print("   netPayable: $netPayable");
+          print("   product count: ${offlineProducts.length}");
+        } else {
+          // 🟢 ONLINE ORDER FLOW (your existing logic)
+          final order = orderHelper.orders.firstWhere(
+                (order) =>
+            order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
+            orElse: () => {},
+          );
+
+          grossTotal = GlobalUtility.getGrossTotal(orderItems);
+
+          if (orderItems.isNotEmpty && order.isNotEmpty) {
+            orderDiscount = order[AppDBConst.orderDiscount] as double? ?? 0.0;
+            merchantDiscount =
+                order[AppDBConst.merchantDiscount] as double? ?? 0.0;
+            orderTax = order[AppDBConst.orderTax] as double? ?? 0.0;
+
+            netTotal = grossTotal - orderDiscount - merchantDiscount;
+            netPayable = order[AppDBConst.orderTotal] as double? ?? 0.0;
+
+            if (order[AppDBConst.orderDate] != null) {
+              try {
+                final createdDateTime = DateTime.parse(
+                    order[AppDBConst.orderDate].toString());
+                displayDate = DateFormat(TextConstants.dateFormat).format(
+                    createdDateTime);
+                displayTime = DateFormat(TextConstants.timeFormat).format(
+                    createdDateTime);
+              } catch (e) {
+                if (kDebugMode) print("Error parsing online order date: $e");
+              }
+            }
+          } else {
+            // Reset if empty
+            orderDiscount = 0.0;
+            merchantDiscount = 0.0;
+            orderTax = 0.0;
+            netTotal = 0.0;
+            netPayable = 0.0;
+          }
+
+          if (kDebugMode) {
+            print("🌐 Online Order Calculation:");
+            print("   grossTotal: $grossTotal");
+            print("   orderDiscount: $orderDiscount");
+            print("   merchantDiscount: $merchantDiscount");
+            print("   orderTax: $orderTax");
+            print("   netTotal: $netTotal");
+            print("   netPayable: $netPayable");
+          }
+        }
       }
-      if (kDebugMode) {
-        print("#### netPayable: $netPayable, orderTotal: ${order[AppDBConst.orderTotal] as double? ?? 0.0}");
-      }
+    }
+
+    if (kDebugMode) {
+      print("✅ Final Totals → gross: $grossTotal, discount: $orderDiscount, tax: $orderTax, net: $netTotal, payable: $netPayable");
     }
 
     if (kDebugMode) {  //Build #1.0.67
@@ -2216,119 +2245,55 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   }
                                   else{
                                     showDialog(
-                                        context: context,
-                                        barrierColor: Colors.black.withValues(alpha: 0.5),
-                                        builder: (BuildContext dialogContext) {
-                                          return EditProduct(
-                                            orderItem: orderItem,
-                                            onQuantityUpdated: (newQuantity) async {
-                                              if (orderHelper.activeOrderId != null) {
-                                                final connectivity = await Connectivity().checkConnectivity();
+                                      context: context,
+                                      barrierColor: Colors.black.withValues(alpha: 0.5),
+                                      builder: (BuildContext dialogContext) {
+                                        return EditProduct(
+                                          orderItem: orderItem,
+                                          onQuantityUpdated: (newQuantity) async {
+                                            if (orderHelper.activeOrderId != null) {
+                                              try {
+                                                // 🧠 OFFLINE MODE – Update local DB (Hive + SQLite)
+                                                final box = Hive.box('offlineOrders');
+                                                final orderId = orderHelper.activeOrderId!;
+                                                final orderData = box.get(orderId);
 
-                                                if (connectivity == ConnectivityResult.none) {
-                                                  // 📴 OFFLINE MODE – Update local DB (Hive + SQLite)
-                                                  try {
-                                                    final box = Hive.box('offlineOrders');
-                                                    final orderId = orderHelper.activeOrderId!;
-                                                    final orderData = box.get(orderId);
+                                                if (orderData != null && orderData['products'] != null) {
+                                                  // 🔍 Find and update matching product in Hive
+                                                  final products = List<Map>.from(orderData['products']);
+                                                  final index = products.indexWhere((p) =>
+                                                  p['id'] == orderItem[AppDBConst.itemProductId] ||
+                                                      p['sku'] == orderItem[AppDBConst.itemSKU]);
 
-                                                    if (orderData != null && orderData['products'] != null) {
-                                                      // Find and update matching product in Hive
-                                                      final products = List<Map>.from(orderData['products']);
-                                                      final index = products.indexWhere((p) =>
-                                                      p['id'] == orderItem[AppDBConst.itemProductId] ||
-                                                          p['sku'] == orderItem[AppDBConst.itemSKU]);
-
-                                                      if (index != -1) {
-                                                        products[index]['quantity'] = newQuantity;
-                                                        orderData['products'] = products;
-                                                        await box.put(orderId, orderData);
-                                                      }
-                                                    }
-
-                                                    // 🧠 Also update SQLite via OrderHelper
-                                                    await orderHelper.updateItemQuantity(
-                                                      orderItem[AppDBConst.itemId],
-                                                      newQuantity,
-                                                    );
-
-                                                    await fetchOrderItems();
-
-                                                    if (kDebugMode) {
-                                                      print("✅ Offline quantity updated -> $newQuantity for item ${orderItem[AppDBConst.itemName]}");
-                                                    }
-
-                                                    _scaffoldMessenger.showSnackBar(
-                                                      SnackBar(
-                                                        content: Text("Quantity updated (offline)"),
-                                                        backgroundColor: Colors.green,
-                                                        duration: const Duration(seconds: 2),
-                                                      ),
-                                                    );
-                                                  } catch (e) {
-                                                    if (kDebugMode) print("❌ Offline quantity update failed: $e");
+                                                  if (index != -1) {
+                                                    products[index]['quantity'] = newQuantity;
+                                                    orderData['products'] = products;
+                                                    await box.put(orderId, orderData);
                                                   }
-                                                  return; // stop further processing
                                                 }
 
-                                                // 🌐 ONLINE MODE (keep your current logic)
-                                                final serverOrderId = orderHelper.activeOrderId;
-                                                final dbOrderId = orderHelper.activeOrderId;
-                                                final productId = orderItem[AppDBConst.itemProductId] as int?;
-                                                final serverVariationId = orderItem[AppDBConst.itemVariationId] as int?;
-                                                final variationOrProductId =
-                                                (serverVariationId == null || serverVariationId == 0)
-                                                    ? productId
-                                                    : serverVariationId;
+                                                // 💾 Update SQLite using OrderHelper
+                                                await orderHelper.updateItemQuantity(
+                                                  orderItem[AppDBConst.itemId],
+                                                  newQuantity,
+                                                );
 
-                                                if (serverOrderId != null && dbOrderId != null && productId != null) {
-                                                  setState(() => _isLoading = true);
-                                                  _updateOrderSubscription?.cancel();
-                                                  _updateOrderSubscription =
-                                                      orderBloc.updateOrderStream.listen((response) async {
-                                                        if (response.status == Status.LOADING) {
-                                                          const Center(child: CircularProgressIndicator());
-                                                        } else if (response.status == Status.COMPLETED) {
-                                                          setState(() => _isLoading = false);
-                                                          await fetchOrderItems();
-                                                          _scaffoldMessenger.showSnackBar(
-                                                            SnackBar(
-                                                              content: Text("Quantity updated successfully"),
-                                                              backgroundColor: Colors.green,
-                                                              duration: const Duration(seconds: 2),
-                                                            ),
-                                                          );
-                                                        } else if (response.status == Status.ERROR) {
-                                                          await fetchOrderItems();
-                                                          setState(() => _isLoading = false);
-                                                          _scaffoldMessenger.showSnackBar(
-                                                            SnackBar(
-                                                              content: Text(response.message ?? "Failed to update quantity"),
-                                                              backgroundColor: Colors.red,
-                                                              duration: const Duration(seconds: 2),
-                                                            ),
-                                                          );
-                                                        }
-                                                      });
+                                                await fetchOrderItems();
 
-                                                  await orderBloc.updateOrderProducts(
-                                                    orderId: serverOrderId,
-                                                    dbOrderId: dbOrderId,
-                                                    isEditQuantity: true,
-                                                    lineItems: [
-                                                      OrderLineItem(
-                                                        productId: variationOrProductId,
-                                                        quantity: newQuantity,
-                                                      ),
-                                                    ],
-                                                  );
+                                                if (kDebugMode) {
+                                                  print("✅ Offline quantity updated → $newQuantity for item ${orderItem[AppDBConst.itemName]}");
                                                 }
+
+                                              } catch (e) {
+                                                if (kDebugMode) print("❌ Offline quantity update failed: $e");
                                               }
-                                            },
-                                            isDialog: true,
-                                          );
-                                        }
+                                            }
+                                          },
+                                          isDialog: true,
+                                        );
+                                      },
                                     );
+
                                   }
 
                                 },

@@ -1,4 +1,5 @@
 // repositories/category_repository.dart
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
@@ -13,74 +14,110 @@ const String categoryBoxName = 'categoryCache';
 const String productBoxName = 'productCache';
 const cacheDuration = Duration(hours: 12);
 
+/// ✅ Offline-first Category Repository
+/// - Loads cached data instantly for fast UI.
+/// - Refreshes from API in background.
+/// - Caches products + variations + tax + age restriction info.
 class CategoryRepository {
   final APIHelper _helper = APIHelper();
 
-  /// ✅ Load Categories (and Subcategories) — with Hive Cache
+  /// Load categories from cache first, then update from API
   Future<CategoryListResponse> getCategories({int parent = 0}) async {
-    final url =
-        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.categories}${EndUrlConstants.allCategoriesEndUrl}$parent";
-
     final box = Hive.box(categoryBoxName);
     final cacheKey = "categories_$parent";
+
+    // 🧠 Load cached categories instantly
     final cachedData = box.get(cacheKey);
     if (cachedData != null) {
-      final cacheTimestamp = DateTime.parse(cachedData['timestamp']);
-      final isExpired = DateTime.now().difference(cacheTimestamp) > cacheDuration;
-
-      if (!isExpired) {
-        if (kDebugMode) print("✅ Loaded categories from Hive cache (parent: $parent)");
-        final List<dynamic> cachedList = json.decode(cachedData['data']);
-        return CategoryListResponse.fromJson(cachedList);
-      } else {
-        if (kDebugMode) print("⚠️ Cache expired for categories (parent: $parent)");
-      }
+      final List<dynamic> cachedList = json.decode(cachedData['data']);
+      if (kDebugMode) print("📦 Loaded cached categories (parent: $parent)");
+      // 🔄 Refresh in background
+      _updateCategoriesFromApi(parent);
+      return CategoryListResponse.fromJson(cachedList);
     }
-    if (kDebugMode) print("🌍 Fetching categories from API: $url");
+
+    // 🚀 No cache → fetch directly from API
+    return await _getCategoriesFromApi(parent);
+  }
+
+  Future<void> _updateCategoriesFromApi(int parent) async {
+    try {
+      await _getCategoriesFromApi(parent);
+      if (kDebugMode) print("✅ Categories updated in background");
+    } catch (e) {
+      if (kDebugMode) print("⚠️ Failed to refresh categories: $e");
+    }
+  }
+
+  Future<CategoryListResponse> _getCategoriesFromApi(int parent) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.categories}${EndUrlConstants.allCategoriesEndUrl}$parent";
+    if (kDebugMode) print("🌍 Fetching categories: $url");
+
     final response = await _helper.get(url, true);
 
-    List<dynamic> categoryList;
+    if (kDebugMode) {
+      print("🧩 Category API Response (parent: $parent):");
+      print(response);
+    }
 
+    List<dynamic> categoryList;
     if (response is String) {
       categoryList = json.decode(response);
     } else if (response is List) {
       categoryList = response;
     } else {
-      throw Exception("Unexpected response type in categories GET");
+      throw Exception("Unexpected category response type");
     }
-    await box.put(cacheKey, {
+
+    final box = Hive.box(categoryBoxName);
+    await box.put("categories_$parent", {
       'timestamp': DateTime.now().toIso8601String(),
       'data': json.encode(categoryList),
     });
 
-    if (kDebugMode) print("💾 Categories cached in Hive for parent: $parent");
-
+    if (kDebugMode) print("💾 Cached categories (parent: $parent)");
     return CategoryListResponse.fromJson(categoryList);
   }
 
-  Future<CategoryProductListResponse> getProductsByCategory(int categoryId) async {
-    final url =
-        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.productByCategories}/$categoryId";
 
+  /// Load products by category (offline-first)
+  Future<CategoryProductListResponse> getProductsByCategory(int categoryId) async {
     final box = Hive.box(productBoxName);
     final cacheKey = "products_$categoryId";
     final cachedData = box.get(cacheKey);
 
     if (cachedData != null) {
-      final cacheTimestamp = DateTime.parse(cachedData['timestamp']);
-      final isExpired = DateTime.now().difference(cacheTimestamp) > cacheDuration;
-
-      if (!isExpired) {
-        if (kDebugMode) print("✅ Loaded products from Hive cache (category: $categoryId)");
-        final List<dynamic> cachedList = json.decode(cachedData['data']);
-        return CategoryProductListResponse.fromJson(cachedList);
-      } else {
-        if (kDebugMode) print("⚠️ Cache expired for products (category: $categoryId)");
-      }
+      final List<dynamic> cachedList = json.decode(cachedData['data']);
+      if (kDebugMode) print("📦 Loaded cached products (category: $categoryId)");
+      _updateProductsFromApi(categoryId); // background refresh
+      return CategoryProductListResponse.fromJson(cachedList);
     }
 
-    if (kDebugMode) print("🌍 Fetching products from API: $url");
+    // 🚀 No cache → fetch directly
+    return await _getProductsFromApi(categoryId);
+  }
+
+  Future<void> _updateProductsFromApi(int categoryId) async {
+    try {
+      await _getProductsFromApi(categoryId);
+      if (kDebugMode) print("✅ Products updated in background");
+    } catch (e) {
+      if (kDebugMode) print("⚠️ Failed to refresh products: $e");
+    }
+  }
+
+  /// 🔥 Fetch products + normalize + cache (tax + age + variants)
+  Future<CategoryProductListResponse> _getProductsFromApi(int categoryId) async {
+    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.productByCategories}/$categoryId";
+    if (kDebugMode) print("🌍 Fetching products: $url");
+
     final response = await _helper.get(url, true);
+
+    if (kDebugMode) {
+      print("🧩 Raw Product API Response (category: $categoryId):");
+      print(const JsonEncoder.withIndent('  ').convert(response));
+    }
 
     List<dynamic> productList;
 
@@ -89,29 +126,102 @@ class CategoryRepository {
     } else if (response is List) {
       productList = response;
     } else {
-      throw Exception("Unexpected response type in products GET");
+      throw Exception("Unexpected product response type");
     }
 
-    // 💾 Save to Hive
-    await box.put(cacheKey, {
+    // ✅ Normalize for UI immediately
+    final normalizedProducts = productList.map((product) {
+      final image = (product["image"] is Map && product["image"]["src"] != null)
+          ? product["image"]["src"]
+          : (product["image"] is String ? product["image"] : "");
+
+      final name = (product["name"] is Map && product["name"]["rendered"] != null)
+          ? product["name"]["rendered"]
+          : (product["name"] is String ? product["name"] : "Unnamed Product");
+
+      final price = double.tryParse(product["price"]?.toString() ?? "0") ?? 0.0;
+
+      final taxStatus = product["tax_status"] ?? "taxable";
+      final taxClass = product["tax_class"] ?? "";
+
+      bool hasAgeRestriction = false;
+      int minAge = 0;
+      final metaAge = product["fast_key_item_min_age"] ??
+          product["min_age"] ??
+          product["meta_data"]?.firstWhere(
+                (m) => m["key"] == "min_age",
+            orElse: () => {"value": 0},
+          )["value"];
+      if (metaAge != null) {
+        minAge = int.tryParse(metaAge.toString()) ?? 0;
+      }
+
+      if (product["tags"] is List) {
+        hasAgeRestriction = (product["tags"] as List)
+            .any((tag) => tag.toString().toLowerCase().contains("age"));
+      }
+      if (minAge > 0) hasAgeRestriction = true;
+
+      final bool hasVariants =
+          product["variations"] != null && (product["variations"] as List).isNotEmpty;
+
+      return {
+        ...product,
+        "fast_key_item_name": name,
+        "fast_key_item_image": image,
+        "fast_key_item_price": price,
+        "fast_key_product_id": product["id"],
+        "has_variants": hasVariants,
+        "has_age_restriction": hasAgeRestriction,
+        "min_age": minAge,
+        "tax_status": taxStatus,
+        "tax_class": taxClass,
+      };
+    }).toList();
+
+    // ⚡ Show API response on screen *before* caching
+    final categoryResponse = CategoryProductListResponse.fromJson(productList);
+
+    // 🚀 Start caching asynchronously (non-blocking)
+    unawaited(_cacheProductsAndVariations(categoryId, productList, normalizedProducts));
+
+    return categoryResponse;
+  }
+
+  Future<void> _cacheProductsAndVariations(
+      int categoryId, List<dynamic> productList, List<dynamic> normalizedProducts) async {
+    final box = Hive.box(productBoxName);
+    await box.put("products_$categoryId", {
       'timestamp': DateTime.now().toIso8601String(),
-      'data': json.encode(productList),
+      'data': json.encode(normalizedProducts),
     });
 
-    if (kDebugMode) print("💾 Products cached in Hive for category: $categoryId");
+    if (kDebugMode) {
+      print("💾 Cached ${normalizedProducts.length} products with tax & age info (cat: $categoryId)");
+    }
 
-    // 💾 Also pre-cache variations for offline use
+    final productRepo = ProductRepository();
     final productCacheBox = Hive.box('productCache');
-    final productRepo = ProductRepository(); // ✅ use this
 
     for (final product in productList) {
       final productId = product['id'];
       final hasEmbeddedVariants =
           product['variations'] != null && product['variations'].isNotEmpty;
 
+      final parentMinAge = product["fast_key_item_min_age"] ??
+          product["min_age"] ??
+          product["meta_data"]?.firstWhere(
+                (m) => m["key"] == "min_age",
+            orElse: () => {"value": 0},
+          )["value"] ??
+          0;
+
       if (hasEmbeddedVariants) {
-        // Normalize embedded variations before saving
-        final normalized = product['variations'].map<Map<String, dynamic>>((v) {
+        final variations = product['variations'] as List;
+
+        final normalized = variations
+            .whereType<Map>()
+            .map<Map<String, dynamic>>((v) {
           final image = (v["image"] is Map && v["image"]["src"] != null)
               ? v["image"]["src"]
               : (v["image"] is String ? v["image"] : "");
@@ -119,6 +229,12 @@ class CategoryRepository {
               ? v["name"]["rendered"]
               : (v["name"] is String ? v["name"] : "Unnamed Variant");
           final price = v["price"]?.toString() ?? "0";
+          final varMinAge = v["min_age"] ??
+              v["fast_key_item_min_age"] ??
+              parentMinAge ??
+              0;
+          final varHasAgeRestriction =
+              varMinAge != null && int.tryParse(varMinAge.toString())! > 0;
 
           return {
             "id": v["id"],
@@ -126,37 +242,25 @@ class CategoryRepository {
             "price": price,
             "sku": v["sku"] ?? "",
             "image": image,
+            "has_age_restriction": varHasAgeRestriction,
+            "min_age": int.tryParse(varMinAge.toString()) ?? 0,
           };
         }).toList();
 
-        await productCacheBox.put("product_${productId}_variations", {
-          'variations': normalized,
-          'timestamp': DateTime.now().toIso8601String(),
-        });
-
-        if (kDebugMode) {
-          print("💾 Cached embedded variations for product $productId");
+        if (normalized.isNotEmpty) {
+          await productCacheBox.put("product_${productId}_variations", {
+            'variations': normalized,
+            'timestamp': DateTime.now().toIso8601String(),
+          });
         }
       } else {
-        // Fetch and cache from WC API
         try {
-          await productRepo.fetchProductVariations(productId); // ✅ fixed call
+          await productRepo.fetchProductVariations(productId);
         } catch (e) {
-          if (kDebugMode) {
-            print("⚠️ Failed to fetch variations for product $productId: $e");
-          }
+          if (kDebugMode) print("⚠️ Failed to fetch variations for product $productId: $e");
         }
       }
     }
 
-    return CategoryProductListResponse.fromJson(productList);
-  }
-
-
-  /// 🧹 Optional: Clear cache (manual refresh)
-  Future<void> clearCache() async {
-    await Hive.box(categoryBoxName).clear();
-    await Hive.box(productBoxName).clear();
-    if (kDebugMode) print("🧹 Hive caches cleared.");
   }
 }

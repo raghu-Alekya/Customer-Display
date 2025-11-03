@@ -763,6 +763,7 @@ import '../Models/Search/product_variation_model.dart';
 import '../Providers/Age/age_verification_provider.dart';
 import '../Providers/Auth/product_variation_provider.dart';
 import '../Repositories/Orders/order_repository.dart';
+import '../Repositories/Search/product_search_repository.dart';
 import '../Utilities/shimmer_effect.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import '../Utilities/svg_images_utility.dart';
@@ -967,189 +968,284 @@ class NestedGridWidget extends StatelessWidget {
                         children: [
                           GestureDetector(
                             onTap: () async {
-                              final connectivity = await Connectivity().checkConnectivity();
+                              try {
+                                print("🟩 TAP: Starting product add flow for item → ${item["fast_key_item_name"]}");
 
-                              final productId =
-                                  int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
-                              final productName = (item["fast_key_item_name"] is String)
-                                  ? item["fast_key_item_name"]
-                                  : item["fast_key_item_name"]?["rendered"] ?? "Unnamed Product";
-                              final productPrice =
-                                  double.tryParse(item["fast_key_item_price"].toString()) ?? 0.0;
-                              final productSku = item["fast_key_item_sku"] ?? "SKU-$productId";
-                              final productImage = (item["fast_key_item_image"] is String)
-                                  ? item["fast_key_item_image"]
-                                  : item["fast_key_item_image"]?["src"] ?? "";
+                                // 👇 Print complete product data for debug
+                                print("🧾 Full product data dump:");
+                                print(const JsonEncoder.withIndent('  ').convert(item));
 
-                              final hasVariants = (item["has_variants"] == true ||
-                                  (item["variations"] != null && item["variations"].isNotEmpty));
+                                // 🆔 Extract core product fields
+                                final productId =
+                                    int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
+                                final productName = (item["fast_key_item_name"] is String)
+                                    ? item["fast_key_item_name"]
+                                    : item["fast_key_item_name"]?["rendered"] ?? "Unnamed Product";
+                                final productPrice =
+                                    double.tryParse(item["fast_key_item_price"].toString()) ?? 0.0;
+                                final productSku = item["fast_key_item_sku"] ?? "SKU-$productId";
+                                final productImage = (item["fast_key_item_image"] is String)
+                                    ? item["fast_key_item_image"]
+                                    : item["fast_key_item_image"]?["src"] ?? "";
 
-                              final hasAgeRestriction = item["has_age_restriction"] == true;
+                                // ✅ Detect variants & restrictions
+                                final hasVariants = (item["type"] == "variable" ||
+                                    (item["variations"] != null && item["variations"].isNotEmpty));
+                                final minAge =
+                                    int.tryParse(item["fast_key_item_min_age"]?.toString() ?? "0") ?? 0;
+                                final hasAgeRestriction = minAge > 0;
 
-                              // 🔹 OFFLINE MODE
-                               if (connectivity == ConnectivityResult.none) {
-                                try {
-                                  final box = Hive.box('offlineOrders');
-                                  int activeOrderId = orderHelper?.activeOrderId ??
-                                      Hive.box('offlineOrders').get('lastOrderId', defaultValue: 1000);
+                                print(
+                                    "🔍 Product details: id=$productId, name=$productName, price=$productPrice, hasVariants=$hasVariants, hasAgeRestriction=$hasAgeRestriction, minAge=$minAge");
 
-                                  if (orderHelper?.activeOrderId == null) {
-                                    orderHelper?.activeOrderId = activeOrderId;
-                                  }
+                                // 🧠 Init or restore offline order
+                                final box = Hive.box('offlineOrders');
+                                int activeOrderId =
+                                    orderHelper?.activeOrderId ?? box.get('lastOrderId', defaultValue: 1000);
 
-                                  // ✅ Show variant dialog even in offline mode if product has variants
-                                  if (hasVariants) {
-                                    if (kDebugMode) {
-                                      print("🧩 Showing offline variant dialog for $productName");
+                                if (orderHelper?.activeOrderId == null) {
+                                  orderHelper?.activeOrderId = activeOrderId;
+                                  box.put('lastOrderId', activeOrderId);
+                                }
+
+                                print("🆔 Active Order ID: $activeOrderId");
+
+                                // 🔞 Age Verification Flow
+                                if (hasAgeRestriction && minAge > 0) {
+                                  print("🔞 Age restriction detected → Checking verification for order $activeOrderId...");
+                                  final verifiedKey = 'age_verified_order_$activeOrderId';
+                                  final alreadyVerified = box.get(verifiedKey, defaultValue: false);
+
+                                  if (alreadyVerified == true) {
+                                    print("✅ Age already verified → Skipping popup.");
+                                  } else {
+                                    final ageVerificationProvider = AgeVerificationProvider();
+                                    final isVerified =
+                                    await ageVerificationProvider.verifyAge(context, minAge: minAge);
+
+                                    print("🔞 Age verification result for '$productName': $isVerified");
+                                    if (!isVerified) {
+                                      print("❌ Age verification failed → Product blocked: $productName");
+                                      return;
                                     }
 
-                                    List<Map<String, dynamic>> offlineVariations = [];
+                                    box.put(verifiedKey, true);
+                                  }
+                                } else {
+                                  print("✅ No age restriction for this product.");
+                                }
 
-                                    try {
-                                      final productBox = Hive.box('productCache');
-                                      final cacheKey = "product_${productId}_variations";
-                                      final cachedData = productBox.get(cacheKey);
+                                // 🧩 Variant Handling
+                                if (hasVariants) {
+                                  print("🧩 Product has variants → Loading offline variants...");
+                                  List<Map<String, dynamic>> offlineVariations = [];
 
-                                      List rawVariations = [];
+                                  try {
+                                    final productBox = Hive.box('productCache');
+                                    final cacheKey = "product_${productId}_variations";
+                                    final cachedData = productBox.get(cacheKey);
+                                    print("📦 Checking cachedData for key=$cacheKey");
 
-                                      // 🔹 Handle all possible cached formats
-                                      if (cachedData is List) {
+                                    List rawVariations = [];
+
+                                    // 🔹 Try cached data
+                                    if (cachedData != null) {
+                                      if (cachedData is Map && cachedData["variations"] is List) {
+                                        rawVariations = cachedData["variations"];
+                                      } else if (cachedData is List) {
                                         rawVariations = cachedData;
-                                      } else if (cachedData is Map) {
-                                        if (cachedData.containsKey("variations") && cachedData["variations"] is List) {
-                                          rawVariations = cachedData["variations"];
-                                        } else {
-                                          // maybe the cache itself is a map of variants
-                                          rawVariations = cachedData.values.toList();
-                                        }
                                       } else if (cachedData is String) {
                                         try {
                                           final decoded = jsonDecode(cachedData);
-                                          if (decoded is List) rawVariations = decoded;
-                                          if (decoded is Map && decoded.containsKey("variations")) {
-                                            rawVariations = decoded["variations"];
-                                          }
-                                        } catch (_) {}
+                                          rawVariations =
+                                          decoded is Map ? decoded["variations"] ?? [] : decoded;
+                                        } catch (_) {
+                                          print("⚠️ Error decoding cachedData string");
+                                        }
                                       }
+                                    }
 
-                                      // 🔹 Normalize variants for UI
-                                      offlineVariations = rawVariations.map<Map<String, dynamic>>((v) {
-                                        if (v is String) {
+                                    // 🩵 Fallback: Try item["variations"] if cache is empty
+                                    if (rawVariations.isEmpty && item["variations"] != null) {
+                                      for (var id in item["variations"]) {
+                                        var variantData = productBox.get("product_$id");
+
+                                        if (variantData == null) {
+                                          print("⚠️ No cache found for variant id=$id, using fallback");
+                                          continue;
+                                        }
+
+                                        if (variantData is String) {
                                           try {
-                                            v = jsonDecode(v);
+                                            variantData = jsonDecode(variantData);
                                           } catch (_) {}
                                         }
 
-                                        if (v is Map) {
-                                          final map = v.map((key, value) => MapEntry(key.toString(), value));
-
-                                          map["image"] = (map["image"] is Map && map["image"]["src"] != null)
-                                              ? map["image"]["src"]
-                                              : (map["image"] is String ? map["image"] : "");
-
-                                          map["name"] = (map["name"] is Map && map["name"]["rendered"] != null)
-                                              ? map["name"]["rendered"]
-                                              : (map["name"] is String ? map["name"] : "Unnamed Variant");
-
-                                          map["price"] = map["price"]?.toString() ?? "0";
-
-                                          return map;
+                                        String name = "";
+                                        if (variantData?["name"] != null &&
+                                            variantData["name"].toString().isNotEmpty) {
+                                          name = variantData["name"];
+                                        } else if (variantData?["attributes"] != null &&
+                                            variantData["attributes"] is List &&
+                                            (variantData["attributes"] as List).isNotEmpty) {
+                                          name = (variantData["attributes"] as List)
+                                              .map((a) => a["option"] ?? "")
+                                              .where((o) => o.toString().isNotEmpty)
+                                              .join(", ");
+                                        } else {
+                                          name = "Variant $id";
                                         }
-                                        return <String, dynamic>{};
-                                      }).where((v) => v.isNotEmpty).toList();
 
-                                      if (kDebugMode) {
-                                        print("📦 Restored ${offlineVariations.length} offline variations for product $productId");
+                                        final price = (variantData?["price"] ??
+                                            variantData?["regular_price"] ??
+                                            variantData?["sale_price"] ??
+                                            productPrice)
+                                            .toString();
+
+                                        final image = (variantData?["image"] is Map)
+                                            ? variantData["image"]["src"] ?? productImage
+                                            : (variantData?["image"] ?? productImage);
+
+                                        rawVariations.add({
+                                          "id": id,
+                                          "name": name,
+                                          "price": price,
+                                          "sku": variantData?["sku"] ?? "",
+                                          "image": image,
+                                        });
                                       }
 
-                                      if (offlineVariations.isEmpty) {
-                                        print("⚠️ No offline variants found — maybe not cached yet for product $productId");
+                                      print("📥 Built ${rawVariations.length} variant objects manually.");
+                                    }
+
+                                    // 🧠 Normalize all variants
+                                    offlineVariations = rawVariations.map<Map<String, dynamic>>((v) {
+                                      if (v is String) {
+                                        try {
+                                          v = jsonDecode(v);
+                                        } catch (_) {}
+                                      }
+                                      if (v is Map) {
+                                        final map =
+                                        v.map((key, value) => MapEntry(key.toString(), value));
+
+                                        map["image"] = (map["image"] is Map && map["image"]["src"] != null)
+                                            ? map["image"]["src"]
+                                            : (map["image"] is String ? map["image"] : "");
+                                        map["name"] = (map["name"] is Map &&
+                                            map["name"]["rendered"] != null)
+                                            ? map["name"]["rendered"]
+                                            : (map["name"] is String
+                                            ? map["name"]
+                                            : "Unnamed Variant");
+                                        map["price"] = map["price"]?.toString() ?? "0";
+                                        return map;
+                                      }
+                                      return <String, dynamic>{};
+                                    }).where((v) => v.isNotEmpty).toList();
+
+                                    print("✅ Found ${offlineVariations.length} offline variants.");
+
+                                    // 🧩 Auto-refetch if variants are incomplete
+                                    final allSameAsParent = offlineVariations.isEmpty ||
+                                        offlineVariations
+                                            .every((v) => v["price"].toString() == productPrice.toString());
+
+                                    if (allSameAsParent) {
+                                      print("🔁 Cached variants incomplete → Refetching from API...");
+                                      await ProductRepository().fetchProductVariations(productId);
+
+                                      final refreshed = productBox.get(cacheKey);
+                                      if (refreshed is Map && refreshed["variations"] is List) {
+                                        offlineVariations = (refreshed["variations"] as List)
+                                            .map((v) => Map<String, dynamic>.from(v as Map))
+                                            .toList();
                                       }
                                     }
-                                    catch (e) {
-                                      if (kDebugMode) print("⚠️ Error decoding offline variations: $e");
-                                    }
-
-                                    await showDialog(
-                                      context: context,
-                                      builder: (ctx) => VariantsDialog(
-                                        title: productName,
-                                        variations: offlineVariations,
-                                        onAddVariant: (selectedVariant, qty) async {
-                                          final variantId = int.tryParse(selectedVariant["id"].toString()) ?? -1;
-                                          final variantName = selectedVariant["name"] ?? "Variant";
-                                          final variantPrice = double.tryParse(selectedVariant["price"].toString()) ?? productPrice;
-                                          final variantSku = selectedVariant["sku"] ?? productSku;
-                                          final variantImage = selectedVariant["image"] ?? productImage;
-
-                                          await orderHelper?.addItemToOrder(
-                                            0,
-                                            "$productName - $variantName",
-                                            variantImage,
-                                            variantPrice,
-                                            qty,
-                                            variantSku,
-                                            activeOrderId,
-                                            type: 'variant',
-                                            productId: productId,
-                                            variationId: variantId,
-                                            variationName: variantName,
-                                            salesPrice: variantPrice,
-                                            regularPrice: variantPrice,
-                                            unitPrice: variantPrice,
-                                            onItemAdded: () async {
-                                              onItemTapped(index, variantAdded: true);
-                                              await orderHelper?.loadData();
-                                            },
-                                          );
-
-                                          if (kDebugMode) {
-                                            print("🛒 Offline variant added: $variantName -> Order $activeOrderId");
-                                          }
-                                        },
-                                      ),
-                                    );
-                                  } else {
-                                    // 🧠 No variants → Add base product directly offline
-                                    await orderHelper?.addItemToOrder(
-                                      0,
-                                      productName,
-                                      productImage,
-                                      productPrice,
-                                      1,
-                                      productSku,
-                                      activeOrderId,
-                                      type: 'product',
-                                      productId: productId,
-                                      variationId: -1,
-                                      salesPrice: productPrice,
-                                      regularPrice: productPrice,
-                                      unitPrice: productPrice,
-                                      onItemAdded: () async {
-                                        if (kDebugMode) print("✅ Offline item now visible in order panel");
-                                        onItemTapped(index, variantAdded: true);
-                                        await orderHelper?.loadData();
-                                      },
-                                    );
+                                  } catch (e, st) {
+                                    print("⚠️ Error decoding offline variations: $e");
+                                    print(st);
                                   }
-                                } catch (e, s) {
-                                  if (kDebugMode) print("❌ Error adding product offline: $e\n$s");
-                                }
-                              }
 
-                              // 🌐 ONLINE MODE
-                              else {
-                                VariationPopup(
-                                  productId,
-                                  productName,
-                                  orderHelper!,
-                                  onProductSelected: ({required bool isVariant}) {
-                                    onItemTapped(index, variantAdded: isVariant);
-                                  },
-                                ).showVariantDialog(context: context);
+                                  // 🪟 Show VariantsDialog
+                                  print("🪟 Showing VariantsDialog for $productName...");
+                                  await showDialog(
+                                    context: context,
+                                    builder: (ctx) => VariantsDialog(
+                                      title: productName,
+                                      variations: offlineVariations,
+                                      onAddVariant: (selectedVariant, qty) async {
+                                        final variantId =
+                                            int.tryParse(selectedVariant["id"].toString()) ?? -1;
+                                        final variantName =
+                                            selectedVariant["name"] ?? "Variant";
+                                        final variantPrice =
+                                            double.tryParse(selectedVariant["price"].toString()) ??
+                                                productPrice;
+                                        final variantSku =
+                                            selectedVariant["sku"] ?? productSku;
+                                        final variantImage =
+                                            selectedVariant["image"] ?? productImage;
+
+                                        print(
+                                            "🧾 Adding variant → id:$variantId, name:$variantName, price:$variantPrice, qty:$qty");
+
+                                        await orderHelper?.addItemToOrder(
+                                          0,
+                                          "$productName - $variantName",
+                                          variantImage,
+                                          variantPrice,
+                                          qty,
+                                          variantSku,
+                                          activeOrderId,
+                                          type: 'variant',
+                                          productId: productId,
+                                          variationId: variantId,
+                                          variationName: variantName,
+                                          salesPrice: variantPrice,
+                                          regularPrice: variantPrice,
+                                          unitPrice: variantPrice,
+                                          onItemAdded: () async {
+                                            print("✅ Variant item added successfully!");
+                                            onItemTapped(index, variantAdded: true);
+                                            await orderHelper?.loadData();
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  );
+                                  print("🪟 VariantsDialog closed for $productName");
+                                } else {
+                                  // 🟩 Simple Product
+                                  print("🟩 Simple product, adding directly...");
+                                  await orderHelper?.addItemToOrder(
+                                    0,
+                                    productName,
+                                    productImage,
+                                    productPrice,
+                                    1,
+                                    productSku,
+                                    activeOrderId,
+                                    type: 'product',
+                                    productId: productId,
+                                    variationId: -1,
+                                    salesPrice: productPrice,
+                                    regularPrice: productPrice,
+                                    unitPrice: productPrice,
+                                    onItemAdded: () async {
+                                      print("✅ Simple product added successfully!");
+                                      onItemTapped(index, variantAdded: false);
+                                      await orderHelper?.loadData();
+                                    },
+                                  );
+                                }
+
+                                print("🎉 Product flow completed for → $productName");
+                              } catch (e, s) {
+                                print("❌ ERROR in offline onTap: $e");
+                                print(s);
                               }
                             },
-
                             onLongPress: () {
                               if (onLongPress != null) {
                                 // Build #1.0.204

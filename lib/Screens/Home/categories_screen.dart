@@ -619,13 +619,13 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
             Navigator.pop(context);
           }
           if (kDebugMode) print("Failed to add item to order: ${response.message}");
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(response.message ?? TextConstants.failedToAddItemToOrder), // Build #1.0.144
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 2),
-            ),
-          );
+          // ScaffoldMessenger.of(context).showSnackBar(
+          //   SnackBar(
+          //     content: Text(response.message ?? TextConstants.failedToAddItemToOrder), // Build #1.0.144
+          //     backgroundColor: Colors.red,
+          //     duration: const Duration(seconds: 2),
+          //   ),
+          // );
           // Build #1.0.256: Stop stopwatch and add to steps only if enabled
           if (Misc.enableUILogMessages && addProductStopwatch != null) {
             addProductStopwatch.stop();
