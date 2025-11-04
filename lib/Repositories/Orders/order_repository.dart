@@ -4,6 +4,8 @@ import 'dart:ffi';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import 'package:http/http.dart' as _apiHelper;
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../Constants/text.dart';
 import '../../Database/db_helper.dart';
@@ -606,36 +608,64 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       throw Exception("Unexpected response type in add payout POST");
     }
   }
+// Build #1.0.199 : Add Payout as Product (Hive-Only Permanent Offline)
+  Future<OrderModel> addPayoutAsProduct({
+    required int orderId,
+    required AddPayoutAsProductRequestModel request,
+  }) async {
+    try {
+      final box = Hive.box('offlineOrders');
+      final key = orderId.toString();
 
-  // Build #1.0.198 : Add Payout as a product to Order
-  Future<OrderModel> addPayoutAsProduct({required int orderId, required AddPayoutAsProductRequestModel request}) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}${EndUrlConstants.addPayoutEndUrl}";
-
-    if (kDebugMode) {
-      print("OrderRepository - POST URL for add payout: $url");
-      print("OrderRepository - Request Body: ${request.toJson()}");
-    }
-
-    final response = await _helper.post(url, request.toJson(), true);
-
-    if (kDebugMode) {
-      print("OrderRepository - Add Payout Raw Response: $response");
-    }
-
-    if (response is String) {
-      try {
-        final responseData = json.decode(response);
-        return OrderModel.fromJson(responseData);
-      } catch (e) {
-        if (kDebugMode) print("Error parsing add payout response: $e");
-        throw Exception("Failed to parse add payout response");
+      // 🟡 Fetch existing offline order
+      final existingOrder = box.get(key);
+      if (existingOrder == null) {
+        throw Exception("Offline order not found for ID $orderId");
       }
-    } else if (response is Map<String, dynamic>) {
-      return OrderModel.fromJson(response);
-    } else {
-      throw Exception("Unexpected response type in add payout POST");
+
+      // 🧾 Create payout entry (stored as negative amount for clarity)
+      final payoutEntry = {
+        "order_id": orderId,
+        "amount": request.amount,
+        "type": "payout",
+        "timestamp": DateTime.now().toIso8601String(),
+      };
+
+      // 🧩 Update existing order map
+      final updatedOrder = Map<String, dynamic>.from(existingOrder);
+      final payouts = List<Map<String, dynamic>>.from(updatedOrder["payouts"] ?? []);
+      payouts.add(payoutEntry);
+      updatedOrder["payouts"] = payouts;
+
+      // 🔄 Recalculate totals
+      double productsTotal = 0.0;
+      for (var item in (updatedOrder["products"] ?? [])) {
+        final price = (item["price"] ?? 0).toDouble();
+        final qty = (item["quantity"] ?? 1).toDouble();
+        productsTotal += price * qty;
+      }
+
+      double payoutsTotal = payouts.fold(0.0, (sum, p) => sum + (p["amount"] ?? 0.0));
+      updatedOrder["gross_total"] = productsTotal + payoutsTotal;
+
+      // 💾 Save updated order back to Hive
+      await box.put(key, updatedOrder);
+
+      if (kDebugMode) {
+        print("✅ [Hive] Payout added to offline order #$orderId");
+        print("🧾 Payout Entry → $payoutEntry");
+        print("🧾 Updated Gross Total: ${updatedOrder["gross_total"]}");
+      }
+
+      // Return updated order model
+      return OrderModel.fromJson(updatedOrder);
+    } catch (e, s) {
+      print("❌ [Hive] Failed to add payout offline: $e");
+      print(s);
+      rethrow;
     }
   }
+
 
   // Build #1.0.53 : Remove Payout from Order
   Future<OrderModel> removeFeeLine({required int orderId, required RemoveFeeLinesRequestModel request}) async {

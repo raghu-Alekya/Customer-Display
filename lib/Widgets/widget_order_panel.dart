@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:core';
 import 'dart:io';
 
@@ -165,12 +166,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       });
     }
   }
-
-
-
+  
   @override
   void didUpdateWidget(RightOrderPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshKey != widget.refreshKey) {
+      if (kDebugMode) print("🔄 Refresh key changed — forcing data reload");
+      OrderHelper.isOrderPanelLoaded = false;
+      fetchOrdersData();
+    }
     // if (mounted) {
     //  if(tabs.isNotEmpty){ // Build #1.0.104: Adding this conditions for old orderId's are showing before sync api call
     //    _getOrderTabs(); // Build #1.0.10 : Reload tabs when the widget updates (e.g., after item selection)
@@ -1754,6 +1758,63 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     );
   }
 
+  Future<void> deleteOfflineItem(Map<String, dynamic> orderItem) async {
+    if (orderHelper.activeOrderId == null) return;
+
+    final offlineBox = Hive.box('offlineOrders');
+    final String orderKey = orderHelper.activeOrderId.toString();
+    final rawOfflineOrder = offlineBox.get(orderKey);
+
+    if (rawOfflineOrder == null) return;
+
+    final Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(rawOfflineOrder);
+
+    // ✅ Determine if item is product or payout
+    final String itemType = (orderItem['item_type'] ?? '').toString().toLowerCase();
+
+    // Extract current product and payout lists
+    final List<Map<String, dynamic>> products =
+        (offlineOrder['products'] as List?)?.map((e) => Map<String, dynamic>.from(e)).toList() ?? [];
+
+    final List<Map<String, dynamic>> payouts =
+        (offlineOrder['payouts'] as List?)?.map((e) => Map<String, dynamic>.from(e)).toList() ?? [];
+
+    if (itemType == 'payout') {
+      // 🧾 Match and remove payout
+      payouts.removeWhere((p) {
+        final amt1 = double.tryParse(p['amount']?.toString() ?? '0') ?? 0;
+        final amt2 = double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+        return amt1 == amt2;
+      });
+      offlineOrder['payouts'] = payouts;
+    } else {
+      // 🛒 Match and remove product
+      products.removeWhere((p) {
+        final name1 = (p['name'] ?? p['product_name'] ?? p['fast_key_item_name'] ?? '').toString().toLowerCase();
+        final name2 = (orderItem['item_name'] ?? '').toString().toLowerCase();
+        final price1 = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
+        final price2 = double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+        return name1 == name2 && price1 == price2;
+      });
+      offlineOrder['products'] = products;
+    }
+
+    // 💾 Save updated order back to Hive
+    await offlineBox.put(orderKey, offlineOrder);
+
+    if (kDebugMode) {
+      print("🗑️ Deleted offline $itemType successfully!");
+      print("Updated offline order:");
+      print(const JsonEncoder.withIndent('  ').convert(offlineOrder));
+    }
+
+    // 🔁 Refresh local UI list
+    setState(() {
+      orderItems.remove(orderItem);
+    });
+  }
+
+
 // Current Order UI
   Widget buildCurrentOrder() {
     final theme = Theme.of(context); // Build #1.0.6 - added theme for order panel
@@ -1804,14 +1865,80 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         }
 
         final Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(rawOfflineOrder);
+
+        // 🛍️ Load products and payouts
         final offlineProducts = ((offlineOrder['products'] ?? []) as List)
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
-        grossTotal = offlineProducts.fold<num>(0, (sum, item) {
+
+        if (kDebugMode) {
+          print("🧩 Offline products raw data:");
+          for (var p in offlineProducts) {
+            print(const JsonEncoder.withIndent('  ').convert(p));
+          }
+        }
+
+
+        final offlinePayouts = ((offlineOrder['payouts'] ?? []) as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+
+        // 🧾 Combine both for display
+        final offlineItems = [
+          ...offlineProducts.map((item) => {
+            'item_name': item['name'] ?? item['product_name'] ?? '',
+            'item_price': double.tryParse(
+                item['price']?.toString() ??
+                    item['unit_price']?.toString() ??   // ✅ added
+                    item['sales_price']?.toString() ??  // ✅ added
+                    item['regular_price']?.toString() ??// ✅ added
+                    item['unitPrice']?.toString() ??
+                    item['salesPrice']?.toString() ??
+                    item['regularPrice']?.toString() ??
+                    item['fast_key_item_price']?.toString() ??
+                    '0'
+            ) ?? 0.0,
+
+
+            'items_count': double.tryParse(item['quantity']?.toString() ?? '1') ?? 1,
+            'item_sum_price': (double.tryParse(
+                item['price']?.toString() ??
+                    item['unit_price']?.toString() ??
+                    item['sales_price']?.toString() ??
+                    item['regular_price']?.toString() ??
+                    '0'
+            ) ?? 0.0) *
+                (double.tryParse(item['quantity']?.toString() ?? '1') ?? 1),
+
+            'item_image': item['image'] ?? '',
+            'item_type': 'Product',
+          }),
+          ...offlinePayouts.map((payout) => {
+            'item_name': 'Payout',
+            'item_price': double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0,
+            'items_count': 1,
+            'item_sum_price': double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0,
+            'item_image': 'assets/svg/payout.svg',
+            'item_type': 'payout',
+          }),
+        ];
+
+
+        // ✅ Assign to your global/UI list
+        orderItems = offlineItems;
+
+        // 🧮 Calculate totals
+        double productTotal = offlineProducts.fold<num>(0, (sum, item) {
           final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
           final qty = double.tryParse(item['quantity']?.toString() ?? '0') ?? 0.0;
           return sum + (price * qty);
-        });
+        }).toDouble();
+
+        double payoutTotal = offlinePayouts.fold<num>(0, (sum, payout) {
+          return sum + (payout['amount'] ?? 0.0);
+        }).toDouble();
+
+        grossTotal = productTotal + payoutTotal;
 
         orderDiscount = 0.0;
         merchantDiscount = 0.0;
@@ -1832,53 +1959,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
         if (kDebugMode) {
           print("💾 Offline Order Calculation:");
+          print("   productTotal: $productTotal");
+          print("   payoutTotal: $payoutTotal");
           print("   grossTotal: $grossTotal");
-          print("   netTotal: $netTotal");
           print("   netPayable: $netPayable");
-          print("   product count: ${offlineProducts.length}");
-        }
-      }
-      else {
-        final order = orderHelper.orders.firstWhere(
-              (order) => order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-          orElse: () => {},
-        );
-
-        grossTotal = GlobalUtility.getGrossTotal(orderItems);
-
-        if (orderItems.isNotEmpty && order.isNotEmpty) {
-          orderDiscount = order[AppDBConst.orderDiscount] as double? ?? 0.0;
-          merchantDiscount = order[AppDBConst.merchantDiscount] as double? ?? 0.0;
-          orderTax = order[AppDBConst.orderTax] as double? ?? 0.0;
-
-          netTotal = grossTotal - orderDiscount - merchantDiscount;
-          netPayable = order[AppDBConst.orderTotal] as double? ?? 0.0;
-
-          if (order[AppDBConst.orderDate] != null) {
-            try {
-              final createdDateTime = DateTime.parse(order[AppDBConst.orderDate].toString());
-              displayDate = DateFormat(TextConstants.dateFormat).format(createdDateTime);
-              displayTime = DateFormat(TextConstants.timeFormat).format(createdDateTime);
-            } catch (e) {
-              if (kDebugMode) print("Error parsing online order date: $e");
-            }
-          }
-        } else {
-          orderDiscount = 0.0;
-          merchantDiscount = 0.0;
-          orderTax = 0.0;
-          netTotal = 0.0;
-          netPayable = 0.0;
-        }
-
-        if (kDebugMode) {
-          print("🌐 Online Order Calculation:");
-          print("   grossTotal: $grossTotal");
-          print("   orderDiscount: $orderDiscount");
-          print("   merchantDiscount: $merchantDiscount");
-          print("   orderTax: $orderTax");
-          print("   netTotal: $netTotal");
-          print("   netPayable: $netPayable");
+          print("🧾 Offline items for UI → ${jsonEncode(orderItems)}");
         }
       }
     }
@@ -1897,6 +1982,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       print("#### netTotal: $netTotal");
       print("#### netPayable: $netPayable");
     }
+
 
     return Stack(
       children: [
@@ -2074,15 +2160,28 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 children: [
                                   CustomSlidableAction(
                                     onPressed: (context) async {
-                                      if (isPayoutOrCouponOrCustomItem) {
-                                        if (kDebugMode) {
-                                          print("#### CustomSlidableAction isPayoutOrCouponOrCustomItem true");
-                                        }
-                                        await CustomDialog.showRemoveSpecialOrderItemsConfirmation(context, type: itemType, confirm: () async {
-                                          deleteItemFromOrder(orderItem[AppDBConst.itemServerId]);
-                                        });
+                                      if (kDebugMode) {
+                                        print("🗑️ Delete tapped for item: $orderItem");
+                                      }
+                                      final bool isOffline = orderHelper.activeOrderId != null &&
+                                          Hive.box('offlineOrders').containsKey(orderHelper.activeOrderId.toString());
+
+                                      if (isOffline) {
+                                        await CustomDialog.showRemoveSpecialOrderItemsConfirmation(
+                                          context,
+                                          type: itemType,
+                                          confirm: () async {
+                                            await deleteOfflineItem(orderItem);
+                                          },
+                                        );
                                       } else {
-                                        deleteItemFromOrder(orderItem[AppDBConst.itemServerId]);
+                                        await CustomDialog.showRemoveSpecialOrderItemsConfirmation(
+                                          context,
+                                          type: itemType,
+                                          confirm: () async {
+                                            await deleteOfflineItem(orderItem);
+                                          },
+                                        );
                                       }
                                     },
                                     backgroundColor: Colors.transparent,
@@ -2439,7 +2538,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                             // we have to show price * qty for custom item also / condition updated, only dont show for payout and coupons
                                             if (!isCouponOrPayout)
                                               Text(
-                                                "${TextConstants.currencySymbol} ${regularPrice.toStringAsFixed(2)} × ${orderItem[AppDBConst.itemCount]}", // changed * to ×
+                                                "${TextConstants.currencySymbol}${(orderItem['item_price'] ?? orderItem['price'] ?? 0).toStringAsFixed(2)} × ${(orderItem['items_count'] ?? orderItem['quantity'] ?? 1)}",
                                                 style: TextStyle(
                                                   color: themeHelper.themeMode == ThemeMode.dark
                                                       ? ThemeNotifier.textDark
@@ -2460,8 +2559,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                       SizedBox(width: 20,),
                                       Text(
                                         isPayout
-                                            ? "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! * orderItem[AppDBConst.itemPrice]!.abs()).toStringAsFixed(2)}"
-                                            : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! * (isCoupon ? orderItem[AppDBConst.itemPrice]!.abs() : salesPrice)).toStringAsFixed(2)}",
+                                            ? "-${TextConstants.currencySymbol}${(
+                                            ((orderItem['items_count'] ?? orderItem['quantity'] ?? orderItem[AppDBConst.itemCount] ?? 1) *
+                                                ((orderItem['item_price'] ?? orderItem['price'] ?? orderItem[AppDBConst.itemPrice] ?? 0).abs()))
+                                        ).toStringAsFixed(2)}"
+                                            : "${TextConstants.currencySymbol}${(
+                                            ((orderItem['items_count'] ?? orderItem['quantity'] ?? orderItem[AppDBConst.itemCount] ?? 1) *
+                                                (isCoupon
+                                                    ? (orderItem['item_price'] ?? orderItem['price'] ?? orderItem[AppDBConst.itemPrice] ?? 0).abs()
+                                                    : (orderItem['item_price'] ?? orderItem['price'] ?? orderItem[AppDBConst.itemSalesPrice] ?? orderItem[AppDBConst.itemRegularPrice] ?? orderItem[AppDBConst.itemUnitPrice] ?? 0)))
+                                        ).toStringAsFixed(2)}",
                                         style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.bold,

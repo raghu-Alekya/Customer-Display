@@ -1450,100 +1450,46 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       if (kDebugMode) print("Exception in addPayout: $e, Stack: $s");
     }
   }
-
-  // Build #1.0.198 : Add Payout as product to Order
-  Future<void> addPayoutAsProduct({required int orderId, required int dbOrderId, required double amount, required bool isPayOut}) async {
+  Future<void> addPayoutAsProduct({
+    required int orderId,
+    required double amount,
+  }) async {
     if (_addPayoutController.isClosed) return;
 
-    addPayoutSink.add(APIResponse.loading(TextConstants.loading));
+    addPayoutSink.add(APIResponse.loading("Adding payout..."));
+
     try {
-      final AddPayoutAsProductRequestModel request = AddPayoutAsProductRequestModel(
+      final request = AddPayoutAsProductRequestModel(
         orderId: orderId,
-        amount: -amount,
+        amount: -amount, // negative value reduces total
       );
-      final response = await _orderRepository.addPayoutAsProduct(orderId: orderId, request: request);
 
-      if (kDebugMode) {
-        print("OrderBloc - Payout added to order ID: ${response.id}");
-        print("OrderBloc - New total: ${response.total}");
-        print("OrderBloc - Line Items count: ${response.lineItems?.length ?? 0}");
-      }
-
-      // Build #1.0.92: Added payout/discount to DB after successful API response
-      OrderHelper orderHelper = OrderHelper();
-      final db = await DBHelper.instance.database;
-      double merchantDiscount = 0.0;
-      var merchantDiscountIds = "";
-      if (response.lineItems!.isNotEmpty) {
-        for (var lineItem in response.lineItems!) {
-          // Build #1.0.278: Updating merchant discount data into order table
-          if (lineItem.name == TextConstants.discountText) { // Updated: Detect 'Discount' in line_items
-            if (kDebugMode) {
-              print("#### OrderBloc - Adding merchant discount item: id: ${lineItem.id}, total: ${lineItem.total}");
-            }
-            merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
-            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
-            if (kDebugMode) {
-              print("#### TEST 4444  - $merchantDiscountIds");
-            }
-          }else if (isPayOut && (lineItem.name == TextConstants.payout)) {  /// Build #1.0.138: check with 'AND' condition to check correctly , otherwise some times discount also adding into orderPanel as item issue
-            if (kDebugMode) {
-              print("#### OrderBloc - Adding payout item: id: ${response.lineItems!.last.id}, total: ${response.lineItems!.last.total}");
-            }
-            await orderHelper.addItemToOrder(
-              lineItem.id,
-              lineItem.name ?? '',
-              'assets/svg/payout.svg',
-              double.parse(lineItem.total ?? '0.0'),
-              1,
-              '',
-              orderId,
-              type: ItemType.payout.value,
-            );
-          }
-        }
-        if (kDebugMode) {
-          print("#### OrderBloc - addPayout Setting merchantDiscount to $merchantDiscount AND discountsIds to $merchantDiscountIds for orderId $orderId");
-        }
-      }
-      // Build #1.0.92
-      await db.update(
-        AppDBConst.orderTable,
-        {
-          AppDBConst.orderTotal: double.tryParse(response.total) ?? 0.0,
-          AppDBConst.orderStatus: response.status,
-          AppDBConst.orderType: response.createdVia ?? 'in-store',
-          AppDBConst.orderDate: response.dateCreated,
-          AppDBConst.orderTime: response.dateCreated,
-          AppDBConst.orderPaymentMethod: response.paymentMethod,
-          AppDBConst.orderDiscount: double.tryParse(response.discountTotal) ?? 0.0,
-          AppDBConst.orderTax: double.tryParse(response.totalTax) ?? 0.0,
-          AppDBConst.orderShipping: double.tryParse(response.shippingTotal) ?? 0.0,
-          AppDBConst.orderAgeRestricted: response.metaData.firstWhere( //Build #1.0.234: Saving Age Restricted value in order table
-                (meta) => meta.key == TextConstants.ageRestrictedKey,
-            orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
-          ).value.toString(),
-          ///In this API update we do not need to add merchant discount update as Payout is coming from line item instead of fee lines
-          ///So comment below line, as they will remove merchant discount otherwise from UI
-          // Build #1.0.278: REQUIRED : Updating merchant discount data into order table
-          // we have to update merchant id every response , because from backend id was updating!
-          AppDBConst.merchantDiscount: merchantDiscount,
-          AppDBConst.merchantDiscountIds: merchantDiscountIds,
-        },
-        where: '${AppDBConst.orderServerId} = ?',
-        whereArgs: [orderId],
+      // ✅ Call the Hive-only repository method
+      final updatedOrder = await _orderRepository.addPayoutAsProduct(
+        orderId: orderId,
+        request: request,
       );
+
+      // 💡 Update order UI list (for immediate reflection)
+      await OrderHelper().addItemToOrder(
+        null,
+        'Payout',
+        'assets/svg/payout.svg',
+        -amount,
+        1,
+        '',
+        orderId,
+        type: "payout",
+      );
+
       await CustomerDisplayHelper.updateCustomerDisplay(orderId);
 
-      addPayoutSink.add(APIResponse.completed(response));
+      addPayoutSink.add(APIResponse.completed(updatedOrder));
+      if (kDebugMode) print("✅ [Bloc] Offline payout saved successfully (Hive only)");
     } catch (e, s) {
-      if (e.toString().contains('Unauthorised')) {
-        addPayoutSink.add(APIResponse.error("Unauthorised. Session is expired."));
-      }
-      else {
-        addPayoutSink.add(APIResponse.error(_extractErrorMessage(e)));
-      }
-      if (kDebugMode) print("Exception in addPayout: $e, Stack: $s");
+      print("❌ [Bloc] Failed to add payout offline: $e");
+      print(s);
+      addPayoutSink.add(APIResponse.error("Failed to add payout offline: $e"));
     }
   }
 
