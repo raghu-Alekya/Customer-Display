@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:hive/hive.dart';
 import '../../Constants/text.dart';
 import '../../Helper/api_helper.dart';
 import '../../Helper/url_helper.dart';
@@ -40,30 +41,53 @@ class FastKeyProductRepository {  // Build #1.0.15
 
   // GET: Fetch products by FastKey ID
   Future<FastKeyProductsResponse> getProductsByFastKeyId(int fastKeyId) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.fastKeys}${EndUrlConstants.getFastKeyProductsEndUrl}$fastKeyId";
+    final box = await Hive.openBox('fastkeyproductsbox');
 
-    if (kDebugMode) {
-      print("FastKeyProductRepository - GET URL: $url");
-    }
+    try {
+      final url =
+          "${UrlHelper.componentVersionUrl}${UrlMethodConstants.fastKeys}${EndUrlConstants.getFastKeyProductsEndUrl}$fastKeyId";
 
-    final response = await _helper.get(url, true);
+      if (kDebugMode) print("FastKeyProductRepository - GET URL: $url");
 
-    if (kDebugMode) {
-      print("FastKeyProductRepository - GET Raw Response: $response");
-    }
+      final response = await _helper.get(url, true);
+      final responseData = response is String ? json.decode(response) : response;
 
-    if (response is String) {
-      try {
-        final responseData = json.decode(response);
-        return FastKeyProductsResponse.fromJson(responseData);
-      } catch (e) {
-        if (kDebugMode) print("Error parsing GET response: $e");
-        throw Exception("Failed to parse FastKey products GET response");
+      final apiResponse =
+      FastKeyProductsResponse.fromJson(Map<String, dynamic>.from(responseData));
+
+      // ✅ Cache the API data to Hive per FastKey ID
+      await box.put(
+        'fastkey_products_$fastKeyId',
+        apiResponse.products.map((e) => e.toJson()).toList(),
+      );
+
+      if (kDebugMode) {
+        print("✅ Hive Cache: ${apiResponse.products.length} products saved for FastKey $fastKeyId");
       }
-    } else if (response is Map<String, dynamic>) {
-      return FastKeyProductsResponse.fromJson(response);
-    } else {
-      throw Exception("Unexpected response type in GET");
+
+      return apiResponse;
+    } catch (e) {
+      if (kDebugMode) print("⚠ API failed, trying cache for FastKey $fastKeyId: $e");
+
+      // ✅ On failure, load from cache
+      final cachedData = box.get('fastkey_products_$fastKeyId');
+      if (cachedData != null) {
+        final cachedProducts = (cachedData as List)
+            .map((e) => FastKeyProduct.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+
+        return FastKeyProductsResponse(
+          status: "success",
+          message: "Loaded from cache",
+          fastkeyId: fastKeyId.toString(),
+          fastkeyTitle: "",
+          fastkeyImage: "",
+          fastkeyIndex: "",
+          products: cachedProducts,
+        );
+      }
+
+      throw Exception("No cached data for FastKey $fastKeyId");
     }
   }
 

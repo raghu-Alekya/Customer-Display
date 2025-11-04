@@ -61,7 +61,7 @@ class FastKeyResponse {
   final String fastkeyTitle;
   final String fastkeyIndex;
   final String fastkeyImage;
-
+  bool isOfflineData = false; // ✅ new flag
   FastKeyResponse({
     required this.status,
     required this.message,
@@ -69,6 +69,7 @@ class FastKeyResponse {
     required this.fastkeyTitle,
     required this.fastkeyIndex,
     required this.fastkeyImage,
+    this.isOfflineData = false,
   });
 
   factory FastKeyResponse.fromJson(Map<String, dynamic> json) {
@@ -90,12 +91,13 @@ class FastKeyListResponse {
   final String message;
   final int userId;
   final List<FastKey> fastkeys;
-
+  bool isOfflineData; // ✅ Add this
   FastKeyListResponse({
     required this.status,
     required this.message,
     required this.userId,
     required this.fastkeys,
+    this.isOfflineData = false, // ✅ Default false
   });
 
   factory FastKeyListResponse.fromJson(Map<String, dynamic> json) {
@@ -108,6 +110,16 @@ class FastKeyListResponse {
           .toList() ??
           [],
     );
+  }
+
+  // ✅ Add this method
+  Map<String, dynamic> toJson() {
+    return {
+      'status': status,
+      'message': message,
+      'user_id': userId,
+      'fastkeys': fastkeys.map((f) => f.toJson()).toList(),
+    };
   }
 }
 
@@ -145,6 +157,20 @@ class FastKey {
           .toList() ?? [],
     );
   }
+
+  // ✅ Add this method
+  Map<String, dynamic> toJson() {
+    return {
+      'fastkey_id': fastkeyServerId,
+      'user_id': userId,
+      'fastkey_title': fastkeyTitle,
+      'fastkey_image': fastkeyImage,
+      'fastkey_index': fastkeyIndex,
+      'itemCount': itemCount,
+      'products': products?.map((p) => p.toJson()).toList() ?? [],
+    };
+  }
+
 
   FastKey copyWith({
     int? fastkeyServerId,

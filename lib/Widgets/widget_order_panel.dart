@@ -166,7 +166,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       });
     }
   }
-  
+
   @override
   void didUpdateWidget(RightOrderPanel oldWidget) {
     super.didUpdateWidget(oldWidget);

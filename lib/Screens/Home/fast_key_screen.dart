@@ -196,6 +196,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pinaka_pos/Database/assets_db_helper.dart';
@@ -302,6 +303,19 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
     _fastKeyProductBloc = FastKeyProductBloc(FastKeyProductRepository());
     _autoSuggest = SearchProduct();
     _productSearchController.addListener(_listenProductItemSearch);
+    _loadFastKeysFromHive();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final repo = FastKeyRepository();
+      final response = await repo.getFastKeysByUser(); // 👈 returns FastKeyListResponse
+
+      await repo.printAllCachedFastKeys(); // 👈 debug print of Hive data
+
+      if (response.isOfflineData) {
+        print("🛑 OFFLINE MODE: Using cached Hive data!");
+      } else {
+        print("✅ ONLINE MODE: Data fetched from API");
+      }
+      });
 
     //Build #1.0.84: Initialize user ID and load tabs sequentially
     // getUserIdFromDB().then((_) {
@@ -322,6 +336,29 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
       }
     } catch (e) {
       if (kDebugMode) print("Initialization error: $e");
+    }
+  }
+
+  Future<void> _loadFastKeysFromHive() async {
+    final box = await Hive.openBox('fastKeysBox');
+    final cachedData = box.get('fastkeys');
+
+    if (cachedData != null) {
+      final List<dynamic> list = cachedData['fastkeys'] ?? [];
+      setState(() {
+        fastKeyTabs = list.map((item) => FastKey(
+          fastkeyServerId: item['fastkey_id'],
+          userId: item['user_id'],
+          fastkeyTitle: item['fastkey_title'],
+          fastkeyImage: item['fastkey_image'],
+          fastkeyIndex: item['fastkey_index'],
+          itemCount: item['itemCount'],
+        )).toList();
+      });
+
+      if (kDebugMode) {
+        print("🔄 FastKeys loaded from Hive: ${fastKeyTabs.length}");
+      }
     }
   }
 

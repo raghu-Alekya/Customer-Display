@@ -143,6 +143,22 @@ class FastKeyProduct {
       hasVariant: json['has_variants'] ?? false,
     );
   }
+
+  /// ✅ Add this method for Hive storage
+  Map<String, dynamic> toJson() {
+    return {
+      'product_id': productId,
+      'name': name,
+      'price': price,
+      'image': image,
+      'category': category,
+      'sl_number': slNumber,
+      'tags': tags?.map((t) => t.toJson()).toList() ?? [],
+      'sku': sku,
+      'is_variant': isVariant,
+      'has_variants': hasVariant,
+    };
+  }
 }
 
 class Tags {

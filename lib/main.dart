@@ -20,6 +20,7 @@ void main() async {
   await Hive.openBox('categoryCache');
   await Hive.openBox('productCache');
   await Hive.openBox('offlineOrders');
+  await Hive.openBox('fastKeysBox');
   await PinakaPreferences.prepareSharedPref(); //Build #1.0.7: Initialize SharedPref
 
   /// Build #1.0.187: Required -> Disable device back button completely
