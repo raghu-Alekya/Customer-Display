@@ -1900,7 +1900,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             ) ?? 0.0,
 
 
-            'items_count': double.tryParse(item['quantity']?.toString() ?? '1') ?? 1,
+            'items_count': int.tryParse(item['quantity']?.toString() ?? '1') ?? 1,
             'item_sum_price': (double.tryParse(
                 item['price']?.toString() ??
                     item['unit_price']?.toString() ??
@@ -1928,11 +1928,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         orderItems = offlineItems;
 
         // 🧮 Calculate totals
-        double productTotal = offlineProducts.fold<num>(0, (sum, item) {
+        double productTotal = offlineProducts.fold<double>(0, (sum, item) {
           final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-          final qty = double.tryParse(item['quantity']?.toString() ?? '0') ?? 0.0;
-          return sum + (price * qty);
-        }).toDouble();
+          final qtyValue = item['quantity'];
+          final qty = qtyValue is int
+              ? qtyValue
+              : int.tryParse(qtyValue?.toString() ?? '0') ?? 0;
+
+        return sum + (price * qty);
+        });
+
 
         double payoutTotal = offlinePayouts.fold<num>(0, (sum, payout) {
           return sum + (payout['amount'] ?? 0.0);
@@ -2200,217 +2205,130 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 //Removed orderHelper.updateItemQuantity from the API success block, as it’s now in OrderBloc.updateOrderProducts.
                                 // Kept local updateItemQuantity for non-API orders.
                                 // Ensured loader is shown during API calls.
-                                onTap: () {
-                                  if (isCouponOrPayout) return;// Build #1.0.187: Fixed - Updating Quantity for non payout or coupons
+                                onTap: () async {
+                                  if (isCouponOrPayout) return; // Skip coupon or payout
                                   if (kDebugMode) {
-                                    print("DEBUG: _isLoading state before dialog: $_isLoading");
-                                  } // Add this
-
-                                  if (Misc.enableEditProductScreen) {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => EditProductScreen(
-                                          orderItem: orderItem,
-                                          onQuantityUpdated: (newQuantity) async {
-                                            if (orderHelper.activeOrderId != null) {
-
-                                              if (orderHelper.cancelledOrderId != null) { // Build #1.0.189: Fixed -> Deleted Order Tab Reappears After Item Edit Flow
-                                                setState(() {
-                                                  // Remove only the tab with the cancelledOrderId instead of clearing all tabs
-                                                  tabs.removeWhere((tab) => tab["orderId"] == orderHelper.cancelledOrderId);
-
-                                                  if (kDebugMode) {
-                                                    print("##### onQuantityUpdated: removing cancelled order tab");
-                                                    print("##### DEBUG : cancelledOrderId -> ${orderHelper.cancelledOrderId}");
-                                                    print("##### DEBUG : tabs -> $tabs");
-                                                  }
-                                                  // Reset cancelledOrderId after processing
-                                                  orderHelper.cancelledOrderId = null;
-                                                });
-                                                // // If no tabs remain, fetch orders to refresh
-                                                // if (tabs.isEmpty) {
-                                                //   _fetchOrders();
-                                                // } else {
-                                                //   // Reinitialize tab controller and update UI
-                                                //   _initializeTabController();
-                                                //   await fetchOrderItems();
-                                                // }
-                                              }
-                                              // final order = orderHelper.orders.firstWhere(
-                                              //       (order) => order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-                                              //   orElse: () => {},
-                                              // );
-                                              final serverOrderId = orderHelper.activeOrderId;//order[AppDBConst.orderServerId] as int?;
-                                              final dbOrderId = orderHelper.activeOrderId;
-                                              // Build #1.0.108: Fixed : Edit product not working
-                                              // prev we are passing itemServerId rather than itemProductId & based on variation id we have to pass that id
-                                              final productId = orderItem[AppDBConst.itemProductId] as int?;
-                                              final serverVariationId = orderItem[AppDBConst.itemVariationId] as int?;
-                                              // Use productId if serverVariationId is null or 0, otherwise use serverVariationId
-                                              final variationOrProductId = (serverVariationId == null || serverVariationId == 0)
-                                                  ? productId
-                                                  : serverVariationId;
-                                              if (serverOrderId != null && dbOrderId != null && productId != null) {
-                                                setState(() => _isLoading = true);
-                                                _updateOrderSubscription?.cancel();
-                                                _updateOrderSubscription = orderBloc.updateOrderStream.listen((response) async {
-                                                  if (response.status == Status.LOADING) { // Build #1.0.80
-                                                    const Center(child: CircularProgressIndicator());
-                                                  }else if (response.status == Status.COMPLETED) {
-                                                    if (kDebugMode) {
-                                                      print("##### DEBUG: EditProductScreen - Quantity updated successfully");
-                                                    }
-                                                    setState(() => _isLoading = false); //Build #1.0.92, Fixed Issue: Loader in order panel does not stop on edit item
-
-                                                    await fetchOrderItems();
-                                                    if (Misc.showDebugSnackBar) { // Build #1.0.254
-                                                      _scaffoldMessenger.showSnackBar(
-                                                        SnackBar(
-                                                          content: Text("Quantity updated successfully"),
-                                                          backgroundColor: Colors.green,
-                                                          duration: const Duration(seconds: 2),
-                                                        ),
-                                                      );
-                                                    }
-                                                  } else if (response.status == Status.ERROR) {
-                                                    await fetchOrderItems(); // Build 1.0.214: Fixed Issue [SCRUM - 364] -> Item reappears in cart after being deleted while edit screen is open
-                                                    if (response.message!.contains('Unauthorised')) {
-                                                      if (kDebugMode) {
-                                                        print("categories screen 6 ---- Unauthorised : ${response.message!}");
-                                                      }
-                                                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                                                        if (mounted) {
-                                                          Navigator.pushReplacement(context, MaterialPageRoute(
-                                                              builder: (context) => LoginScreen()));
-
-                                                          if (kDebugMode) {
-                                                            print("message 6 --- ${response.message}");
-                                                          }
-                                                          ScaffoldMessenger.of(context).showSnackBar(
-                                                            const SnackBar(
-                                                              content: Text("Unauthorised. Session is expired on this device."),
-                                                              backgroundColor: Colors.red,
-                                                              duration: Duration(seconds: 2),
-                                                            ),
-                                                          );
-                                                        }
-                                                      });
-                                                    } else {
-                                                      if (kDebugMode) {
-                                                        print(
-                                                            "##### ERROR: EditProductScreen - Failed to update quantity: ${response.message}");
-                                                      }
-                                                      _scaffoldMessenger
-                                                          .showSnackBar(
-                                                        SnackBar(
-                                                          content: Text(
-                                                              response.message ?? "Failed to update quantity"),
-                                                          backgroundColor:
-                                                          Colors.red,
-                                                          duration:
-                                                          const Duration(
-                                                              seconds: 2),
-                                                        ),
-                                                      );
-                                                    }
-                                                    setState(() => _isLoading = false); //Build #1.0.92: Fixed Issue: Loader in order panel does not stop on edit item
-                                                  }
-                                                });
-
-                                                if (kDebugMode) { // Build #1.0.108:
-                                                  print("##### DEBUG: 4321 , variationOrProductId: $variationOrProductId, productId: $productId, serverVariationId: $serverVariationId");
-                                                }
-
-                                                await orderBloc.updateOrderProducts(
-                                                  orderId: serverOrderId,
-                                                  dbOrderId: dbOrderId,
-                                                  isEditQuantity: true,
-                                                  lineItems: [
-                                                    OrderLineItem(
-                                                      productId: variationOrProductId, // Build #1.0.108: we have to pass itemProductId or itemVariationId, otherwise it won't update qty.
-                                                      quantity: newQuantity,
-                                                      // sku: orderItem[AppDBConst.itemSKU] ?? '',
-                                                    ),
-                                                  ],
-                                                );
-                                              } else {
-
-                                                ///Todo: do not handle this code, remove if required as we are not saving until API call made with response
-                                                // await orderHelper.updateItemQuantity(
-                                                //   orderItem[AppDBConst.itemId],
-                                                //   newQuantity,
-                                                // );
-                                                await fetchOrderItems();
-                                                _scaffoldMessenger.showSnackBar(
-                                                  SnackBar(
-                                                    content: Text("Failed to update quantity, Network error."),
-                                                    backgroundColor: Colors.green,
-                                                    duration: const Duration(seconds: 2),
-                                                  ),
-                                                );
-                                                setState(() => _isLoading = false);
-                                              }
-                                            }
-                                          },
-                                        ),
-                                      ),
-                                    );
+                                    print("🟩 Tapped on product item (offline mode)");
                                   }
-                                  else{
-                                    showDialog(
-                                      context: context,
-                                      barrierColor: Colors.black.withValues(alpha: 0.5),
-                                      builder: (BuildContext dialogContext) {
-                                        return EditProduct(
-                                          orderItem: orderItem,
-                                          onQuantityUpdated: (newQuantity) async {
-                                            if (orderHelper.activeOrderId != null) {
-                                              try {
-                                                // 🧠 OFFLINE MODE – Update local DB (Hive + SQLite)
-                                                final box = Hive.box('offlineOrders');
-                                                final orderId = orderHelper.activeOrderId!;
-                                                final orderData = box.get(orderId);
 
-                                                if (orderData != null && orderData['products'] != null) {
-                                                  // 🔍 Find and update matching product in Hive
-                                                  final products = List<Map>.from(orderData['products']);
-                                                  final index = products.indexWhere((p) =>
-                                                  p['id'] == orderItem[AppDBConst.itemProductId] ||
-                                                      p['sku'] == orderItem[AppDBConst.itemSKU]);
+                                  showDialog(
+                                    context: context,
+                                    barrierColor: Colors.black.withValues(alpha: 0.5),
+                                    builder: (BuildContext dialogContext) {
+                                      return EditProduct(
+                                        orderItem: orderItem,
+                                        onQuantityUpdated: (newQuantity) async {
+                                          try {
+                                            if (orderHelper.activeOrderId == null) return;
 
-                                                  if (index != -1) {
-                                                    products[index]['quantity'] = newQuantity;
-                                                    orderData['products'] = products;
-                                                    await box.put(orderId, orderData);
-                                                  }
-                                                }
+                                            final String orderKey = orderHelper.activeOrderId.toString();
+                                            final offlineBox = Hive.box('offlineOrders');
+                                            final rawOfflineOrder = offlineBox.get(orderKey);
 
-                                                // 💾 Update SQLite using OrderHelper
-                                                await orderHelper.updateItemQuantity(
-                                                  orderItem[AppDBConst.itemId],
-                                                  newQuantity,
-                                                );
+                                            if (rawOfflineOrder == null) return;
 
-                                                await fetchOrderItems();
+                                            // Convert to editable map
+                                            final Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(rawOfflineOrder);
+                                            final List<Map<String, dynamic>> products =
+                                                (offlineOrder['products'] as List?)
+                                                    ?.map((e) => Map<String, dynamic>.from(e))
+                                                    .toList() ?? [];
+
+                                            // 🔍 Locate and update the tapped product
+                                            for (var product in products) {
+                                              final name1 = (product['name'] ??
+                                                  product['product_name'] ??
+                                                  product['fast_key_item_name'] ??
+                                                  '')
+                                                  .toString();
+                                              final name2 = (orderItem['item_name'] ?? '').toString();
+
+                                              if (name1 == name2) {
+                                                final price = double.tryParse(product['price']?.toString() ?? '0') ?? 0.0;
+                                                product['quantity'] = newQuantity;
+                                                product['items_count'] = newQuantity;
+                                                product['subtotal'] = price * newQuantity;
 
                                                 if (kDebugMode) {
-                                                  print("✅ Offline quantity updated → $newQuantity for item ${orderItem[AppDBConst.itemName]}");
+                                                  print("🧾 Updated offline product → $name1 | Qty: $newQuantity | Subtotal: ${product['subtotal']}");
                                                 }
-
-                                              } catch (e) {
-                                                if (kDebugMode) print("❌ Offline quantity update failed: $e");
+                                                break;
                                               }
                                             }
-                                          },
-                                          isDialog: true,
-                                        );
-                                      },
-                                    );
 
-                                  }
+                                            // Save updated order back to Hive
+                                            offlineOrder['products'] = products;
+                                            await offlineBox.put(orderKey, offlineOrder);
 
+                                            if (kDebugMode) {
+                                              print("💾 Hive offline order updated successfully");
+                                            }
+
+                                            // 🔁 Rebuild Current Order UI instantly
+                                            if (mounted) {
+                                              setState(() {
+                                                // Recalculate and reload from Hive directly
+                                                final updatedProducts = products
+                                                    .map((item) => {
+                                                  'item_name': item['name'] ??
+                                                      item['product_name'] ??
+                                                      '',
+                                                  'item_price': double.tryParse(
+                                                      item['price']?.toString() ?? '0') ??
+                                                      0.0,
+                                                  'items_count':
+                                                  double.tryParse(item['quantity']?.toString() ?? '1') ??
+                                                      1,
+                                                  'item_sum_price': (double.tryParse(
+                                                      item['price']?.toString() ?? '0') ??
+                                                      0.0) *
+                                                      (double.tryParse(
+                                                          item['quantity']?.toString() ?? '1') ??
+                                                          1),
+                                                  'item_type': 'Product',
+                                                  'item_image': item['image'] ?? '',
+                                                })
+                                                    .toList();
+
+                                                final updatedPayouts = ((offlineOrder['payouts'] ?? []) as List)
+                                                    .map((e) => Map<String, dynamic>.from(e))
+                                                    .toList();
+
+                                                final updatedItems = [
+                                                  ...updatedProducts,
+                                                  ...updatedPayouts.map((payout) => {
+                                                    'item_name': 'Payout',
+                                                    'item_price': double.tryParse(
+                                                        payout['amount']?.toString() ?? '0') ??
+                                                        0.0,
+                                                    'items_count': 1,
+                                                    'item_sum_price': double.tryParse(
+                                                        payout['amount']?.toString() ?? '0') ??
+                                                        0.0,
+                                                    'item_image': 'assets/svg/payout.svg',
+                                                    'item_type': 'payout',
+                                                  }),
+                                                ];
+
+                                                orderItems = updatedItems;
+                                              });
+                                            }
+
+                                            if (kDebugMode) {
+                                              print("✅ Offline quantity updated and UI refreshed from Hive");
+                                            }
+                                          } catch (e) {
+                                            if (kDebugMode) {
+                                              print("❌ Failed to update offline item quantity: $e");
+                                            }
+                                          }
+                                        },
+                                        isDialog: true,
+                                      );
+                                    },
+                                  );
                                 },
+
                                 child: Container(
                                   margin: const EdgeInsets.symmetric(vertical: 1, horizontal: 8),
                                   padding: const EdgeInsets.all(8),
