@@ -11,7 +11,26 @@ import '../../Models/Search/product_variation_model.dart';
 class ProductRepository { // Build #1.0.13 : added product search repository
   final APIHelper _helper = APIHelper();
 
+  /// ✅ Utility: Recursively convert Map<dynamic, dynamic> → Map<String, dynamic>
+  Map<String, dynamic> deepConvertToStringKeys(Map<dynamic, dynamic> input) {
+    final Map<String, dynamic> output = {};
+    input.forEach((key, value) {
+      if (value is Map) {
+        output[key.toString()] = deepConvertToStringKeys(value);
+      } else if (value is List) {
+        output[key.toString()] = value.map((item) {
+          if (item is Map) return deepConvertToStringKeys(item);
+          return item;
+        }).toList();
+      } else {
+        output[key.toString()] = value;
+      }
+    });
+    return output;
+  }
+
   Future<List<ProductResponse>> fetchProducts({String? searchQuery}) async {
+    final box = await Hive.openBox('productCache');
     String url = "${UrlHelper.wooCommerceV3}${UrlMethodConstants.products}";
 
     if (searchQuery != null && searchQuery.isNotEmpty) {
@@ -20,31 +39,83 @@ class ProductRepository { // Build #1.0.13 : added product search repository
       url += EndUrlConstants.productSearchEndUrl;
     }
 
-    if (kDebugMode) {
-      print("ProductRepository - URL: $url");
-    }
+    if (kDebugMode) print("🛰 ProductRepository - URL: $url");
 
-    final response = await _helper.get(url, true);
+    try {
+      // 🌐 Fetch from API
+      final response = await _helper.get(url, true);
+      List<ProductResponse> products = [];
 
-    if (kDebugMode) {
-      print("ProductRepository - Raw Response: $response");
-    }
-
-    // Parse the response
-    if (response is String) {
-      try {
+      if (response is String) {
         final List<dynamic> responseData = json.decode(response);
-        return responseData.map((productJson) => ProductResponse.fromJson(productJson)).toList();
-      } catch (e) {
-        if (kDebugMode) {
-          print("Error parsing response: $e");
-        }
-        throw Exception("Failed to parse products");
+        products = responseData.map((e) => ProductResponse.fromJson(e)).toList();
+      } else if (response is List) {
+        products = response.map((e) => ProductResponse.fromJson(e)).toList();
+      } else {
+        throw Exception("Unexpected response type");
       }
-    } else if (response is List) {
-      return response.map((productJson) => ProductResponse.fromJson(productJson)).toList();
-    } else {
-      throw Exception("Unexpected response type");
+
+      // ✅ Update Hive cache incrementally (no full clear)
+      for (var product in products) {
+        box.put(product.id.toString(), deepConvertToStringKeys(product.toJson()));
+      }
+
+      if (kDebugMode) {
+        print("✅ ${products.length} products cached/updated successfully.");
+      }
+
+      return products;
+    } catch (e) {
+      // 📴 Offline fallback
+      if (box.isNotEmpty) {
+        try {
+          final cachedProducts = box.values.map((e) {
+            try {
+              dynamic jsonData;
+
+              // Handle both Map and String formats
+              if (e is String) {
+                jsonData = json.decode(e);
+              } else if (e is Map) {
+                jsonData = deepConvertToStringKeys(e);
+              } else {
+                throw Exception("Invalid cache type: ${e.runtimeType}");
+              }
+
+              return ProductResponse.fromJson(Map<String, dynamic>.from(jsonData));
+            } catch (err) {
+              if (kDebugMode) print("⚠ Skipping bad cache entry: $err");
+              return null; // skip corrupted entries
+            }
+          }).whereType<ProductResponse>().toList();
+
+
+          // 🔍 Offline search (case-insensitive)
+          if (searchQuery != null && searchQuery.isNotEmpty) {
+            final q = searchQuery.toLowerCase();
+            final filtered = cachedProducts
+                .where((p) => (p.name ?? '').toLowerCase().contains(q))
+                .toList();
+
+            if (kDebugMode) {
+              print("⚡ Offline search found ${filtered.length} products for '$searchQuery'");
+            }
+            return filtered;
+          }
+
+          if (kDebugMode) {
+            print("⚠ Using ${cachedProducts.length} cached products due to: $e");
+          }
+
+          return cachedProducts;
+        } catch (err) {
+          if (kDebugMode) {
+            print("❌ Error reading cache: $err");
+          }
+        }
+      }
+
+      throw Exception("Failed to fetch or load cached products: $e");
     }
   }
 
