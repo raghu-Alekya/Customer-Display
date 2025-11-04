@@ -2368,9 +2368,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       // ✅ If no active order, create one
       if (orderId == null) {
-        orderId = DateTime
-            .now()
-            .millisecondsSinceEpoch;
+        orderId = DateTime.now().millisecondsSinceEpoch;
         final newOrder = {
           "order_id": orderId,
           "created_at": DateTime.now().toIso8601String(),
@@ -2385,27 +2383,23 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       final key = orderId.toString();
       final existingOrder = box.get(key);
-
       if (existingOrder == null) {
         throw Exception("Offline order not found for ID $orderId");
       }
-
-      // ✅ Safe map conversions
-      final rawPayouts = (existingOrder["payouts"] ?? []) as List;
-      final payouts = rawPayouts
-          .map((p) => Map<String, dynamic>.from(p as Map))
+      final payouts = (existingOrder["payouts"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
 
-      final rawProducts = (existingOrder["products"] ?? []) as List;
-      final products = rawProducts.map((p) =>
-      Map<String, dynamic>.from(p as Map)).toList();
+      final products = (existingOrder["products"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
 
-      // 🧾 Prevent duplicate payout
-      if (payouts.any((p) => p["amount"] == -payoutAmount)) {
+      // 🚫 If payout already exists → show message and stop
+      if (payouts.isNotEmpty) {
         setState(() => _isPayoutLoading = false);
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
-            content: Text("Payout already added for this order"),
+            content: Text("A payout already exists for this order."),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 2),
           ),
@@ -2413,7 +2407,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         return;
       }
 
-      // 🧾 Add payout
+      // ✅ Add new payout only once
       final payoutEntry = {
         "order_id": orderId,
         "amount": -payoutAmount,
@@ -2422,7 +2416,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       };
       payouts.add(payoutEntry);
 
-      // 🧮 Recalculate total
+      // 🧮 Recalculate totals
       double total = 0.0;
       for (var p in products) {
         total += (p["price"] ?? 0) * (p["quantity"] ?? 1);
@@ -2435,14 +2429,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         "gross_total": total,
       };
 
-      // 💾 Save back
+      // 💾 Save back to Hive
       await box.put(key, updatedOrder);
       print("✅ [Hive] Added payout → $payoutEntry");
 
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         SnackBar(
-          content: Text("Payout of ₹${payoutAmount.toStringAsFixed(
-              2)} added successfully (offline)"),
+          content: Text(
+            "Payout of ₹${payoutAmount.toStringAsFixed(2)} added successfully (offline)",
+          ),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 2),
         ),
@@ -2455,6 +2450,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       });
       await _loadOrderData();
       widget.refreshOrderList?.call();
+
     } catch (e, s) {
       print("❌ [Hive] Error adding payout: $e\n$s");
       setState(() => _isPayoutLoading = false);
@@ -2467,6 +2463,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       );
     }
   }
+
 }
 // Simple clipper for the tab side curves
 class TabSideClipper extends CustomClipper<Path> {
