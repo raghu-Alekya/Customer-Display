@@ -385,64 +385,130 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
   }
 
-  // 4. Delete Order Item (uses updateOrderProducts with quantity=0)
-  Future<UpdateOrderResponseModel> deleteOrderItem({required int orderId, required UpdateOrderRequestModel request,}) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+  Future<UpdateOrderResponseModel> deleteOrderItem({
+    required int orderId,
+    required UpdateOrderRequestModel request,
+  }) async {
+    final box = Hive.box('offlineOrders');
+    final order = box.get(orderId.toString());
+
+    if (order == null) {
+      throw Exception("Offline order $orderId not found for deletion");
+    }
+
+    // Convert product list to mutable list of maps
+    List<Map<String, dynamic>> products = (order['products'] ?? [])
+        .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
+        .toList();
+
+    final deleteList = request.lineItems ?? [];
+
+    if (deleteList.isEmpty) {
+      if (kDebugMode) print("⚠️ deleteOrderItem called with empty lineItems.");
+      return UpdateOrderResponseModel(
+        id: orderId,
+        status: "pending_offline",
+        parentId: 0,
+        currency: "INR",
+        discountTotal: "0",
+        total: "0",
+        totalTax: "0",
+        metaData: [],
+        lineItems: [],
+        taxLines: [],
+        shippingLines: [],
+        feeLines: [],
+        couponLines: [],
+      );
+    }
+
+    int initialCount = products.length;
+
+    for (var deleteItem in deleteList) {
+      final deleteProductId = deleteItem.productId ?? -1;
+      final deleteVariationId = deleteItem.variationId ?? 0;
+
+      products.removeWhere((p) {
+        final storedProductId = p['product_id'] ?? -1;
+        final storedVariationId = p['variation_id'] ?? 0;
+        return storedProductId == deleteProductId &&
+            storedVariationId == deleteVariationId;
+      });
+    }
+
+    await box.put(orderId.toString(), {
+      ...order,
+      'products': products,
+      'synced': false, // Mark as needing sync later
+    });
 
     if (kDebugMode) {
-      print("OrderRepository - POST URL: $url");
-      print("OrderRepository - Request Body (delete items): ${request.toJson()}");
+      print("🗑️ Offline delete for order #$orderId");
+      print("   Items before: $initialCount → after: ${products.length}");
     }
 
-    final response = await _helper.post(url, request.toJson(), true);
-
-    if (kDebugMode) {
-      print("OrderRepository - Raw Response (delete): $response");
-    }
-
-    if (response is String) {
-      try {
-        final responseData = json.decode(response);
-        return UpdateOrderResponseModel.fromJson(responseData);
-      } catch (e) {
-        if (kDebugMode) print("Error parsing delete order item response: $e");
-        throw Exception("Failed to parse delete order item response");
-      }
-    } else if (response is Map<String, dynamic>) {
-      return UpdateOrderResponseModel.fromJson(response);
-    } else {
-      throw Exception("Unexpected response type in delete order item PUT");
-    }
+    // ✅ Return consistent model for UI
+    return UpdateOrderResponseModel(
+      id: orderId,
+      parentId: 0,
+      status: "pending_offline",
+      currency: "INR",
+      discountTotal: "0",
+      total: "0",
+      totalTax: "0",
+      metaData: [],
+      lineItems: [],
+      taxLines: [],
+      shippingLines: [],
+      feeLines: [],
+      couponLines: [],
+    );
   }
 
+
+
   // Build #1.0.49: Added changeOrderStatus api call code
-  Future<UpdateOrderResponseModel> changeOrderStatus({required int orderId, required OrderStatusRequest request}) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+  Future<UpdateOrderResponseModel> changeOrderStatus({
+    required int orderId,
+    required OrderStatusRequest request,
+  }) async {
+    final box = Hive.box('offlineOrders');
+    final order = box.get(orderId.toString());
+
+    if (order == null) {
+      throw Exception("Offline order $orderId not found for status update");
+    }
+
+    final newStatus = request.status ?? 'unknown_status';
+
+    // ✅ Update local Hive record
+    await box.put(orderId.toString(), {
+      ...order,
+      'status': newStatus,
+      'synced': false, // Mark to sync later
+      'updated_at': DateTime.now().toIso8601String(),
+    });
 
     if (kDebugMode) {
-      print("OrderRepository - POST URL for status change: $url");
-      print("OrderRepository - Request Body: ${request.toJson()}");
+      print("🔄 Offline order #$orderId status changed → $newStatus");
     }
 
-    final response = await _helper.post(url, request.toJson(), true);
-
-    if (kDebugMode) {
-      print("OrderRepository - Change status Raw Response: $response");
-    }
-
-    if (response is String) {
-      try {
-        final responseData = json.decode(response);
-        return UpdateOrderResponseModel.fromJson(responseData);
-      } catch (e) {
-        if (kDebugMode) print("Error parsing change order status response: $e");
-        throw Exception("Failed to parse change order status response");
-      }
-    } else if (response is Map<String, dynamic>) {
-      return UpdateOrderResponseModel.fromJson(response);
-    } else {
-      throw Exception("Unexpected response type in change order status POST");
-    }
+    // ✅ Return a consistent response for UI
+    return UpdateOrderResponseModel(
+      id: orderId,
+      parentId: 0,
+      status: newStatus,
+      currency: "INR",
+      discountTotal: "0",
+      total: "0",
+      totalTax: "0",
+      metaData: [],
+      lineItems: [],
+      taxLines: [],
+      shippingLines: [],
+      feeLines: [],
+      couponLines: [],
+    );
   }
 
   // Build #1.0.49: Added applyDiscount api call code

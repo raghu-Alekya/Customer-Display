@@ -121,24 +121,52 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   }
 
   // Build #1.0.104: created this function for initial call & while back to this screen
-  void fetchOrdersData(){
+  void fetchOrdersData() async {
     if (kDebugMode) {
-      print("##### fetchOrdersData called");
+      print("##### fetchOrdersData called (OFFLINE MODE)");
       print("##### fetchOrdersData -> isOrderPanelLoaded : ${OrderHelper.isOrderPanelLoaded}");
     }
-    if(OrderHelper.isOrderPanelLoaded){
-      setState(() => _isFetchingInitialData = false); // Build #1.0.128: Initial fetch complete
-      _getOrderTabs();
+
+    // ✅ Skip re-fetch if already loaded
+    if (OrderHelper.isOrderPanelLoaded) {
+      setState(() => _isFetchingInitialData = false);
+      _getOrderTabs(); // Load tabs from OrderHelper.orders
       return;
     }
-    setState(() { // Build #1.0.128: Added this flag to track if we're in the middle of initial fetch
+
+    // ✅ Indicate that we are fetching
+    setState(() {
       _isFetchingInitialData = true;
       _isLoading = true;
     });
-    /// No need _getOrderTabs here calling inside _fetchOrders (because of this before api call db order tabs showing)
-    // _getOrderTabs(); //Build #1.0.40: Load existing orders into tabs
-    _fetchOrders(); //Build #1.0.40: Fetch orders on initialization
+
+    try {
+      // 🔹 Load offline data directly through OrderHelper
+      final helper = OrderHelper();
+      await helper.loadData(); // Already loads Hive offline orders
+
+      if (kDebugMode) {
+        print("📦 Offline orders loaded: ${helper.orders.length}");
+      }
+
+      // ✅ Mark panel loaded and render
+      OrderHelper.isOrderPanelLoaded = true;
+      _getOrderTabs(); // Use offline OrderHelper.orders
+
+    } catch (e, s) {
+      if (kDebugMode) {
+        print("❌ Error loading offline orders in fetchOrdersData: $e");
+        print("Stack trace: $s");
+      }
+    } finally {
+      setState(() {
+        _isFetchingInitialData = false;
+        _isLoading = false;
+      });
+    }
   }
+
+
 
   @override
   void didUpdateWidget(RightOrderPanel oldWidget) {
@@ -1694,6 +1722,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
   }
 
+
   //Build #1.0.67
   void _handleError(String message, {bool isPayout = false, bool isCoupon = false, bool isCustomItem = false}) async {
     if (!mounted) return; // Check if widget is still mounted
@@ -1770,22 +1799,17 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       final rawOfflineOrder = offlineBox.get(orderHelper.activeOrderId.toString());
 
       if (rawOfflineOrder != null) {
-        // 🟠 OFFLINE ORDER FLOW
-        if (kDebugMode) print(
-            "📦 Detected offline order (${orderHelper.activeOrderId})");
+        if (kDebugMode) {
+          print("📦 Detected offline order (${orderHelper.activeOrderId})");
+        }
 
-        final Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(
-            rawOfflineOrder);
+        final Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(rawOfflineOrder);
         final offlineProducts = ((offlineOrder['products'] ?? []) as List)
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
-
-        // Recalculate totals
         grossTotal = offlineProducts.fold<num>(0, (sum, item) {
-          final price = double.tryParse(item['price']?.toString() ?? '0') ??
-              0.0;
-          final qty = double.tryParse(item['quantity']?.toString() ?? '0') ??
-              0.0;
+          final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+          final qty = double.tryParse(item['quantity']?.toString() ?? '0') ?? 0.0;
           return sum + (price * qty);
         });
 
@@ -1796,14 +1820,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         netTotal = grossTotal - orderDiscount - merchantDiscount;
         netPayable = netTotal + orderTax;
 
-        // Parse created_at safely
         if (offlineOrder['created_at'] != null) {
           try {
             final createdAt = DateTime.parse(offlineOrder['created_at']);
-            displayDate =
-                DateFormat(TextConstants.dateFormat).format(createdAt);
-            displayTime =
-                DateFormat(TextConstants.timeFormat).format(createdAt);
+            displayDate = DateFormat(TextConstants.dateFormat).format(createdAt);
+            displayTime = DateFormat(TextConstants.timeFormat).format(createdAt);
           } catch (e) {
             if (kDebugMode) print("⚠️ Failed to parse offline order date: $e");
           }
@@ -1815,55 +1836,49 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           print("   netTotal: $netTotal");
           print("   netPayable: $netPayable");
           print("   product count: ${offlineProducts.length}");
-        } else {
-          // 🟢 ONLINE ORDER FLOW (your existing logic)
-          final order = orderHelper.orders.firstWhere(
-                (order) =>
-            order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-            orElse: () => {},
-          );
+        }
+      }
+      else {
+        final order = orderHelper.orders.firstWhere(
+              (order) => order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
+          orElse: () => {},
+        );
 
-          grossTotal = GlobalUtility.getGrossTotal(orderItems);
+        grossTotal = GlobalUtility.getGrossTotal(orderItems);
 
-          if (orderItems.isNotEmpty && order.isNotEmpty) {
-            orderDiscount = order[AppDBConst.orderDiscount] as double? ?? 0.0;
-            merchantDiscount =
-                order[AppDBConst.merchantDiscount] as double? ?? 0.0;
-            orderTax = order[AppDBConst.orderTax] as double? ?? 0.0;
+        if (orderItems.isNotEmpty && order.isNotEmpty) {
+          orderDiscount = order[AppDBConst.orderDiscount] as double? ?? 0.0;
+          merchantDiscount = order[AppDBConst.merchantDiscount] as double? ?? 0.0;
+          orderTax = order[AppDBConst.orderTax] as double? ?? 0.0;
 
-            netTotal = grossTotal - orderDiscount - merchantDiscount;
-            netPayable = order[AppDBConst.orderTotal] as double? ?? 0.0;
+          netTotal = grossTotal - orderDiscount - merchantDiscount;
+          netPayable = order[AppDBConst.orderTotal] as double? ?? 0.0;
 
-            if (order[AppDBConst.orderDate] != null) {
-              try {
-                final createdDateTime = DateTime.parse(
-                    order[AppDBConst.orderDate].toString());
-                displayDate = DateFormat(TextConstants.dateFormat).format(
-                    createdDateTime);
-                displayTime = DateFormat(TextConstants.timeFormat).format(
-                    createdDateTime);
-              } catch (e) {
-                if (kDebugMode) print("Error parsing online order date: $e");
-              }
+          if (order[AppDBConst.orderDate] != null) {
+            try {
+              final createdDateTime = DateTime.parse(order[AppDBConst.orderDate].toString());
+              displayDate = DateFormat(TextConstants.dateFormat).format(createdDateTime);
+              displayTime = DateFormat(TextConstants.timeFormat).format(createdDateTime);
+            } catch (e) {
+              if (kDebugMode) print("Error parsing online order date: $e");
             }
-          } else {
-            // Reset if empty
-            orderDiscount = 0.0;
-            merchantDiscount = 0.0;
-            orderTax = 0.0;
-            netTotal = 0.0;
-            netPayable = 0.0;
           }
+        } else {
+          orderDiscount = 0.0;
+          merchantDiscount = 0.0;
+          orderTax = 0.0;
+          netTotal = 0.0;
+          netPayable = 0.0;
+        }
 
-          if (kDebugMode) {
-            print("🌐 Online Order Calculation:");
-            print("   grossTotal: $grossTotal");
-            print("   orderDiscount: $orderDiscount");
-            print("   merchantDiscount: $merchantDiscount");
-            print("   orderTax: $orderTax");
-            print("   netTotal: $netTotal");
-            print("   netPayable: $netPayable");
-          }
+        if (kDebugMode) {
+          print("🌐 Online Order Calculation:");
+          print("   grossTotal: $grossTotal");
+          print("   orderDiscount: $orderDiscount");
+          print("   merchantDiscount: $merchantDiscount");
+          print("   orderTax: $orderTax");
+          print("   netTotal: $netTotal");
+          print("   netPayable: $netPayable");
         }
       }
     }
@@ -1872,7 +1887,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       print("✅ Final Totals → gross: $grossTotal, discount: $orderDiscount, tax: $orderTax, net: $netTotal, payable: $netPayable");
     }
 
-    if (kDebugMode) {  //Build #1.0.67
+    if (kDebugMode) {
       print("#### ACTIVE ORDER ID: ${orderHelper.activeOrderId}");
       print("#### orderItems: $orderItems");
       print("#### grossTotal: $grossTotal");
@@ -1945,15 +1960,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               ),
             ),
             if(tabs.isNotEmpty)
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 10),
-              child: DottedLine(
-                dashLength: 4,
-                dashGapLength: 4,
-                lineThickness: 1,
-                dashColor: theme.secondaryHeaderColor,
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 10),
+                child: DottedLine(
+                  dashLength: 4,
+                  dashGapLength: 4,
+                  lineThickness: 1,
+                  dashColor: theme.secondaryHeaderColor,
+                ),
               ),
-            ),
             const SizedBox(height: 10),
             Expanded(
               child: (orderItems.isEmpty)
@@ -2430,7 +2445,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                       ? ThemeNotifier.textDark
                                                       : Colors.black54,
                                                   fontSize: 12,
-                                                    fontWeight: FontWeight.bold,
+                                                  fontWeight: FontWeight.bold,
                                                 ),
                                               ),
                                           ],
@@ -2444,18 +2459,18 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                       //   ),
                                       SizedBox(width: 20,),
                                       Text(
-                                          isPayout
-                                              ? "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! * orderItem[AppDBConst.itemPrice]!.abs()).toStringAsFixed(2)}"
-                                              : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! * (isCoupon ? orderItem[AppDBConst.itemPrice]!.abs() : salesPrice)).toStringAsFixed(2)}",
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.bold,
-                                            color: isPayout || isCoupon
-                                                ? Colors.red
-                                                : themeHelper.themeMode == ThemeMode.dark
-                                                ? ThemeNotifier.textDark
-                                                : ThemeNotifier.textLight,
-                                          ),
+                                        isPayout
+                                            ? "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! * orderItem[AppDBConst.itemPrice]!.abs()).toStringAsFixed(2)}"
+                                            : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! * (isCoupon ? orderItem[AppDBConst.itemPrice]!.abs() : salesPrice)).toStringAsFixed(2)}",
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: isPayout || isCoupon
+                                              ? Colors.red
+                                              : themeHelper.themeMode == ThemeMode.dark
+                                              ? ThemeNotifier.textDark
+                                              : ThemeNotifier.textLight,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -2486,8 +2501,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                           ? Container(
                         margin: const EdgeInsets.only(top: 8, right: 6, left: 6),
                         decoration: BoxDecoration(
-                            borderRadius: BorderRadius.only(topRight: Radius.circular(8), topLeft: Radius.circular(8)),
-                            color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.orderPanelSummary : Colors.white,
+                          borderRadius: BorderRadius.only(topRight: Radius.circular(8), topLeft: Radius.circular(8)),
+                          color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.orderPanelSummary : Colors.white,
                           boxShadow: [
                             // Shadow at the bottom
                             BoxShadow(
@@ -2832,7 +2847,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                       child: Container(
                         margin: const EdgeInsets.only(top: 0, right: 6, left: 6),
                         decoration: BoxDecoration(
-                            borderRadius: BorderRadius.only(bottomRight: Radius.circular(8), bottomLeft: Radius.circular(8)),
+                          borderRadius: BorderRadius.only(bottomRight: Radius.circular(8), bottomLeft: Radius.circular(8)),
                           color: themeHelper.themeMode == ThemeMode.dark
                               ? const Color(
                               0xFF2A2C36) // ✅ dark mode background 393C48
