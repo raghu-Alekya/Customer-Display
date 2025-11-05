@@ -1624,11 +1624,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         await offlineBox.delete(orderId.toString());
         if (kDebugMode) print("✅ Offline order $orderId deleted from Hive");
 
-        // 2️⃣ Delete from SQLite (so it doesn't reload later)
+        // 2️⃣ Delete from SQLite
         await orderHelper.deleteOrder(orderId);
         if (kDebugMode) print("✅ Offline order $orderId deleted from SQLite");
 
-        // 3️⃣ Remove from local memory cache
+        // 3️⃣ Remove from local memory
         orderHelper.orders.removeWhere((o) =>
         o[AppDBConst.orderServerId] == orderId ||
             o[AppDBConst.orderId] == orderId);
@@ -1655,12 +1655,18 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           await _initializeTabController();
           _tabController!.index = newIndex;
           await fetchOrderItems();
+
+          // 🟢 Update Customer Display
+          await CustomerDisplayHelper.updateCustomerDisplay(newActiveOrderId);
         } else {
           setState(() {
             orderHelper.activeOrderId = null;
             orderItems = [];
           });
           await _initializeTabController();
+
+          // 🟢 Show welcome screen when no tabs left
+          await CustomerDisplayService.showWelcome();
         }
 
         setState(() => _isLoading = false);
@@ -1704,27 +1710,29 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               await orderHelper.saveLastActiveOrderId(newActiveOrderId);
             }
 
-            _initializeTabController();
+            await _initializeTabController();
 
-            // 🛑 Only reload orderItems if the new order still exists in Hive
-            final offlineBox = Hive.box('offlineOrders');
+            // 🛑 Only reload if exists in Hive
             if (offlineBox.containsKey(newActiveOrderId.toString())) {
               await fetchOrderItems();
             } else {
-              setState(() {
-                orderItems = [];
-              });
+              setState(() => orderItems = []);
             }
 
             _tabController!.index = newIndex;
+
+            // 🟢 Update Customer Display for new active order
+            await CustomerDisplayHelper.updateCustomerDisplay(newActiveOrderId);
           } else {
             setState(() {
               orderHelper.activeOrderId = null;
               orderItems = [];
             });
-            _initializeTabController();
-          }
+            await _initializeTabController();
 
+            // 🟢 Show welcome screen when all tabs removed
+            await CustomerDisplayService.showWelcome();
+          }
 
           setState(() => _isLoading = false);
           _scaffoldMessenger.showSnackBar(
