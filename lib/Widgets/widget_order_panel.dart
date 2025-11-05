@@ -612,161 +612,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   // Kept local deletion for non-API orders (serverOrderId == null).
   // Ensured loader is shown (_isLoading = true) and hidden appropriately.
   // Added alert dialog for error handling with retry option.
-  void removeTab(int index) async {
-    if (tabs.isNotEmpty) {
-      int orderId = tabs[index]["orderId"] as int;
-      bool isRemovedTabActive = orderId == orderHelper.activeOrderId;
-
-      setState(() => _isLoading = true); // Show loader
-      final serverOrderId = orderId; // Build #1.0.189: Use orderId directly
-
-      if (serverOrderId != null) {
-        _updateOrderSubscription?.cancel();
-        _updateOrderSubscription = orderBloc.changeOrderStatusStream.listen((response) async {
-          if (!mounted) return;
-          if (response.status == Status.COMPLETED) {
-            setState(() => _isLoading = false); //Build #1.0.92: loader hide
-            if (kDebugMode) {
-              print("##### DEBUG: removeTab - Order $orderId successfully cancelled");
-            }
-
-            await orderHelper.deleteOrder(orderId); // Build #1.0.189: Delete from database
-            orderHelper.cancelledOrderId = serverOrderId;
-            if (kDebugMode) {
-              print("##### TEST DD : cancelledOrderId -> ${orderHelper.cancelledOrderId}");
-            }
-            setState(() {
-              tabs.removeAt(index); // Remove tab from UI
-              for (int i = 0; i < tabs.length; i++) {
-                tabs[i]["subtitle"] = "Tab ${i + 1}"; // Update tab subtitles
-              }
-            });
-
-            if (tabs.isNotEmpty) {
-              int newIndex = index >= tabs.length ? tabs.length - 1 : index;
-              int newActiveOrderId = tabs[newIndex]["orderId"] as int;
-              if (isRemovedTabActive) {
-                if (kDebugMode) {
-                  print("##### DEBUG: removeTab - Setting new active order: $newActiveOrderId");
-                }
-                await orderHelper.setActiveOrder(newActiveOrderId);
-                await orderHelper.saveLastActiveOrderId(newActiveOrderId);
-              }
-              _initializeTabController();
-              _tabController!.index = newIndex;
-              await fetchOrderItems(); // Load items for new active order
-            } else {
-              if (kDebugMode) {
-                print("##### DEBUG: removeTab - No tabs left, clearing activeOrderId");
-              }
-              // await orderHelper.setActiveOrder(null);
-              // await orderHelper.saveLastActiveOrderId(null);
-              setState(() {
-                orderHelper.activeOrderId = null;
-                orderItems = []; // Clear items
-              });
-              _initializeTabController();
-            }
-
-            setState(() => _isLoading = false); // Hide loader
-            if (Misc.showDebugSnackBar) { // Build #1.0.254
-              _scaffoldMessenger.showSnackBar(
-                SnackBar(
-                  content: Text(TextConstants.orderCancelled),
-                  backgroundColor: Colors.red, // Build #1.0.175: Added as red for cancel
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            }
-          } else if (response.status == Status.ERROR) {
-            if (response.message!.contains('Unauthorised')) {
-              if (kDebugMode) {
-                print("categories screen 3  ---- Unauthorised : ${response.message!}");
-              }
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) {
-                  Navigator.pushReplacement(context,
-                      MaterialPageRoute(builder: (context) => LoginScreen()));
-
-                  if (kDebugMode) {
-                    print("message 3 --- ${response.message}");
-                  }
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                          "Unauthorised. Session is expired on this device."),
-                      backgroundColor: Colors.red,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                }
-              });
-            }
-            else {
-              setState(() => _isLoading = false); //Build #1.0.99: Hide loader
-              if (kDebugMode) {
-                print("##### ERROR: removeTab - Cancel failed: ${response
-                    .message}");
-              }
-              _scaffoldMessenger.showSnackBar(
-                SnackBar(
-                  content: Text(response.message ?? "Failed to cancel order"),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            }
-          }
-        });
-        await orderBloc.changeOrderStatus(orderId: serverOrderId, status: TextConstants.cancelled);
-      } else {
-        if (kDebugMode) {
-          print("##### DEBUG: removeTab - Local deletion for orderId: $orderId");
-        }
-        await orderHelper.deleteOrder(orderId);
-        setState(() {
-          tabs.removeAt(index);
-          for (int i = 0; i < tabs.length; i++) {
-            tabs[i]["subtitle"] = "Tab ${i + 1}";
-          }
-        });
-
-        if (tabs.isNotEmpty) {
-          int newIndex = index >= tabs.length ? tabs.length - 1 : index;
-          int newActiveOrderId = tabs[newIndex]["orderId"] as int;
-          if (isRemovedTabActive) {
-            if (kDebugMode) {
-              print("##### DEBUG: removeTab - Setting new active order: $newActiveOrderId");
-            }
-            await orderHelper.setActiveOrder(newActiveOrderId);
-            await orderHelper.saveLastActiveOrderId(newActiveOrderId);
-          }
-          _initializeTabController();
-          _tabController!.index = newIndex;
-          await fetchOrderItems();
-        } else {
-          if (kDebugMode) {
-            print("##### DEBUG: removeTab - No tabs left, clearing activeOrderId");
-          }
-          // await orderHelper.setActiveOrder(null);
-          // await orderHelper.saveLastActiveOrderId(null);
-          setState(() {
-            orderHelper.activeOrderId = null;
-            orderItems = [];
-          });
-          _initializeTabController();
-        }
-        setState(() => _isLoading = false); // Hide loader
-        _scaffoldMessenger.showSnackBar(
-          SnackBar(
-            content: Text(TextConstants.orderCancelled),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    }
-  }
 
   // Build #1.0.10: Deletes an item from the active order
   //Build #1.0.78: Explanation!
@@ -1758,6 +1603,178 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     );
   }
 
+  Future<void> removeTab(int index) async {
+    if (tabs.isEmpty) return;
+
+    final int orderId = tabs[index]["orderId"] as int;
+    final bool isRemovedTabActive = orderId == orderHelper.activeOrderId;
+    setState(() => _isLoading = true);
+
+    try {
+      final offlineBox = Hive.box('offlineOrders');
+      final bool isOfflineOrder = offlineBox.containsKey(orderId.toString());
+
+      // ✅ If it's an offline order (stored in Hive)
+      if (isOfflineOrder) {
+        if (kDebugMode) {
+          print("🟡 removeTab → Detected offline order ($orderId), deleting from Hive and DB...");
+        }
+
+        // 1️⃣ Delete from Hive
+        await offlineBox.delete(orderId.toString());
+        if (kDebugMode) print("✅ Offline order $orderId deleted from Hive");
+
+        // 2️⃣ Delete from SQLite (so it doesn't reload later)
+        await orderHelper.deleteOrder(orderId);
+        if (kDebugMode) print("✅ Offline order $orderId deleted from SQLite");
+
+        // 3️⃣ Remove from local memory cache
+        orderHelper.orders.removeWhere((o) =>
+        o[AppDBConst.orderServerId] == orderId ||
+            o[AppDBConst.orderId] == orderId);
+        orderHelper.orderIds.remove(orderId);
+
+        // 4️⃣ Update UI
+        setState(() {
+          tabs.removeAt(index);
+          for (int i = 0; i < tabs.length; i++) {
+            tabs[i]["subtitle"] = "Tab ${i + 1}";
+          }
+        });
+
+        // 5️⃣ Handle active order
+        if (tabs.isNotEmpty) {
+          final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
+          final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
+
+          if (isRemovedTabActive) {
+            await orderHelper.setActiveOrder(newActiveOrderId);
+            await orderHelper.saveLastActiveOrderId(newActiveOrderId);
+          }
+
+          await _initializeTabController();
+          _tabController!.index = newIndex;
+          await fetchOrderItems();
+        } else {
+          setState(() {
+            orderHelper.activeOrderId = null;
+            orderItems = [];
+          });
+          await _initializeTabController();
+        }
+
+        setState(() => _isLoading = false);
+        _scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text("Offline order cancelled"),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+
+      // ✅ Otherwise → Online Order (use API)
+      final int serverOrderId = orderId;
+      if (kDebugMode) print("🌐 removeTab → Online order $serverOrderId, calling API...");
+
+      _updateOrderSubscription?.cancel();
+      _updateOrderSubscription = orderBloc.changeOrderStatusStream.listen((response) async {
+        if (!mounted) return;
+
+        if (response.status == Status.COMPLETED) {
+          if (kDebugMode) print("✅ Online order $orderId successfully cancelled");
+
+          await orderHelper.deleteOrder(orderId);
+          orderHelper.cancelledOrderId = serverOrderId;
+
+          setState(() {
+            tabs.removeAt(index);
+            for (int i = 0; i < tabs.length; i++) {
+              tabs[i]["subtitle"] = "Tab ${i + 1}";
+            }
+          });
+
+          if (tabs.isNotEmpty) {
+            final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
+            final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
+
+            if (isRemovedTabActive) {
+              await orderHelper.setActiveOrder(newActiveOrderId);
+              await orderHelper.saveLastActiveOrderId(newActiveOrderId);
+            }
+
+            _initializeTabController();
+
+            // 🛑 Only reload orderItems if the new order still exists in Hive
+            final offlineBox = Hive.box('offlineOrders');
+            if (offlineBox.containsKey(newActiveOrderId.toString())) {
+              await fetchOrderItems();
+            } else {
+              setState(() {
+                orderItems = [];
+              });
+            }
+
+            _tabController!.index = newIndex;
+          } else {
+            setState(() {
+              orderHelper.activeOrderId = null;
+              orderItems = [];
+            });
+            _initializeTabController();
+          }
+
+
+          setState(() => _isLoading = false);
+          _scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text("Order cancelled successfully"),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else if (response.status == Status.ERROR) {
+          setState(() => _isLoading = false);
+
+          if (response.message?.contains('Unauthorised') ?? false) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => LoginScreen()),
+            );
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Unauthorised. Session expired."),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          } else {
+            _scaffoldMessenger.showSnackBar(
+              SnackBar(
+                content: Text(response.message ?? "Failed to cancel order"),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      });
+
+      await orderBloc.changeOrderStatus(
+        orderId: serverOrderId,
+        status: TextConstants.cancelled,
+      );
+    } catch (e, stack) {
+      if (kDebugMode) {
+        print("❌ ERROR: removeTab exception → $e");
+        print(stack);
+      }
+      setState(() => _isLoading = false);
+    }
+  }
+
+
   Future<void> deleteOfflineItem(Map<String, dynamic> orderItem) async {
     if (orderHelper.activeOrderId == null) return;
 
@@ -1801,6 +1818,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
     // 💾 Save updated order back to Hive
     await offlineBox.put(orderKey, offlineOrder);
+
+    await CustomerDisplayHelper.updateCustomerDisplay(orderHelper.activeOrderId!);
 
     if (kDebugMode) {
       print("🗑️ Deleted offline $itemType successfully!");
@@ -2259,9 +2278,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                             // Save updated order back to Hive
                                             offlineOrder['products'] = products;
                                             await offlineBox.put(orderKey, offlineOrder);
+                                            await CustomerDisplayHelper.updateCustomerDisplay(orderHelper.activeOrderId!);
 
                                             if (kDebugMode) {
-                                              print("💾 Hive offline order updated successfully");
+                                              final offlineBox = Hive.box('offlineOrders');
+                                              final data = offlineBox.get(orderHelper.activeOrderId!.toString());
+                                              print("🖥️ Customer Display Updated for Order: ${orderHelper.activeOrderId}");
+                                              print("📦 Customer Display Data → ${jsonEncode(data)}");
                                             }
 
                                             // 🔁 Rebuild Current Order UI instantly

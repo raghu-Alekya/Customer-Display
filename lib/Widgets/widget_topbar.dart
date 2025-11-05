@@ -89,11 +89,13 @@
 // }
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:focus_detector/focus_detector.dart';
+import 'package:hive/hive.dart';
 import 'package:pinaka_pos/Constants/misc_features.dart';
 import 'package:pinaka_pos/Utilities/printer_settings.dart';
 import 'package:pinaka_pos/Widgets/widget_variants_dialog.dart';
@@ -343,605 +345,212 @@ class _TopBarState extends State<TopBar> {
                                   title: Text(product.name ?? ''),
                                   subtitle: Text('${TextConstants.currencySymbol}${double.tryParse(product.price.toString())?.toStringAsFixed(2) ?? "0.00"}'),
                                   onTap: () async {
-                                    //Build #1.0.134: fixed - shoes getting overlapped with age verification dialog
-                                    // Immediately remove focus and overlay when an item is tapped
-                                    _searchFocusNode.unfocus();
-                                    _removeOverlay();
-                                    var screen = this.widget.screen;
-                                    if(screen != Screen.FASTKEY && screen != Screen.CATEGORY && screen != Screen.ADD ) {
-                                      if (kDebugMode) {
-                                        print("TopBar - return from product selection onTap line #286");
-                                      }
-                                      return;
-                                    }
+                                    try {
+                                      // 🧩 Build #1.0.256 — unified product add handler for online/offline
+                                      _searchFocusNode.unfocus();
+                                      _removeOverlay();
 
-                                    ///Comment below code not we are using only server order id as to check orders, skip checking db order id
-                                    // final order = orderHelper.orders.firstWhere(
-                                    //       (order) => order[AppDBConst.orderId] == orderHelper.activeOrderId,
-                                    //   orElse: () => {},
-                                    // );
-                                    final serverOrderId = orderHelper.activeOrderId;//order[AppDBConst.orderServerId] as int?;
-                                    final dbOrderId = orderHelper.activeOrderId;
-                                    /// Build #1.0.128: No need to check this condition here
-                                    // if (dbOrderId == null) {
-                                    //   if (kDebugMode) print("No active order selected");
-                                    //   ScaffoldMessenger.of(_context).showSnackBar(
-                                    //     const SnackBar(
-                                    //       content: Text("No active order selected"),
-                                    //       backgroundColor: Colors.red,
-                                    //       duration: Duration(seconds: 2),
-                                    //     ),
-                                    //   );
-                                    //   return;
-                                    // }
-                                    // Build #1.0.108: Fixed Issue: Verify Age and proceed else return
-                                    final ageVerificationProvider = AgeVerificationProvider();
-                                    final ageRestrictedTag = product.tags?.firstWhere(
-                                          (element) => element.name == TextConstants.age_restricted,
-                                      orElse: () => SKU.Tags(),
-                                    );
-                                    // Check if product has age restriction
-                                    final hasAgeRestriction = ageRestrictedTag?.name?.contains(TextConstants.age_restricted) ?? false;
-                                    if (kDebugMode) {
-                                      print("TopBar - AgeVerification: Product has age restriction: $hasAgeRestriction, product.variations : ${product.variations!.isNotEmpty}");
-                                    }
-
-                                    if(product.variations!.isNotEmpty) {
-                                      _clearSearch();
-                                    }
-                                    //Build #1.0.234: Checking stored age restriction before verifying -> Age
-                                    final order = orderHelper.orders.firstWhere(
-                                          (order) => order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-                                      orElse: () => {},
-                                    );
-                                    final String ageRestrictedValue = order[AppDBConst.orderAgeRestricted]?.toString() ?? 'false';
-                                    final bool isAgeRestricted = ageRestrictedValue.toLowerCase() == 'true' || ageRestrictedValue == "1";
-
-                                    if (!isAgeRestricted) {
-                                      if (hasAgeRestriction) {
-                                        final minimumAgeSlug = ageRestrictedTag?.slug;
-                                        final isVerified = await ageVerificationProvider.verifyAge(context, minAge: int.tryParse(minimumAgeSlug!) ?? 0);
-                                        if (!isVerified) {
-                                          if (kDebugMode) {
-                                            print("TopBar - AgeVerification: Age verification failed or cancelled: $isVerified");
-                                          }
-                                          return;
+                                      final screen = widget.screen;
+                                      if (screen != Screen.FASTKEY &&
+                                          screen != Screen.CATEGORY &&
+                                          screen != Screen.ADD) {
+                                        if (kDebugMode) {
+                                          print("TopBar → Non-fastkey screen tapped → skipping");
                                         }
+                                        return;
                                       }
-                                    }
 
-                                    if (kDebugMode) {
-                                      print("TopBar - product.variations : ${product.variations!.isNotEmpty}");
-                                    }
-                                    if(product.variations!.isNotEmpty) {
-                                      // _clearSearch();
-                                      _productBloc.fetchProductVariations(product.id!);
-                                      await showDialog(
-                                          context: _context,
-                                          barrierDismissible: false, // Build #1.0.200: Prevent dismissing by tapping outside
-                                          builder: (context) => AbsorbPointer(
-                                              absorbing: isAddingItemLoading, // Block interactions when loading
-                                              child: Stack(
-                                                  children: [
-                                                    StreamBuilder<APIResponse<List<ProductVariation>>>(
-                                                      stream: _productBloc.variationStream,
-                                                      builder: (context, snapshot) {
-                                                        if (!snapshot.hasData || snapshot.data!.status == Status.LOADING) {
-                                                          return const Center(child: CircularProgressIndicator());
-                                                        }
-                                                        if (snapshot.data!.status == Status.COMPLETED) {
-                                                          final variations = snapshot.data!.data!;
-                                                          if (variations.isNotEmpty) {
-                                                            return VariantsDialog(
-                                                              title: product.name ?? '',
-                                                              variations: variations
-                                                                  .map((v) => {
-                                                                "id": v.id,
-                                                                "name": v.name,
-                                                                "price": v.regularPrice,
-                                                                "image": v.image.src,
-                                                                "sku": v.sku ??
-                                                                    'SKU${v.name}',
-                                                              })
-                                                                  .toList(),
-                                                              onAddVariant:
-                                                                  (variant, quantity) async {
-                                                                setState(() =>
-                                                                isAddingItemLoading = true);
-                                                                _showLoaderOverlay();
-                                                                try {
-                                                                  //  if (serverOrderId != null) { /// Build #1.0.128: No need to check this condition here
-                                                                  _updateOrderSubscription
-                                                                      ?.cancel();
-                                                                  _updateOrderSubscription =
-                                                                      _orderBloc
-                                                                          .updateOrderStream
-                                                                          .listen(
-                                                                            (response) async {
-                                                                          if (!mounted) {
-                                                                            _updateOrderSubscription
-                                                                                ?.cancel();
-                                                                            return;
-                                                                          }
-                                                                          setState(() =>
-                                                                          isAddingItemLoading =
-                                                                          false);
-                                                                          _removeOverlay();
-                                                                          if (response.status ==
-                                                                              Status.LOADING) {
-                                                                            // Build #1.0.80
-                                                                            const Center(
-                                                                                child:
-                                                                                CircularProgressIndicator());
-                                                                          } else if (response
-                                                                              .status ==
-                                                                              Status.COMPLETED) {
-                                                                            if (kDebugMode)
-                                                                              print(
-                                                                                  "Variant added to order $dbOrderId via API");
-                                                                            if (Misc.showDebugSnackBar) { // Build #1.0.254
-                                                                              ScaffoldMessenger.of(
-                                                                                  _context)
-                                                                                  .showSnackBar(
-                                                                                SnackBar(
-                                                                                  content: Text(
-                                                                                      "Variant '${variant['name']}' added to order"),
-                                                                                  backgroundColor:
-                                                                                  Colors.green,
-                                                                                  duration:
-                                                                                  const Duration(
-                                                                                      seconds:
-                                                                                      2),
-                                                                                ),
-                                                                              );
-                                                                            }
-                                                                            Navigator.pop(
-                                                                                context);
-                                                                            _clearSearch();
-                                                                            widget
-                                                                                .onProductSelected
-                                                                                ?.call(
-                                                                                ProductResponse(
-                                                                                  id: variant["id"],
-                                                                                  name:
-                                                                                  variant["name"],
-                                                                                  price:
-                                                                                  variant["price"]
-                                                                                      .toString(),
-                                                                                  images: [
-                                                                                    variant["image"]
-                                                                                  ],
-                                                                                  sku: variant["sku"],
-                                                                                ));
-                                                                            _updateOrderSubscription
-                                                                                ?.cancel();
-                                                                          } else if (response
-                                                                              .status ==
-                                                                              Status.ERROR) {
-                                                                            if (kDebugMode)
-                                                                              print(
-                                                                                  "Error adding variant: ${response.message}");
-                                                                            ScaffoldMessenger.of(
-                                                                                _context)
-                                                                                .showSnackBar(
-                                                                              SnackBar(
-                                                                                content: Text(response
-                                                                                    .message ??
-                                                                                    'Failed to add variant'),
-                                                                                backgroundColor:
-                                                                                Colors.red,
-                                                                                duration:
-                                                                                const Duration(
-                                                                                    seconds:
-                                                                                    2),
-                                                                              ),
-                                                                            );
-                                                                            Navigator.pop(
-                                                                                context);
-                                                                            _clearSearch();
-                                                                            _updateOrderSubscription
-                                                                                ?.cancel();
-                                                                          }
-                                                                        },
-                                                                      );
+                                      print("🟩 TAP: Starting product add flow for → ${product.name ?? 'Unnamed'}");
 
-                                                                  /// API CALL
-                                                                  await _orderBloc
-                                                                      .updateOrderProducts(
-                                                                    orderId: serverOrderId,
-                                                                    dbOrderId: dbOrderId,
-                                                                    lineItems: [
-                                                                      OrderLineItem(
-                                                                        productId:
-                                                                        variant["id"],
-                                                                        quantity: quantity,
-                                                                        //  sku: variant["sku"],
-                                                                      ),
-                                                                    ],
-                                                                  );
-                                                                  // } else { /// Build #1.0.128: No need to check this condition here
-                                                                  //   // await orderHelper.addItemToOrder(
-                                                                  //   //   variant["id"],
-                                                                  //   //   variant["name"],
-                                                                  //   //   variant["image"],
-                                                                  //   //   double.tryParse(variant["price"].toString()) ?? 0.0,
-                                                                  //   //   quantity,
-                                                                  //   //   variant["sku"],
-                                                                  //   //   onItemAdded: () {
-                                                                  //   //     Navigator.pop(context);
-                                                                  //   //     _clearSearch();
-                                                                  //   //     widget.onProductSelected?.call(ProductResponse(
-                                                                  //   //       id: variant["id"],
-                                                                  //   //       name: variant["name"],
-                                                                  //   //       price: variant["price"].toString(),
-                                                                  //   //       images: [variant["image"]],
-                                                                  //   //       sku: variant["sku"],
-                                                                  //   //     ));
-                                                                  //   //   },
-                                                                  //   // );
-                                                                  //   setState(() =>
-                                                                  //       isAddingItemLoading =
-                                                                  //           false);
-                                                                  //   _removeOverlay();
-                                                                  //   ScaffoldMessenger.of(
-                                                                  //           _context)
-                                                                  //       .showSnackBar(
-                                                                  //     SnackBar(
-                                                                  //       content: Text(
-                                                                  //           "Variant '${variant['name']}' did not added to order. OrderId not found."),
-                                                                  //       backgroundColor:
-                                                                  //           Colors.green,
-                                                                  //       duration:
-                                                                  //           const Duration(
-                                                                  //               seconds: 2),
-                                                                  //     ),
-                                                                  //   );
-                                                                  // }
-                                                                } catch (e, s) {
-                                                                  if (kDebugMode)
-                                                                    print(
-                                                                        "Exception adding variant: $e, Stack: $s");
-                                                                  setState(() =>
-                                                                  isAddingItemLoading =
-                                                                  false);
-                                                                  _removeOverlay();
-                                                                  ScaffoldMessenger.of(_context)
-                                                                      .showSnackBar(
-                                                                    SnackBar(
-                                                                      content: Text(
-                                                                          "Error adding variant."),
-                                                                      backgroundColor:
-                                                                      Colors.red,
-                                                                      duration: const Duration(
-                                                                          seconds: 2),
-                                                                    ),
-                                                                  );
-                                                                }
-                                                              },
-                                                            );
-                                                          } else {
-                                                            // Add parent product only if no variants
-                                                            setState(() => isAddingItemLoading = true);
-                                                            _showLoaderOverlay();
-                                                            try {
-                                                              // if (serverOrderId != null) { /// Build #1.0.128: No need to check this condition here
-                                                              _updateOrderSubscription?.cancel();
-                                                              _updateOrderSubscription = _orderBloc.updateOrderStream.listen((response) async {
-                                                                if (!mounted) {
-                                                                  _updateOrderSubscription?.cancel();
-                                                                  return;
-                                                                }
-                                                                setState(() => isAddingItemLoading = false);
-                                                                _removeOverlay();
-                                                                if (response.status == Status.LOADING) {
-                                                                  // Build #1.0.80
-                                                                  const Center(child: CircularProgressIndicator());
-                                                                } else if (response.status == Status.COMPLETED) {
-                                                                  if (kDebugMode)
-                                                                    print("Product added to order $dbOrderId via API");
-                                                                  if (Misc.showDebugSnackBar) { // Build #1.0.254
-                                                                    ScaffoldMessenger.of(_context).showSnackBar(
-                                                                      SnackBar(
-                                                                        content: Text("Product '${product.name}' added to order"),
-                                                                        backgroundColor: Colors.green,
-                                                                        duration: const Duration(seconds: 2),
-                                                                      ),
-                                                                    );
-                                                                  }
-                                                                  Navigator.pop(context);
-                                                                  _clearSearch();
-                                                                  widget.onProductSelected
-                                                                      ?.call(product);
-                                                                  _updateOrderSubscription
-                                                                      ?.cancel();
-                                                                } else if (response
-                                                                    .status ==
-                                                                    Status.ERROR) {
-                                                                  setState(() => isAddingItemLoading = false);
-                                                                  if (kDebugMode)
-                                                                    print(
-                                                                        "Error adding product: ${response.message}");
-                                                                  ScaffoldMessenger.of(
-                                                                      _context)
-                                                                      .showSnackBar(
-                                                                    SnackBar(
-                                                                      content: Text(response
-                                                                          .message ??
-                                                                          'Failed to add product'),
-                                                                      backgroundColor:
-                                                                      Colors.red,
-                                                                      duration:
-                                                                      const Duration(
-                                                                          seconds: 2),
-                                                                    ),
-                                                                  );
-                                                                  Navigator.pop(
-                                                                      context);
-                                                                  _clearSearch();
-                                                                  _updateOrderSubscription
-                                                                      ?.cancel();
-                                                                }
-                                                              },
-                                                              );
+                                      // 🆔 Extract product details
+                                      final productId = product.id ?? -1;
+                                      final productName = product.name ?? 'Unnamed Product';
+                                      final productPrice = double.tryParse(product.price ?? '0') ?? 0.0;
+                                      final productSku = product.sku ?? "SKU-$productId";
+                                      final productImage = (product.images != null && product.images!.isNotEmpty)
+                                          ? (
+                                          product.images!.first is String
+                                              ? product.images!.first as String
+                                              : (
+                                              (product.images!.first is Map && (product.images!.first as Map).containsKey('src'))
+                                                  ? (product.images!.first as Map)['src'] as String
+                                                  : ''
+                                          )
+                                      )
+                                          : '';
 
-                                                              _orderBloc.updateOrderProducts(
-                                                                orderId: serverOrderId,
-                                                                dbOrderId: dbOrderId,
-                                                                lineItems: [
-                                                                  OrderLineItem(
-                                                                    productId: product.id!,
-                                                                    quantity: 1,
-                                                                    // sku: product.sku ?? 'SKU${product.name}',
-                                                                  ),
-                                                                ],
-                                                              );
-                                                              // } else { /// Build #1.0.128: No need to check this condition here
-                                                              //   //  orderHelper.addItemToOrder(
-                                                              //   //   product.id!,
-                                                              //   //   product.name ?? 'Unknown',
-                                                              //   //   product.images?.isNotEmpty == true ? product.images!.first : '',
-                                                              //   //   double.tryParse(product.price ?? '0.00') ?? 0.0,
-                                                              //   //   1,
-                                                              //   //   product.sku ?? 'SKU${product.name}',
-                                                              //   //   onItemAdded: () {
-                                                              //   //     Navigator.pop(context);
-                                                              //   //     _clearSearch();
-                                                              //   //     widget.onProductSelected?.call(product);
-                                                              //   //   },
-                                                              //   // );
-                                                              //   setState(() =>
-                                                              //       isAddingItemLoading =
-                                                              //           false);
-                                                              //   _removeOverlay();
-                                                              //   ScaffoldMessenger.of(_context)
-                                                              //       .showSnackBar(
-                                                              //     SnackBar(
-                                                              //       content: Text(
-                                                              //           "Product '${product.name}' did not added to order. OrderId not found."),
-                                                              //       backgroundColor:
-                                                              //           Colors.green,
-                                                              //       duration: const Duration(
-                                                              //           seconds: 2),
-                                                              //     ),
-                                                              //   );
-                                                              // }
-                                                            } catch (e, s) {
-                                                              if (kDebugMode)
-                                                                print(
-                                                                    "Exception adding product: $e, Stack: $s");
-                                                              setState(() =>
-                                                              isAddingItemLoading = false);
-                                                              _removeOverlay();
-                                                              ScaffoldMessenger.of(_context)
-                                                                  .showSnackBar(
-                                                                SnackBar(
-                                                                  content: Text(
-                                                                      "Error adding product"),
-                                                                  backgroundColor: Colors.red,
-                                                                  duration: const Duration(
-                                                                      seconds: 2),
-                                                                ),
-                                                              );
-                                                            }
-                                                          }
-                                                        }
-                                                        return const SizedBox.shrink();
-                                                      },
-                                                    ),
-                                                  ]
-                                              )
-                                          ));
-                                    } else {
 
-                                      // Add parent product only if no variants
-                                      // setState(() => isAddingItemLoading = true);
-                                      // _showLoaderOverlay();
-                                      // _orderBloc.updateOrderProducts(
-                                      //   orderId: serverOrderId ?? 0,
-                                      //   dbOrderId: dbOrderId,
-                                      //   lineItems: [
-                                      //     OrderLineItem(
-                                      //       productId: product.id!,
-                                      //       quantity: 1,
-                                      //       // sku: product.sku ?? 'SKU${product.name}',
-                                      //     ),
-                                      //   ],
-                                      // );
-                                      //
-                                      // await showDialog(
-                                      //     context: context,
-                                      //     builder: (context) => StreamBuilder<APIResponse<model.OrderModel>>(
-                                      //     stream: _orderBloc.updateOrderStream,
-                                      //     builder: (context, snapshot) {
-                                      //       if(snapshot.data == null || !snapshot.hasData || snapshot.data!.status == Status.LOADING)
-                                      //         {
-                                      //           return const Center(child: CircularProgressIndicator());
-                                      //         }
-                                      //       var response = snapshot.data!;
-                                      //       if (kDebugMode) {
-                                      //         print("TopBar updateOrderStream with response: $response via API");
-                                      //       }
-                                      //       if (response.status == Status.LOADING) {
-                                      //         // Build #1.0.80
-                                      //         const Center(child: CircularProgressIndicator());
-                                      //       } else if (response.status == Status.COMPLETED) {
-                                      //         if (kDebugMode) {
-                                      //           print("Product added to order $dbOrderId via API");
-                                      //         }
-                                      //         WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
-                                      //           ScaffoldMessenger.of(context).showSnackBar(
-                                      //             SnackBar(
-                                      //               content: Text("Product '${product.name}' added to order"),
-                                      //               backgroundColor:
-                                      //               Colors.green,
-                                      //               duration:
-                                      //               const Duration(seconds: 2),
-                                      //             ),
-                                      //           );
-                                      //         });
-                                      //         Navigator.pop(context);
-                                      //         // _clearSearch();
-                                      //         widget.onProductSelected?.call(product);
-                                      //       } else if (response.status == Status.ERROR) {
-                                      //         if (kDebugMode)
-                                      //           print("Error adding product: ${response.message}");
-                                      //         WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
-                                      //           ScaffoldMessenger.of(context).showSnackBar(
-                                      //             SnackBar(content: Text(response
-                                      //                 .message ??
-                                      //                 'Failed to add product'),
-                                      //               backgroundColor:
-                                      //               Colors.red,
-                                      //               duration:
-                                      //               const Duration(
-                                      //                   seconds: 2),
-                                      //             ),
-                                      //           );
-                                      //         });
-                                      //       }
-                                      //       return const SizedBox.shrink();
-                                      //     }, ),);
-                                      /// Use FutureBuilder instead below code
+                                      final hasVariants = (product.variations?.isNotEmpty ?? false);
 
-                                      // Add parent product only if no variants
-                                      setState(() => isAddingItemLoading = true);
-                                      _showLoaderOverlay();
-                                      try {
-                                        // if (serverOrderId != null) { /// Build #1.0.128: No need to check this condition here
-                                        _updateOrderSubscription?.cancel();
-                                        _updateOrderSubscription = _orderBloc.updateOrderStream.listen((response) async {
-                                          if (!mounted) {
-                                            _updateOrderSubscription?.cancel();
+                                      // 🔞 Age restriction handling
+                                      final ageVerificationProvider = AgeVerificationProvider();
+                                      final ageRestrictedTag = product.tags?.firstWhere(
+                                            (element) => element.name == TextConstants.age_restricted,
+                                        orElse: () => SKU.Tags(),
+                                      );
+                                      final hasAgeRestriction =
+                                          ageRestrictedTag?.name?.contains(TextConstants.age_restricted) ?? false;
+                                      final minAge =
+                                          int.tryParse(ageRestrictedTag?.slug?.toString() ?? "0") ?? 0;
+
+                                      print(
+                                          "🔍 Product details: id=$productId, name=$productName, price=$productPrice, hasVariants=$hasVariants, hasAgeRestriction=$hasAgeRestriction, minAge=$minAge");
+
+                                      // 🧠 Initialize or restore active order (offline safe)
+                                      final box = Hive.box('offlineOrders');
+                                      int activeOrderId =
+                                          orderHelper?.activeOrderId ?? box.get('lastOrderId', defaultValue: 1000);
+
+                                      if (orderHelper?.activeOrderId == null) {
+                                        orderHelper?.activeOrderId = activeOrderId;
+                                        box.put('lastOrderId', activeOrderId);
+                                      }
+
+                                      print("🆔 Active Order ID: $activeOrderId");
+
+                                      // 🔞 Age verification
+                                      if (hasAgeRestriction && minAge > 0) {
+                                        final verifiedKey = 'age_verified_order_$activeOrderId';
+                                        final alreadyVerified = box.get(verifiedKey, defaultValue: false);
+
+                                        if (alreadyVerified != true) {
+                                          final isVerified =
+                                          await ageVerificationProvider.verifyAge(context, minAge: minAge);
+                                          if (!isVerified) {
+                                            print("❌ Age verification failed for → $productName");
                                             return;
                                           }
-                                          //setState(() => isAddingItemLoading = false);
-                                          // _removeOverlay();
-                                          if (response.status == Status.LOADING) {
-                                            // Build #1.0.80
-                                            const Center(child: CircularProgressIndicator());
-                                          } else if (response.status == Status.COMPLETED) {
-                                            if (kDebugMode)
-                                              print("Product added to order $dbOrderId via API");
-                                            WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
-                                              if (Misc.showDebugSnackBar) { // Build #1.0.254
-                                                ScaffoldMessenger.of(_context).showSnackBar(
-                                                  SnackBar(
-                                                    content: Text("Product '${product.name}' added to order"),
-                                                    backgroundColor:
-                                                    Colors.green,
-                                                    duration:
-                                                    const Duration(seconds: 2),
-                                                  ),
-                                                );
-                                              }
-                                            });
-                                            // Navigator.pop(context);
-                                            _clearSearch();
-                                            widget.onProductSelected?.call(product);
-                                            _updateOrderSubscription?.cancel();
-                                          } else if (response.status == Status.ERROR) {
-                                            _clearSearch();
-                                            if (kDebugMode)
-                                              print("Error adding product: ${response.message}");
-                                            WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
-                                              ScaffoldMessenger.of(_context).showSnackBar(
-                                                SnackBar(content: Text(response
-                                                    .message ??
-                                                    'Failed to add product'),
-                                                  backgroundColor:
-                                                  Colors.red,
-                                                  duration:
-                                                  const Duration(
-                                                      seconds: 2),
-                                                ),
-                                              );
-                                            });
-                                            _updateOrderSubscription?.cancel();
-                                          }
-                                        },
-                                        );
+                                          box.put(verifiedKey, true);
+                                        } else {
+                                          print("✅ Age already verified → skipping");
+                                        }
+                                      }
 
-                                        _orderBloc.updateOrderProducts(
-                                          orderId: serverOrderId,
-                                          dbOrderId: dbOrderId,
-                                          lineItems: [
-                                            OrderLineItem(
-                                              productId: product.id!,
-                                              quantity: 1,
-                                              // sku: product.sku ?? 'SKU${product.name}',
-                                            ),
-                                          ],
-                                        );
-                                        // } else { /// Build #1.0.128: No need to check this condition here
-                                        //   //  orderHelper.addItemToOrder(
-                                        //   //   product.id!,
-                                        //   //   product.name ?? 'Unknown',
-                                        //   //   product.images?.isNotEmpty == true ? product.images!.first : '',
-                                        //   //   double.tryParse(product.price ?? '0.00') ?? 0.0,
-                                        //   //   1,
-                                        //   //   product.sku ?? 'SKU${product.name}',
-                                        //   //   onItemAdded: () {
-                                        //   //     Navigator.pop(context);
-                                        //   //     _clearSearch();
-                                        //   //     widget.onProductSelected?.call(product);
-                                        //   //   },
-                                        //   // );
-                                        //   setState(() =>
-                                        //   isAddingItemLoading =
-                                        //   false);
-                                        //   _removeOverlay();
-                                        //   ScaffoldMessenger.of(_context)
-                                        //       .showSnackBar(
-                                        //     SnackBar(
-                                        //       content: Text(
-                                        //           "Product '${product.name}' did not added to order. OrderId not found."),
-                                        //       backgroundColor:
-                                        //       Colors.green,
-                                        //       duration: const Duration(
-                                        //           seconds: 2),
-                                        //     ),
-                                        //   );
-                                        // }
-                                      } catch (e, s) {
-                                        if (kDebugMode)
-                                          print(
-                                              "Exception adding product: $e, Stack: $s");
-                                        setState(() =>
-                                        isAddingItemLoading = false);
-                                        _removeOverlay();
-                                        ScaffoldMessenger.of(_context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                                "Error adding product"),
-                                            backgroundColor: Colors.red,
-                                            duration: const Duration(
-                                                seconds: 2),
+                                      // 🧩 Handle variants
+                                      if (hasVariants) {
+                                        print("🧩 Product has variants → Fetching...");
+
+                                        // Load variations from cache (Hive)
+                                        final productBox = Hive.box('productCache');
+                                        final cacheKey = "product_${productId}_variations";
+                                        List<Map<String, dynamic>> variations = [];
+
+                                        try {
+                                          final cached = productBox.get(cacheKey);
+                                          if (cached != null) {
+                                            if (cached is String) {
+                                              variations = List<Map<String, dynamic>>.from(jsonDecode(cached));
+                                            } else if (cached is List) {
+                                              variations = cached.cast<Map<String, dynamic>>();
+                                            } else if (cached is Map && cached["variations"] is List) {
+                                              variations =
+                                                  (cached["variations"] as List).cast<Map<String, dynamic>>();
+                                            }
+                                          }
+
+                                          if (variations.isEmpty && product.variations != null) {
+                                            // fallback to product's variation list
+                                            for (final vId in product.variations!) {
+                                              final vData = productBox.get("product_$vId");
+                                              if (vData is Map) {
+                                                variations.add({
+                                                  "id": vId,
+                                                  "name": vData["name"] ?? "Variant $vId",
+                                                  "price": vData["price"] ?? productPrice.toString(),
+                                                  "sku": vData["sku"] ?? "",
+                                                  "image": (vData["image"]?["src"]) ?? productImage,
+                                                });
+                                              }
+                                            }
+                                          }
+                                        } catch (e, s) {
+                                          print("⚠️ Error loading offline variants: $e\n$s");
+                                        }
+
+                                        print("✅ Loaded ${variations.length} variants for $productName");
+
+                                        // 🪟 Show VariantsDialog
+                                        await showDialog(
+                                          context: context,
+                                          barrierDismissible: false,
+                                          builder: (ctx) => VariantsDialog(
+                                            title: productName,
+                                            variations: variations,
+                                            onAddVariant: (variant, qty) async {
+                                              final variantId = int.tryParse(variant["id"].toString()) ?? -1;
+                                              final variantName = variant["name"] ?? "Variant";
+                                              final variantPrice =
+                                                  double.tryParse(variant["price"].toString()) ?? productPrice;
+                                              final variantSku = variant["sku"] ?? productSku;
+                                              final variantImage = variant["image"] ?? productImage;
+
+                                              print(
+                                                  "🧾 Adding variant: id=$variantId, name=$variantName, price=$variantPrice");
+
+                                              await orderHelper?.addItemToOrder(
+                                                0,
+                                                "$productName - $variantName",
+                                                variantImage,
+                                                variantPrice,
+                                                qty,
+                                                variantSku,
+                                                activeOrderId,
+                                                type: 'variant',
+                                                productId: productId,
+                                                variationId: variantId,
+                                                variationName: variantName,
+                                                salesPrice: variantPrice,
+                                                regularPrice: variantPrice,
+                                                unitPrice: variantPrice,
+                                                onItemAdded: () async {
+                                                  print("✅ Variant item added successfully!");
+                                                  await orderHelper?.loadData();
+
+                                                  if (widget.onProductSelected != null) {
+                                                    widget.onProductSelected!(product);
+                                                  }
+
+                                                },
+                                              );
+                                            },
                                           ),
                                         );
+                                      } else {
+                                        // 🟩 Simple product add flow
+                                        print("🟩 Simple product → adding directly...");
+                                        await orderHelper?.addItemToOrder(
+                                          0,
+                                          productName,
+                                          productImage,
+                                          productPrice,
+                                          1,
+                                          productSku,
+                                          activeOrderId,
+                                          type: 'product',
+                                          productId: productId,
+                                          variationId: -1,
+                                          salesPrice: productPrice,
+                                          regularPrice: productPrice,
+                                          unitPrice: productPrice,
+                                          onItemAdded: () async {
+                                            print("✅ Simple product added successfully!");
+                                            await orderHelper?.loadData();
+
+                                            if (widget.onProductSelected != null) {
+                                              widget.onProductSelected!(product);
+                                            }
+
+                                          },
+                                        );
                                       }
+
+                                      print("🎉 Product flow completed for → $productName");
+                                    } catch (e, s) {
+                                      print("❌ ERROR in product onTap: $e");
+                                      print(s);
                                     }
                                   }
+
                               );
                             },
                           );

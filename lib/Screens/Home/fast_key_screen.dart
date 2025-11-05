@@ -192,6 +192,7 @@
 //   }
 // }
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -210,6 +211,8 @@ import '../../Database/order_panel_db_helper.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/auto_search.dart';
+import '../../Helper/customerdisplayhelper.dart';
+import '../../Providers/Age/age_verification_provider.dart';
 import '../../Utilities/global_utility.dart';
 import '../../Models/FastKey/fastkey_product_model.dart';
 import '../../Models/Orders/orders_model.dart';
@@ -238,6 +241,7 @@ import '../../Blocs/FastKey/fastkey_product_bloc.dart';
 import '../../Repositories/FastKey/fastkey_product_repository.dart';
 import '../../Utilities/shimmer_effect.dart';
 import '../../Database/db_helper.dart';
+import '../../Widgets/widget_variants_dialog.dart';
 import '../Auth/login_screen.dart';
 
 class FastKeyScreen extends StatefulWidget {
@@ -994,202 +998,200 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
     }
   }
   Stopwatch? refreshUIStopwatch; // Build #1.0.256
-  void _onItemSelected(int index, bool showAddButton, bool variantAdded) async {
-
-    //Build #1.0.78: fix for parent product also adding along with variant product , we have to restrict that like categories screen
-    if(variantAdded == true){
-      // Build #1.0.148: we have to show loader until product adds into order panel, then hide
-      // Navigator.pop(context); // Hide Loader / VariationPopup dialog
-      if (!Misc.enableUILogMessages) { // Build #1.0.256
-        if (Navigator.canPop(context)) { // Build #1.0.197: Fixed [SCRUM - 345] -> Screen blackout when adding item to cart
-          Navigator.pop(context);
-        }
-      }
-      _refreshOrderList(); // refresh UI
-      return;
-    }
-
-    if (kDebugMode) {
-      print("Fast Key _onItemSelected");
-    }
-    final adjustedIndex = index - (showAddButton ? 1 : 0);
-    if (adjustedIndex < 0 || adjustedIndex >= fastKeyProductItems.length) return;
-
-    final selectedProduct = fastKeyProductItems[adjustedIndex];
-    // final order = orderHelper.orders.firstWhere(
-    //       (order) => order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-    //   orElse: () => {},
-    // );
-    final serverOrderId = orderHelper.activeOrderId;//order[AppDBConst.orderServerId] as int?;
-    final dbOrderId = orderHelper.activeOrderId;
-    /// Build #1.0.128: No need to check this condition
-    // if (dbOrderId == null) { //Build #1.0.78
-    //   if (kDebugMode) print("No active order selected");
-    //   ScaffoldMessenger.of(context).showSnackBar(
-    //     const SnackBar(
-    //       content: Text("No active order selected"),
-    //       backgroundColor: Colors.red,
-    //       duration: Duration(seconds: 2),
-    //     ),
-    //   );
-    //   return;
-    // }
-
+  Future<void> _onItemSelected(int index, bool showAddButton, bool variantAdded) async {
     try {
-      // For API orders
-      //  if (serverOrderId != null) { // Build #1.0.128: No need
-      _updateOrderSubscription?.cancel();
-      StreamSubscription? subscription;
-      // setState(() => isAddingItemLoading = true);
-      // Measure time for Add Product to Order (for non-variant or empty variations)
-      // Initialize stopwatch only if Misc.enableUILogMessages is true
-      Stopwatch? addProductStopwatch;
-      if (Misc.enableUILogMessages) {
-        addProductStopwatch = Stopwatch()..start();
-      }
-      subscription = orderBloc.updateOrderStream.listen((response) async {
-        if (!mounted) {
-          subscription?.cancel();
-          return;
-        }
-        if (response.status == Status.LOADING) { // Build #1.0.80
-          if (kDebugMode) print("Loading stated in fastkey under _onItemSelected ...");
-          const Center(child: CircularProgressIndicator());
-        } else if (response.status == Status.COMPLETED) {
-          // Build #1.0.148: we have to show loader until product adds into order panel, then hide
-          // Navigator.pop(context); // Hide Loader / VariationPopup dialog
-          if (!Misc.enableUILogMessages){
-            if (Navigator.canPop(context)) { // Build #1.0.197: Fixed [SCRUM - 345] -> Screen blackout when adding item to cart
-              Navigator.pop(context);
-            }
-          }
-          // setState(() => isAddingItemLoading = false);
-          if (kDebugMode) print("Item added to order $dbOrderId via API");
-          if (Misc.showDebugSnackBar) { // Build #1.0.254
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text("Item '${selectedProduct[AppDBConst.fastKeyItemName]}' added to order"),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
-          // Build #1.0.256: Stop stopwatch and add to steps only if enabled
-          if (Misc.enableUILogMessages && addProductStopwatch != null) {
-            addProductStopwatch.stop();
-            globalProcessSteps.add(
-              ProcessStep(
-                name: TextConstants.addProductToOrder,
-                timeTaken: addProductStopwatch.elapsedMilliseconds / 1000.0,
-              ),
-            );
-            if (kDebugMode) {
-              print("Add Product to Order completed in ${globalProcessSteps.last.timeTaken}s");
-            }
-          }
-
-          if (Misc.enableUILogMessages) {
-            refreshUIStopwatch = Stopwatch()..start();
-          }
-          _refreshOrderList();
-          subscription?.cancel();
-        } else if (response.status == Status.ERROR) {
-          if (Navigator.canPop(context)) { // Build #1.0.197: Fixed [SCRUM - 345] -> Screen blackout when adding item to cart
+      if (variantAdded) {
+        if (!Misc.enableUILogMessages) {
+          if (Navigator.canPop(context)) {
             Navigator.pop(context);
           }
-          if (response.message!.contains('Unauthorised')) {
-            if (kDebugMode) {
-              print("Fast key 6---- Unauthorised : ${response.message!}");
-            }
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                Navigator.pushReplacement(context,
-                    MaterialPageRoute(builder: (context) => LoginScreen()));
-
-                if (kDebugMode) {
-                  print("message --- ${response.message}");
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Unauthorised. Session is expired on this device."),
-                    backgroundColor: Colors.red,
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              }
-            });
-          } else {
-            if (kDebugMode) print("Failed to add item to order: ${response.message}");
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(response.message ?? TextConstants.failedToAddItemToOrder),
-                // Build #1.0.144
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 2),
-              ),
-            );
-          }
-          // Stop stopwatch and add to steps only if enabled
-          if (Misc.enableUILogMessages && addProductStopwatch != null) {
-            addProductStopwatch.stop();
-            // Clear global steps when toast is closed
-            globalProcessSteps.clear();
-            // globalProcessSteps.add(
-            //   ProcessStep(
-            //     name: TextConstants.addProductToOrder,
-            //     timeTaken: addProductStopwatch.elapsedMilliseconds / 1000.0,
-            //   ),
-            // );
-            if (kDebugMode) {
-              print("Add Product to Order (error) completed in ${globalProcessSteps.last.timeTaken}s");
-            }
-          }
-          subscription?.cancel();
         }
-      });
+        _refreshOrderList();
+        return;
+      }
 
-      /// API CALL
-      await orderBloc.updateOrderProducts(
-        orderId: serverOrderId,
-        dbOrderId: dbOrderId,
-        lineItems: [
-          OrderLineItem(
-            productId: int.parse(selectedProduct[AppDBConst.fastKeyProductId]),
-            quantity: 1,
-            //  sku: selectedProduct[AppDBConst.fastKeyItemSKU] ?? 'N/A',
+      if (kDebugMode) print("⚡ Fast Key _onItemSelected");
+
+      final adjustedIndex = index - (showAddButton ? 1 : 0);
+      if (adjustedIndex < 0 || adjustedIndex >= fastKeyProductItems.length) return;
+
+      final item = fastKeyProductItems[adjustedIndex];
+
+      // 🧩 Extract product info
+      final productId = int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
+      final productName = (item["fast_key_item_name"] is String)
+          ? item["fast_key_item_name"]
+          : item["fast_key_item_name"]?["rendered"] ?? "Unnamed Product";
+      final productPrice = double.tryParse(item["fast_key_item_price"].toString()) ?? 0.0;
+      final productSku = item["fast_key_item_sku"] ?? "SKU-$productId";
+      final productImage = (item["fast_key_item_image"] is String)
+          ? item["fast_key_item_image"]
+          : item["fast_key_item_image"]?["src"] ?? "";
+
+      final hasVariants = (item["type"] == "variable" ||
+          (item["variations"] != null && item["variations"].isNotEmpty));
+      final minAge = int.tryParse(item["fast_key_item_min_age"]?.toString() ?? "0") ?? 0;
+      final hasAgeRestriction = minAge > 0;
+
+      print("🧾 Selected → id:$productId | name:$productName | price:$productPrice | variant:$hasVariants | age:$minAge");
+
+      // 🧠 Determine order type
+      final box = Hive.box('offlineOrders');
+      final isOfflineOrder = box.containsKey(orderHelper.activeOrderId.toString());
+      final activeOrderId = orderHelper.activeOrderId ?? box.get('lastOrderId', defaultValue: 1000);
+
+      if (orderHelper.activeOrderId == null) {
+        orderHelper.activeOrderId = activeOrderId;
+        box.put('lastOrderId', activeOrderId);
+      }
+
+      // 🔞 Age restriction
+      if (hasAgeRestriction && minAge > 0) {
+        final verifiedKey = 'age_verified_order_$activeOrderId';
+        final alreadyVerified = box.get(verifiedKey, defaultValue: false);
+        if (!alreadyVerified) {
+          final ageVerificationProvider = AgeVerificationProvider();
+          final isVerified = await ageVerificationProvider.verifyAge(context, minAge: minAge);
+          if (!isVerified) {
+            print("❌ Age verification failed → Product blocked");
+            return;
+          }
+          box.put(verifiedKey, true);
+        }
+      }
+
+      // 🧩 If product has variants
+      if (hasVariants) {
+        List<Map<String, dynamic>> offlineVariations = [];
+
+        try {
+          final productBox = Hive.box('productCache');
+          final cacheKey = "product_${productId}_variations";
+          final cachedData = productBox.get(cacheKey);
+          List rawVariations = [];
+
+          if (cachedData != null) {
+            if (cachedData is Map && cachedData["variations"] is List) {
+              rawVariations = cachedData["variations"];
+            } else if (cachedData is List) {
+              rawVariations = cachedData;
+            } else if (cachedData is String) {
+              try {
+                final decoded = jsonDecode(cachedData);
+                rawVariations =
+                decoded is Map ? decoded["variations"] ?? [] : decoded;
+              } catch (_) {}
+            }
+          }
+
+          // fallback from item["variations"]
+          if (rawVariations.isEmpty && item["variations"] != null) {
+            for (var id in item["variations"]) {
+              var variantData = productBox.get("product_$id");
+              if (variantData is String) {
+                try {
+                  variantData = jsonDecode(variantData);
+                } catch (_) {}
+              }
+              final name = variantData?["name"] ??
+                  "Variant $id";
+              final price = (variantData?["price"] ??
+                  variantData?["regular_price"] ??
+                  productPrice)
+                  .toString();
+              final image = (variantData?["image"] is Map)
+                  ? variantData["image"]["src"]
+                  : (variantData?["image"] ?? productImage);
+              rawVariations.add({
+                "id": id,
+                "name": name,
+                "price": price,
+                "sku": variantData?["sku"] ?? "",
+                "image": image,
+              });
+            }
+          }
+
+          offlineVariations = rawVariations.map<Map<String, dynamic>>((v) {
+            if (v is String) v = jsonDecode(v);
+            final map = Map<String, dynamic>.from(v);
+            map["price"] = map["price"]?.toString() ?? "0";
+            return map;
+          }).toList();
+        } catch (e) {
+          print("⚠️ Error loading variants: $e");
+        }
+
+        await showDialog(
+          context: context,
+          builder: (ctx) => VariantsDialog(
+            title: productName,
+            variations: offlineVariations,
+            onAddVariant: (selectedVariant, qty) async {
+              final variantId = int.tryParse(selectedVariant["id"].toString()) ?? -1;
+              final variantName = selectedVariant["name"] ?? "Variant";
+              final variantPrice =
+                  double.tryParse(selectedVariant["price"].toString()) ?? productPrice;
+              final variantImage = selectedVariant["image"] ?? productImage;
+
+              await orderHelper.addItemToOrder(
+                0,
+                "$productName - $variantName",
+                variantImage,
+                variantPrice,
+                qty,
+                productSku,
+                activeOrderId,
+                type: 'variant',
+                productId: productId,
+                variationId: variantId,
+                variationName: variantName,
+                salesPrice: variantPrice,
+                regularPrice: variantPrice,
+                unitPrice: variantPrice,
+                onItemAdded: () async {
+                  print("✅ Variant added locally");
+                  _refreshOrderList();
+                  await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+                },
+              );
+            },
           ),
-        ],
-      );
-      //  } else { // Build #1.0.128: No need
-      //    // For local orders
-      //    // await orderHelper.addItemToOrder(
-      //    //   int.parse(selectedProduct[AppDBConst.fastKeyProductId]),
-      //    //   selectedProduct[AppDBConst.fastKeyItemName],
-      //    //   selectedProduct[AppDBConst.fastKeyItemImage],
-      //    //   double.tryParse(selectedProduct[AppDBConst.fastKeyItemPrice].toString()) ?? 0.0,
-      //    //   1,
-      //    //   selectedProduct[AppDBConst.fastKeyItemSKU],
-      //    //   serverOrderId ?? 0,
-      //    //   onItemAdded: _createOrder,
-      //    // );
-      // //   setState(() => isAddingItemLoading = false);
-      //    ScaffoldMessenger.of(context).showSnackBar(
-      //      SnackBar(
-      //        content: Text("Item '${selectedProduct[AppDBConst.fastKeyItemName]}'did not added to order. OrderId not found."),
-      //        backgroundColor: Colors.green,
-      //        duration: const Duration(seconds: 2),
-      //      ),
-      //    );
-      //    _refreshOrderList();
-      //  }
+        );
+      } else {
+        // 🟩 Simple product
+        await orderHelper.addItemToOrder(
+          0,
+          productName,
+          productImage,
+          productPrice,
+          1,
+          productSku,
+          activeOrderId,
+          type: 'product',
+          productId: productId,
+          variationId: -1,
+          salesPrice: productPrice,
+          regularPrice: productPrice,
+          unitPrice: productPrice,
+          onItemAdded: () async {
+            print("✅ Product added locally");
+            _refreshOrderList();
+            await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+          },
+        );
+      }
+
+      print("🎉 Product flow completed for → $productName");
+
     } catch (e, s) {
-      if (kDebugMode) print("Exception in _onItemSelected: $e, Stack: $s");
-      //  setState(() => isAddingItemLoading = false);
+      print("❌ ERROR in _onItemSelected: $e");
+      print(s);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(TextConstants.errorAddingItem), // Build #1.0.144
+        const SnackBar(
+          content: Text("Failed to add product"),
           backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
+          duration: Duration(seconds: 2),
         ),
       );
     }
@@ -2512,7 +2514,9 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                             selectedItemIndex: selectedItemIndex,
                             reorderedIndices: reorderedIndices,
                             onAddButtonPressed: () => _showAddItemDialog(),
-                            onItemTapped: (index, {bool? variantAdded}) => _onItemSelected(index, showAddButton, variantAdded!),
+                              onItemTapped: (index, {bool? variantAdded}) {
+                                _onItemSelected(index, showAddButton, variantAdded ?? false);
+                              },
                             onReorder: (oldIndex, newIndex) {
                               if (oldIndex == 0 || newIndex == 0) return;
                               final adjustedOldIndex = oldIndex - 1;
