@@ -45,6 +45,7 @@ class _EditProductState extends State<EditProduct> {
 
   void updateQuantity(int newQuantity) {
     setState(() {
+      if (newQuantity < 1) newQuantity = 1;
       quantity = newQuantity;
       controller.text = quantity.toString();
     });

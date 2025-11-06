@@ -141,47 +141,76 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
   }
 
-  Future<int?> syncSingleOfflineOrder(Map<String, dynamic> offlineOrder) async {
+  Future<Map<String, dynamic>?> syncSingleOfflineOrder(
+      Map<String, dynamic> offlineOrder) async {
     try {
-      // ✅ Ensure base URL initialized
-      await UrlHelper.initializeBaseUrl();
-
-      // ✅ Use WooCommerce base (fully absolute)
-      final syncOrderUrl = '${UrlHelper.wooBaseUrl}orders';
+      // ✅ Use WooCommerce orders endpoint (absolute URL)
+      final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
 
       if (kDebugMode) {
-        print("🧩 Final Woo URL for Sync: $syncOrderUrl");
+        print("🧩 Final Woo URL for Sync: $url");
       }
 
+      // 🧾 Prepare product line items
       final products = (offlineOrder['products'] ?? []) as List;
-      final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
-
       final lineItems = products.map((item) {
+        final double price =
+            double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+        final double quantity =
+            double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
+
+        final double lineTotal = price * quantity;
+
         return {
           "product_id": item['product_id'],
           "name": item['name'] ?? item['product_name'] ?? '',
-          "subtotal": item['price'].toString(),
-          "total": item['price'].toString(),
-          "quantity": double.tryParse(item['quantity']?.toString() ?? '1.0') ?? 1.0,
+          "subtotal": lineTotal.toStringAsFixed(2), // ✅ subtotal = price * qty
+          "total": lineTotal.toStringAsFixed(2), // ✅ total = price * qty
+          "quantity": quantity,
         };
       }).toList();
 
+      // 💰 Calculate total
       final totalAmount = lineItems.fold<double>(
-        0.0, (sum, p) => sum + double.tryParse(p['total'].toString())!,
+        0.0,
+            (sum, p) => sum + (double.tryParse(p['total'].toString()) ?? 0.0),
       );
 
-      final feeLines = payouts.map((p) => {
-        "name": "Payout",
+      // 💵 Prepare fee lines (for round off / payout etc.)
+      final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
+      final feeLines = payouts.isNotEmpty
+          ? payouts
+          .map((p) => {
+        "name": "Round off",
         "tax_status": "none",
         "total": "${p['amount'] ?? 0}",
-      }).toList();
+      })
+          .toList()
+          : [
+        {
+          "name": "Round off",
+          "tax_status": "none",
+          "total": "0.00",
+        }
+      ];
+
+      // 🧠 Metadata
+      final shiftId = await UserDbHelper().getUserShiftId();
+      if (shiftId == null) {
+        throw Exception("Cannot sync: shift not active");
+      }
+
+      final userData = await UserDbHelper().getUserData();
+      final userId = userData?[AppDBConst.userId] ?? 'admin';
 
       final metaData = [
         {"key": "pos_device_id", "value": "b31b723b92047f4b"},
-        {"key": "pos_placed_by", "value": "admin"},
+        {"key": "pos_placed_by", "value": "$userId"},
+        {"key": "shift_id", "value": "$shiftId"},
         {"key": "pos_cash_paid", "value": totalAmount.toStringAsFixed(2)},
       ];
 
+      // 🧾 Build final payload
       final payload = {
         "payment_method": "cash",
         "payment_method_title": "POS-CASH",
@@ -197,32 +226,36 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         print("📤 Syncing offline order → ${jsonEncode(payload)}");
       }
 
-      // ✅ FIXED: tell APIHelper not to prefix base URL
-      final response = await _helper.post(
-        syncOrderUrl.trim(),
-        payload,
-        true,
-        validateMarchentUrl: true, // <-- THIS IS THE FIX
-      );
-
+      // 🚀 API call (pass JSON body)
+      final response = await _helper.post(url, payload, true);
       final decoded = (response is String) ? jsonDecode(response) : response;
 
       if (decoded is Map<String, dynamic> && decoded['id'] != null) {
         final serverOrderId = decoded['id'];
+        final tax = double.tryParse(decoded['total_tax']?.toString() ?? "0") ?? 0.0;
+
+        // 🧹 Delete synced offline order
         final box = Hive.box('offlineOrders');
         await box.delete(offlineOrder['order_id'].toString());
 
-        print("✅ Offline order ${offlineOrder['order_id']} synced successfully (Server ID: $serverOrderId)");
-        return serverOrderId;
+        print(
+            "✅ Offline order ${offlineOrder['order_id']} synced successfully (Server ID: $serverOrderId, Tax: $tax)");
+
+        return {
+          "order_id": serverOrderId,
+          "tax": tax,
+          "total":
+          double.tryParse(decoded['total']?.toString() ?? "0") ?? 0.0,
+        };
       } else {
-        print("⚠️ Unexpected response while syncing offline order: $decoded");
-        return null;
+        print("⚠️ Unexpected WooCommerce response: $decoded");
       }
     } catch (e, s) {
       print("❌ Failed to sync offline order: $e");
       print("Stack trace: $s");
-      return null;
     }
+
+    return null;
   }
 
 

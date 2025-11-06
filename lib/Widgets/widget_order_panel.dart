@@ -2956,7 +2956,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         //   ),
                         // ],
                       ),
-                      child: ElevatedButton( //Build 1.1.36: on pay tap calling updateOrderProducts api call
+                      //Build 1.1.36: on pay tap calling updateOrderProducts api call
+                      child: ElevatedButton(
+                        // Build 1.1.36: on pay tap calling updateOrderProducts api call
                         onPressed: orderItems.isNotEmpty
                             ? () async {
                           setState(() => _isPayBtnLoading = true);
@@ -2971,8 +2973,38 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               if (rawOrder != null) {
                                 if (kDebugMode) print("🌀 Syncing offline order to server...");
 
-                                serverOrderId = await OrderRepository()
+                                final syncResult = await OrderRepository()
                                     .syncSingleOfflineOrder(Map<String, dynamic>.from(rawOrder));
+
+                                if (syncResult != null) {
+                                  serverOrderId = syncResult["order_id"];
+                                  final syncedTax = syncResult["tax"] ?? 0.0;
+
+                                  if (kDebugMode) {
+                                    print("✅ Offline order sync completed → Server ID: $serverOrderId, Tax: $syncedTax");
+                                  }
+
+                                  // Update local tax
+                                  orderTax = syncedTax;
+
+                                  // ✅ Immediately delete synced offline order from Hive
+                                  final offlineOrderId = orderHelper.activeOrderId;
+                                  if (offlineOrderId != null) {
+                                    if (kDebugMode) print("🧹 Removing synced offline order $offlineOrderId from Hive...");
+                                    final offlineBox = Hive.box('offlineOrders');
+
+                                    if (offlineBox.containsKey(offlineOrderId.toString())) {
+                                      await offlineBox.delete(offlineOrderId.toString());
+                                      if (kDebugMode) print("✅ Deleted offline order $offlineOrderId from Hive");
+                                    }
+
+                                    // ✅ Also remove from SQLite
+                                    await orderHelper.deleteOrder(offlineOrderId);
+                                    if (kDebugMode) print("✅ Deleted offline order $offlineOrderId from SQLite");
+                                  }
+                                } else {
+                                  if (kDebugMode) print("⚠️ Sync succeeded but no server data found");
+                                }
 
                                 if (serverOrderId != null) {
                                   if (kDebugMode) print("✅ Offline order sync completed → Server ID: $serverOrderId");
@@ -3023,26 +3055,25 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                           }
                         }
                             : null,
-
-
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: /*netPayable >= 0 &&*/ orderItems.isNotEmpty ? const Color(0xFFFF6B6B) : Colors.grey,
+                          backgroundColor: orderItems.isNotEmpty ? const Color(0xFFFF6B6B) : Colors.grey,
                           foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),
-                        child: _isPayBtnLoading  //Build 1.1.36: added loader for pay button in order panel
-                            ? CircularProgressIndicator(color: Colors.white)
+                        child: _isPayBtnLoading
+                            ? const CircularProgressIndicator(color: Colors.white)
                             : Text(
                           "Pay  ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
+
                     ),
                 ],
               ),

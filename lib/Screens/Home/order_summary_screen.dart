@@ -117,10 +117,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   String? _amountErrorText;
   bool _isAmountEntered = false;
 
+
   // Determine the date and time to display
   String _displayDate = "";
   String _displayTime = "";
-  int _rawAmount = 0; // holds value in paise/cents, e.g. 2345
+  int _rawAmount = 0;
+  double computedNetPayable = 0.0;
+// holds value in paise/cents, e.g. 2345
 
   @override
   void initState() {
@@ -131,10 +134,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     discount = widget.orderDiscount;
     merchantDiscount = widget.merchantDiscount;
     tax = widget.orderTax;
-    balanceAmount = widget.netPayable;
     orderId = widget.orderId;
     _displayDate = widget.formattedDate;
     _displayTime = widget.formattedTime;
+    computedNetPayable = grossTotal + tax - discount - merchantDiscount;
+    balanceAmount = computedNetPayable;
+    orderTotal = computedNetPayable;
 
     _fetchUserId();
     if (kDebugMode) {
@@ -889,8 +894,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           dashGapLength: 4,
                         ),
                         //SizedBox(height: ResponsiveLayout.getHeight(3)),
-                        _buildOrderCalculation(TextConstants.netPayable, '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}', // Build #1.0.80: updated balance amount dynamically
-                            isTotal: true),
+                      _buildOrderCalculation(TextConstants.netPayable, '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}', isTotal: true),
                         _buildOrderCalculation(TextConstants.payByCash, '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'), //Build #1.0.99: updated values from api
                         _buildOrderCalculation(TextConstants.payByOther, '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
                         // _buildOrderCalculation(TextConstants.payByCash, selectedPaymentMethod == TextConstants.cash
@@ -938,8 +942,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         children: [
                           Text(
                             _showFullSummary
-                                ? ' ${TextConstants.netPayable} : ${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}'
-                                : '${TextConstants.netPayable} ${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
+                                ? ' ${TextConstants.netPayable} : ${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}'
+                                : '${TextConstants.netPayable} ${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
@@ -2169,7 +2173,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     });
   }
 
-  //Build #1.0.34: moved Dialog's code from custom numpad
+  // --------------------
   void _showPartialPaymentDialog(BuildContext context, double amount) {
     if (kDebugMode) {
       print("Showing Partial Payment Dialog with amount: $amount, Remaining Balance: $balanceAmount");
