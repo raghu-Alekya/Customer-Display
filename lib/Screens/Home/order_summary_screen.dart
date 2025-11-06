@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:hive/hive.dart';
 import 'package:intl/intl.dart'; // Added for date formatting
 import 'package:pinaka_pos/Database/assets_db_helper.dart';
 import 'package:pinaka_pos/Helper/Extentions/extensions.dart';
@@ -58,6 +59,9 @@ class OrderSummaryScreen extends StatefulWidget {
   final double orderTax;
   final double netPayable;
   final int? orderId;
+  final bool isOfflineSynced;
+  final int? offlineOrderId;
+
 
   const OrderSummaryScreen({
     required this.formattedDate,
@@ -69,6 +73,8 @@ class OrderSummaryScreen extends StatefulWidget {
     required this.orderTax,
     required this.netPayable,
     required this.orderId,
+    this.isOfflineSynced = false,
+    this.offlineOrderId,
     super.key,
   });
 
@@ -322,7 +328,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     //Build #1.0.34: updated code for API response and listen to stream then show popup
     paymentBloc.createPayment(paymentRequest);
     StreamSubscription? subscription;
-    subscription = paymentBloc.createPaymentStream.listen((paymentResponse) {
+    subscription = paymentBloc.createPaymentStream.listen((paymentResponse) async {
       if (kDebugMode) {
         print("Payment stream response: $paymentResponse ++++ end of message");
       }
@@ -340,6 +346,23 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           if (paymentData.message == "Payment Created Successfully") {
             // // Build #1.0.99: Call fetch payment details by order id API call
             // _fetchPaymentsByOrderId(); // Refresh payments after successful payment
+
+            if (widget.isOfflineSynced && widget.offlineOrderId != null) {
+              try {
+                final offlineId = widget.offlineOrderId!;
+                final offlineBox = Hive.box('offlineOrders');
+
+                if (offlineBox.containsKey(offlineId.toString())) {
+                  await offlineBox.delete(offlineId.toString());
+                  if (kDebugMode) print("✅ Deleted offline order $offlineId from Hive after payment");
+                }
+
+                await orderHelper.deleteOrder(offlineId);
+                if (kDebugMode) print("✅ Deleted offline order $offlineId from SQLite after payment");
+              } catch (e) {
+                if (kDebugMode) print("⚠️ Failed to delete offline order after payment: $e");
+              }
+            }
 
             setState(() {
               isLoading = false; // Hide loader on success

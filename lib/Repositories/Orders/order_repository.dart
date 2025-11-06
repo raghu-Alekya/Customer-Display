@@ -140,65 +140,66 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       print("📦 Offline order updated -> Total products: ${products.length}");
     }
   }
-
   Future<Map<String, dynamic>?> syncSingleOfflineOrder(
       Map<String, dynamic> offlineOrder) async {
     try {
-      // ✅ Use WooCommerce orders endpoint (absolute URL)
-      final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
+      // 🧩 Detect existing Woo order ID (if already synced before)
+      final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
+      final int? existingWooOrderId = wooOrderIdRaw != null
+          ? int.tryParse(wooOrderIdRaw.toString())
+          : null;
+
+      // ✅ Decide URL & mode
+      final bool isUpdate = existingWooOrderId != null && existingWooOrderId > 0;
+      final String url = isUpdate
+          ? "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$existingWooOrderId"
+          : "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
 
       if (kDebugMode) {
-        print("🧩 Final Woo URL for Sync: $url");
+        print("🧩 Sync mode: ${isUpdate ? 'UPDATE existing Woo order' : 'CREATE new Woo order'}");
+        print("🧩 Woo URL: $url");
       }
 
-      // 🧾 Prepare product line items
+      // 🧾 Prepare line items
       final products = (offlineOrder['products'] ?? []) as List;
       final lineItems = products.map((item) {
         final double price =
             double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
         final double quantity =
             double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
-
         final double lineTotal = price * quantity;
 
         return {
           "product_id": item['product_id'],
           "name": item['name'] ?? item['product_name'] ?? '',
-          "subtotal": lineTotal.toStringAsFixed(2), // ✅ subtotal = price * qty
-          "total": lineTotal.toStringAsFixed(2), // ✅ total = price * qty
+          "subtotal": lineTotal.toStringAsFixed(2),
+          "total": lineTotal.toStringAsFixed(2),
           "quantity": quantity,
         };
       }).toList();
 
-      // 💰 Calculate total
       final totalAmount = lineItems.fold<double>(
         0.0,
             (sum, p) => sum + (double.tryParse(p['total'].toString()) ?? 0.0),
       );
 
-      // 💵 Prepare fee lines (for round off / payout etc.)
+      // 💵 Fee lines
       final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
       final feeLines = payouts.isNotEmpty
-          ? payouts
-          .map((p) => {
-        "name": "Round off",
-        "tax_status": "none",
-        "total": "${p['amount'] ?? 0}",
-      })
-          .toList()
-          : [
-        {
+          ? payouts.map((p) {
+        return {
           "name": "Round off",
           "tax_status": "none",
-          "total": "0.00",
-        }
+          "total": "${p['amount'] ?? 0}"
+        };
+      }).toList()
+          : [
+        {"name": "Round off", "tax_status": "none", "total": "0.00"}
       ];
 
-      // 🧠 Metadata
+      // 🧠 Meta data
       final shiftId = await UserDbHelper().getUserShiftId();
-      if (shiftId == null) {
-        throw Exception("Cannot sync: shift not active");
-      }
+      if (shiftId == null) throw Exception("Cannot sync: shift not active");
 
       final userData = await UserDbHelper().getUserData();
       final userId = userData?[AppDBConst.userId] ?? 'admin';
@@ -210,7 +211,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         {"key": "pos_cash_paid", "value": totalAmount.toStringAsFixed(2)},
       ];
 
-      // 🧾 Build final payload
+      // 🧾 Payload
       final payload = {
         "payment_method": "cash",
         "payment_method_title": "POS-CASH",
@@ -223,29 +224,41 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       };
 
       if (kDebugMode) {
-        print("📤 Syncing offline order → ${jsonEncode(payload)}");
+        print("📤 Sync payload → ${jsonEncode(payload)}");
       }
 
-      // 🚀 API call (pass JSON body)
-      final response = await _helper.post(url, payload, true);
+      // 🚀 Make API call
+      final response = isUpdate
+          ? await _helper.put(url, payload, true)
+          : await _helper.post(url, payload, true);
+
       final decoded = (response is String) ? jsonDecode(response) : response;
 
       if (decoded is Map<String, dynamic> && decoded['id'] != null) {
-        final serverOrderId = decoded['id'];
-        final tax = double.tryParse(decoded['total_tax']?.toString() ?? "0") ?? 0.0;
+        final int serverOrderId = int.tryParse(decoded['id'].toString()) ?? 0;
+        final double tax =
+            double.tryParse(decoded['total_tax']?.toString() ?? "0") ?? 0.0;
 
-        // 🧹 Delete synced offline order
+        // ✅ Update Woo ID locally if new
         final box = Hive.box('offlineOrders');
-        await box.delete(offlineOrder['order_id'].toString());
+        final orderKey =
+        (offlineOrder['id'] ?? offlineOrder['order_id'] ?? "").toString();
+
+        offlineOrder['wooOrderId'] = serverOrderId;
+
+        await box.put(orderKey, offlineOrder);
+        if (kDebugMode) {
+          print(
+              "💾 Stored updated offline order → key: $orderKey, wooOrderId: $serverOrderId");
+        }
 
         print(
-            "✅ Offline order ${offlineOrder['order_id']} synced successfully (Server ID: $serverOrderId, Tax: $tax)");
+            "✅ ${isUpdate ? 'Updated' : 'Created'} Woo order successfully → ID: $serverOrderId");
 
         return {
           "order_id": serverOrderId,
           "tax": tax,
-          "total":
-          double.tryParse(decoded['total']?.toString() ?? "0") ?? 0.0,
+          "total": double.tryParse(decoded['total']?.toString() ?? "0") ?? 0.0,
         };
       } else {
         print("⚠️ Unexpected WooCommerce response: $decoded");
@@ -257,6 +270,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
     return null;
   }
+
 
 
   // 2. Update Order Products

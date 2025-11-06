@@ -2987,21 +2987,21 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   // Update local tax
                                   orderTax = syncedTax;
 
-                                  // ✅ Immediately delete synced offline order from Hive
-                                  final offlineOrderId = orderHelper.activeOrderId;
-                                  if (offlineOrderId != null) {
-                                    if (kDebugMode) print("🧹 Removing synced offline order $offlineOrderId from Hive...");
-                                    final offlineBox = Hive.box('offlineOrders');
-
-                                    if (offlineBox.containsKey(offlineOrderId.toString())) {
-                                      await offlineBox.delete(offlineOrderId.toString());
-                                      if (kDebugMode) print("✅ Deleted offline order $offlineOrderId from Hive");
-                                    }
-
-                                    // ✅ Also remove from SQLite
-                                    await orderHelper.deleteOrder(offlineOrderId);
-                                    if (kDebugMode) print("✅ Deleted offline order $offlineOrderId from SQLite");
-                                  }
+                                  // // ✅ Immediately delete synced offline order from Hive
+                                  // final offlineOrderId = orderHelper.activeOrderId;
+                                  // if (offlineOrderId != null) {
+                                  //   if (kDebugMode) print("🧹 Removing synced offline order $offlineOrderId from Hive...");
+                                  //   final offlineBox = Hive.box('offlineOrders');
+                                  //
+                                  //   if (offlineBox.containsKey(offlineOrderId.toString())) {
+                                  //     await offlineBox.delete(offlineOrderId.toString());
+                                  //     if (kDebugMode) print("✅ Deleted offline order $offlineOrderId from Hive");
+                                  //   }
+                                  //
+                                  //   // ✅ Also remove from SQLite
+                                  //   await orderHelper.deleteOrder(offlineOrderId);
+                                  //   if (kDebugMode) print("✅ Deleted offline order $offlineOrderId from SQLite");
+                                  // }
                                 } else {
                                   if (kDebugMode) print("⚠️ Sync succeeded but no server data found");
                                 }
@@ -3034,7 +3034,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   merchantDiscount: merchantDiscount,
                                   orderTax: orderTax,
                                   netPayable: netPayable.toDouble(),
-                                  orderId: serverOrderId ?? orderHelper.activeOrderId, // ✅ Use server ID if available
+                                  orderId: serverOrderId ?? orderHelper.activeOrderId,
+                                  isOfflineSynced: serverOrderId != null,
+                                  offlineOrderId: orderHelper.activeOrderId,
                                 ),
                               ),
                             );
