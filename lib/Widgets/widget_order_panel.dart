@@ -2195,25 +2195,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                       if (kDebugMode) {
                                         print("🗑️ Delete tapped for item: $orderItem");
                                       }
+
                                       final bool isOffline = orderHelper.activeOrderId != null &&
                                           Hive.box('offlineOrders').containsKey(orderHelper.activeOrderId.toString());
 
-                                      if (isOffline) {
-                                        await CustomDialog.showRemoveSpecialOrderItemsConfirmation(
-                                          context,
-                                          type: itemType,
-                                          confirm: () async {
-                                            await deleteOfflineItem(orderItem);
-                                          },
-                                        );
-                                      } else {
-                                        await CustomDialog.showRemoveSpecialOrderItemsConfirmation(
-                                          context,
-                                          type: itemType,
-                                          confirm: () async {
-                                            await deleteOfflineItem(orderItem);
-                                          },
-                                        );
+                                      await deleteOfflineItem(orderItem);
+
+                                      if (kDebugMode) {
+                                        print(isOffline
+                                            ? "✅ Offline item deleted immediately."
+                                            : "✅ Online item deleted immediately.");
                                       }
                                     },
                                     backgroundColor: Colors.transparent,
@@ -2966,84 +2957,74 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         // ],
                       ),
                       child: ElevatedButton( //Build 1.1.36: on pay tap calling updateOrderProducts api call
-                        onPressed: /*netPayable >= 0 && */orderItems.isNotEmpty
+                        onPressed: orderItems.isNotEmpty
                             ? () async {
                           setState(() => _isPayBtnLoading = true);
-                          // await Navigator.push(
-                          //   context,
-                          //   MaterialPageRoute(builder: (context) => OrderSummaryScreen()),
-                          // );
-                          // On the first screen (Screen 1)
-                          // Build #1.0.104: Navigate to OrderSummaryScreen and listen for result
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => OrderSummaryScreen(formattedDate: '',formattedTime: '',)),
-                          );
-                          if (kDebugMode) {
-                            print("###### FastKeyScreen: Returned from OrderSummaryScreen with result: $result");
-                          }
-                          // Handle refresh if result is 'refresh'
-                          if (result == TextConstants.refresh) {
-                            if (kDebugMode) {
-                              print("###### FastKeyScreen: Refresh signal received, reinitializing entire screen");
+
+                          try {
+                            int? serverOrderId;
+
+                            if (orderHelper.activeOrderId != null) {
+                              final box = Hive.box('offlineOrders');
+                              final rawOrder = box.get(orderHelper.activeOrderId.toString());
+
+                              if (rawOrder != null) {
+                                if (kDebugMode) print("🌀 Syncing offline order to server...");
+
+                                serverOrderId = await OrderRepository()
+                                    .syncSingleOfflineOrder(Map<String, dynamic>.from(rawOrder));
+
+                                if (serverOrderId != null) {
+                                  if (kDebugMode) print("✅ Offline order sync completed → Server ID: $serverOrderId");
+                                } else {
+                                  if (kDebugMode) print("⚠️ Sync succeeded but no server ID found");
+                                }
+                              } else {
+                                if (kDebugMode) print("⚠️ No offline order found for sync");
+                              }
                             }
-                            setState(() {
-                              OrderHelper.isOrderPanelLoaded = false; // Build #1.0.175: making isOrderPanelLoaded false when ever return from OrderSummaryScreen with 'refresh' we have to reload the order panel
-                              fetchOrdersData(); // call
-                            });
+
+                            // ✅ Print before navigating to summary
+                            if (kDebugMode) {
+                              print("🧾 Using order ID in OrderSummaryScreen → ${serverOrderId ?? orderHelper.activeOrderId}");
+                            }
+
+                            // ✅ Pass the actual WooCommerce order ID
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => OrderSummaryScreen(
+                                  formattedDate: displayDate,
+                                  formattedTime: displayTime,
+                                  orderItems: orderItems,
+                                  grossTotal: grossTotal.toDouble(),
+                                  orderDiscount: orderDiscount,
+                                  merchantDiscount: merchantDiscount,
+                                  orderTax: orderTax,
+                                  netPayable: netPayable.toDouble(),
+                                  orderId: serverOrderId ?? orderHelper.activeOrderId, // ✅ Use server ID if available
+                                ),
+                              ),
+                            );
+
+                            if (result == TextConstants.refresh) {
+                              setState(() {
+                                OrderHelper.isOrderPanelLoaded = false;
+                                fetchOrdersData();
+                              });
+                            }
+                          } catch (e) {
+                            if (kDebugMode) print("❌ Error syncing order: $e");
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text("Failed to sync order: $e")),
+                            );
+                          } finally {
+                            setState(() => _isPayBtnLoading = false);
                           }
-                          setState(() => _isPayBtnLoading = false);
-                          ///No need to update here now, may cause empty items added to order
-                          //                       if (orderHelper.activeOrderId != null) {
-                          //                         setState(() => _isPayBtnLoading = true);
-                          //                         // final order = orderHelper.orders.firstWhere(
-                          //                         //       (order) => order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-                          //                         //   orElse: () => {},
-                          //                         // );
-                          //                         final serverOrderId = orderHelper.activeOrderId;//order[AppDBConst.orderServerId] as int?;
-                          //                         final dbOrderId = orderHelper.activeOrderId!;
-                          //
-                          //                         if (serverOrderId == null) {
-                          //                           setState(() => _isPayBtnLoading = false);
-                          //                           ScaffoldMessenger.of(context).showSnackBar(
-                          //                             SnackBar(content: Text("Server Order ID not found")),
-                          //                           );
-                          //                           return;
-                          //                         }
-                          //
-                          //                         // Assign the subscription to your class variable
-                          //                         _updateOrderSubscription = orderBloc.updateOrderStream.listen((response) async {
-                          //                           if (!mounted) return;
-                          //                           if (response.status == Status.COMPLETED) {
-                          //                             setState(() => _isPayBtnLoading = false);
-                          //                             if (kDebugMode) {
-                          //                               print("###### updateOrder COMPLETED");
-                          //                             }
-                          //                             Navigator.push(
-                          //                               context,
-                          //                               MaterialPageRoute(builder: (context) => OrderSummaryScreen()),
-                          //                             );
-                          //                           } else if (response.status == Status.ERROR) {
-                          //                             ScaffoldMessenger.of(context).showSnackBar(
-                          //                               SnackBar(content: Text(response.message ?? "Failed to update order")),
-                          //                             );
-                          //                           }
-                          //                         });
-                          //                         // Prepare line items for API
-                          //                         List<OrderLineItem> lineItems = orderItems.map((item) => OrderLineItem(
-                          //                           productId: item[AppDBConst.itemServerId],
-                          //                           quantity: item[AppDBConst.itemCount],
-                          //                           //  sku: item[AppDBConst.itemSKU] ?? '',
-                          //                         )).toList();
-                          //
-                          //                         await orderBloc.updateOrderProducts(
-                          //                           dbOrderId: dbOrderId,
-                          //                           orderId: serverOrderId,
-                          //                           lineItems: lineItems,
-                          //                         );
-                          //                       }
                         }
                             : null,
+
+
                         style: ElevatedButton.styleFrom(
                           backgroundColor: /*netPayable >= 0 &&*/ orderItems.isNotEmpty ? const Color(0xFFFF6B6B) : Colors.grey,
                           foregroundColor: Colors.white,

@@ -141,47 +141,90 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
   }
 
+  Future<int?> syncSingleOfflineOrder(Map<String, dynamic> offlineOrder) async {
+    try {
+      // ✅ Ensure base URL initialized
+      await UrlHelper.initializeBaseUrl();
 
-  /// 🌀 Sync all offline orders when online
-  Future<void> syncOfflineOrders() async {
-    final connectivity = await Connectivity().checkConnectivity();
-    if (connectivity == ConnectivityResult.none) return;
+      // ✅ Use WooCommerce base (fully absolute)
+      final syncOrderUrl = '${UrlHelper.wooBaseUrl}orders';
 
-    final box = Hive.box('offlineOrders');
-    final orders = box.toMap();
-
-    for (final entry in orders.entries) {
-      if (entry.key == 'lastOrderId') continue;
-
-      final order = entry.value;
-      if (order['synced'] == true) continue;
-
-      try {
-        final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
-        final response = await _helper.post(url, order['request'], true);
-
-        if (response is String) {
-          final responseData = json.decode(response);
-          if (responseData['id'] != null) {
-            await box.delete(entry.key);
-            if (kDebugMode) {
-              print("✅ Synced order ${order['order_id']} successfully");
-            }
-          }
-        } else if (response is Map<String, dynamic> &&
-            response['id'] != null) {
-          await box.delete(entry.key);
-          if (kDebugMode) {
-            print("✅ Synced order ${order['order_id']} successfully");
-          }
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print("❌ Failed to sync order ${order['order_id']}: $e");
-        }
+      if (kDebugMode) {
+        print("🧩 Final Woo URL for Sync: $syncOrderUrl");
       }
+
+      final products = (offlineOrder['products'] ?? []) as List;
+      final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
+
+      final lineItems = products.map((item) {
+        return {
+          "product_id": item['product_id'],
+          "name": item['name'] ?? item['product_name'] ?? '',
+          "subtotal": item['price'].toString(),
+          "total": item['price'].toString(),
+          "quantity": double.tryParse(item['quantity']?.toString() ?? '1.0') ?? 1.0,
+        };
+      }).toList();
+
+      final totalAmount = lineItems.fold<double>(
+        0.0, (sum, p) => sum + double.tryParse(p['total'].toString())!,
+      );
+
+      final feeLines = payouts.map((p) => {
+        "name": "Payout",
+        "tax_status": "none",
+        "total": "${p['amount'] ?? 0}",
+      }).toList();
+
+      final metaData = [
+        {"key": "pos_device_id", "value": "b31b723b92047f4b"},
+        {"key": "pos_placed_by", "value": "admin"},
+        {"key": "pos_cash_paid", "value": totalAmount.toStringAsFixed(2)},
+      ];
+
+      final payload = {
+        "payment_method": "cash",
+        "payment_method_title": "POS-CASH",
+        "set_paid": true,
+        "status": "completed",
+        "meta_data": metaData,
+        "fee_lines": feeLines,
+        "line_items": lineItems,
+        "tax_lines": [],
+      };
+
+      if (kDebugMode) {
+        print("📤 Syncing offline order → ${jsonEncode(payload)}");
+      }
+
+      // ✅ FIXED: tell APIHelper not to prefix base URL
+      final response = await _helper.post(
+        syncOrderUrl.trim(),
+        payload,
+        true,
+        validateMarchentUrl: true, // <-- THIS IS THE FIX
+      );
+
+      final decoded = (response is String) ? jsonDecode(response) : response;
+
+      if (decoded is Map<String, dynamic> && decoded['id'] != null) {
+        final serverOrderId = decoded['id'];
+        final box = Hive.box('offlineOrders');
+        await box.delete(offlineOrder['order_id'].toString());
+
+        print("✅ Offline order ${offlineOrder['order_id']} synced successfully (Server ID: $serverOrderId)");
+        return serverOrderId;
+      } else {
+        print("⚠️ Unexpected response while syncing offline order: $decoded");
+        return null;
+      }
+    } catch (e, s) {
+      print("❌ Failed to sync offline order: $e");
+      print("Stack trace: $s");
+      return null;
     }
   }
+
 
   // 2. Update Order Products
   Future<OrderModel> updateOrderProducts({required int orderId, required UpdateOrderRequestModel request,}) async {

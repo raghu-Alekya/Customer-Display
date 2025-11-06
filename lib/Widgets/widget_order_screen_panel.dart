@@ -2101,9 +2101,18 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                               MaterialPageRoute(
                                   builder: (_) =>
                                       OrderSummaryScreen(
-                                        formattedTime: '',
-                                        formattedDate: '',
-                                      )),
+                                        formattedDate: displayDate,
+                                        formattedTime: displayTime,
+                                        orderItems: orderItems,
+                                        grossTotal: grossTotal.toDouble(),
+                                        orderDiscount: orderDiscount,
+                                        merchantDiscount: merchantDiscount,
+                                        orderTax: orderTax,
+                                        netPayable: netPayable.toDouble(),
+                                        orderId: orderHelper.activeOrderId,
+
+                                      ),
+                              ),
                             );
                             if (kDebugMode) {
                               print(

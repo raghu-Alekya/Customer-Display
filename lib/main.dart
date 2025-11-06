@@ -8,6 +8,7 @@ import 'Constants/misc_features.dart';
 import 'Database/db_helper.dart';
 import 'Helper/Extentions/theme_notifier.dart';
 import 'Helper/customerdisplayhelper.dart';
+import 'Helper/url_helper.dart';
 import 'Preferences/pinaka_preferences.dart';
 import 'Screens/Auth/splash_screen.dart';
 import 'package:flutter/services.dart';
@@ -30,8 +31,9 @@ void main() async {
   }
 
   ThemeNotifier themeNotifier = ThemeNotifier();
-  await themeNotifier.initializeThemeMode(); // Build #1.0.9 : By default dark theme getting selected on launch even after changing from settings
-
+  await themeNotifier.initializeThemeMode();
+  // Build #1.0.9 : By default dark theme getting selected on launch even after changing from settings
+  await UrlHelper.initializeBaseUrl();
   await DBHelper.instance.database;
   final storeInfo = PinakaPreferences.getLoggedInStore();
   if (storeInfo.isNotEmpty) {

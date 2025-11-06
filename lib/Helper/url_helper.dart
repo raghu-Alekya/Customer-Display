@@ -51,6 +51,20 @@ class UrlHelper {
       print("#### UrlHelper: Base URL set to: $_baseUrl");
     }
   }
+  static String get wooBaseUrl {
+    if (_baseUrl == null || _baseUrl!.isEmpty) {
+      if (kDebugMode) {
+        print("⚠️ UrlHelper: _baseUrl is null — using fallback DEV URL.");
+      }
+      _baseUrl = _dev; // fallback to dev environment
+    }
+    final url = '$_baseUrl/wp-json/wc/v3/';
+    if (kDebugMode) {
+      print("#### UrlHelper: Providing Woo base URL: $url");
+    }
+    return url;
+  }
+
 
   //Build #1.0.54: Getter for base URL with /wp-json/ appended
   static String get baseUrl {
