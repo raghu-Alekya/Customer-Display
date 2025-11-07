@@ -1631,31 +1631,13 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   // Ensured _isDiscountLoading is shown during API calls and cleared afterward.
   // Preserved success toast and UI refresh logic.
   void _handleAddDiscount() async {
-    // Build #1.0.53 : updated code with discount api call
-    String discountValue = _discountValue.replaceAll('%', '').replaceAll(
-        TextConstants.currencySymbol,
-        ''); // Build #1.0.181: 1. Replaced Hard coded ‘\$’ with TextConstants.currencySymbol
-    if (discountValue.isEmpty || discountValue == "0" ||
-        double.tryParse(discountValue) == null) {
-      if (kDebugMode) print("Invalid discount value: $discountValue");
-      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        const SnackBar(
-          content: Text(TextConstants.invalidDiscountError),
-          // Build #1.0.181: Added through TextConstants
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-    final orderId = OrderHelper()
-        .activeOrderId; //Build #1.0.134: get activeOrderId
+    if (kDebugMode) print("#### DEBUG: _handleAddDiscount called");
+
+    final orderId = OrderHelper().activeOrderId;
     if (orderId == null) {
-      if (kDebugMode) print("No active order selected");
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(
           content: Text(TextConstants.noActiveOrderError),
-          // Build #1.0.181: Added through TextConstants
           backgroundColor: Colors.red,
           duration: Duration(seconds: 2),
         ),
@@ -1663,158 +1645,136 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       return;
     }
 
-    setState(() {
-      _isDiscountLoading = true;
-    });
+    setState(() => _isDiscountLoading = true);
 
     try {
-      // Fetch the current order total and serverOrderId from the database
-      final db = await DBHelper.instance.database;
-      final orderData = await db.query(
-        AppDBConst.orderTable,
-        where: '${AppDBConst.orderServerId} = ?',
-        whereArgs: [orderId],
-      );
+      final box = Hive.box('offlineOrders');
+      final orderKey = orderId.toString();
 
-      if (orderData.isEmpty) {
-        if (kDebugMode) print("Order $orderId not found in database");
-        setState(() => _isDiscountLoading = false);
-        ScaffoldMessenger
-            .of(widget.scaffoldMessengerContext)
-            .showSnackBar( // Build #1.0.128:  updated missed condition
+      if (!box.containsKey(orderKey)) {
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
-            content: Text(TextConstants.orderNotFoundError),
-            // Build #1.0.181: Added through TextConstants
+            content: Text("Cannot apply discount to empty order"),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 2),
           ),
         );
+        setState(() => _isDiscountLoading = false);
         return;
       }
 
-      final serverOrderId = orderData.first[AppDBConst.orderServerId] as int?;
+      final order = Map<String, dynamic>.from(box.get(orderKey));
 
-      /// Build #1.0.131: Issue Fixed: now correctly calculates order total after adding percentage discounts in add screen.
-      /// For example, a 2% discount on ₹137 is now shown as ₹134.26 instead of ₹134.15.
-      double currentOrderTotalWithTax = orderData.first[AppDBConst
-          .orderTotal] as double? ?? 0.0;
-      double currentOrderTax = orderData.first[AppDBConst
-          .orderTax] as double? ?? 0.0;
-      double mainOrderTotal = currentOrderTotalWithTax - currentOrderTax;
-      if (kDebugMode) print(
-          "Fetched order total for order $orderId: OrderTotalWithTax - $currentOrderTotalWithTax,  OrderTax - $currentOrderTax, MainOrderTotal WithOut Tax - $mainOrderTotal");
-
-      // Calculate discount based on current order total
-      double discountAmount = double.parse(discountValue);
-      if (_isPercentageSelected) {
-        discountAmount =
-            (discountAmount / 100) * mainOrderTotal; // Build #1.0.131
-        if (kDebugMode) print(
-            "Calculated discount amount from percentage: $discountAmount");
-      }
-
-      //Build #1.0.78: For non-API orders, update locally
-      // if (serverOrderId == null) {
-      //   await db.update(
-      //     AppDBConst.orderTable,
-      //     {
-      //       AppDBConst.merchantDiscount: discountAmount,
-      //     },
-      //     where: '${AppDBConst.orderServerId} = ?',
-      //     whereArgs: [orderId],
-      //   );
-      //   setState(() {
-      //     _discountValue = _isPercentageSelected ? "0%" : "0";
-      //     _isDiscountLoading = false;
-      //   });
-      //   ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-      //     SnackBar(
-      //       content: Text("Discount of \$${discountAmount.toStringAsFixed(2)} applied"),
-      //       backgroundColor: Colors.green,
-      //       duration: const Duration(seconds: 2),
-      //     ),
-      //   );
-      //   await _orderHelper.loadData();
-      //   await _loadOrderData();
-      //   widget.refreshOrderList?.call();
-      //   return;
-      // }
-
-      if (serverOrderId == null) {
+      // Prevent changing an existing discount
+      final existingDiscount = (order['merchantDiscount'] is num)
+          ? (order['merchantDiscount'] as num).toDouble()
+          : 0.0;
+      if (existingDiscount > 0) {
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text(
-                "Discount of ${TextConstants.currencySymbol}${discountAmount
-                    .toStringAsFixed(
-                    2)} not applied, order id $serverOrderId not found in DB"),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
+                "Discount already applied. Delete it first to modify."),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
           ),
         );
+        setState(() => _isDiscountLoading = false);
         return;
       }
 
-      //Build #1.0.78: API-first approach for orders with serverOrderId
-      StreamSubscription? subscription;
+      final productsRaw = order['products'] as List? ?? [];
+      if (productsRaw.isEmpty) {
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+          const SnackBar(
+            content: Text("Cannot apply discount to empty order"),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        setState(() => _isDiscountLoading = false);
+        return;
+      }
 
-      subscription =
-          orderBloc.addMerchantDiscountStream.listen((response) async {
-            if (!mounted) {
-              subscription?.cancel();
-              return;
-            }
-            if (response.status == Status.COMPLETED) {
-              if (kDebugMode) print(
-                  "Discount confirmed via API for order $orderId");
-              setState(() {
-                _discountValue = _isPercentageSelected ? "0.00%" : "0.00";
-              });
-              if (Misc.showDebugSnackBar) { // Build #1.0.254
-                ScaffoldMessenger
-                    .of(widget.scaffoldMessengerContext)
-                    .showSnackBar(
-                  SnackBar(
-                    content: Text("Discount of ${TextConstants
-                        .currencySymbol}${discountAmount.toStringAsFixed(
-                        2)} applied"),
-                    backgroundColor: Colors.green,
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              }
-              setState(() =>
-              _isDiscountLoading = false); //Build #1.0.92: fixed loader issue
-              await _orderHelper.loadData();
-              await _loadOrderData();
-              widget.refreshOrderList?.call();
-              subscription?.cancel();
-            } else if (response.status == Status.ERROR) {
-              if (kDebugMode) print(
-                  "Failed to confirm discount: ${response.message}");
-              setState(() =>
-              _isDiscountLoading =
-              false); // Build #1.0.181: Fixed - continues loader on add discount button for empty order
-              ScaffoldMessenger
-                  .of(widget.scaffoldMessengerContext)
-                  .showSnackBar(
-                SnackBar(
-                  content: Text(response.message ?? "Failed to apply discount"),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(
-                      seconds: 4), // Build #1.0.181: increased reading time for the error toast message!
-                ),
-              );
+      // Validate discount input
+      String discountValue = _discountValue
+          .replaceAll('%', '')
+          .replaceAll(TextConstants.currencySymbol, '');
+      if (discountValue.isEmpty ||
+          discountValue == "0" ||
+          double.tryParse(discountValue) == null) {
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+          const SnackBar(
+            content: Text(TextConstants.invalidDiscountError),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        setState(() => _isDiscountLoading = false);
+        return;
+      }
 
-              subscription?.cancel();
-            }
-          });
+      final products = productsRaw
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
 
-      // Build #1.0.274 : Updated API call
-      await orderBloc.addMerchantDiscount(
-          orderId: serverOrderId, amount: -discountAmount);
-      //  await orderBloc.addPayout(orderId: serverOrderId, dbOrderId: orderId, amount: discountAmount, isPayOut: false);
+      // Calculate gross total
+      double grossTotal = products.fold(0.0, (sum, item) {
+        final price = (item['price'] is num)
+            ? (item['price'] as num).toDouble()
+            : double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+        final qty = (item['quantity'] is num)
+            ? (item['quantity'] as num).toDouble()
+            : double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
+        return sum + (price * qty);
+      });
+
+      // Calculate discount
+      double discountAmount = double.parse(discountValue);
+      if (_isPercentageSelected) {
+        discountAmount = (discountAmount / 100) * grossTotal;
+      }
+
+      // Save discount
+      order['merchantDiscount'] = discountAmount;
+      order['merchantDiscountIsPercentage'] = _isPercentageSelected;
+
+      // Calculate totals
+      double orderTax = (order['orderTax'] is num)
+          ? (order['orderTax'] as num).toDouble()
+          : 0.0;
+      double netTotal = grossTotal - discountAmount;
+      double netPayable = netTotal + orderTax;
+
+      order['grossTotal'] = grossTotal;
+      order['netTotal'] = netTotal;
+      order['netPayable'] = netPayable;
+
+      await box.put(orderKey, order);
+
+      // Reset UI
+      setState(() {
+        _discountValue = _isPercentageSelected ? "0.00%" : "0.00";
+        _isDiscountLoading = false;
+      });
+
+      await _orderHelper.loadData();
+      await _loadOrderData();
+      widget.refreshOrderList?.call();
+
+      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+        SnackBar(
+          content: Text(
+              "Discount of ${TextConstants.currencySymbol}${discountAmount.toStringAsFixed(2)} applied"),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      if (kDebugMode) print(
+          "✅ Merchant discount applied locally: $discountAmount, NetPayable: $netPayable");
+
     } catch (e) {
-      if (kDebugMode) print("Error processing discount: $e");
+      if (kDebugMode) print("Error applying discount: $e");
       setState(() => _isDiscountLoading = false);
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         SnackBar(
@@ -1825,7 +1785,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       );
     }
   }
-
 // Handle adding the coupon
   void _handleAddCoupon() async {
     if (_couponCode.isEmpty || _couponCode == "0") {

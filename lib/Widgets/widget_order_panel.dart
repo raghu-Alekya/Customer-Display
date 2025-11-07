@@ -1893,50 +1893,24 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
         final Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(rawOfflineOrder);
 
-        // 🛍️ Load products and payouts
+        // 🛍️ Load products
         final offlineProducts = ((offlineOrder['products'] ?? []) as List)
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
 
-        if (kDebugMode) {
-          print("🧩 Offline products raw data:");
-          for (var p in offlineProducts) {
-            print(const JsonEncoder.withIndent('  ').convert(p));
-          }
-        }
-
-
+        // 🧾 Load payouts
         final offlinePayouts = ((offlineOrder['payouts'] ?? []) as List)
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
 
-        // 🧾 Combine both for display
-        final offlineItems = [
+        // 🧾 Combine for UI
+        orderItems = [
           ...offlineProducts.map((item) => {
             'item_name': item['name'] ?? item['product_name'] ?? '',
-            'item_price': double.tryParse(
-                item['price']?.toString() ??
-                    item['unit_price']?.toString() ??   // ✅ added
-                    item['sales_price']?.toString() ??  // ✅ added
-                    item['regular_price']?.toString() ??// ✅ added
-                    item['unitPrice']?.toString() ??
-                    item['salesPrice']?.toString() ??
-                    item['regularPrice']?.toString() ??
-                    item['fast_key_item_price']?.toString() ??
-                    '0'
-            ) ?? 0.0,
-
-
+            'item_price': double.tryParse(item['price']?.toString() ?? '0') ?? 0.0,
             'items_count': int.tryParse(item['quantity']?.toString() ?? '1') ?? 1,
-            'item_sum_price': (double.tryParse(
-                item['price']?.toString() ??
-                    item['unit_price']?.toString() ??
-                    item['sales_price']?.toString() ??
-                    item['regular_price']?.toString() ??
-                    '0'
-            ) ?? 0.0) *
-                (double.tryParse(item['quantity']?.toString() ?? '1') ?? 1),
-
+            'item_sum_price': (double.tryParse(item['price']?.toString() ?? '0') ?? 0.0) *
+                (int.tryParse(item['quantity']?.toString() ?? '1') ?? 1),
             'item_image': item['image'] ?? '',
             'item_type': 'Product',
           }),
@@ -1950,35 +1924,37 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           }),
         ];
 
-
-        // ✅ Assign to your global/UI list
-        orderItems = offlineItems;
-
         // 🧮 Calculate totals
         double productTotal = offlineProducts.fold<double>(0, (sum, item) {
           final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-          final qtyValue = item['quantity'];
-          final qty = qtyValue is int
-              ? qtyValue
-              : int.tryParse(qtyValue?.toString() ?? '0') ?? 0;
-
-        return sum + (price * qty);
+          final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+          return sum + (price * qty);
         });
 
-
-        double payoutTotal = offlinePayouts.fold<num>(0, (sum, payout) {
-          return sum + (payout['amount'] ?? 0.0);
-        }).toDouble();
+        double payoutTotal = offlinePayouts.fold<double>(0, (sum, payout) {
+          return sum + (double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0);
+        });
 
         grossTotal = productTotal + payoutTotal;
 
-        orderDiscount = 0.0;
-        merchantDiscount = 0.0;
-        orderTax = 0.0;
+        orderDiscount = (offlineOrder['orderDiscount'] is num)
+            ? (offlineOrder['orderDiscount'] as num).toDouble()
+            : 0.0;
 
+        merchantDiscount = (offlineOrder['merchantDiscount'] is num)
+            ? (offlineOrder['merchantDiscount'] as num).toDouble()
+            : 0.0;
+
+        final isPercentageDiscount = (offlineOrder['merchantDiscountIsPercentage'] as bool?) ?? false;
+
+        // 🔹 Tax
+        orderTax = (offlineOrder['orderTax'] as double?) ?? 0.0;
+
+        // 🔹 Net totals including merchant discount
         netTotal = grossTotal - orderDiscount - merchantDiscount;
         netPayable = netTotal + orderTax;
 
+        // 🔹 Format date/time
         if (offlineOrder['created_at'] != null) {
           try {
             final createdAt = DateTime.parse(offlineOrder['created_at']);
@@ -1994,9 +1970,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           print("   productTotal: $productTotal");
           print("   payoutTotal: $payoutTotal");
           print("   grossTotal: $grossTotal");
+          print("   merchantDiscount: $merchantDiscount (${isPercentageDiscount ? 'Percentage' : 'Fixed'})");
+          print("   netTotal: $netTotal");
           print("   netPayable: $netPayable");
           print("🧾 Offline items for UI → ${jsonEncode(orderItems)}");
         }
+
+        setState(() {}); // Refresh UI
       }
     }
 
@@ -2621,162 +2601,71 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                     Text(TextConstants.merchantDiscount, style: TextStyle(color: Color(0xFF007BFF), fontSize: 14)),
                                     merchantDiscount.toStringAsFixed(2) == '0.00' ? SizedBox() : GestureDetector(
                                       onTap: () async {
-                                        //Passed dbOrderId to removeFeeLines.
-                                        // Removed database operations, as they’re now in OrderBloc.removeFeeLines.
-                                        // Ensured loader is shown during API calls.
-                                        if (kDebugMode) {
-                                          print("####################### Merchant Discount onTap");
+                                        if (kDebugMode) print("####################### Remove Merchant Discount locally");
+
+                                        final activeOrderId = orderHelper.activeOrderId;
+                                        if (activeOrderId == null) {
+                                          _scaffoldMessenger.showSnackBar(
+                                            const SnackBar(
+                                              content: Text("No active order found"),
+                                              backgroundColor: Colors.red,
+                                              duration: Duration(seconds: 2),
+                                            ),
+                                          );
+                                          return;
                                         }
-                                        if (orderHelper.activeOrderId != null) {
-                                          // Step 1: Show confirmation dialog
-                                          await CustomDialog.showRemoveSpecialOrderItemsConfirmation(context, confirm: () async {
-                                            // Step 2: Show loader
-                                            setState(() => _isLoading = true);
-                                            // final order = orderHelper.orders.firstWhere(
-                                            //       (order) => order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-                                            //   orElse: () => {},
-                                            // );
-                                            final serverOrderId = orderHelper.activeOrderId;//order[AppDBConst.orderServerId] as int?;
-                                            final dbOrderId = orderHelper.activeOrderId!;
 
-                                            if (serverOrderId != null) {
-                                              final db = await DBHelper.instance.database;
-                                              ///TODO : Update below table code for new discount id code
-                                              final merchantDiscountValue = await db.query(
-                                                AppDBConst.orderTable,
-                                                where: '${AppDBConst.orderServerId} = ? AND ${AppDBConst.merchantDiscount} = ?',
-                                                whereArgs: [dbOrderId, merchantDiscount],
-                                              );
+                                        // Step 1: Show confirmation dialog
+                                        await CustomDialog.showRemoveSpecialOrderItemsConfirmation(context, confirm: () async {
+                                          setState(() => _isLoading = true);
 
-                                              if (merchantDiscountValue.isNotEmpty) {
-                                                // final payoutIds = merchantDiscountValue.first[AppDBConst.merchantDiscountIds].toString().split(',') ?? [];
-                                                // //remove the empty id
-                                                // payoutIds.removeAt(0);
-                                                // With this fixed version:
-                                                // Build #1.0.216: FIXED Issue - Merchant discount not deleting, showing error "Payout ID not found"
-                                                String discountIdsString = merchantDiscountValue.first[AppDBConst.merchantDiscountIds].toString();
-                                                List<String> discountIds = discountIdsString.split(',').where((id) => id.isNotEmpty).toList();
-                                                if (kDebugMode) {
-                                                  print("OrderPanel - payouts to delete $discountIds");
-                                                }
-                                                if (discountIds.isNotEmpty) {
-                                                  //Build #1.0.99: Cancel any existing subscription to prevent multiple listeners
-                                                  _removeMerchantDiscountSubscription?.cancel();
-                                                  retryCallback() async {
-                                                    setState(() => _isLoading = true);
-                                                    //  await orderBloc.removeFeeLines(orderId: serverOrderId, feeLineIds: payoutIds);
-                                                    // Creating line items for deletion (quantity = 0 to remove)
-                                                    List<OrderLineItem> merchantDiscountToDelete = discountIds.map((id) =>
-                                                        OrderLineItem(id: int.parse(id), quantity: 0)
-                                                    ).toList();
-                                                    await orderBloc.deleteOrderItem( // Build #1.0.274: Updated to deleteOrderItem api call for removing merchant discount
-                                                      orderId: serverOrderId,
-                                                      lineItems: merchantDiscountToDelete,
-                                                      //  dbItemId: int.parse(discountIds.first) // No need for merchant Discount // Using first ID as representative
-                                                    );
-                                                    // Dismiss dialog after retry
-                                                    Navigator.of(context, rootNavigator: true).pop();
-                                                  };
-                                                  _removeMerchantDiscountSubscription =
-                                                      orderBloc.deleteOrderItemStream.listen((response) async {
-                                                        if (response.status == Status.COMPLETED) {
-                                                          setState(() => _isLoading = false); //Build #1.0.92
-                                                          await fetchOrderItems();
-                                                          widget.refreshOrderList?.call();
-                                                          if (Misc.showDebugSnackBar) { // Build #1.0.254
-                                                            _scaffoldMessenger.showSnackBar(
-                                                              SnackBar(content: Text("Merchant Discount removed successfully"),
-                                                                backgroundColor: Colors.green,
-                                                                duration: const Duration(seconds: 2),
-                                                              ),
-                                                            );
-                                                          }
-                                                        } else if (response.status == Status.ERROR) {
-                                                          if (response.message!.contains('Unauthorised')) {
-                                                            if (kDebugMode) {
-                                                              print("categories screen 7 ---- Unauthorised : ${response.message!}");
-                                                            }
-                                                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                                                              if (mounted) {
-                                                                Navigator.pushReplacement(context,
-                                                                    MaterialPageRoute(builder: (context) => LoginScreen()));
+                                          final offlineBox = Hive.box('offlineOrders');
+                                          final rawOrder = offlineBox.get(activeOrderId.toString());
 
-                                                                if (kDebugMode) {
-                                                                  print("message 7 --- ${response.message}");
-                                                                }
-                                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                                  const SnackBar(
-                                                                    content: Text("Unauthorised. Session is expired on this device."),
-                                                                    backgroundColor: Colors.red,
-                                                                    duration: Duration(seconds: 2),
-                                                                  ),
-                                                                );
-                                                              }
-                                                            });
-                                                          } else {
-                                                            if (kDebugMode) {
-                                                              print("###### Delete Discount API error");
-                                                            }
-                                                            setState(() => _isLoading = false);
-                                                            _scaffoldMessenger.showSnackBar(
-                                                              SnackBar(
-                                                                content: Text("Failed to remove discount"),
-                                                                backgroundColor: Colors.red,
-                                                                duration: const Duration(seconds: 2),
-                                                              ),
-                                                            );
-                                                          }
-                                                          await CustomDialog.showDiscountNotApplied(context,
-                                                            errorMessageTitle: TextConstants.removeDiscountFailed,
-                                                            errorMessageDes: response.message ?? TextConstants.discountNotAppliedDescription,
-                                                            onRetry: retryCallback,
-                                                          );
-                                                        }
-                                                      });
-                                                  // Creating line items for deletion (quantity = 0 to remove)
-                                                  List<OrderLineItem> merchantDiscountToDelete = discountIds.map((id) =>
-                                                      OrderLineItem(id: int.parse(id), quantity: 0)
-                                                  ).toList();
+                                          if (rawOrder == null) {
+                                            setState(() => _isLoading = false);
+                                            _scaffoldMessenger.showSnackBar(
+                                              const SnackBar(
+                                                content: Text("No offline order found"),
+                                                backgroundColor: Colors.red,
+                                                duration: Duration(seconds: 2),
+                                              ),
+                                            );
+                                            return;
+                                          }
 
-                                                  await orderBloc.deleteOrderItem( // Build #1.0.274 : Added api call
-                                                    orderId: serverOrderId,
-                                                    lineItems: merchantDiscountToDelete,
-                                                    // dbItemId: int.parse(discountIds.first) // No need for merchant Discount // Using first ID as representative
-                                                  );
-                                                  //  await orderBloc.removeFeeLines(orderId: serverOrderId,feeLineIds: discountIds);
-                                                } else {
-                                                  setState(() => _isLoading = false);
-                                                  _scaffoldMessenger.showSnackBar(
-                                                    SnackBar(
-                                                      content: Text("Payout ID not found"),
-                                                      backgroundColor: Colors.red,
-                                                      duration: const Duration(seconds: 2),
-                                                    ),
-                                                  );
-                                                }
-                                              } else {
-                                                setState(() => _isLoading = false);
-                                                _scaffoldMessenger.showSnackBar(
-                                                  SnackBar(
-                                                    content: Text("No payout found for this order"),
-                                                    backgroundColor: Colors.red,
-                                                    duration: const Duration(seconds: 2),
-                                                  ),
-                                                );
-                                              }
-                                            } else {
-                                              setState(() => _isLoading = false);
-                                              _scaffoldMessenger.showSnackBar(
-                                                SnackBar(
-                                                  content: Text("Server Order ID not found"),
-                                                  backgroundColor: Colors.red,
-                                                  duration: const Duration(seconds: 2),
-                                                ),
-                                              );
-                                            }
-                                          });
-                                        }
+                                          // Convert to Map
+                                          final Map<String, dynamic> order = Map<String, dynamic>.from(rawOrder);
+
+                                          // Remove merchant discount
+                                          if (order.containsKey('merchantDiscount') || order.containsKey('merchantDiscountIds')) {
+                                            order['merchantDiscount'] = 0; // or null
+                                            order['merchantDiscountIds'] = [];
+                                            await offlineBox.put(activeOrderId.toString(), order);
+
+                                            setState(() => _isLoading = false);
+                                            _scaffoldMessenger.showSnackBar(
+                                              const SnackBar(
+                                                content: Text("Merchant discount removed locally"),
+                                                backgroundColor: Colors.green,
+                                                duration: Duration(seconds: 2),
+                                              ),
+                                            );
+
+                                            widget.refreshOrderList?.call(); // Refresh UI
+                                          } else {
+                                            setState(() => _isLoading = false);
+                                            _scaffoldMessenger.showSnackBar(
+                                              const SnackBar(
+                                                content: Text("No merchant discount found on this order"),
+                                                backgroundColor: Colors.red,
+                                                duration: Duration(seconds: 2),
+                                              ),
+                                            );
+                                          }
+                                        });
                                       },
+
                                       child: SvgPicture.asset("assets/svg/delete.svg", height: 24, width: 24),
                                     ),
                                   ],
