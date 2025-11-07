@@ -198,6 +198,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       ];
 
       // 🧠 Meta data
+      // 🧠 Meta data
       final shiftId = await UserDbHelper().getUserShiftId();
       if (shiftId == null) throw Exception("Cannot sync: shift not active");
 
@@ -210,8 +211,12 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         {"key": "shift_id", "value": "$shiftId"},
         {"key": "pos_cash_paid", "value": totalAmount.toStringAsFixed(2)},
       ];
-
-      // 🧾 Payload
+      if (isUpdate) {
+        metaData.add({
+          "key": "pos_order_tag",
+          "value": "updated_from_pos"
+        });
+      }
       final payload = {
         "payment_method": "cash",
         "payment_method_title": "POS-CASH",

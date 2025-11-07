@@ -1781,6 +1781,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       setState(() => _isLoading = false);
     }
   }
+  int totalItems = 0;
 
 
   Future<void> deleteOfflineItem(Map<String, dynamic> orderItem) async {
@@ -1923,6 +1924,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             'item_type': 'payout',
           }),
         ];
+        totalItems = offlineProducts.fold(0, (sum, product) {
+          final qty = int.tryParse(product['quantity']?.toString() ?? '1') ?? 1;
+          return sum + qty;
+        });
 
         // 🧮 Calculate totals
         double productTotal = offlineProducts.fold<double>(0, (sum, item) {
@@ -2809,7 +2814,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text("${TextConstants.totalItemsText}: ${orderItems.length}",
+                            Text("${TextConstants.totalItemsText}: $totalItems",
                                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                             Row(
                               children: [

@@ -116,44 +116,44 @@ class FastKeyBloc { // Build #1.0.15
         print("#### fastKeyTabs : $fastKeyTabs");
       }
       // if(fastKeyTabs.length != response.fastkeys.length){
-        ///if all the data mismatches then delete all db contents and replace with API response
+      ///if all the data mismatches then delete all db contents and replace with API response
       // Build #1.0.200: Clear existing data "await" added, everywhere we have added await while deleting data!
       // Code Updated : Empty fastkey folders show at first logon to multiple fastkeys loaded on created by the user
-       await fastKeyDBHelper.deleteAllFastKeyTab(userId);
+      await fastKeyDBHelper.deleteAllFastKeyTab(userId);
       /// TESTED : We have to delete all products of each exiting tab, otherwise creating duplicate items
       // Build #1.0.204: Fixed -> Getting Duplicate Items After Login selecting new fastKey tab
       for (var tab in fastKeyTabs) {
         final tabServerId = tab[AppDBConst.fastKeyServerId];
         if (tabServerId != null) {
           await fastKeyDBHelper.deleteAllFastKeyProductItems(tabServerId);
-         }
-       }
-        for(var fastkey in response.fastkeys){ // Build #1.0.207: updated fastKey itemCount value from api response
-          await fastKeyDBHelper.addFastKeyTab(userId, fastkey.fastkeyTitle, fastkey.fastkeyImage, fastkey.itemCount, int.parse(fastkey.fastkeyIndex), fastkey.fastkeyServerId );
-
-          // Build #1.0.197: Fixed [SCRUM - 328] -> At first logon Empty items shows in fast keys for the selected folder
-          /// Added FastKey items for this tab from API response
-          if (kDebugMode) {
-            print("#### Processing ${fastkey.products?.length} products for FastKey serverId: ${fastkey.fastkeyServerId}");
-          }
-          for (var product in fastkey.products ?? []) {
-            var tagg = product.tags?.firstWhere((element) => element.name == TextConstants.age_restricted, orElse: () => Tags());
-            var hasAgeRestriction = tagg?.name?.contains(TextConstants.age_restricted) ?? false;
-            if (kDebugMode) {
-              print("#### Adding FastKey item: ${product.name}, productId: ${product.productId}, hasAgeRestriction: $hasAgeRestriction");
-            }
-            await fastKeyDBHelper.addFastKeyItem(
-              fastkey.fastkeyServerId,
-              product.name,
-              product.image,
-              product.price,
-              product.productId,
-              minAge: int.parse(tagg?.slug ?? "0"),
-              slNumber: product.slNumber,
-              hasVariant: product.hasVariant ?? false,
-            );
-          }
         }
+      }
+      for(var fastkey in response.fastkeys){ // Build #1.0.207: updated fastKey itemCount value from api response
+        await fastKeyDBHelper.addFastKeyTab(userId, fastkey.fastkeyTitle, fastkey.fastkeyImage, fastkey.itemCount, int.parse(fastkey.fastkeyIndex), fastkey.fastkeyServerId );
+
+        // Build #1.0.197: Fixed [SCRUM - 328] -> At first logon Empty items shows in fast keys for the selected folder
+        /// Added FastKey items for this tab from API response
+        if (kDebugMode) {
+          print("#### Processing ${fastkey.products?.length} products for FastKey serverId: ${fastkey.fastkeyServerId}");
+        }
+        for (var product in fastkey.products ?? []) {
+          var tagg = product.tags?.firstWhere((element) => element.name == TextConstants.age_restricted, orElse: () => Tags());
+          var hasAgeRestriction = tagg?.name?.contains(TextConstants.age_restricted) ?? false;
+          if (kDebugMode) {
+            print("#### Adding FastKey item: ${product.name}, productId: ${product.productId}, hasAgeRestriction: $hasAgeRestriction");
+          }
+          await fastKeyDBHelper.addFastKeyItem(
+            fastkey.fastkeyServerId,
+            product.name,
+            product.image,
+            product.price,
+            product.productId,
+            minAge: int.parse(tagg?.slug ?? "0"),
+            slNumber: product.slNumber,
+            hasVariant: product.hasVariant ?? false,
+          );
+        }
+      }
       // } else {
       //   ///else just update the data for each fast key
       // //  var i = 0; ///@Naveen please correct this logic use tabid instead of i
@@ -277,7 +277,7 @@ class FastKeyBloc { // Build #1.0.15
 
       await fetchFastKeysByUser(userId);
       updateFastKeySink.add(APIResponse.completed(response)); // Build #1.0.184
-       //no need of user id to pass
+      //no need of user id to pass
     } catch (e, s) {
       if (e.toString().contains('Unauthorised')) {
         updateFastKeySink.add(APIResponse.error("Unauthorised. Session is expired."));

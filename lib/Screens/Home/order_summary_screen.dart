@@ -770,14 +770,19 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
-
   Widget _buildOrderSummary() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final theme = Theme.of(context);
+
+    // ✅ NEW: Correct total items based on qty
+    int totalItems = orderItems.fold(0, (sum, item) {
+      final qty = int.tryParse(item['items_count']?.toString() ?? '1') ?? 1;
+      return sum + qty;
+    });
+
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        //width: MediaQuery.of(context).size.width * 100,
         margin: EdgeInsets.only(
             left: ResponsiveLayout.getPadding(20),
             right: ResponsiveLayout.getPadding(20),
@@ -802,46 +807,49 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               bottom: ResponsiveLayout.getPadding(15),
               top: ResponsiveLayout.getPadding(10)
           ),
-          child: Column( // Build #1.0.251 : Updated - No need loader for entire list
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Order ID and Payment Summary header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '${TextConstants.orderId} #$orderId', // Build #1.0.29: orderId(serverId) from db
+                    '${TextConstants.orderId} #$orderId',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color:
-                      Theme.of(context).brightness == Brightness.dark
+                      color: Theme.of(context).brightness == Brightness.dark
                           ? Colors.white
                           : Colors.black,
-                    ),),
+                    ),
+                  ),
                   Text(
                     TextConstants.paymentSummary,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      color:
-                      Theme.of(context).brightness == Brightness.dark
+                      color: Theme.of(context).brightness == Brightness.dark
                           ? Colors.white
                           : Colors.grey,
                     ),
                   ),
                 ],
               ),
+
               SizedBox(height: ResponsiveLayout.getHeight(8)),
 
-              // Order items list
               Expanded(
                 flex: 6,
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(10)),
-                    color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.white,
-                    border: Border.all(color:themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.borderColor : Colors.grey.shade200),
+                    color: themeHelper.themeMode == ThemeMode.dark
+                        ? ThemeNotifier.secondaryBackground
+                        : Colors.white,
+                    border: Border.all(
+                        color: themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.borderColor
+                            : Colors.grey.shade200),
                   ),
                   child: Scrollbar(
                     controller: _scrollController,
@@ -858,12 +866,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       separatorBuilder: (context, index) =>
                           Divider(height: 1, color: Colors.grey.shade200),
                       itemBuilder: (context, index) {
-                        final orderItem = orderItems[index];
-                        final itemType = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
-                        final isPayout = itemType.contains(TextConstants.payoutText);
-                        final isCoupon = itemType.contains(TextConstants.couponText);
-                        final isCustomItem = itemType.contains(TextConstants.customItemText);
-                        final isPayoutOrCouponOrCustomItem = isPayout || isCoupon || isCustomItem;
                         return _buildOrderItem(index);
                       },
                     ),
@@ -871,13 +873,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 ),
               ),
 
-              // Bottom summary container
               Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(10)),
-                  color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.white,
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.secondaryBackground
+                      : Colors.white,
                 ),
-                //padding: EdgeInsets.all(5),
                 margin: EdgeInsets.only(top: ResponsiveLayout.getPadding(10)),
                 child: AnimatedSize(
                   duration: Duration(milliseconds: 300),
@@ -885,30 +887,34 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   child: _showFullSummary
                       ? Container(
                     height: ResponsiveLayout.getHeight(205),
-                    margin: EdgeInsets.all(ResponsiveLayout.getPadding(8)),  //ResponsiveLayout.getHeight(5)
+                    margin: EdgeInsets.all(ResponsiveLayout.getPadding(8)),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(10)),
-                      color:themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.white,
-                      border: Border.all(color:themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.borderColor : Colors.grey.shade200),
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.primaryBackground
+                          : Colors.white,
+                      border: Border.all(
+                          color: themeHelper.themeMode == ThemeMode.dark
+                              ? ThemeNotifier.borderColor
+                              : Colors.grey.shade200),
                     ),
-                    padding:  EdgeInsets.only(
-                      left: ResponsiveLayout.getPadding(8),
-                      right: ResponsiveLayout.getPadding(8),
-                      //top: ResponsiveLayout.getPadding(5)
+                    padding: EdgeInsets.symmetric(
+                      horizontal: ResponsiveLayout.getPadding(8),
                     ),
-                    child: isSummaryLoading // Build #1.0.251 : FIXED - Show loader only for calculation container when expanded
+                    child: isSummaryLoading
                         ? Center(child: CircularProgressIndicator())
                         : Column(
-                      //mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Order calculations
-                        _buildOrderCalculation(TextConstants.grossTotal, '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
+                        _buildOrderCalculation(TextConstants.grossTotal,
+                            '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
                             isTotal: true),
-                        _buildOrderCalculation(TextConstants.discountText, '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}',
+                        _buildOrderCalculation(TextConstants.discountText,
+                            '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}',
                             isDiscount: true),
-                        _buildOrderCalculation(TextConstants.merchantDiscount, '-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}'),
-                        _buildOrderCalculation(TextConstants.taxText, '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'), // Build #1.0.80: updated tax dynamically
-                        //SizedBox(height: ResponsiveLayout.getHeight(3)),
+                        _buildOrderCalculation(TextConstants.merchantDiscount,
+                            '-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}'),
+                        _buildOrderCalculation(TextConstants.taxText,
+                            '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
                         DottedLine(
                           dashColor: themeHelper.themeMode == ThemeMode.dark
                               ? Colors.grey
@@ -916,23 +922,23 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           lineThickness: 1.5,
                           dashGapLength: 4,
                         ),
-                        //SizedBox(height: ResponsiveLayout.getHeight(3)),
-                      _buildOrderCalculation(TextConstants.netPayable, '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}', isTotal: true),
-                        _buildOrderCalculation(TextConstants.payByCash, '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'), //Build #1.0.99: updated values from api
-                        _buildOrderCalculation(TextConstants.payByOther, '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
-                        // _buildOrderCalculation(TextConstants.payByCash, selectedPaymentMethod == TextConstants.cash
-                        //     ? '${TextConstants.currencySymbol}${paidAmount.toStringAsFixed(2)}' : '${TextConstants.currencySymbol}${0.0.toStringAsFixed(2)}'),
-                        // _buildOrderCalculation(TextConstants.payByOther, selectedPaymentMethod != TextConstants.cash
-                        //     ? '${TextConstants.currencySymbol}${paidAmount.toStringAsFixed(2)}' : '${TextConstants.currencySymbol}${0.0.toStringAsFixed(2)}'),
-                        _buildOrderCalculation(TextConstants.tenderAmount, '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'),
-                        _buildOrderCalculation(TextConstants.change, '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
+                        _buildOrderCalculation(TextConstants.netPayable,
+                            '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                            isTotal: true),
+                        _buildOrderCalculation(TextConstants.payByCash,
+                            '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
+                        _buildOrderCalculation(TextConstants.payByOther,
+                            '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
+                        _buildOrderCalculation(TextConstants.tenderAmount,
+                            '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'),
+                        _buildOrderCalculation(TextConstants.change,
+                            '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
                       ],
                     ),
                   )
                       : SizedBox.shrink(),
                 ),
               ),
-              // Toggle Summary Button
               GestureDetector(
                 onTap: _toggleSummary,
                 child: Container(
@@ -958,8 +964,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("${TextConstants.totalItemsText}: ${orderItems.length}",
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      Text(
+                        "${TextConstants.totalItemsText}: $totalItems",
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
 
                       Row(
                         children: [
@@ -970,13 +978,17 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
-                              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
+                              color: themeHelper.themeMode == ThemeMode.dark
+                                  ? ThemeNotifier.textDark
+                                  : ThemeNotifier.textLight,
                             ),
                           ),
                           SizedBox(width: ResponsiveLayout.getPadding(8)),
                           Icon(
                             _showFullSummary ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up,
-                            color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
+                            color: themeHelper.themeMode == ThemeMode.dark
+                                ? ThemeNotifier.textDark
+                                : ThemeNotifier.textLight,
                           ),
                         ],
                       ),
@@ -1181,7 +1193,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             // 💰 Right-side total
             Text(
               isCoupon || isPayout
-                  ? "-${TextConstants.currencySymbol}${itemSumPrice.toStringAsFixed(2)}"
+                  ? "-${TextConstants.currencySymbol}${itemSumPrice.abs().toStringAsFixed(2)}"
                   : "${TextConstants.currencySymbol}${itemSumPrice.toStringAsFixed(2)}",
               style: TextStyle(
                 fontWeight: FontWeight.bold,
@@ -1193,6 +1205,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     : ThemeNotifier.textLight,
               ),
             ),
+
           ],
         ),
       ),
