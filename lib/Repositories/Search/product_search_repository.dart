@@ -183,65 +183,142 @@ class ProductRepository { // Build #1.0.13 : added product search repository
 
     return variations;
   }
-
-
-  // Build #1.0.43: added by naveen
   Future<List<ProductBySkuResponse>> fetchProductBySku(String sku) async {
-    String url = "${UrlHelper.wooCommerceV3}${UrlMethodConstants.products}${UrlParameterConstants.productBySku}$sku";
+    final String url =
+        "${UrlHelper.wooCommerceV3}${UrlMethodConstants.products}${UrlParameterConstants.productBySku}$sku";
 
     if (kDebugMode) {
-      print("ProductRepository - FetchProductBySku URL: $url");
+      print("🔹 ProductRepository - FetchProductBySku URL: $url");
     }
 
     final response = await _helper.get(url, true);
 
     if (kDebugMode) {
-      print("ProductRepository - FetchProductBySku Raw Response: $response");
+      print("🔹 ProductRepository - FetchProductBySku Raw Response: $response");
     }
 
+    List<dynamic> responseList = [];
+
+    // ✅ Handle multiple possible response types
     if (response is String) {
       try {
-        final List<dynamic> responseData = json.decode(response);
-        return responseData.map((productJson) => ProductBySkuResponse.fromJson(productJson)).toList();
+        responseList = json.decode(response);
       } catch (e) {
-        if (kDebugMode) {
-          print("ProductRepository - Error parsing product by SKU response: $e");
-        }
-        throw Exception("Failed to parse product by SKU");
+        if (kDebugMode) print("❌ JSON decode failed: $e");
+        throw Exception("Failed to parse product-by-SKU response");
       }
     } else if (response is List) {
-      return response.map((productJson) => ProductBySkuResponse.fromJson(productJson)).toList();
+      responseList = response;
+    } else if (response is Map<String, dynamic>) {
+      // In some edge WooCommerce responses, a single product might come as a Map
+      responseList = [response];
     } else {
-      throw Exception("Unexpected response type");
+      throw Exception("Unexpected response type: ${response.runtimeType}");
     }
-  }
 
+    // ✅ Convert to model list
+    final List<ProductBySkuResponse> products =
+    responseList.map((e) => ProductBySkuResponse.fromJson(e)).toList();
+
+    if (products.isEmpty) {
+      if (kDebugMode) print("⚠ No products found for SKU: $sku");
+      return [];
+    }
+
+    // ✅ Store in Hive cache for offline lookup
+    try {
+      final productBox = Hive.box('productCache');
+      final cacheKey = "sku_${sku.toLowerCase()}";
+
+      // Normalize the structure to match what onBarcodeScanned expects
+      final normalizedProducts = products.map((p) {
+        return {
+          "id": p.id ?? 0,
+          "name": p.name ?? "Unnamed Product",
+          "price": p.price ?? "0.0",
+          "sku": p.sku ?? sku,
+          "type": p.type ?? "simple",
+          "images": p.images?.map((img) => img.toJson()).toList() ?? [],
+          "variations": p.variations ?? [],
+        };
+      }).toList();
+
+      await productBox.put(cacheKey, {
+        "products": normalizedProducts,
+      });
+
+      if (kDebugMode) {
+        print("💾 Cached product in Hive (key: $cacheKey)");
+        print("🔹 Count: ${products.length}, First Product: ${products.first.name}");
+      }
+    } catch (e) {
+      if (kDebugMode) print("⚠ Failed to cache product-by-SKU: $e");
+    }
+
+    return products;
+  }
   Future<AddCustomItemModel> addCustomItem(AddCustomItemRequest request) async {
-    String url = "${UrlHelper.wooCommerceV3}${UrlMethodConstants.products}";
+    final String url = "${UrlHelper.wooCommerceV3}${UrlMethodConstants.products}";
+
     if (kDebugMode) {
-      print("ProductRepository - CreateProduct URL: $url");
+      print("🧩 ProductRepository - CreateProduct URL: $url");
+      print("📦 Request Body: ${json.encode(request.toJson())}");
     }
 
     final response = await _helper.post(url, request.toJson(), true);
 
     if (kDebugMode) {
-      print("ProductRepository - CreateProduct Raw Response: $response");
+      print("🧩 ProductRepository - CreateProduct Raw Response: $response");
     }
 
+    Map<String, dynamic> responseData = {};
+
+    // ✅ Handle both String and Map responses safely
     if (response is String) {
       try {
-        final Map<String, dynamic> responseData = json.decode(response);
-        return AddCustomItemModel.fromJson(responseData);
+        responseData = json.decode(response);
       } catch (e) {
-        if (kDebugMode) {
-          print("ProductRepository - Error parsing create product response: $e");
-        }
-        throw Exception("Failed to parse create product response");
+        if (kDebugMode) print("❌ JSON decode failed: $e");
+        throw Exception("Failed to parse product creation response");
       }
     } else if (response is Map<String, dynamic>) {
-      return AddCustomItemModel.fromJson(response);
+      responseData = response;
     } else {
-      throw Exception("Unexpected response type");
+      throw Exception("Unexpected response type: ${response.runtimeType}");
     }
+
+    // ✅ Convert to model
+    final addCustomItem = AddCustomItemModel.fromJson(responseData);
+
+    // ✅ Store custom product in Hive for offline access
+    try {
+      final productBox = Hive.box('productCache');
+      final cacheKey = "sku_${(addCustomItem.sku ?? request.sku ?? '').toLowerCase()}";
+
+      final normalized = [
+        {
+          "id": addCustomItem.id ?? 0,
+          "name": addCustomItem.name ?? "Unnamed Custom Item",
+          "price": addCustomItem.price?.toString() ?? request.regularPrice ?? "0.0",
+          "sku": addCustomItem.sku ?? request.sku ?? "",
+          "type": "custom_item",
+          "images": [],
+          "variations": [],
+        }
+      ];
+
+      await productBox.put(cacheKey, {
+        "products": normalized,
+      });
+
+      if (kDebugMode) {
+        print("💾 Cached custom item in Hive (key: $cacheKey)");
+        print("🔹 Name: ${addCustomItem.name}, Price: ${addCustomItem.price}, SKU: ${addCustomItem.sku}");
+      }
+    } catch (e) {
+      if (kDebugMode) print("⚠ Failed to cache custom item: $e");
+    }
+
+    return addCustomItem;
   }
 }

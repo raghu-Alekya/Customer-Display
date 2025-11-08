@@ -211,6 +211,7 @@ import '../../Database/order_panel_db_helper.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/auto_search.dart';
+import '../../Helper/customerdisplayhelper.dart';
 import '../../Providers/Age/age_verification_provider.dart';
 import '../../Utilities/global_utility.dart';
 import '../../Models/FastKey/fastkey_product_model.dart';
@@ -294,7 +295,6 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
   bool _isDeleting = false; // Build #1.0.104 : Track delete button loading state
   bool isAddingItemLoading = false; // Loader for adding items to order
   final ScrollController _scrollController = ScrollController();
-  bool _isAdding  = false;
   int _refreshCounter = 0; //Build #1.0.170: Added: Counter to trigger RightOrderPanel refresh only when needed
 
   @override
@@ -329,7 +329,6 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
       if (kDebugMode) print("Initialization error: $e");
     }
   }
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -962,26 +961,26 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
     }
   }
   Stopwatch? refreshUIStopwatch; // Build #1.0.256
-  Future<void> _onItemSelected(
-      int index, {
-        bool showAddButton = true,
-        bool variantAdded = false,
-      }) async {
-    if (_isAdding) {
-      print("⏳ Duplicate tap ignored");
-      return;
-    }
-    _isAdding = true;
-
+  Future<void> _onItemSelected(int index, bool showAddButton, bool variantAdded) async {
     try {
-      print("🔥 _onItemSelected FIRST ENTRY");
+      if (variantAdded) {
+        if (!Misc.enableUILogMessages) {
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context);
+          }
+        }
+        _refreshOrderList();
+        return;
+      }
+
+      if (kDebugMode) print("⚡ Fast Key _onItemSelected");
 
       final adjustedIndex = index - (showAddButton ? 1 : 0);
       if (adjustedIndex < 0 || adjustedIndex >= fastKeyProductItems.length) return;
 
       final item = fastKeyProductItems[adjustedIndex];
 
-      // 🧾 Extract product info
+      // 🧩 Extract product info
       final productId = int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
       final productName = (item["fast_key_item_name"] is String)
           ? item["fast_key_item_name"]
@@ -994,39 +993,37 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
 
       final hasVariants = (item["type"] == "variable" ||
           (item["variations"] != null && item["variations"].isNotEmpty));
-
       final minAge = int.tryParse(item["fast_key_item_min_age"]?.toString() ?? "0") ?? 0;
       final hasAgeRestriction = minAge > 0;
 
-      print("🧾 Selected → id:$productId | name:$productName | price:$productPrice | hasVariants:$hasVariants | age:$minAge");
+      print("🧾 Selected → id:$productId | name:$productName | price:$productPrice | variant:$hasVariants | age:$minAge");
 
-      // 🧠 Offline order setup
+      // 🧠 Determine order type
       final box = Hive.box('offlineOrders');
-      int activeOrderId = orderHelper.activeOrderId ?? box.get('lastOrderId', defaultValue: 1000);
+      final isOfflineOrder = box.containsKey(orderHelper.activeOrderId.toString());
+      final activeOrderId = orderHelper.activeOrderId ?? box.get('lastOrderId', defaultValue: 1000);
+
       if (orderHelper.activeOrderId == null) {
         orderHelper.activeOrderId = activeOrderId;
         box.put('lastOrderId', activeOrderId);
       }
 
-      // 🔞 Age verification
+      // 🔞 Age restriction
       if (hasAgeRestriction && minAge > 0) {
         final verifiedKey = 'age_verified_order_$activeOrderId';
         final alreadyVerified = box.get(verifiedKey, defaultValue: false);
-
         if (!alreadyVerified) {
           final ageVerificationProvider = AgeVerificationProvider();
           final isVerified = await ageVerificationProvider.verifyAge(context, minAge: minAge);
-
           if (!isVerified) {
-            print("❌ Age verification failed for $productName");
+            print("❌ Age verification failed → Product blocked");
             return;
           }
-
           box.put(verifiedKey, true);
         }
       }
 
-      // 🧩 Variant flow
+      // 🧩 If product has variants
       if (hasVariants) {
         List<Map<String, dynamic>> offlineVariations = [];
 
@@ -1044,40 +1041,30 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
             } else if (cachedData is String) {
               try {
                 final decoded = jsonDecode(cachedData);
-                rawVariations = decoded is Map ? decoded["variations"] ?? [] : decoded;
+                rawVariations =
+                decoded is Map ? decoded["variations"] ?? [] : decoded;
               } catch (_) {}
             }
           }
 
-          // fallback
+          // fallback from item["variations"]
           if (rawVariations.isEmpty && item["variations"] != null) {
             for (var id in item["variations"]) {
               var variantData = productBox.get("product_$id");
-              if (variantData == null) continue;
-
               if (variantData is String) {
                 try {
                   variantData = jsonDecode(variantData);
                 } catch (_) {}
               }
-
               final name = variantData?["name"] ??
-                  (variantData?["attributes"] != null
-                      ? (variantData["attributes"] as List)
-                      .map((a) => a["option"])
-                      .join(", ")
-                      : "Variant $id");
-
+                  "Variant $id";
               final price = (variantData?["price"] ??
                   variantData?["regular_price"] ??
-                  variantData?["sale_price"] ??
                   productPrice)
                   .toString();
-
               final image = (variantData?["image"] is Map)
                   ? variantData["image"]["src"]
                   : (variantData?["image"] ?? productImage);
-
               rawVariations.add({
                 "id": id,
                 "name": name,
@@ -1088,14 +1075,14 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
             }
           }
 
-          offlineVariations = rawVariations
-              .map<Map<String, dynamic>>((v) {
+          offlineVariations = rawVariations.map<Map<String, dynamic>>((v) {
             if (v is String) v = jsonDecode(v);
-            return Map<String, dynamic>.from(v);
-          })
-              .toList();
+            final map = Map<String, dynamic>.from(v);
+            map["price"] = map["price"]?.toString() ?? "0";
+            return map;
+          }).toList();
         } catch (e) {
-          print("⚠ Error loading variants: $e");
+          print("⚠️ Error loading variants: $e");
         }
 
         await showDialog(
@@ -1109,9 +1096,6 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
               final variantPrice =
                   double.tryParse(selectedVariant["price"].toString()) ?? productPrice;
               final variantImage = selectedVariant["image"] ?? productImage;
-              final variantSku = selectedVariant["sku"] ?? productSku;
-
-              print("🟩 addItemToOrder (variant) CALLED");
 
               await orderHelper.addItemToOrder(
                 0,
@@ -1119,7 +1103,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                 variantImage,
                 variantPrice,
                 qty,
-                variantSku,
+                productSku,
                 activeOrderId,
                 type: 'variant',
                 productId: productId,
@@ -1128,9 +1112,11 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                 salesPrice: variantPrice,
                 regularPrice: variantPrice,
                 unitPrice: variantPrice,
-                onItemAdded: () async {},
+                onItemAdded: () async {
+                  print("✅ Variant added locally");
+                  await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+                },
               );
-
               await Future.delayed(const Duration(milliseconds: 100));
               _refreshOrderList();
             },
@@ -1138,8 +1124,6 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
         );
       } else {
         // 🟩 Simple product
-        print("🟩 addItemToOrder (simple) CALLED");
-
         await orderHelper.addItemToOrder(
           0,
           productName,
@@ -1154,13 +1138,17 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
           salesPrice: productPrice,
           regularPrice: productPrice,
           unitPrice: productPrice,
+          onItemAdded: () async {
+            print("✅ Product added locally");
+            await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+          },
         );
-
         await Future.delayed(const Duration(milliseconds: 100));
         _refreshOrderList();
       }
 
-      print("🎉 Product flow complete for → $productName");
+      print("🎉 Product flow completed for → $productName");
+
     } catch (e, s) {
       print("❌ ERROR in _onItemSelected: $e");
       print(s);
@@ -1168,10 +1156,9 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
         const SnackBar(
           content: Text("Failed to add product"),
           backgroundColor: Colors.red,
+          duration: Duration(seconds: 2),
         ),
       );
-    } finally {
-      _isAdding = false; // ✅ always reset
     }
   }
 
@@ -1283,13 +1270,14 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
   //   }
   // }
 
-  void _refreshOrderList() {
+  Future<void> _refreshOrderList() async {
     setState(() { // Build #1.0.128
       if (kDebugMode) {
         print("##### _refreshOrderList: Incrementing _refreshCounter to $_refreshCounter to trigger RightOrderPanel refresh");
       }
       _refreshCounter++; //Build #1.0.170: Increment to signal refresh, causing didUpdateWidget to load with loader
     });
+    await orderHelper.loadData();
 
     // Build #1.0.256: Stop stopwatch and add to steps only if enabled
     if (Misc.enableUILogMessages && refreshUIStopwatch != null) {
@@ -1420,136 +1408,23 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                                                 : const Icon(Icons.image),
                                             title: Text(product.name ?? 'No Name'),
                                             subtitle: Text('${TextConstants.currencySymbol}${double.tryParse(product.price.toString())?.toStringAsFixed(2) ?? "0.00"}'),
-                                            onTap: () async {
-                                              if (isAddingItemLoading) return;
-                                              setStateDialog(() => isAddingItemLoading = true);
-
-                                              try {
-                                                // 🔹 Build selected product map
+                                            onTap: () {
+                                              setStateDialog(() {
+                                                var tag = product.tags?.firstWhere((element) => element.name == TextConstants.age_restricted, orElse: () => SKU.Tags());
+                                                if (kDebugMode) {
+                                                  print("FaskKey setStateDialog hasAgeRestriction tag = ${tag?.id}, ${tag?.name}, ${tag?.slug}");
+                                                  print("FaskKey setStateDialog ${product.name ?? 'Unknown'}");
+                                                }
                                                 selectedProduct = {
                                                   'title': product.name ?? 'Unknown',
                                                   'image': product.images?.isNotEmpty == true ? product.images!.first : '',
-                                                  'price': product.regularPrice ?? product.price ?? '0.00',
+                                                  'price': product.regularPrice ?? '0.00',
                                                   'id': product.id,
                                                   'sku': product.sku ?? 'N/A',
-                                                  'minAge': int.tryParse(
-                                                      product.tags?.firstWhere(
-                                                            (e) => e.name == TextConstants.age_restricted,
-                                                        orElse: () => SKU.Tags(),
-                                                      ).slug ??
-                                                          '0') ??
-                                                      0,
-                                                  'variations': product.variations ?? [],
-                                                  'type': (product.variations != null && product.variations!.isNotEmpty)
-                                                      ? "variable"
-                                                      : "simple",
+                                                  'minAge': int.parse(tag?.slug ?? "0"),
                                                 };
-
-                                                final minAge = selectedProduct!['minAge'] ?? 0;
-                                                final hasAgeRestriction = minAge > 0;
-
-                                                // 🔞 Age verification
-                                                if (hasAgeRestriction) {
-                                                  final verified = await AgeVerificationProvider().verifyAge(
-                                                    context,
-                                                    minAge: minAge,
-                                                  );
-                                                  if (!verified) return;
-                                                }
-
-                                                // 🧩 Variant Handling
-                                                List<Map<String, dynamic>> offlineVariations = [];
-                                                final productBox = Hive.box('productCache');
-
-                                                // Load cached variants
-                                                if (selectedProduct!['variations'] != null &&
-                                                    (selectedProduct!['variations'] as List).isNotEmpty) {
-                                                  for (var id in selectedProduct!['variations']) {
-                                                    var variantData = productBox.get("product_$id");
-
-                                                    // Online fallback
-                                                    if (variantData == null) {
-                                                      try {
-                                                        variantData = await ProductRepository().fetchProductVariations(id);
-                                                        productBox.put("product_$id", jsonEncode(variantData));
-                                                      } catch (e) {
-                                                        print("⚠ Could not fetch variant $id online: $e");
-                                                        continue;
-                                                      }
-                                                    }
-
-                                                    if (variantData is String) {
-                                                      variantData = jsonDecode(variantData);
-                                                    }
-
-                                                    String name = "";
-                                                    if (variantData?["name"] != null && variantData["name"].toString().isNotEmpty) {
-                                                      name = variantData["name"];
-                                                    } else if (variantData?["attributes"] != null &&
-                                                        variantData["attributes"] is List &&
-                                                        (variantData["attributes"] as List).isNotEmpty) {
-                                                      name = (variantData["attributes"] as List)
-                                                          .map((a) => a["option"] ?? "")
-                                                          .where((o) => o.toString().isNotEmpty)
-                                                          .join(", ");
-                                                    } else {
-                                                      name = "Variant $id";
-                                                    }
-
-                                                    final price = (variantData?["price"] ??
-                                                        variantData?["regular_price"] ??
-                                                        variantData?["sale_price"] ??
-                                                        selectedProduct!['price'])
-                                                        .toString();
-
-                                                    final image = (variantData?["image"] is Map)
-                                                        ? variantData["image"]["src"] ?? selectedProduct!['image']
-                                                        : (variantData?["image"] ?? selectedProduct!['image']);
-
-                                                    offlineVariations.add({
-                                                      "id": id,
-                                                      "name": name,
-                                                      "price": price,
-                                                      "sku": variantData?["sku"] ?? "",
-                                                      "image": image,
-                                                    });
-                                                  }
-                                                }
-
-                                                // Show VariantsDialog if product is variable
-                                                if (selectedProduct!['type'] == 'variable' && offlineVariations.isNotEmpty) {
-                                                  await showDialog(
-                                                    context: context,
-                                                    builder: (ctx) => VariantsDialog(
-                                                      title: selectedProduct!['title'],
-                                                      variations: offlineVariations,
-                                                      onAddVariant: (variant, qty) async {
-                                                        await _addFastKeyTabItem(
-                                                          "${selectedProduct!['title']} - ${variant['name']}",
-                                                          variant['image'] ?? selectedProduct!['image'],
-                                                          variant['price'] ?? selectedProduct!['price'],
-                                                        );
-                                                      },
-                                                    ),
-                                                  );
-                                                } else {
-                                                  // Simple product
-                                                  await _addFastKeyTabItem(
-                                                    selectedProduct!['title'],
-                                                    selectedProduct!['image'],
-                                                    selectedProduct!['price'],
-                                                  );
-                                                }
-
-                                                print("✅ Item added successfully");
-                                              } catch (e, s) {
-                                                print("❌ Error during onTap: $e");
-                                                print(s);
-                                              } finally {
-                                                setStateDialog(() => isAddingItemLoading = false);
-                                              }
+                                              });
                                             },
-
                                             selected: selectedProduct != null && selectedProduct!['id'] == product.id,
                                             selectedTileColor: Colors.grey[300],
                                           );
@@ -2605,13 +2480,8 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                             reorderedIndices: reorderedIndices,
                             onAddButtonPressed: () => _showAddItemDialog(),
                             onItemTapped: (index, {bool? variantAdded}) {
-                              _onItemSelected(
-                                index,
-                                showAddButton: showAddButton,
-                                variantAdded: variantAdded ?? false,
-                              );
+                              _onItemSelected(index, showAddButton, variantAdded ?? false);
                             },
-
                             onReorder: (oldIndex, newIndex) {
                               if (oldIndex == 0 || newIndex == 0) return;
                               final adjustedOldIndex = oldIndex - 1;
@@ -2631,9 +2501,13 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                               fastKeyDBHelper.updateFastKeyItemOrder(_fastKeyTabId!, fastKeyProductItems);
                             },
                             onDeleteItem: (index) {
-                              _showDeleteConfirmationDialog(itemIndex: index);
+                              // final itemId = fastKeyProductItems[index][AppDBConst.fastKeyProductId]; //Build #1.0.89
+                              // if (kDebugMode) {
+                              //   print('FastkeyScreen - Delete Fastkey item at index: $index, itemId: $itemId');
+                              // }
+                              // _deleteFastKeyTabItem(int.parse(itemId));
+                              _showDeleteConfirmationDialog(itemIndex: index); // Build #1.0.104: updated delete dialog
                             },
-
                             // onCancelReorder: () {
                             //   setState(() {
                             //     reorderedIndices = List.filled(fastKeyProductItems.length, null);

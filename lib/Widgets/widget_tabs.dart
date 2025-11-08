@@ -1972,320 +1972,161 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   void _handleAddCustomItem() async {
     if (kDebugMode) print("#### DEBUG 55@99 _handleAddCustomItem");
 
-    // Validation
     if (_customItemName.isEmpty) {
-      if (kDebugMode) print("Custom item name is empty");
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(
           content: Text(TextConstants.itemNameRequired),
-          // Build #1.0.181: Added through TextConstants
           backgroundColor: Colors.red,
           duration: Duration(seconds: 2),
         ),
       );
       return;
     }
-    if (_customItemPrice.isEmpty || double.tryParse(_customItemPrice) == null ||
+
+    if (_customItemPrice.isEmpty ||
+        double.tryParse(_customItemPrice) == null ||
         double.parse(_customItemPrice) == 0) {
-      if (kDebugMode) print("Invalid custom item price: $_customItemPrice");
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(
           content: Text(TextConstants.invalidPriceError),
-          // Build #1.0.181: Added through TextConstants
           backgroundColor: Colors.red,
           duration: Duration(seconds: 2),
         ),
       );
       return;
     }
-
-    /// COMMENT BELOW CODE -> If User want to create custom item without tax selection
-    if (_selectedTaxSlab.isEmpty) {
-      if (kDebugMode) print("No tax slab selected");
-      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        const SnackBar(
-          content: Text(TextConstants.taxSlabRequired),
-          // Build #1.0.181: Added through TextConstants
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-    if (_sku.isEmpty) {
-      if (kDebugMode) print("SKU is empty");
-      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        const SnackBar(
-          content: Text(TextConstants.skuRequired),
-          // Build #1.0.181: Added through TextConstants
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    /// Build #1.0.128: No need to check this condition here
-    // if (orderId == null) {
-    //   if (kDebugMode) print("No active order selected");
-    //   ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-    //     const SnackBar(
-    //       content: Text("No active order selected"),
-    //       backgroundColor: Colors.red,
-    //       duration: Duration(seconds: 2),
-    //     ),
-    //   );
-    //   return;
-    // }
 
     setState(() => _isCustomItemLoading = true);
 
     try {
-      // final db = await DBHelper.instance.database;
-      // final orderData = await db.query(
-      //   AppDBConst.orderTable,
-      //   where: '${AppDBConst.orderServerId} = ?',
-      //   whereArgs: [orderId],
-      // );
+      final orderHelper = OrderHelper();
+      final serverOrderId =
+          orderHelper.activeOrderId ?? DateTime.now().millisecondsSinceEpoch;
+      orderHelper.activeOrderId ??= serverOrderId;
 
-      // if (orderData.isEmpty) {
-      //   if (kDebugMode) print("Order $orderId not found in database");
-      //   setState(() => _isCustomItemLoading = false);
-      //   ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-      //     const SnackBar(
-      //       content: Text(TextConstants.orderNotFoundError),
-      //       backgroundColor: Colors.red,
-      //       duration: Duration(seconds: 2),
-      //     ),
-      //   );
-      //   return;
-      // }
+      final box = Hive.box('offlineOrders');
 
-      //  final serverOrderId = orderData.first[AppDBConst.orderServerId] as int?;
-      final serverOrderId = OrderHelper().activeOrderId;
-      //Build #1.0.78: Check for existing item with same SKU
-      // final existingItems = await db.query(
-      //   AppDBConst.purchasedItemsTable,
-      //   where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemSKU} = ?',
-      //   whereArgs: [orderId, _sku],
-      // );
-      //
-      // ///Todo: do we neeed this condition to check?
-      /// Build #1.0.128: We don't need this, why because - after api call we are clearing sku value, user cant add custom item with same sku
-      // if (existingItems.isNotEmpty) {
-      //   if (kDebugMode) print("Item with SKU $_sku already exists in order $orderId");
-      //   setState(() => _isCustomItemLoading = false);
-      //   ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-      //     const SnackBar(
-      //       content: Text("Item with this SKU already added to the order"),
-      //       backgroundColor: Colors.orange,
-      //       duration: Duration(seconds: 2),
-      //     ),
-      //   );
-      //   return;
-      // }
+      if (!box.containsKey(serverOrderId.toString())) {
+        await box.put(serverOrderId.toString(), {
+          'order_id': serverOrderId,
+          'products': [],
+          'orderAgeRestricted': false,
+        });
+      }
 
-      // if (serverOrderId == null) {  /// Build #1.0.128: No need to check this condition here
-      //   /// For non-API orders, insert locally
-      //   // await db.insert(AppDBConst.purchasedItemsTable, {
-      //   //   AppDBConst.orderIdForeignKey: orderId!,
-      //   //   AppDBConst.itemName: _customItemName,
-      //   //   AppDBConst.itemSKU: _sku,
-      //   //   AppDBConst.itemPrice: double.parse(_customItemPrice),
-      //   //   AppDBConst.itemCount: 1,
-      //   //   AppDBConst.itemSumPrice: double.parse(_customItemPrice),
-      //   //   AppDBConst.itemImage: 'assets/svg/custom_item.svg',
-      //   //   AppDBConst.itemType: ItemType.customProduct.value,
-      //   // });
-      //   // final items = await _orderHelper.getOrderItems(orderId!);
-      //   // final orderTotal = items.fold(0.0, (sum, item) => sum + (item[AppDBConst.itemSumPrice] as num).toDouble());
-      //   // await db.update(
-      //   //   AppDBConst.orderTable,
-      //   //   {AppDBConst.orderTotal: orderTotal},
-      //   //   where: '${AppDBConst.orderServerId} = ?',
-      //   //   whereArgs: [orderId],
-      //   // );
-      //   // setState(() {
-      //   //   _customItemName = "";
-      //   //   _customItemPrice = "";
-      //   //   _sku = "";
-      //   //   _selectedTaxSlab = _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
-      //   //   _customItemNameController.clear();
-      //   //   _customItemPriceController.clear();
-      //   //   _skuController.clear();
-      //   //   _isCustomItemLoading = false;
-      //   // });
-      //   // ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-      //   //   SnackBar(
-      //   //     content: Text("Custom item '$_customItemName' added at \$$_customItemPrice"),
-      //   //     backgroundColor: Colors.green,
-      //   //     duration: const Duration(seconds: 2),
-      //   //   ),
-      //   // );
-      //   // await _orderHelper.loadData();
-      //   // await _loadOrderData();
-      //   // widget.refreshOrderList?.call();
-      //   ///Show error instead adding to local DB and return
-      //   ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-      //     SnackBar(
-      //       content: Text("Custom item '$_customItemName' did not add to Order, as of Order id is not found."),
-      //       backgroundColor: Colors.orange,
-      //       duration: const Duration(seconds: 2),
-      //     ),
-      //   );
-      //   return;
-      // }
-
-      // API-first approach
-      List<Tax> taxes = await _assetDBHelper.getTaxList();
+      final List<Tax> taxes = await _assetDBHelper.getTaxList();
       String taxStatus = "";
       String taxClass = "";
       if (_selectedTaxSlab.isNotEmpty) {
-        Tax? selectedTax = taxes.firstWhere(
+        final selectedTax = taxes.firstWhere(
               (tax) => tax.name == _selectedTaxSlab,
-          orElse: () =>
-          taxes.isNotEmpty ? taxes.first : Tax(
-              slug: 'none', name: _selectedTaxSlab), //Build #1.0.92
+          orElse: () => taxes.isNotEmpty
+              ? taxes.first
+              : Tax(slug: 'none', name: _selectedTaxSlab),
         );
-        if (kDebugMode) print(
-            "selectedTax name: ${selectedTax.name}, ## slug: ${selectedTax
-                .slug}");
         if (selectedTax.slug.isNotEmpty) {
           taxStatus = TextConstants.taxable;
           taxClass = selectedTax.slug;
         }
       }
 
-      model.AddCustomItemRequest request = model.AddCustomItemRequest(
-        name: _customItemName,
-        type: TextConstants.simple,
-        regularPrice: _customItemPrice,
-        sku: _sku,
-        taxStatus: taxStatus,
-        taxClass: taxClass,
-        tags: [model.Tag(name: TextConstants.customItem)],
+      final customItem = {
+        'id': DateTime.now().millisecondsSinceEpoch,
+        'name': _customItemName,
+        'price': double.parse(_customItemPrice),
+        'sku': _sku.trim(),
+        'taxStatus': taxStatus,
+        'taxClass': taxClass,
+        'tags': [TextConstants.customItem],
+        'quantity': 1,
+      };
+
+      // ✅ 1️⃣ Fetch existing order data
+      final orderData = Map<String, dynamic>.from(
+          box.get(serverOrderId.toString()) ?? {});
+
+      final List<Map<String, dynamic>> products =
+      List<Map<String, dynamic>>.from(orderData['products'] ?? []);
+
+      // ✅ 2️⃣ Check if the item with same SKU already exists
+      final existingIndex = products.indexWhere((p) =>
+      (p['sku']?.toString().trim().toLowerCase() ?? '') ==
+          _sku.trim().toLowerCase());
+
+      if (existingIndex != -1) {
+        final existingItem = products[existingIndex];
+        final currentQty = (existingItem['quantity'] ?? 1);
+        existingItem['quantity'] = currentQty + 1;
+        products[existingIndex] = existingItem;
+
+        if (kDebugMode) print("🔁 Increased quantity for SKU: $_sku");
+      } else {
+        products.add(customItem);
+        if (kDebugMode) print("🆕 Added new custom item SKU: $_sku");
+      }
+
+      // ✅ 3️⃣ Save updated order back to Hive
+      await box.put(serverOrderId.toString(), {
+        ...orderData,
+        'products': products,
+      });
+
+      // ✅ 4️⃣ Save permanently in productCache for offline lookup
+      final productBox = Hive.box('productCache');
+      final cacheKey = "sku_${_sku.trim().toLowerCase()}";
+
+      final customProductJson = {
+        "id": customItem['id'],
+        "name": customItem['name'],
+        "type": "custom",
+        "price": customItem['price'].toString(),
+        "sku": customItem['sku'],
+        "taxStatus": customItem['taxStatus'],
+        "taxClass": customItem['taxClass'],
+        "images": [],
+        "variations": [],
+      };
+
+      // 🟢 FIX: Normalize all keys as String and save as JSON-safe structure
+      await productBox.put(
+        cacheKey,
+        Map<String, dynamic>.from({
+          "products": [Map<String, dynamic>.from(customProductJson)],
+        }),
       );
 
-      final completer = Completer<void>();
-      StreamSubscription? createSubscription;
-      StreamSubscription? updateSubscription;
+      if (kDebugMode) {
+        print("💾 Custom item saved in productCache with key: $cacheKey");
+      }
 
-      createSubscription =
-          productBloc.addCustomItemStream.listen((response) async {
-            if (!mounted) {
-              createSubscription?.cancel();
-              completer.complete();
-              return;
-            }
-            if (response.status == Status.COMPLETED) {
-              if (kDebugMode) print(
-                  "Custom item created successfully: ${response.data?.id}");
+      // ✅ 5️⃣ Reset UI
+      setState(() {
+        _isCustomItemLoading = false;
+        _customItemName = "";
+        _customItemPrice = "";
+        _sku = "";
+        _selectedTaxSlab =
+        _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
+        _customItemNameController.clear();
+        _customItemPriceController.clear();
+        _skuController.clear();
+      });
 
-              updateSubscription =
-                  orderBloc.updateOrderStream.listen((updateResponse) async {
-                    if (!mounted) {
-                      updateSubscription?.cancel();
-                      createSubscription?.cancel();
-                      completer.complete();
-                      return;
-                    }
+      await _orderHelper.loadData();
+      await _loadOrderData();
+      widget.refreshOrderList?.call();
 
-                    if (response.status == Status.LOADING) { // Build #1.0.80
-                      const Center(child: CircularProgressIndicator());
-                    } else if (updateResponse.status == Status.COMPLETED) {
-                      setState(() => _isCustomItemLoading = false);
-                      if (kDebugMode) print(
-                          "Order updated successfully for order $orderId");
-                      // Build #1.0.248: Fixed [SCRUM-400] -> Inappropriate Toast Message Displaying After Custom Item & Coupon Addition
-                      if (Misc.showDebugSnackBar) { // Build #1.0.254
-                        ScaffoldMessenger
-                            .of(widget.scaffoldMessengerContext)
-                            .showSnackBar(
-                          SnackBar(
-                            content: Text(
-                                "Custom item '$_customItemName' added at ${TextConstants
-                                    .currencySymbol}$_customItemPrice"),
-                            backgroundColor: Colors.green,
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                      setState(() {
-                        _customItemName = "";
-                        _customItemPrice = "";
-                        _sku = "";
-                        _selectedTaxSlab =
-                        _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
-                        _customItemNameController.clear();
-                        _customItemPriceController.clear();
-                        _skuController.clear();
-                      });
-                      await _orderHelper.loadData();
-                      await _loadOrderData();
-                      widget.refreshOrderList?.call();
-                      updateSubscription?.cancel();
-                      createSubscription?.cancel();
-                      completer.complete();
-                    } else if (updateResponse.status == Status.ERROR) {
-                      setState(() =>
-                      _isCustomItemLoading =
-                      false); //Build #1.0.249 : FIXED continues loader on custom item ADD button.
-                      if (kDebugMode) print(
-                          "Failed to update order: ${updateResponse.message}");
-                      ScaffoldMessenger
-                          .of(widget.scaffoldMessengerContext)
-                          .showSnackBar(
-                        SnackBar(
-                          content: Text(
-                              response.message ?? "Failed to update order"),
-                          //Build #1.0.92
-                          backgroundColor: Colors.red,
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-
-                      updateSubscription?.cancel();
-                      createSubscription?.cancel();
-                      completer.complete();
-                    }
-                  });
-
-              await orderBloc.updateOrderProducts(
-                orderId: serverOrderId,
-                dbOrderId: orderId, // Build #1.0.128
-                lineItems: [
-                  OrderLineItem(
-                    productId: response.data!.id,
-                    quantity: 1,
-                    // sku: _sku,
-                  ),
-                ],
-              );
-            } else if (response.status == Status.ERROR) {
-              if (kDebugMode) print(
-                  "Failed to create custom item: ${response.message}");
-              setState(() => _isCustomItemLoading = false);
-              ScaffoldMessenger
-                  .of(widget.scaffoldMessengerContext)
-                  .showSnackBar(
-                SnackBar(
-                  content: Text(
-                      response.message ?? "Failed to add custom item"),
-                  //Build #1.0.92
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-
-              createSubscription?.cancel();
-              completer.complete();
-            }
-          });
-
-      await productBloc.addCustomItem(request);
-      await completer.future;
+      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+        SnackBar(
+          content: Text(
+            "✅ Custom item '${customItem['name']}' updated/added successfully",
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     } catch (e) {
-      if (kDebugMode) print("Exception in _handleAddCustomItem: $e");
+      if (kDebugMode) print("❌ Exception in _handleAddCustomItem: $e");
       setState(() => _isCustomItemLoading = false);
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         SnackBar(

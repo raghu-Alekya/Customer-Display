@@ -844,6 +844,33 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
     return null;
   }
+
+  Future<void> _openCustomItemDialog(BuildContext context, String barcode) async {
+    if (_isCustomItemLoading) return;
+    _isCustomItemLoading = true;
+
+    await CustomDialog.showCustomItemNotAdded(
+      context,
+      onRetry: () {
+        Navigator.of(context).pop();
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AddScreen(
+              barcode: barcode,
+              selectedTabIndex: 2, // Custom Item tab
+            ),
+          ),
+              (route) => false,
+        );
+      },
+    ).then((_) {
+      _isCustomItemLoading = false;
+      if (kDebugMode) {
+        print("🧩 Custom Item dialog closed for SKU: $barcode");
+      }
+    });
+  }
 //Build #1.0.268: 1. add below function in  BarcodeKeyboardListenerState lib
   // void callback(String barcode){
   //   _onBarcodeScannedCallback.call(barcode);
@@ -870,325 +897,167 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         useKeyDownEvent: Platform.isWindows,
         caseSensitive: true,
         onBarcodeScanned: (barcode) async {
-          ///Added logs to show while executing scanning operation
-          try{
-            //barcode = barcode.trim().replaceAll(' ', '');
-            if (kDebugMode) {
-              print("##### DEBUG: onBarcodeScanned - Scanned barcode: -$barcode, isOrderInForeground = $isOrderInForeground, _isLoading: $_isLoading, _isCustomItemLoading: $_isCustomItemLoading");
+          try {
+            final trimmedBarcode = barcode.trim();
+            if (kDebugMode) print("🔹 Scanned → $trimmedBarcode");
+
+            // Safety checks
+            if (!isOrderInForeground || trimmedBarcode.isEmpty || _isLoading || _isCustomItemLoading) return;
+
+            _isLoading = true;
+            setState(() {});
+
+            final productBox = Hive.box('productCache');
+            final cacheKey = "sku_${trimmedBarcode.toLowerCase()}";
+            SKU.ProductBySkuResponse? product;
+            bool foundOffline = false;
+            final cached = productBox.get(cacheKey);
+            if (cached != null) {
+              try {
+                List<dynamic> productData = [];
+                if (cached is Map && cached["products"] is List) {
+                  productData = cached["products"];
+                } else if (cached is List) {
+                  productData = cached;
+                }
+
+                final products = productData
+                    .map((json) => SKU.ProductBySkuResponse.fromJson(Map<String, dynamic>.from(json)))
+                    .toList();
+
+                if (products.isNotEmpty) {
+                  product = products.first;
+                  foundOffline = true;
+                  if (kDebugMode) print("💾 Found offline product: ${product.name}");
+                }
+              } catch (e) {
+                if (kDebugMode) print("⚠ Failed to parse Hive cache: $e");
+              }
             }
-            showLogs = true;
-            logString += "##### DEBUG: onBarcodeScanned - Scanned barcode: -$barcode, isOrderInForeground = $isOrderInForeground, _isLoading: $_isLoading, _isCustomItemLoading: $_isCustomItemLoading \n ";
-            if(!isOrderInForeground){ // to restrict order panel in background to scanner events
+
+            // ✅ 2️⃣ If not found in Hive, try online (only if internet available)
+            if (product == null) {
+              try {
+                final products = await ProductRepository().fetchProductBySku(trimmedBarcode);
+                if (products.isNotEmpty) {
+                  product = products.first;
+                  // Cache it for offline next time
+                  productBox.put(cacheKey, {
+                    "products": products.map((p) => p.toJson()).toList(),
+                    "timestamp": DateTime.now().toIso8601String(),
+                  });
+                  if (kDebugMode) print("🌐 Product fetched online & cached: ${product.name}");
+                }
+              } catch (e) {
+                if (kDebugMode) print("📴 Offline mode active: cannot fetch from API.");
+              }
+            }
+
+            // ✅ 3️⃣ If still not found (offline & no cache) → Custom item dialog
+            if (product == null) {
+              _isLoading = false;
+              setState(() {});
+              await _openCustomItemDialog(context, trimmedBarcode);
               return;
             }
-            if (_isLoading) return; // Build #1.0.256: Prevent multiple simultaneous scans
-            if (_isCustomItemLoading) return;
-            if(_productBySkuSubscription != null) {
-              // _productBySkuSubscription?.cancel();
-              logString += "##### DEBUG: onBarcodeScanned - Cancelled _productBySkuSubscription \n ";
-            }
-            if (barcode.isNotEmpty) {
-              var dobScanned = "";
-              /// Testing code: not working, Scanner will generate multiple tap events and call when scanned driving licence with PDF417 format irrespective of this code here
-              // if (barcode.startsWith('@') || barcode.contains('\n') || barcode.startsWith('ansi') || barcode.startsWith('2') || barcode.startsWith('DBB')) {
-              //   // if (barcode.startsWith('@') || barcode.contains('\n')) {
-              //   // PDF417 often includes structured data with newlines or starts with '@' (AAMVA standard)
-              //   if (kDebugMode) {
-              //     print('PDF417 Detected: $barcode');
-              //   }
-              //   var date = parseDOBFromBarcode(barcode);
-              //   dobScanned = "${date?.month}/${date?.day}/${date?.year}";
-              //   if (kDebugMode) {
-              //     print("##### DEBUG: onBarcodeScanned - Scanned barcode: $barcode, $dobScanned");
-              //   }
-              //   return;
-              // } else {
-              //   if (kDebugMode) {
-              //     print('Non-PDF417 Barcode: $barcode');
-              //   }
-              // }
-              if (kDebugMode) {
-                print("##### DEBUG: onBarcodeScanned - Scanned barcode: $barcode, $dobScanned");
+
+            // ✅ 4️⃣ Prepare product data safely
+            final productName = product.name ?? "Unnamed Product";
+            final productSku = product.sku ?? trimmedBarcode;
+            final productPrice = double.tryParse(product.price?.toString() ?? "0.0") ?? 0.0;
+            String productImage = '';
+            try {
+              if (product.images.isNotEmpty) {
+                productImage = product.images.first.src;
               }
-              logString += "##### DEBUG: onBarcodeScanned - Scanned barcode: $barcode \n ";
-              // Create new order if none exists
-              if (tabs.isEmpty) {
-                // addNewTab(); // Build #1.0.256: No need to create order here - updateOrderProducts will handle it if orderId is null time.
-                if (kDebugMode) {
-                  print("##### DEBUG: onBarcodeScanned - No tabs are available");
-                }
-                logString += "##### DEBUG: onBarcodeScanned - No tabs are available \n ";
-              }
-              _isLoading = true;// Show loader
-              setState(() {});
-              _productBySkuSubscription?.cancel();
-              _productBySkuSubscription = productBloc.productBySkuStream.listen((response) async {
-                logString += "##### DEBUG: onBarcodeScanned - response.status : ${response.status} \n ";
-                if(response.status == Status.LOADING){
-                  logString += "##### DEBUG: onBarcodeScanned - fetchProductBySku LOADING started";
-                } else if (response.status == Status.COMPLETED && response.data!.isNotEmpty) {
-                  _isLoading = false;
-                  _productBySkuSubscription?.cancel();
-                  _productBySkuSubscription = null; // Fixed Scanner issue creating two order in order panel
-                  setState(() {}); //Build #1.0.92
-                  final product = response.data!.first;
-                  if (kDebugMode) {
-                    print("##### DEBUG: onBarcodeScanned - Product found: ${product.name}, variations: ${product.variations.length}");
-                  }
-                  logString += "##### DEBUG: onBarcodeScanned - Product found: ${product.name}, variations: ${product.variations.length} \n ";
-                  // Build #1.0.80: MISSED CODE ADDED
-                  /// use product id:22, sku:woo-fashion-socks
-                  // var isVerified = await _ageRestrictedProduct(product);
-                  // Use the new provider to check for age restriction
-                  if(!mounted) {
-                    return;
-                  }
-                  //Build #1.0.234: Checking stored age restriction before verifying -> Age
-                  final order = orderHelper.orders.firstWhere(
-                        (order) => order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-                    orElse: () => {},
-                  );
-                  final String ageRestrictedValue = order[AppDBConst.orderAgeRestricted]?.toString() ?? 'false';
-                  final bool isAgeRestricted = ageRestrictedValue.toLowerCase() == 'true' || ageRestrictedValue == "1";
+            } catch (_) {}
 
-                  if (!isAgeRestricted) {
-                    ///Age Verification code
-                    final ageVerificationProvider = AgeVerificationProvider();
-                    var isVerified = await ageVerificationProvider.ageRestrictedProduct(context, product);
-
-                    /// Verify Age and proceed else return
-                    if(!isVerified){
-                      return;
-                    }
-                  }
-                  ///Todo: Need to call variation service before adding product to the order
-                  if (product.variations.isNotEmpty) {
-                    ///1. Call _productBloc.fetchProductVariations(product.id!);
-                    ///2. load Variation popup
-                    ///3. On add button from variation popup -> add to order list
-                    VariationPopup(product.id, product.name, orderHelper, onProductSelected: ({required bool isVariant}) async {
-                      if (kDebugMode) {
-                        print("VariationPopup returned with isVariant $isVariant");
-                      }
-                      logString += " VariationPopup returned with isVariant $isVariant \n ";
-                      Navigator.pop(context);
-                      // fetchOrderItems(); //onItemTapped(index, variantAdded: isVariant); //Build #1.0.78: Pass isVariant to onItemTapped
-                      final serverOrderId = orderHelper.activeOrderId;
-                      if (serverOrderId != null) {
-                        await fetchOrderItems();
-                      } else {
-                        await _getOrderTabs(); //Build #1.0.258: fix loading order tab when product is getting scanned with no order available
-                      }
-                    },
-                    ).showVariantDialog(context: context);
-
-                    // Show variants dialog for products with variations
-                    if (kDebugMode) {
-                      print("##### DEBUG: onBarcodeScanned - Showing variants dialog");
-                    }
-                    logString += " ##### DEBUG: onBarcodeScanned - Showing variants dialog \n ";
-                  } else {
-
-                    ///Comment below code not we are using only server order id as to check orders, skip checking db order id
-                    // final order = orderHelper.orders.firstWhere(
-                    //       (order) => order[AppDBConst.orderId] == orderHelper.activeOrderId,
-                    //   orElse: () => {},
-                    // );
-                    final serverOrderId = orderHelper.activeOrderId;//order[AppDBConst.orderServerId] as int?;
-                    final dbOrderId = orderHelper.activeOrderId;
-                    if (product.id != null) { // Build #1.0.128
-                      setState(() => _isLoading = true);
-                      _updateOrderSubscription?.cancel();
-                      _updateOrderSubscription = orderBloc.updateOrderStream.listen((response) async {
-                        if (response.status == Status.LOADING) { // Build #1.0.80
-                          const Center(child: CircularProgressIndicator()); // Added Loader
-                        }else if (response.status == Status.COMPLETED) {
-                          if (kDebugMode) {
-                            print("##### DEBUG: onBarcodeScanned - Product added successfully");
-                          }
-                          logString += "##### DEBUG: onBarcodeScanned - Product added successfully \n ";
-                          if (serverOrderId != null) {
-                            await fetchOrderItems();
-                          } else {
-                            await _getOrderTabs(); //Build #1.0.258: fix loading order tab when product is getting scanned with no order available
-                          }
-                          setState(() {
-                            _isLoading = false;
-                            // barcode = "";
-                          });
-                          if (Misc.showDebugSnackBar) { // Build #1.0.254
-                            _scaffoldMessenger.showSnackBar(
-                              SnackBar(
-                                content: Text("Product added successfully"),
-                                backgroundColor: Colors.green,
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                        } else if (response.status == Status.ERROR) {
-                          setState(() {
-                            _isLoading = false;
-                            // barcode = "";
-                          }); //Build #1.0.99 : Hide loader
-                          if (response.message!.contains('Unauthorised')) {
-                            if (kDebugMode) {
-                              print("categories 4 ---- Unauthorised : ${response.message!}");
-                            }
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (mounted) {
-                                Navigator.pushReplacement(context,
-                                    MaterialPageRoute(builder: (context) => LoginScreen()));
-
-                                if (kDebugMode) {
-                                  print("message 4 --- ${response.message}");
-                                }
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                        "Unauthorised. Session is expired on this device."),
-                                    backgroundColor: Colors.red,
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
-                              }
-                            });
-                          }
-                          else {
-
-                            if (kDebugMode) {
-                              print("##### ERROR: onBarcodeScanned - Failed to add product: ${response.message}");
-                            }
-                            logString += "##### ERROR: onBarcodeScanned - Failed to add product: ${response.message} \n ";
-                            _scaffoldMessenger.showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                    response.message ?? "Failed to add product"),
-                                backgroundColor: Colors.red,
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                        }
-                      });
-                      logString += await orderBloc.updateOrderProducts(
-                        orderId: serverOrderId,
-                        dbOrderId: dbOrderId,
-                        lineItems: [
-                          OrderLineItem(
-                            productId: product.id,
-                            quantity: 1,
-                            // sku: product.sku ?? '',
-                          ),
-                        ],
-                      );
-                      setState(() {});
-                    } else {
-                      // Add product directly to order
-                      if (kDebugMode) {
-                        print("##### DEBUG: onBarcodeScanned - Not Adding product to DB directly: ${product.name}");
-                      }
-                      logString += "##### DEBUG: onBarcodeScanned - Not Adding product to DB directly: ${product.name} \n ";
-                      // await orderHelper.addItemToOrder(
-                      //   product.id,
-                      //   product.name,
-                      //   product.images.isNotEmpty ? product.images.first.src : '',
-                      //   double.parse(product.price.isNotEmpty ? product.price : '0.0'),
-                      //   1,
-                      //   product.sku ?? barcode,
-                      //   type: ItemType.product.value,
-                      //   onItemAdded: (){
-                      //     if (kDebugMode) {
-                      //       print("Item Added stop loading ");
-                      //       _isLoading = false;
-                      //       setState(() {
-                      //
-                      //       });
-                      //     }
-                      //   }
-                      // );
-                      await fetchOrderItems();
-                      _scaffoldMessenger.showSnackBar(
-                        SnackBar(
-                          content: Text("Product did not added to order. OrderId not found."),
-                          backgroundColor: Colors.green,
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                      setState(() {
-                        _isLoading = false;
-                        // barcode = "";
-                      });
-                    }
-                  }
-                } else {
-                  // Show error if product not found
-                  if (kDebugMode) {
-                    print("##### DEBUG: onBarcodeScanned - Product not found for SKU: $barcode, _isCustomItemLoading: $_isCustomItemLoading");
-                  }
-                  logString += "##### DEBUG: onBarcodeScanned - Product not found for SKU: $barcode, _isCustomItemLoading: $_isCustomItemLoading \n ";
-                  _isLoading = false;
-                  _productBySkuSubscription?.cancel();
-                  _productBySkuSubscription = null; // Fixed Scanner issue creating two order in order panel
-                  setState(() {
-                    // barcode = "";
-                  });
-                  if (!mounted) return;
-                  if (!_isCustomItemLoading) {
-                    _isCustomItemLoading = true; // added to avoid showing dialog twice as per scan
-
-                    await CustomDialog.showCustomItemNotAdded(
-                        context, onRetry: () {
-                      // Navigate to AddScreen when "Let's Try Again" is pressed
-                      Navigator.of(context).pop();
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              AddScreen(
-                                barcode: barcode,
-                                selectedTabIndex: 2, // Custom items tab
-                              ),
-                        ),(route) => false,
-                      );
-                    }).then((_) { //Build #1.0.54: added
-                      if (kDebugMode) {
-                        print(
-                            "OrderPanel CustomDialog.showCustomItemNotAdded is dismissed and _isCustomItemLoading was $_isCustomItemLoading");
-                      }
-                      _isCustomItemLoading = false;
-                    });
-                  }
-                }
-              });
-              _productBySkuSubscription?.onError((handleError){
-                if (kDebugMode) {
-                  print("Error while scanning custom item handleError : $handleError");
-                }
-                logString += "Error while scanning custom item handleError : $handleError \n";
-              });
-              logString += await productBloc.fetchProductBySku(barcode);
-              logString += "##### DEBUG: onBarcodeScanned - fetchProductBySku completed";
-              setState(() {});
-            }
-          } catch(e,s) {
-            if (kDebugMode) {
-              print("Exception in Barcode scanning : $e,\n Stack: $s");
-            }
-            logString += "Exception in Barcode scanning : $e,\n *** Stack: $s ***\n ";
-            //1. Stop loading
-            setState(() {
+            // ✅ 5️⃣ Ensure an active order exists
+            final activeOrderId = orderHelper.activeOrderId;
+            if (activeOrderId == null) {
               _isLoading = false;
-            });
+              setState(() {});
+              _scaffoldMessenger.showSnackBar(
+                const SnackBar(
+                  content: Text("⚠ No active order found. Please create an order first."),
+                  backgroundColor: Colors.orange,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+              return;
+            }
 
-            //2. Show toast with error message
-            _scaffoldMessenger.showSnackBar(
-              SnackBar(
-                content: Text("Failed to add product, Exception: $e, Stack: $s"), ///remove this exception from toast message
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 2),
-              ),
+            // ✅ 6️⃣ Handle variations offline/online
+            if (product.variations.isNotEmpty) {
+              final productId = product.id ?? -1;
+              if (productId != -1) {
+                productBloc.fetchProductVariations(productId);
+
+                productBloc.variationStream.listen((variationResponse) {
+                  if (variationResponse.status == Status.COMPLETED && variationResponse.data!.isNotEmpty) {
+                    final variations = variationResponse.data!;
+                    VariationPopup(
+                      productId,
+                      productName,
+                      orderHelper,
+                      //variations: variations,
+                      onProductSelected: ({required bool isVariant}) async {
+                        Navigator.pop(context);
+                        await fetchOrderItems();
+                        _scaffoldMessenger.showSnackBar(
+                          SnackBar(
+                            content: Text("✅ Added variant of $productName to order"),
+                            backgroundColor: Colors.green,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    ).showVariantDialog(context: context);
+                  }
+                });
+                return;
+              }
+            }
+
+            // ✅ 7️⃣ Add item directly to order (offline or online)
+            await orderHelper.addItemToOrder(
+              product.id ?? -1,
+              productName,
+              productImage,
+              productPrice,
+              1,
+              productSku,
+              activeOrderId,
+              type: ItemType.product.value,
+              productId: product.id ?? -1,
+              variationId: -1,
+              onItemAdded: () {
+                if (kDebugMode) print("🟢 ${foundOffline ? 'Offline' : 'Online'} product added: $productName");
+                _scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text(foundOffline
+                        ? "✅ Added $productName (Offline)"
+                        : "✅ Added $productName (Online)"),
+                    backgroundColor: Colors.green,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              },
             );
 
+            await fetchOrderItems();
+            _isLoading = false;
+            setState(() {});
+          } catch (e, s) {
+            if (kDebugMode) print("❌ onBarcodeScanned failed: $e\n$s");
+            _isLoading = false;
+            setState(() {});
+            _scaffoldMessenger.showSnackBar(
+              SnackBar(
+                content: Text("❌ Scan failed: ${e.toString()}"),
+                backgroundColor: Colors.red,
+              ),
+            );
           }
         },
         child: Stack(
