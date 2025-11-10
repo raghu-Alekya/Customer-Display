@@ -433,18 +433,18 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
   // Build #1.0.10: Initializes the tab controller and handles tab switching
   Future<void> _initializeTabController() async {
-    if (kDebugMode) {
-      print("##### _initializeTabController");
-    }
-    if (!mounted) return; // Prevent initialization if unmounted
+    if (kDebugMode) print("##### _initializeTabController");
+    if (!mounted) return;
 
-    _tabController?.dispose();
-
+    // ✅ IMPORTANT: handle empty tabs FIRST before disposing / updating anything
     if (tabs.isEmpty) {
-      if (kDebugMode) print("##### No tabs available → showing Welcome screen");
-      await CustomerDisplayService.showWelcome(); // Use await here
+      orderHelper.activeOrderId = null;
+      orderItems = [];
+      await CustomerDisplayService.showWelcome();
       return;
     }
+
+    _tabController?.dispose();
 
     _tabController = TabController(length: tabs.length, vsync: this);
 
@@ -453,20 +453,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         int selectedIndex = _tabController!.index;
         int selectedOrderId = tabs[selectedIndex]["orderId"] as int;
 
-        if (kDebugMode) {
-          print("##### DEBUG: Tab changed to index: $selectedIndex, orderId: $selectedOrderId");
-        }
-
         await orderHelper.setActiveOrder(selectedOrderId);
         await orderHelper.saveLastActiveOrderId(selectedOrderId);
         await fetchOrderItems();
         await CustomerDisplayHelper.updateCustomerDisplay(selectedOrderId);
 
-        if (mounted) setState(() {}); // Refresh UI
+        if (mounted) setState(() {});
       }
     });
 
-    // Set default tab index
+    // ✅ Select default tab safely
     int defaultIndex = 0;
     if (orderHelper.activeOrderId != null) {
       int idx = orderHelper.orderIds.indexOf(orderHelper.activeOrderId!);
@@ -478,7 +474,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
     if (mounted) {
       _tabController!.index = defaultIndex;
-      await CustomerDisplayHelper.updateCustomerDisplay(tabs[defaultIndex]["orderId"] as int);
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        tabs[defaultIndex]["orderId"] as int,
+      );
     }
   }
 
@@ -1471,39 +1469,31 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       ),
     );
   }
-
   Future<void> removeTab(int index) async {
     if (tabs.isEmpty) return;
 
     final int orderId = tabs[index]["orderId"] as int;
     final bool isRemovedTabActive = orderId == orderHelper.activeOrderId;
+
     setState(() => _isLoading = true);
 
     try {
       final offlineBox = Hive.box('offlineOrders');
       final bool isOfflineOrder = offlineBox.containsKey(orderId.toString());
 
-      // ✅ If it's an offline order (stored in Hive)
+      // -----------------------------
+      // ✅ OFFLINE ORDER DELETION
+      // -----------------------------
       if (isOfflineOrder) {
-        if (kDebugMode) {
-          print("🟡 removeTab → Detected offline order ($orderId), deleting from Hive and DB...");
-        }
-
-        // 1️⃣ Delete from Hive
         await offlineBox.delete(orderId.toString());
-        if (kDebugMode) print("✅ Offline order $orderId deleted from Hive");
-
-        // 2️⃣ Delete from SQLite
         await orderHelper.deleteOrder(orderId);
-        if (kDebugMode) print("✅ Offline order $orderId deleted from SQLite");
 
-        // 3️⃣ Remove from local memory
         orderHelper.orders.removeWhere((o) =>
         o[AppDBConst.orderServerId] == orderId ||
             o[AppDBConst.orderId] == orderId);
         orderHelper.orderIds.remove(orderId);
 
-        // 4️⃣ Update UI
+        // Remove tab from UI
         setState(() {
           tabs.removeAt(index);
           for (int i = 0; i < tabs.length; i++) {
@@ -1511,145 +1501,99 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           }
         });
 
-        // 5️⃣ Handle active order
-        if (tabs.isNotEmpty) {
-          final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
-          final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
-
-          if (isRemovedTabActive) {
-            await orderHelper.setActiveOrder(newActiveOrderId);
-            await orderHelper.saveLastActiveOrderId(newActiveOrderId);
-          }
-
-          await _initializeTabController();
-          _tabController!.index = newIndex;
-          await fetchOrderItems();
-
-          // 🟢 Update Customer Display
-          await CustomerDisplayHelper.updateCustomerDisplay(newActiveOrderId);
-        } else {
-          setState(() {
-            orderHelper.activeOrderId = null;
-            orderItems = [];
-          });
-          await _initializeTabController();
-
-          // 🟢 Show welcome screen when no tabs left
+        // ✅ If tabs are now empty → reset & show welcome
+        if (tabs.isEmpty) {
+          orderHelper.activeOrderId = null;
+          orderItems = [];
           await CustomerDisplayService.showWelcome();
+          await _initializeTabController();
+          setState(() => _isLoading = false);
+          return;
         }
 
+        // ✅ Otherwise choose next active order
+        final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
+        final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
+
+        if (isRemovedTabActive) {
+          await orderHelper.setActiveOrder(newActiveOrderId);
+          await orderHelper.saveLastActiveOrderId(newActiveOrderId);
+        }
+
+        await _initializeTabController();
+        _tabController!.index = newIndex;
+        await fetchOrderItems();
+        await CustomerDisplayHelper.updateCustomerDisplay(newActiveOrderId);
+
         setState(() => _isLoading = false);
-        _scaffoldMessenger.showSnackBar(
-          const SnackBar(
-            content: Text("Offline order cancelled"),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
         return;
       }
 
-      // ✅ Otherwise → Online Order (use API)
+      // -----------------------------
+      // ✅ ONLINE ORDER DELETION
+      // -----------------------------
       final int serverOrderId = orderId;
-      if (kDebugMode) print("🌐 removeTab → Online order $serverOrderId, calling API...");
 
       _updateOrderSubscription?.cancel();
-      _updateOrderSubscription = orderBloc.changeOrderStatusStream.listen((response) async {
-        if (!mounted) return;
+      _updateOrderSubscription =
+          orderBloc.changeOrderStatusStream.listen((response) async {
+            if (!mounted) return;
 
-        if (response.status == Status.COMPLETED) {
-          if (kDebugMode) print("✅ Online order $orderId successfully cancelled");
+            if (response.status == Status.COMPLETED) {
+              await orderHelper.deleteOrder(orderId);
+              orderHelper.cancelledOrderId = serverOrderId;
 
-          await orderHelper.deleteOrder(orderId);
-          orderHelper.cancelledOrderId = serverOrderId;
+              setState(() {
+                tabs.removeAt(index);
+                for (int i = 0; i < tabs.length; i++) {
+                  tabs[i]["subtitle"] = "Tab ${i + 1}";
+                }
+              });
 
-          setState(() {
-            tabs.removeAt(index);
-            for (int i = 0; i < tabs.length; i++) {
-              tabs[i]["subtitle"] = "Tab ${i + 1}";
+              // ✅ Empty → show welcome
+              if (tabs.isEmpty) {
+                orderHelper.activeOrderId = null;
+                orderItems = [];
+                await CustomerDisplayService.showWelcome();
+                await _initializeTabController();
+                setState(() => _isLoading = false);
+                return;
+              }
+
+              // ✅ Otherwise activate next tab
+              final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
+              final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
+
+              if (isRemovedTabActive) {
+                await orderHelper.setActiveOrder(newActiveOrderId);
+                await orderHelper.saveLastActiveOrderId(newActiveOrderId);
+              }
+
+              await _initializeTabController();
+
+              if (offlineBox.containsKey(newActiveOrderId.toString())) {
+                await fetchOrderItems();
+              } else {
+                setState(() => orderItems = []);
+              }
+
+              _tabController!.index = newIndex;
+
+              await CustomerDisplayHelper.updateCustomerDisplay(newActiveOrderId);
+
+              setState(() => _isLoading = false);
             }
           });
-
-          if (tabs.isNotEmpty) {
-            final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
-            final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
-
-            if (isRemovedTabActive) {
-              await orderHelper.setActiveOrder(newActiveOrderId);
-              await orderHelper.saveLastActiveOrderId(newActiveOrderId);
-            }
-
-            await _initializeTabController();
-
-            // 🛑 Only reload if exists in Hive
-            if (offlineBox.containsKey(newActiveOrderId.toString())) {
-              await fetchOrderItems();
-            } else {
-              setState(() => orderItems = []);
-            }
-
-            _tabController!.index = newIndex;
-
-            // 🟢 Update Customer Display for new active order
-            await CustomerDisplayHelper.updateCustomerDisplay(newActiveOrderId);
-          } else {
-            setState(() {
-              orderHelper.activeOrderId = null;
-              orderItems = [];
-            });
-            await _initializeTabController();
-
-            // 🟢 Show welcome screen when all tabs removed
-            await CustomerDisplayService.showWelcome();
-          }
-
-          setState(() => _isLoading = false);
-          _scaffoldMessenger.showSnackBar(
-            const SnackBar(
-              content: Text("Order cancelled successfully"),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        } else if (response.status == Status.ERROR) {
-          setState(() => _isLoading = false);
-
-          if (response.message?.contains('Unauthorised') ?? false) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => LoginScreen()),
-            );
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Unauthorised. Session expired."),
-                backgroundColor: Colors.red,
-                duration: Duration(seconds: 2),
-              ),
-            );
-          } else {
-            _scaffoldMessenger.showSnackBar(
-              SnackBar(
-                content: Text(response.message ?? "Failed to cancel order"),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 2),
-              ),
-            );
-          }
-        }
-      });
 
       await orderBloc.changeOrderStatus(
         orderId: serverOrderId,
         status: TextConstants.cancelled,
       );
-    } catch (e, stack) {
-      if (kDebugMode) {
-        print("❌ ERROR: removeTab exception → $e");
-        print(stack);
-      }
+    } catch (e) {
       setState(() => _isLoading = false);
     }
   }
+
   int totalItems = 0;
 
 

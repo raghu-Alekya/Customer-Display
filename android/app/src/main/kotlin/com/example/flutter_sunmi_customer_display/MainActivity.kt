@@ -729,8 +729,19 @@ class MainActivity : FlutterActivity() {
                     itemsContainer.addView(divider)
                 }
             }
+            Log.d("CustomerDisplay", "DEBUG → Tax value: $tax")
 
-            // --- Update totals ---
+            val summaryContainer = findViewById<LinearLayout>(R.id.summary_container)
+
+            if (tax == 0.0) {
+                Log.d("CustomerDisplay", "DEBUG → Tax is 0.0, hiding summary container")
+                summaryContainer.visibility = View.GONE
+                return
+            } else {
+                Log.d("CustomerDisplay", "DEBUG → Tax is not zero, showing summary container")
+                summaryContainer.visibility = View.VISIBLE
+            }
+
             findViewById<TextView>(R.id.label_total_items).text = "Total Items : $totalItemCount"
             grossView.text = formatCurrency(grossTotal)
             discountView.text = formatCurrency(-discount)
