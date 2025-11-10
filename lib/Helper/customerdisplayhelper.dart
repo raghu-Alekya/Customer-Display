@@ -23,7 +23,6 @@ class CustomerDisplayHelper {
     );
   }
 
-  /// 🔹 Update customer display for a given order (offline + online supported)
   static Future<void> updateCustomerDisplay(int serverOrderId) async {
     try {
       print("🟡 [CD] START updateCustomerDisplay → serverOrderId=$serverOrderId");
@@ -31,15 +30,12 @@ class CustomerDisplayHelper {
       final db = await DBHelper.instance.database;
       final offlineBox = Hive.box('offlineOrders');
 
-      // ---------------------------------------------
-      // ✅ 1. Resolve offline/local order mapping
-      // ---------------------------------------------
       String orderKey = serverOrderId.toString();
       dynamic rawOfflineOrder = offlineBox.get(orderKey);
 
       print("🗃 [CD] Checking Hive for key=$orderKey → found=${rawOfflineOrder != null}");
 
-      // ✅ Resolve Woo → Local mapping
+      // ✅ Woo → Local mapping
       if (rawOfflineOrder is Map && rawOfflineOrder["__map_to_local__"] != null) {
         final String mappedKey = rawOfflineOrder["__map_to_local__"].toString();
         print("🔄 [CD] Woo → Local mapping detected → Woo=$orderKey → Local=$mappedKey");
@@ -50,16 +46,16 @@ class CustomerDisplayHelper {
         print("🗃 [CD] Loaded local order from Hive key=$orderKey");
       }
 
-      // ---------------------------------------------
-      // ✅ 2. Load items
-      // ---------------------------------------------
       List<Map<String, dynamic>> items = [];
 
+      // ✅ Parse offline items + payout lines
       if (rawOfflineOrder != null) {
         print("📦 [CD] Offline order found. Parsing products...");
 
         final offlineOrder = Map<String, dynamic>.from(rawOfflineOrder);
+
         final List products = (offlineOrder['products'] as List?)?.toList() ?? [];
+        final List payouts = (offlineOrder['payouts'] as List?)?.toList() ?? [];
 
         items = products.map((p) {
           return {
@@ -67,20 +63,30 @@ class CustomerDisplayHelper {
             AppDBConst.itemCount: p['quantity'] ?? 0,
             AppDBConst.itemImage: p['image'] ?? '',
             AppDBConst.itemPrice: p['unit_price'] ?? p['price'] ?? 0.0,
-            AppDBConst.itemType: p['type'] ?? 'product',
+            AppDBConst.itemType: "product",
           };
         }).toList();
 
+        for (var p in payouts) {
+          final amt = (p["amount"] ?? 0.0).toDouble();
+
+          items.add({
+            AppDBConst.itemName: "Payout",
+            AppDBConst.itemCount: 1,
+            AppDBConst.itemImage: "",
+            AppDBConst.itemPrice: amt,     // usually negative
+            AppDBConst.itemType: "payout",
+          });
+
+          print("🟣 [CD] Payout → amount=$amt added as line item");
+        }
+
         print("✅ [CD] Offline items parsed: count=${items.length}");
-      } else {
-        print("🔍 [CD] No offline data. Fetching items from SQLite...");
-        items = await OrderHelper().getOrderItems(serverOrderId);
-        print("✅ [CD] SQLite items fetched: count=${items.length}");
       }
 
-      // ---------------------------------------------
-      // ✅ 3. Calculate item totals
-      // ---------------------------------------------
+      // -------------------------
+      // ✅ Build parsedItems (INCLUDING PAYOUTS)
+      // -------------------------
       double grossTotal = 0.0;
       List<Map<String, dynamic>> parsedItems = [];
 
@@ -94,6 +100,7 @@ class CustomerDisplayHelper {
           "qty": qty,
           "price": total,
           "image": item[AppDBConst.itemImage],
+          "type": item[AppDBConst.itemType],   // ✅ keep type (payout/product)
         });
 
         print("🛒 [CD] Item → ${item[AppDBConst.itemName]} | qty=$qty | price=$price | total=$total");
@@ -102,14 +109,10 @@ class CustomerDisplayHelper {
 
       print("💰 [CD] Gross total → $grossTotal");
 
-      // ---------------------------------------------
-      // ✅ 4. Load order totals (Woo-tax override logic)
-      // ---------------------------------------------
-      final orderData = await db.query(
-        AppDBConst.orderTable,
-        where: '${AppDBConst.orderServerId} = ?',
-        whereArgs: [serverOrderId],
-      );
+      // -------------------------
+      // ✅ Load offline totals (discount, merchantDiscount, payouts)
+      // -------------------------
+      final offlineData = offlineBox.get(orderKey);
 
       double discount = 0.0;
       double merchantDiscount = 0.0;
@@ -117,45 +120,78 @@ class CustomerDisplayHelper {
       double netTotal = grossTotal;
       double netPayable = grossTotal;
 
-      // ✅ First priority: Woo offline tax
-      double? wooTax;
-      double? wooTotal;
+      double? wooTax = offlineData?["wooTax"] as double?;
+      double? wooTotal = offlineData?["wooTotal"] as double?;
 
-      final offlineData = offlineBox.get(orderKey);
+      double payoutTotal = 0.0;
+
       if (offlineData != null) {
-        wooTax = offlineData["wooTax"] as double?;
-        wooTotal = offlineData["wooTotal"] as double?;
+        merchantDiscount = (offlineData["merchantDiscount"] as num?)?.toDouble() ?? 0.0;
+        discount = (offlineData["orderDiscount"] as num?)?.toDouble() ?? 0.0;
+
+        payoutTotal = (offlineData["payoutTotal"] as num?)?.toDouble() ?? 0.0;
+
+        if (payoutTotal != 0.0) {
+          grossTotal += payoutTotal;
+          print("✅ [CD] Offline payout applied → payout=$payoutTotal → newGross=$grossTotal");
+        }
+
+        print("✅ [CD] Offline discounts → merchant=$merchantDiscount | discount=$discount");
       }
 
-      if (wooTax != null) {
-        // ✅ Woo tax override ALWAYS WINS
+      // -------------------------
+      // ✅ OFFLINE OVERRIDE → If offlineData exists, DO NOT use DB totals
+      // -------------------------
+      if (offlineData != null) {
+        print("✅ [CD] Using OFFLINE totals only");
+
+        netTotal = grossTotal - discount - merchantDiscount;
+        netPayable = netTotal + (wooTax ?? 0.0);
+
+        print("✅ [CD] Final offline totals → net=$netTotal | payable=$netPayable");
+      }
+
+      // -------------------------
+      // ✅ Woo tax override (optional)
+      // -------------------------
+      else if (wooTax != null) {
         tax = wooTax;
-        netTotal = (wooTotal ?? grossTotal) - tax;
-        netPayable = wooTotal ?? grossTotal;
 
-        print("✅ [CD] Using Woo tax override → tax=$tax | netTotal=$netTotal | netPayable=$netPayable");
+        netTotal = (wooTotal ?? grossTotal) - tax - discount - merchantDiscount;
+        netPayable = (wooTotal ?? grossTotal);
+
+        print("✅ [CD] Woo tax override → net=$netTotal | payable=$netPayable");
       }
-      else if (orderData.isNotEmpty) {
-        // ✅ Fall back to DB only if Woo tax is missing
-        print("🗄️ [CD] No Woo tax found. Loading DB totals...");
 
-        final row = orderData.first;
-        discount = row[AppDBConst.orderDiscount] as double? ?? 0.0;
-        merchantDiscount = row["merchant_discount"] as double? ?? 0.0;
-        tax = row[AppDBConst.orderTax] as double? ?? 0.0;
-
-        netTotal = row["net_total"] as double? ?? grossTotal;
-        netPayable = row["net_payable"] as double? ?? (netTotal + tax);
-
-        print("✅ [CD] DB totals → tax=$tax | net=$netTotal | payable=$netPayable");
-      }
+      // -------------------------
+      // ✅ Only fallback to DB totals when NO offline order exists
+      // -------------------------
       else {
-        print("⚠️ [CD] No DB + No Woo tax. Using gross only.");
+        final orderData = await db.query(
+          AppDBConst.orderTable,
+          where: '${AppDBConst.orderServerId} = ?',
+          whereArgs: [serverOrderId],
+        );
+
+        if (orderData.isNotEmpty) {
+          print("🗄️ [CD] Using DB totals...");
+
+          final row = orderData.first;
+
+          discount = row[AppDBConst.orderDiscount] as double? ?? 0.0;
+          merchantDiscount = row["merchant_discount"] as double? ?? 0.0;
+          tax = row[AppDBConst.orderTax] as double? ?? 0.0;
+
+          netTotal = grossTotal - discount - merchantDiscount;
+          netPayable = netTotal + tax;
+
+          print("✅ [CD] DB totals → tax=$tax | net=$netTotal | payable=$netPayable");
+        }
       }
 
-      // ---------------------------------------------
-      // ✅ 5. Send data to customer display
-      // ---------------------------------------------
+      // -------------------------
+      // ✅ Send to Customer Display
+      // -------------------------
       print("📤 [CD] Sending data to Customer Display...");
       print("👉 orderId=$serverOrderId");
       print("👉 grossTotal=$grossTotal");
@@ -187,6 +223,4 @@ class CustomerDisplayHelper {
       print(s);
     }
   }
-
-
 }

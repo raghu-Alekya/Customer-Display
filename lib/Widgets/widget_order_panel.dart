@@ -1480,10 +1480,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     try {
       final offlineBox = Hive.box('offlineOrders');
       final bool isOfflineOrder = offlineBox.containsKey(orderId.toString());
-
-      // -----------------------------
-      // ✅ OFFLINE ORDER DELETION
-      // -----------------------------
       if (isOfflineOrder) {
         await offlineBox.delete(orderId.toString());
         await orderHelper.deleteOrder(orderId);
@@ -1492,26 +1488,19 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         o[AppDBConst.orderServerId] == orderId ||
             o[AppDBConst.orderId] == orderId);
         orderHelper.orderIds.remove(orderId);
-
-        // Remove tab from UI
         setState(() {
           tabs.removeAt(index);
           for (int i = 0; i < tabs.length; i++) {
             tabs[i]["subtitle"] = "Tab ${i + 1}";
           }
         });
-
-        // ✅ If tabs are now empty → reset & show welcome
         if (tabs.isEmpty) {
           orderHelper.activeOrderId = null;
           orderItems = [];
-          await CustomerDisplayService.showWelcome();
           await _initializeTabController();
           setState(() => _isLoading = false);
           return;
         }
-
-        // ✅ Otherwise choose next active order
         final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
         final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
 
@@ -1523,15 +1512,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         await _initializeTabController();
         _tabController!.index = newIndex;
         await fetchOrderItems();
-        await CustomerDisplayHelper.updateCustomerDisplay(newActiveOrderId);
-
         setState(() => _isLoading = false);
         return;
       }
-
-      // -----------------------------
-      // ✅ ONLINE ORDER DELETION
-      // -----------------------------
       final int serverOrderId = orderId;
 
       _updateOrderSubscription?.cancel();
@@ -1549,18 +1532,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                   tabs[i]["subtitle"] = "Tab ${i + 1}";
                 }
               });
-
-              // ✅ Empty → show welcome
               if (tabs.isEmpty) {
                 orderHelper.activeOrderId = null;
                 orderItems = [];
-                await CustomerDisplayService.showWelcome();
                 await _initializeTabController();
                 setState(() => _isLoading = false);
                 return;
               }
-
-              // ✅ Otherwise activate next tab
               final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
               final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
 
@@ -1578,9 +1556,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               }
 
               _tabController!.index = newIndex;
-
-              await CustomerDisplayHelper.updateCustomerDisplay(newActiveOrderId);
-
               setState(() => _isLoading = false);
             }
           });
