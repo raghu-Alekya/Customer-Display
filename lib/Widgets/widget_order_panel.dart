@@ -2007,7 +2007,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                     barrierColor: Colors.black.withValues(alpha: 0.5),
                                     builder: (BuildContext dialogContext) {
                                       return EditProduct(
-                                        orderItem: orderItem,
+                                        orderItem: {
+                                          AppDBConst.itemName: orderItem['item_name'],
+                                          AppDBConst.itemUnitPrice: orderItem['item_price'],
+                                          AppDBConst.itemRegularPrice: orderItem['item_price'],
+                                          AppDBConst.itemCount: orderItem['items_count'],
+                                          AppDBConst.itemImage: orderItem['item_image'],
+                                        },
                                         onQuantityUpdated: (newQuantity) async {
                                           try {
                                             if (orderHelper.activeOrderId == null) return;
