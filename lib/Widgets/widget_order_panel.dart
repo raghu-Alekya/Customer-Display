@@ -440,7 +440,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     if (tabs.isEmpty) {
       orderHelper.activeOrderId = null;
       orderItems = [];
-      await CustomerDisplayService.showWelcome();
+      await CustomerDisplayHelper.showEmptyOrder();
       return;
     }
 

@@ -2337,80 +2337,44 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return printerDB.first;
 
   }
-
-  Future _preparePrintTicket() async{
+  Future _preparePrintTicket() async {
     if (kDebugMode) {
       print("OrderSummaryScreen _preparePrintTicket call print receipt");
     }
-    ///load header and footer
-    var printerData  = await loadPrinterData();
+
+    var printerData = await loadPrinterData();
     var header = printerData?[AppDBConst.receiptHeaderText] ?? "";
     var footer = printerData?[AppDBConst.receiptFooterText] ?? "";
     var logo = printerData?[AppDBConst.receiptIconPath] ?? "";
 
-    if (kDebugMode) {
-      print("OrderSummaryScreen _preparePrintTicket logo: $logo, iconPath: ${printerData?[AppDBConst.receiptIconPath] ?? ""}");
-    }
-
     bytes = [];
-    final ticket =  await _printerSettings.getTicket();
+    final ticket = await _printerSettings.getTicket();
 
-    ///Header
-    ///   Pinaka Logo
-    ///Tax Summary
-    ///   Item
-    ///   tax breakdown
-    ///   gross total
-    ///Footer
-    ///   Thank You, Visit Again
-
-
-    //Pinaka Logo
+    // -------------------------------
+    // LOGO
+    // -------------------------------
     final ByteData data;
-    if(logo != "") {
+    if (logo != "") {
       data = await GlobalUtility.fileToByteData(File(logo)) ?? await rootBundle.load('assets/Bubbas_logo.png');
     } else {
       data = await rootBundle.load('assets/Bubbas_logo.png');
     }
-    if (kDebugMode) {
-      print("OrderSummaryScreen _preparePrintTicket data.lengthInBytes : ${data.lengthInBytes}");
-    }
+
     if (data.lengthInBytes > 0) {
       final Uint8List imageBytes = data.buffer.asUint8List();
-      // decode the bytes into an image
       final decodedImage = img.decodeImage(imageBytes)!;
-      // Create a black bottom layer
-      // Resize the image to a 130x? thumbnail (maintaining the aspect ratio).
       img.Image thumbnail = img.copyResize(decodedImage, height: 280);
-      // creates a copy of the original image with set dimensions
       img.Image originalImg = img.copyResize(decodedImage, width: 470, height: 280);
-      // fills the original image with a white background
       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
       var padding = (originalImg.width - thumbnail.width) / 2;
-
-      //insert the image inside the frame and center it
       drawImage(originalImg, thumbnail, dstX: padding.toInt());
-
-      // convert image to grayscale
       var grayscaleImage = img.grayscale(originalImg);
-      // bytes += generator.imageRaster(img.decodeImage(imageBytes)!, align: PosAlign.center);
-      //bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
+      // bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
     }
 
-    //Header
-    ///New changes in Header on 2-Sep-2025
-    ///Date and Time
-    ///Store Id
-    ///Address
-    //         "Store name": "Kumar Swa D", => < increase font to 5 and bold >
-    //         "address": "Q No: D 1847, Shirkey Colony",=>  first line will be <address>
-    //         "city": "Mancherial", => second line will be <city>,<state>-<zip_code>
-    //         "state": "Telangana",
-    //         "country": "", => no need to show
-    //         "zip_code": "504302",
-    //         "phone_number": false => third line will be <phone_number>
-
-
+    // -------------------------------
+    // HEADER
+    // -------------------------------
     var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
     var storeId = "${merchantDetails?[AppDBConst.storeId]}";
     var storePhone = "${merchantDetails?[AppDBConst.storePhone]}";
@@ -2425,27 +2389,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     var cashierName = "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
     var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
 
-    if (kDebugMode) {
-      print(" >>>>> PrintOrder  dateToPrint $_displayDate ");
-      print(" >>>>> PrintOrder  timeToPrint $_displayTime ");
-      print(" >>>>> PrintOrder  storeId $storeId ");
-      print(" >>>>> PrintOrder  storeName $storeName ");
-      print(" >>>>> PrintOrder  address $address ");
-      print(" >>>>> PrintOrder  cityStateZip $cityStateZip ");
-      print(" >>>>> PrintOrder  storePhone $storePhone ");
-      print(" >>>>> PrintOrder  orderIdToPrint $orderIdToPrint ");
-      print(" >>>>> PrintOrder  cashierName $cashierName ");
-      print(" >>>>> PrintOrder  cashierRole $cashierRole ");
-    }
-
-    if(header != "") {
+    if (header != "") {
       bytes += ticket.row([
         PosColumn(
-            text: "$header",
-            width: 12,
-            styles: PosStyles(align: PosAlign.center)),
+          text: header,
+          width: 12,
+          styles: PosStyles(align: PosAlign.center),
+        ),
       ]);
     }
+
     bytes += ticket.row([
       PosColumn(
         text: "***** CUST-INVOICE *****",
@@ -2453,124 +2406,125 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         styles: PosStyles(align: PosAlign.center, bold: true),
       ),
     ]);
+
     bytes += ticket.feed(1);
-    //Store Name
+
+    // Store Name
     bytes += ticket.row([
-      PosColumn(text: "$storeName", width: 12, styles: PosStyles(align: PosAlign.center,bold: true, height: PosTextSize.size2, width: PosTextSize.size2)), //Build #1.0.257: increase font to 5 and bold
+      PosColumn(
+        text: storeName,
+        width: 12,
+        styles: PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size2,
+          width: PosTextSize.size2,
+        ),
+      ),
     ]);
-    bytes += ticket.feed(1); /// Add space between store name and address
-    //Address
-    bytes += ticket.row([
-      PosColumn(text: "$address", width: 12, styles: PosStyles(align: PosAlign.center)),
-    ]);
-    //cityStateZip
-    bytes += ticket.row([
-      PosColumn(text: "$cityStateZip", width: 12, styles: PosStyles(align: PosAlign.center)),
-    ]);
-    //Store Phone
+
+    bytes += ticket.feed(1);
+
+    // Address and Phone
+    bytes += ticket.row([PosColumn(text: address, width: 12, styles: PosStyles(align: PosAlign.center))]);
+    bytes += ticket.row([PosColumn(text: cityStateZip, width: 12, styles: PosStyles(align: PosAlign.center))]);
     bytes += ticket.row([
       PosColumn(text: "Phone: $storePhone", width: 12, styles: PosStyles(align: PosAlign.center)),
     ]);
 
     bytes += ticket.feed(1);
+
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
+
     bytes += ticket.feed(1);
 
-    //Date and Time
+    // Date & Time
     bytes += ticket.row([
-      PosColumn(text: "Date: $_displayDate", width: 7, styles: PosStyles(align: PosAlign.left)),
-      PosColumn(text: "Time: $_displayTime", width: 5, styles: PosStyles(align: PosAlign.left)),
+      PosColumn(text: "Date: $_displayDate", width: 7),
+      PosColumn(text: "Time: $_displayTime", width: 5),
     ]);
 
-    //cashier and  store id
+    // Cashier & Store ID
     bytes += ticket.row([
-      PosColumn(text: "Cashier: $cashierName", width: 7, styles: PosStyles(align: PosAlign.left)),
-      PosColumn(text: "StoreID: $storeId", width: 5, styles: PosStyles(align: PosAlign.left)),
+      PosColumn(text: "Cashier: $cashierName", width: 7),
+      PosColumn(text: "StoreID: $storeId", width: 5),
     ]);
 
-    //role and order Id
+    // Role & Order ID
     bytes += ticket.row([
-      PosColumn(text: "Role: $cashierRole", width: 7, styles: PosStyles(align: PosAlign.left)),
-      PosColumn(text: "OrderID: $orderIdToPrint", width: 5, styles: PosStyles(align: PosAlign.left)),
+      PosColumn(text: "Role: $cashierRole", width: 7),
+      PosColumn(text: "OrderID: $orderIdToPrint", width: 5),
     ]);
 
     bytes += ticket.feed(1);
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
+
     bytes += ticket.feed(1);
 
-    //Item header
+    // -------------------------------
+    // ITEM HEADER
+    // -------------------------------
     bytes += ticket.row([
-      PosColumn(text: "#", width: 1,styles: PosStyles(align: PosAlign.left,bold:true)),
-      PosColumn(text: "Description", width:5,styles: PosStyles(align: PosAlign.left,bold:true)),
-      PosColumn(text: "Qty", width: 1, styles: PosStyles(align: PosAlign.center,bold:true)),
-      PosColumn(text: "Rate", width: 2, styles: PosStyles(align: PosAlign.right,bold:true)),
-      // PosColumn(text: "Dis", width: 1, styles: PosStyles(align: PosAlign.right)), ///removed based on request on 3-Sep-25
-      PosColumn(text: "Amt", width: 3, styles: PosStyles(align: PosAlign.right,bold:true)),
+      PosColumn(text: "#", width: 1, styles: PosStyles(bold: true)),
+      PosColumn(text: "Description", width: 5, styles: PosStyles(bold: true)),
+      PosColumn(text: "Qty", width: 1, styles: PosStyles(align: PosAlign.center, bold: true)),
+      PosColumn(text: "Rate", width: 2, styles: PosStyles(align: PosAlign.right, bold: true)),
+      PosColumn(text: "Amt", width: 3, styles: PosStyles(align: PosAlign.right, bold: true)),
     ]);
+
     bytes += ticket.feed(1);
 
-    if (kDebugMode) {
-      print(" >>>>> Order items count ${orderItems.length} ");
+// -------------------------------
+// ITEMS LOOP
+// -------------------------------
+    for (int i = 0; i < orderItems.length; i++) {
+      var item = orderItems[i];
 
-    }
+      String itemName = item['item_name'] ?? '';
+      double unitPrice = (item['item_price'] ?? 0).toDouble();
+      int qty = (item['items_count'] ?? 0).toInt();
+      double lineTotal = (item['item_sum_price'] ?? 0).toDouble();
+      String type = item['item_type']?.toString().toLowerCase() ?? '';
 
-    //Product Items
-    for(int i = 0; i< orderItems.length; i++) {
+      bool isPayout = type.contains(TextConstants.payoutText);
+      bool isCoupon = type.contains(TextConstants.couponText);
 
-      var orderItem = orderItems[i];
+      // Format payout/coupon as negative
+      String formattedTotal = isCoupon || isPayout
+          ? "-${TextConstants.currencySymbol}${lineTotal.abs().toStringAsFixed(2)}"
+          : "${TextConstants.currencySymbol}${lineTotal.toStringAsFixed(2)}";
 
-      final itemType = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
-      final isPayout = itemType.contains(TextConstants.payoutText);
-      final isCoupon = itemType.contains(TextConstants.couponText);
-      final isCustomItem = itemType.contains(TextConstants.customItemText);
-      final isPayoutOrCouponOrCustomItem = isPayout || isCoupon || isCustomItem;
-      final isCouponOrPayout = isPayout || isCoupon;
-
-      final salesPrice =
-      (orderItem[AppDBConst.itemSalesPrice] == null || (orderItem[AppDBConst.itemSalesPrice]?.toDouble() ?? 0.0) == 0.0)
-          ? (orderItem[AppDBConst.itemRegularPrice] == null || (orderItem[AppDBConst.itemRegularPrice]?.toDouble() ?? 0.0) == 0.0)
-          ? orderItem[AppDBConst.itemUnitPrice]?.toDouble() ?? 0.0
-          : orderItem[AppDBConst.itemRegularPrice]!.toDouble()
-          : orderItem[AppDBConst.itemSalesPrice]!.toDouble();
-
-      final regularPrice =  (orderItem[AppDBConst.itemRegularPrice] == null || (orderItem[AppDBConst.itemRegularPrice]?.toDouble() ?? 0.0) == 0.0)
-          ? orderItem[AppDBConst.itemUnitPrice]?.toDouble() ?? 0.0
-          : orderItem[AppDBConst.itemRegularPrice]!.toDouble();
-
-      double negativeItemPrice = orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice];
-      ///Check if payout is showing $-25.00, make it -$25.00
-      var itemPrice = negativeItemPrice.toStringAsFixed(2);
-      if(negativeItemPrice.isNegative){
-        itemPrice = "-${TextConstants.currencySymbol}${negativeItemPrice.abs().toStringAsFixed(2)}";
-      }
-
+      // ✅ LOG ITEM DETAILS
       if (kDebugMode) {
-        if(isCouponOrPayout){
-          print(" >>>>> Adding isCouponOrPayout item ${orderItem[AppDBConst.itemName]} to print with salesPrice $itemPrice");
-        }
-        else {
-          print(" >>>>> Adding regular item ${orderItem[AppDBConst.itemName]} to print with salesPrice ${(orderItem[AppDBConst.itemCount] * salesPrice).toStringAsFixed(2)}");
-        }
+        print("🟩 ITEM ${i + 1}");
+        print("Name       : $itemName");
+        print("Qty        : $qty");
+        print("Unit Price : $unitPrice");
+        print("Line Total : $lineTotal");
+        print("Type       : $type");
+        print("Formatted  : $formattedTotal");
+        print("--------------------------------------------");
       }
 
       bytes += ticket.row([
-        PosColumn(text: "${i+1}", width: 1),
-        PosColumn(text: "${orderItem[AppDBConst.itemName]}", width:5,),
-        PosColumn(text: "${orderItem[AppDBConst.itemCount]}", width: 1,styles: PosStyles(align: PosAlign.center)),
-        PosColumn(text: "${TextConstants.currencySymbol}${salesPrice.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
-        // PosColumn(text: "${(regularPrice - salesPrice).toStringAsFixed(2)}", width: 1, styles: PosStyles(align: PosAlign.right)),, ///removed based on request on 3-Sep-25
-        PosColumn(text: isCouponOrPayout
-            ? itemPrice
-            : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * salesPrice).toStringAsFixed(2)}", width: 3, styles: PosStyles(align: PosAlign.right)),
+        PosColumn(text: "${i + 1}", width: 1),
+        PosColumn(text: itemName, width: 5),
+        PosColumn(text: "$qty", width: 1, styles: PosStyles(align: PosAlign.center)),
+        PosColumn(text: "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)}",
+            width: 2, styles: PosStyles(align: PosAlign.right)),
+        PosColumn(text: formattedTotal, width: 3, styles: PosStyles(align: PosAlign.right)),
       ]);
-      // bytes += ticket.feed(1);
-      bytes += ticket.emptyLines(1);///check if we can add spaces after product line to look spacious
+
+      bytes += ticket.emptyLines(1);
     }
 
+    // -------------------------------
+    // TOTALS
+    // -------------------------------
     final grossTotal = GlobalUtility.getGrossTotal(orderItems);
 
     bytes += ticket.feed(1);
@@ -2579,92 +2533,74 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     ]);
     bytes += ticket.feed(1);
 
-    if (kDebugMode) {
-      print(" >>>>> Printer Order merchantDiscount -${merchantDiscount.toStringAsFixed(2)} ");
-      print(" >>>>> Printer Order discount -${discount.toStringAsFixed(2)} ");
-      print(" >>>>> Printer Order total  $total ");
-      print(" >>>>> Printer Order Gross total  $grossTotal ");
-      print(" >>>>> Printer Order balanceAmount  $balanceAmount ");
-      print(" >>>>> Printer Order orderTotal  $orderTotal ");
-      print(" >>>>> Printer Order tenderAmount $tenderAmount ");
-      print(" >>>>> Printer Order changeAmount $changeAmount ");
-      print(" >>>>> Printer Order paidAmount $paidAmount ");
-
-    }
-    //Breakdown
-    //         balanceAmount = total - discount - merchantDiscount + tax;
-    //         tenderAmount = 0.0; // Reset for new order
-    //         changeAmount = 0.0; // Reset for new order
-    //         paidAmount = 0.0; // Reset for new order
-
     bytes += ticket.row([
       PosColumn(text: TextConstants.grossTotal, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}",
+          width: 2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    // bytes += ticket.feed(1);
+
     bytes += ticket.row([
-      PosColumn(text: TextConstants.discountText, width: 10), // Build #1.0.148: deleted duplicate discount string from constants , already we have discountText using !
-      PosColumn(text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: TextConstants.discountText, width: 10),
+      PosColumn(text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}",
+          width: 2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    // bytes += ticket.feed(1);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.merchantDiscount, width: 10),
-      PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
+          width: 2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    // bytes += ticket.feed(1);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.taxText, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}",
+          width: 2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    // bytes += ticket.feed(1);
-    //line
+
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
 
     bytes += ticket.feed(1);
-    //Net Payable
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.netPayable, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${orderTotal.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "${TextConstants.currencySymbol}${orderTotal.toStringAsFixed(2)}",
+          width: 2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    ///Todo: get pay by cash amount
-    // bytes += ticket.feed(1);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByCash, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}", width:2,styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}",
+          width: 2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    ///Todo: get pay by other amount
-    // bytes += ticket.feed(1);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByOther, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}",
+          width: 2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    // bytes += ticket.feed(1);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.tenderAmount, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
+          width: 2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    // bytes += ticket.feed(1);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.change, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}",
+          width: 2, styles: PosStyles(align: PosAlign.right)),
     ]);
+
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
-    //bytes += ticket.feed(1);
 
-    //Footer
-    // bytes += ticket.row([
-    //   PosColumn(text: "Thank You, Visit Again", width: 12),
-    // ]);
-
-    if(footer != "") {
+    // Footer
+    if (footer != "") {
       bytes += ticket.row([
-        PosColumn(text: "$footer",
-            width: 12,
-            styles: PosStyles(align: PosAlign.center)),
+        PosColumn(text: footer, width: 12, styles: PosStyles(align: PosAlign.center)),
       ]);
       bytes += ticket.feed(1);
     }
