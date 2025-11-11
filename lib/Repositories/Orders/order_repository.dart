@@ -247,7 +247,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         "payment_method": "cash",
         "payment_method_title": "POS-CASH",
         "set_paid": true,
-        "status": "completed",
+        "status": "processing",
         "meta_data": metaData,
         "fee_lines": allFeeLines,
         "line_items": lineItems,

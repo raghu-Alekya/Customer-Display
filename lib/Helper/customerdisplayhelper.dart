@@ -18,24 +18,6 @@ class CustomerDisplayHelper {
       storeBaseUrl: storeBaseUrl,
     );
   }
-
-  static Future<void> showEmptyOrder() async {
-    print("🟡 [CD] showEmptyOrder → sending empty order state");
-
-    await CustomerDisplayService.showCustomerData(
-      orderId: 0,
-      items: [],
-      grossTotal: 0.0,
-      discount: 0.0,
-      merchantDiscount: 0.0,
-      netTotal: 0.0,
-      tax: 0.0,
-      netPayable: 0.0,
-      orderDate: "",
-      orderTime: "",
-    );
-  }
-
   static Future<void> updateCustomerDisplay(int serverOrderId) async {
     try {
       print("🟡 [CD] START updateCustomerDisplay → serverOrderId=$serverOrderId");

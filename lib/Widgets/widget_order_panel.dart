@@ -41,6 +41,7 @@ import '../Database/order_panel_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/api_response.dart';
 import '../Helper/customerdisplayhelper.dart';
+import '../Preferences/pinaka_preferences.dart';
 import '../Screens/Auth/login_screen.dart';
 import '../Utilities/global_utility.dart';
 import '../Models/Orders/orders_model.dart';
@@ -435,12 +436,22 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   Future<void> _initializeTabController() async {
     if (kDebugMode) print("##### _initializeTabController");
     if (!mounted) return;
-
-    // ✅ IMPORTANT: handle empty tabs FIRST before disposing / updating anything
     if (tabs.isEmpty) {
       orderHelper.activeOrderId = null;
       orderItems = [];
-      await CustomerDisplayHelper.showEmptyOrder();
+
+      final storeInfo = PinakaPreferences.getLoggedInStore();
+      if (storeInfo.isNotEmpty) {
+        await CustomerDisplayHelper.updateWelcomeWithStore(
+          storeInfo['storeId']!,
+          storeInfo['storeName']!,
+          storeLogoUrl: storeInfo['storeLogoUrl'],
+          storeBaseUrl: storeInfo['storeBaseUrl'],
+        );
+      } else {
+        await CustomerDisplayService.showWelcome();
+      }
+
       return;
     }
 

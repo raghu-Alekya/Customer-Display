@@ -556,20 +556,26 @@ class MainActivity : FlutterActivity() {
             // Update store info
             updateStoreInfo(currentStoreId, currentStoreName, currentStoreLogoUrl, orderDate, orderTime)
 
-            // --- Start slideshow ---
+            // Slideshow
             slideshowImageView = findViewById(R.id.slideshow_image)
             if (currentStoreBaseUrl.isNotEmpty()) {
                 loadSlideshowFromApi(currentStoreBaseUrl)
             } else {
                 slideshowImageView.setImageResource(R.drawable.pinaka_logo)
                 slideshowImageView.scaleType = ImageView.ScaleType.CENTER_INSIDE
-                Log.d("CustomerDisplay", "✅ No storeBaseUrl → showing centered default logo")
             }
 
-            // --- Empty cart handling ---
+            val summaryContainer = findViewById<LinearLayout>(R.id.summary_container)
+
+            // -----------------------------------------------------
+            // CASE A: Empty cart (items empty OR grossTotal = 0.0)
+            // -----------------------------------------------------
             itemsContainer.removeAllViews()
+
             if (items.isEmpty() || grossTotal == 0.0) {
-                Log.d("CustomerDisplay", "📢 No order data → showing empty cart message")
+                Log.d("CustomerDisplay", "📢 Empty cart → hide summary")
+
+                summaryContainer.visibility = View.GONE
 
                 val emptyLayout = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
@@ -602,7 +608,19 @@ class MainActivity : FlutterActivity() {
                 return
             }
 
-            // --- Populate order items ---
+            // -----------------------------------------------------
+            // CASE B: Items exist but tax = 0.0 → hide summary
+            // -----------------------------------------------------
+            if (tax == 0.0) {
+                Log.d("CustomerDisplay", "✅ Tax=0.0 → hiding summary container")
+                summaryContainer.visibility = View.GONE
+            } else {
+                summaryContainer.visibility = View.VISIBLE
+            }
+
+            // -----------------------------------------------------
+            // Items exist → Show list
+            // -----------------------------------------------------
             orderIdView.text = "Order #$orderId"
             itemsContainer.removeAllViews()
             var totalItemCount = 0
@@ -617,10 +635,9 @@ class MainActivity : FlutterActivity() {
                     totalItemCount += qty
                 }
 
-                // --- Item layout ---
+                // Item Layout
                 val itemLayout = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
-                    // Remove padding for no gaps
                     setPadding(0, 0, 0, 0)
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
@@ -630,7 +647,7 @@ class MainActivity : FlutterActivity() {
                     setBackgroundColor(Color.WHITE)
                 }
 
-                // --- Image ---
+                // Image
                 val imageView = ImageView(context).apply {
                     layoutParams = LinearLayout.LayoutParams(80, 80).apply { rightMargin = 16 }
                     scaleType = ImageView.ScaleType.CENTER_CROP
@@ -650,9 +667,7 @@ class MainActivity : FlutterActivity() {
                                 try {
                                     val input = URL(imageUrl).openStream()
                                     val bitmap = BitmapFactory.decodeStream(input)
-                                    Handler(Looper.getMainLooper()).post {
-                                        imageView.setImageBitmap(bitmap)
-                                    }
+                                    Handler(Looper.getMainLooper()).post { imageView.setImageBitmap(bitmap) }
                                 } catch (e: Exception) {
                                     Handler(Looper.getMainLooper()).post {
                                         imageView.setImageResource(android.R.drawable.ic_menu_gallery)
@@ -663,7 +678,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
-                // --- Details layout ---
+                // Details Layout
                 val detailsLayout = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -676,12 +691,10 @@ class MainActivity : FlutterActivity() {
                     setTypeface(typeface, Typeface.BOLD)
                     text = displayName
                     setTextColor(Color.BLACK)
-                    val params = LinearLayout.LayoutParams(
+                    layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
-                    params.bottomMargin = 4
-                    layoutParams = params
+                    ).apply { bottomMargin = 4 }
                 }
 
                 val qtyPriceView = TextView(context).apply {
@@ -692,56 +705,41 @@ class MainActivity : FlutterActivity() {
 
                 detailsLayout.addView(nameView)
                 detailsLayout.addView(qtyPriceView)
+
                 val totalView = TextView(context).apply {
                     textSize = 18f
                     setTypeface(typeface, Typeface.BOLD)
                     text = formatCurrency(total)
                     gravity = Gravity.END
                     setTextColor(Color.BLACK)
-
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        setMargins(0, 0, 10, 0)
-                    }
+                    ).apply { setMargins(0, 0, 10, 0) }
                 }
 
                 itemLayout.addView(imageView)
                 itemLayout.addView(detailsLayout)
                 itemLayout.addView(totalView)
 
-                // --- Add item layout ---
                 itemsContainer.addView(itemLayout)
 
-                // --- Add divider only between items ---
                 if (index < items.size - 1) {
                     val divider = View(context).apply {
                         setBackgroundColor(Color.BLACK)
                         layoutParams = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
-                            1 // divider height
+                            1
                         ).apply {
-                            topMargin = 1 // 1px space above
-                            bottomMargin = 1 // 1px space below
+                            topMargin = 1
+                            bottomMargin = 1
                         }
                     }
                     itemsContainer.addView(divider)
                 }
             }
-            Log.d("CustomerDisplay", "DEBUG → Tax value: $tax")
 
-            val summaryContainer = findViewById<LinearLayout>(R.id.summary_container)
-
-            if (tax == 0.0) {
-                Log.d("CustomerDisplay", "DEBUG → Tax is 0.0, hiding summary container")
-                summaryContainer.visibility = View.GONE
-                return
-            } else {
-                Log.d("CustomerDisplay", "DEBUG → Tax is not zero, showing summary container")
-                summaryContainer.visibility = View.VISIBLE
-            }
-
+            // Totals
             findViewById<TextView>(R.id.label_total_items).text = "Total Items : $totalItemCount"
             grossView.text = formatCurrency(grossTotal)
             discountView.text = formatCurrency(-discount)
