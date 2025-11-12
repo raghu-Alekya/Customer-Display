@@ -2009,7 +2009,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       final box = Hive.box('offlineOrders');
 
-      // ✅ Ensure order exists in Hive
+      // ✅ Ensure order exists
       if (!box.containsKey(serverOrderId.toString())) {
         await box.put(serverOrderId.toString(), {
           'order_id': serverOrderId,
@@ -2018,16 +2018,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         });
       }
 
-      // ✅ TAX SLAB logic
+      // ✅ TAX slab logic
       final List<Tax> taxes = await _assetDBHelper.getTaxList();
       String taxStatus = "";
       String taxClass = "";
       if (_selectedTaxSlab.isNotEmpty) {
         final selectedTax = taxes.firstWhere(
               (tax) => tax.name == _selectedTaxSlab,
-          orElse: () => taxes.isNotEmpty
-              ? taxes.first
-              : Tax(slug: 'none', name: _selectedTaxSlab),
+          orElse: () =>
+          taxes.isNotEmpty ? taxes.first : Tax(slug: 'none', name: _selectedTaxSlab),
         );
         if (selectedTax.slug.isNotEmpty) {
           taxStatus = TextConstants.taxable;
@@ -2035,42 +2034,36 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         }
       }
 
-      // ✅ Ensure stable, normalized SKU
+      // ✅ Always normalize SKU consistently
       _sku = _sku.trim().isEmpty
           ? _customItemName.trim().toLowerCase().replaceAll(' ', '')
           : _sku.trim().toLowerCase();
       final normalizedSku = _sku;
 
-      // ✅ Safely load and normalize Hive order
+      // ✅ Load order safely
       final rawOrder = box.get(serverOrderId.toString()) ?? {};
       final orderData = Map<String, dynamic>.from(_convertToJsonSafe(rawOrder));
       final products = (orderData['products'] as List? ?? [])
           .map((p) => Map<String, dynamic>.from(_convertToJsonSafe(p)))
           .toList();
 
-      // ✅ Match duplicate items by SKU OR by Name (if SKU empty)
+      // ✅ Match existing by SKU ONLY (no name match)
       final existingIndex = products.indexWhere((p) {
         final storedSku = (p['sku'] ?? '').toString().trim().toLowerCase();
-        final storedName = (p['name'] ?? '').toString().trim().toLowerCase();
-        final newName = _customItemName.trim().toLowerCase();
-
-        return storedSku == normalizedSku ||
-            (storedSku.isEmpty && storedName == newName);
+        return storedSku == normalizedSku;
       });
 
       if (existingIndex != -1) {
-        // 🔁 Increase quantity if item already exists
+        // 🔁 Increase quantity
         final existingItem = products[existingIndex];
         final currentQty = (existingItem['quantity'] ?? 1);
         existingItem['quantity'] = currentQty + 1;
         products[existingIndex] = existingItem;
-        if (kDebugMode) {
-          print("🔁 Increased quantity for SKU: $normalizedSku");
-        }
+        if (kDebugMode) print("🔁 Increased quantity for SKU: $normalizedSku");
       } else {
-        // 🆕 Add new item if not found
+        // 🆕 Add new
         final customItem = {
-          'id': normalizedSku.hashCode, // ✅ Stable ID for duplicate detection
+          'id': normalizedSku.hashCode,
           'name': _customItemName,
           'price': double.parse(_customItemPrice),
           'sku': normalizedSku,
@@ -2083,16 +2076,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         if (kDebugMode) print("🆕 Added new custom item SKU: $normalizedSku");
       }
 
-      // ✅ Save updated order to Hive
-      await box.put(serverOrderId.toString(), {
-        ...orderData,
-        'products': products,
-      });
+      // ✅ Save back
+      await box.put(serverOrderId.toString(), {...orderData, 'products': products});
 
-      // ✅ Cache product in productCache (for barcode/offline use)
+      // ✅ Cache in Hive + memory
       final productBox = Hive.box('productCache');
       final cacheKey = "sku_$normalizedSku";
-
       final customProductJson = {
         "id": normalizedSku.hashCode,
         "name": _customItemName,
@@ -2104,16 +2093,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         "images": [],
         "variations": [],
       };
-
-      await productBox.put(cacheKey, {
-        "products": [Map<String, dynamic>.from(customProductJson)],
-      });
-
-      // ✅ Instant in-memory cache for immediate scan recognition
+      await productBox.put(cacheKey, {"products": [customProductJson]});
       OrderHelper.addToCache(normalizedSku, customProductJson);
+
       if (kDebugMode) {
-        print("💾 Custom item cached instantly under key: $cacheKey");
-        print("⚡ Added to in-memory cache for instant scan recognition");
+        print("💾 Custom item cached under key: $cacheKey");
+        print("⚡ In-memory cache ready for instant scan recognition");
       }
 
       // ✅ Reset UI
@@ -2122,8 +2107,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         _customItemName = "";
         _customItemPrice = "";
         _sku = "";
-        _selectedTaxSlab =
-        _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
+        _selectedTaxSlab = _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
         _customItemNameController.clear();
         _customItemPriceController.clear();
         _skuController.clear();
@@ -2134,12 +2118,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       widget.refreshOrderList?.call();
 
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        SnackBar(
-          content: Text(
-            "✅ Custom item added/updated successfully!",
-          ),
+        const SnackBar(
+          content: Text("✅ Custom item added/updated successfully!"),
           backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
+          duration: Duration(seconds: 2),
         ),
       );
     } catch (e) {
@@ -2149,11 +2131,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         SnackBar(
           content: Text("Error adding custom item: $e"),
           backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
+          duration: Duration(seconds: 2),
         ),
       );
     }
   }
+
 
   /// ✅ Converts any deeply nested Map/List from Hive into JSON-safe Map<String, dynamic>
   dynamic _convertToJsonSafe(dynamic value) {

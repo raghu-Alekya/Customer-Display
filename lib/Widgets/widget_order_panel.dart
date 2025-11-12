@@ -647,6 +647,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   // Used sku in OrderLineItem for custom items and products.
   // Ensured loader is shown during API calls.
   // Kept local deletion for non-API orders.
+  bool _isDialogOpen = false;
+
   void deleteItemFromOrder(int itemId) async {
 
     if (orderHelper.activeOrderId != null) {
@@ -926,7 +928,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         onBarcodeScanned: (barcode) async {
           try {
             final trimmedBarcode = barcode.trim();
-            if (kDebugMode) print("🔹 Scanned → $trimmedBarcode");
+            final normalizedSku = trimmedBarcode.toLowerCase(); // 🧩 FIX: normalize SKU
+            if (kDebugMode) print("🔹 Scanned → $normalizedSku");
 
             // ✅ Skip invalid or duplicate triggers
             if (!isOrderInForeground || trimmedBarcode.isEmpty || _isLoading || _isCustomItemLoading) return;
@@ -935,26 +938,25 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             setState(() {});
 
             final productBox = Hive.box('productCache');
-            final cacheKey = "sku_${trimmedBarcode.toLowerCase()}";
+            final cacheKey = "sku_$normalizedSku";
             SKU.ProductBySkuResponse? product;
             bool foundOffline = false;
-            // ✅ 0️⃣ Try in-memory cache first (instant recognition for new custom items)
+
+            // ✅ 0️⃣ Try in-memory cache first
             try {
-              final inMemoryProduct = OrderHelper.getFromCache(trimmedBarcode);
+              final inMemoryProduct = OrderHelper.getFromCache(normalizedSku); // 🧩 FIX: use normalized
               if (inMemoryProduct != null) {
-                if (kDebugMode) print("⚡ Found in-memory custom product: ${inMemoryProduct['name']}");
-                product = SKU.ProductBySkuResponse.fromJson(
-                  Map<String, dynamic>.from(inMemoryProduct),
-                );
-                foundOffline = true; // treat as offline since it's from local memory
+                if (kDebugMode) print("⚡ Found in-memory product: ${inMemoryProduct['name']}");
+                product = SKU.ProductBySkuResponse.fromJson(Map<String, dynamic>.from(inMemoryProduct));
+                foundOffline = true;
               }
             } catch (e) {
               if (kDebugMode) print("⚠ In-memory cache lookup failed: $e");
             }
 
-            // ✅ 1️⃣ Try offline cache first
+            // ✅ 1️⃣ Try offline cache
             final cached = productBox.get(cacheKey);
-            if (cached != null) {
+            if (cached != null && product == null) {
               try {
                 List<dynamic> productData = [];
                 if (cached is Map && cached["products"] is List) {
@@ -977,21 +979,17 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               }
             }
 
-            // ✅ 2️⃣ Try online if not found offline
+            // ✅ 2️⃣ Try online if not found
             if (product == null) {
               try {
-                final products = await ProductRepository().fetchProductBySku(trimmedBarcode);
+                final products = await ProductRepository().fetchProductBySku(normalizedSku);
                 if (products.isNotEmpty) {
                   product = products.first;
-
-                  // ✅ Convert everything to JSON-safe format before caching
                   final safeProducts = products.map((p) => _convertToJsonSafe(p.toJson())).toList();
-
                   await productBox.put(cacheKey, {
                     "products": safeProducts,
                     "timestamp": DateTime.now().toIso8601String(),
                   });
-
                   if (kDebugMode) print("🌐 Product fetched online & safely cached: ${product.name}");
                 }
               } catch (e) {
@@ -1003,9 +1001,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             if (product == null) {
               _isLoading = false;
               setState(() {});
-              await _openCustomItemDialog(context, trimmedBarcode);
+              await _openCustomItemDialog(context, normalizedSku);
               return;
             }
+
 
             // ✅ 4️⃣ Extract product details
             final productName = product.name ?? "Unnamed Product";
@@ -1048,7 +1047,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 if (kDebugMode) print("⚠ Failed to parse metaData: $e");
               }
 
-              // ✅ 2️⃣ Check tags safely (SKU.Tags objects)
+              // ✅ 2️⃣ Check tags safely
               if (!isProductAgeRestricted) {
                 try {
                   final tags = product.tags ?? [];
@@ -1140,6 +1139,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                     true,
                   );
                   print("✅ Age verification completed for Order #$activeOrderId");
+
+                  // ✅ Also mark in Hive for category product cross-check
+                  try {
+                    final box = Hive.box('offlineOrders');
+                    final verifiedKey = 'age_verified_order_$activeOrderId';
+                    await box.put(verifiedKey, true);
+                    print("📦 Hive updated → $verifiedKey = true");
+                  } catch (e) {
+                    print("⚠ Failed to store verification flag in Hive: $e");
+                  }
                 } else {
                   if (kDebugMode)
                     print("🟢 Skipping popup — already verified for this order.");
@@ -1158,80 +1167,99 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               if (kDebugMode) print("🔀 Product has variations for ID: $productId");
 
               if (productId != -1) {
+                // Prevent multiple popups per scan
+                if (_isDialogOpen) {
+                  if (kDebugMode) print("🚫 Popup already open — skipping duplicate");
+                  return;
+                }
+
+                _isDialogOpen = true;
+
+                // Fetch variations once
                 productBloc.fetchProductVariations(productId);
-                productBloc.variationStream.listen((variationResponse) async {
-                  if (variationResponse.status == Status.COMPLETED &&
-                      variationResponse.data!.isNotEmpty) {
-                    final variationList = variationResponse.data!;
-                    final variationMaps = variationList.map((v) {
-                      return {
-                        "id": v.id ?? -1,
-                        "name": v.name ?? productName,
-                        "price": v.price ?? "0.0",
-                        "image": (v.image?.src ?? ""),
-                        "sku": v.sku ?? "",
-                      };
-                    }).toList();
 
-                    await showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (context) => VariantsDialog(
-                        title: product!.name ?? "Select Variant",
-                        variations: variationMaps,
-                        onAddVariant: (selectedVariant, quantity) async {
-                          final double variantPrice =
-                              double.tryParse(selectedVariant['price'].toString()) ?? 0.0;
+                // Wait for the first COMPLETED response
+                final variationResponse = await productBloc.variationStream.firstWhere(
+                      (response) => response.status == Status.COMPLETED,
+                );
 
-                          await orderHelper.addItemToOrder(
-                            selectedVariant['id'],
-                            selectedVariant['name'],
-                            selectedVariant['image'],
-                            variantPrice,
-                            quantity,
-                            selectedVariant['sku'],
-                            activeOrderId,
-                            type: ItemType.product.value,
-                            productId: productId,
-                            variationId: selectedVariant['id'],
-                          );
+                if (variationResponse.data != null && variationResponse.data!.isNotEmpty) {
+                  final variationList = variationResponse.data!;
+                  final variationMaps = variationList.map((v) {
+                    return {
+                      "id": v.id ?? -1,
+                      "name": v.name ?? product?.name,
+                      "price": v.price ?? "0.0",
+                      "image": v.image?.src ?? "",
+                      "sku": v.sku ?? "",
+                    };
+                  }).toList();
 
-                          await fetchOrderItems();
-                          _isLoading = false;
-                          if (mounted) setState(() {});
-                        },
-                      ),
-                    );
-                  }
-                });
-                return;
+                  // ✅ Show dialog only once
+                  await showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => VariantsDialog(
+                      title: product?.name ?? "Select Variant",
+                      variations: variationMaps,
+                      onAddVariant: (selectedVariant, quantity) async {
+                        final double variantPrice =
+                            double.tryParse(selectedVariant['price'].toString()) ?? 0.0;
+
+                        // ✅ Add ONLY the selected variant (no product reference)
+                        await orderHelper.addItemToOrder(
+                          selectedVariant['id'],          // variant ID
+                          selectedVariant['name'],        // variant name
+                          selectedVariant['image'],       // variant image
+                          variantPrice,                   // variant price
+                          quantity,                       // qty
+                          selectedVariant['sku'],         // variant SKU
+                          activeOrderId,                  // order ID
+                          type: ItemType.product.value,   // keep type same if needed
+                          variationId: selectedVariant['id'], // variant ID reference
+                        );
+
+                        await fetchOrderItems();
+                        _isLoading = false;
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                  );
+                }
+
+                // ✅ Reset flag after popup closes
+                _isDialogOpen = false;
               }
             }
 
+
             // ✅ 6️⃣ Add normal product to order
-            await orderHelper.addItemToOrder(
-              product.id ?? -1,
-              productName,
-              productImage,
-              productPrice,
-              1,
-              productSku,
-              activeOrderId,
-              type: ItemType.product.value,
-              productId: product.id ?? -1,
-              variationId: -1,
-              onItemAdded: () {
-                _scaffoldMessenger.showSnackBar(
-                  SnackBar(
-                    content: Text(foundOffline
-                        ? "✅ Added $productName (Offline)"
-                        : "✅ Added $productName (Online)"),
-                    backgroundColor: Colors.green,
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              },
-            );
+            // ✅ 6️⃣ Add normal product only if no variations exist
+            if (product.variations.isEmpty) {
+              await orderHelper.addItemToOrder(
+                product.id ?? -1,
+                productName,
+                productImage,
+                productPrice,
+                1,
+                productSku,
+                activeOrderId,
+                type: ItemType.product.value,
+                productId: product.id ?? -1,
+                variationId: -1,
+                onItemAdded: () {
+                  _scaffoldMessenger.showSnackBar(
+                    SnackBar(
+                      content: Text(foundOffline
+                          ? "✅ Added $productName (Offline)"
+                          : "✅ Added $productName (Online)"),
+                      backgroundColor: Colors.green,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                },
+              );
+            }
 
             await fetchOrderItems();
             _isLoading = false;
