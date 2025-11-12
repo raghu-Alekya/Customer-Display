@@ -321,17 +321,40 @@ class _VariantsDialogState extends State<VariantsDialog> with SingleTickerProvid
                               }
                             });
                             if (selectedIndex != null) {
-                              await widget.onAddVariant?.call(widget.variations[selectedIndex!], variantQuantities[selectedIndex!]!);
+                              setState(() {
+                                _isLoading = true;
+                              });
+
+                              // ✅ Call the callback to add the variant to order
+                              await widget.onAddVariant?.call(
+                                  widget.variations[selectedIndex!], variantQuantities[selectedIndex!]!);
+
                               if (kDebugMode) {
-                                print("VariantsDialog - Added variant: ${widget.variations[selectedIndex!]['name']}, Quantity: ${variantQuantities[selectedIndex!]}");
+                                print("✅ [VariantsDialog] Variant added successfully, closing popup...");
+                              }
+
+                              // ✅ Close popup with animation
+                              await closeDialog();
+
+                              if (mounted) {
+                                setState(() {
+                                  _isLoading = false;
+                                });
+                              }
+                            } else {
+                              if (mounted) {
+                                setState(() {
+                                  _isLoading = false;
+                                });
                               }
                             }
+
                             if (mounted) {
                               setState(() {
                                 _isLoading = false;
                               });
                             }
-                           // closeDialog();
+                            // closeDialog();
                           },
                           style: ElevatedButton.styleFrom(
                             minimumSize: const Size.fromHeight(50),

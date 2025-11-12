@@ -9,8 +9,8 @@ import '../../Widgets/widget_order_panel.dart';
 class AgeVerificationProvider {
   /// Checks if a product is age-restricted and shows the verification dialog if it is.
   ///
-  /// Returns `true` if the age is verified or if the product is not restricted.
-  /// Returns `false` if the verification is cancelled or fails.
+  /// Returns true if the age is verified or if the product is not restricted.
+  /// Returns false if the verification is cancelled or fails.
   Future<bool> ageRestrictedProduct(BuildContext context, SKU.ProductBySkuResponse product) async {
     var isVerified = false;
     isOrderInForeground = false; // hold scanning untill age verify popup is dismissed

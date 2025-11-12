@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import 'package:http/http.dart' as http;
 import '../../Helper/api_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Search/product_custom_item_model.dart';
@@ -29,7 +30,7 @@ class ProductRepository { // Build #1.0.13 : added product search repository
     return output;
   }
 
-  Future<List<ProductResponse>> fetchProducts({String? searchQuery}) async {
+  Future<List<ProductResponse>> fetchProducts(  {String? searchQuery}) async {
     final box = await Hive.openBox('productCache');
     String url = "${UrlHelper.wooCommerceV3}${UrlMethodConstants.products}";
 
@@ -44,36 +45,51 @@ class ProductRepository { // Build #1.0.13 : added product search repository
     try {
       // 🌐 Fetch from API
       final response = await _helper.get(url, true);
-      List<ProductResponse> products = [];
 
+      // ✅ Ensure we have proper JSON
+      dynamic data;
       if (response is String) {
-        final List<dynamic> responseData = json.decode(response);
-        products = responseData.map((e) => ProductResponse.fromJson(e)).toList();
+        data = json.decode(response);
+      } else if (response is Map && response.containsKey('body')) {
+        data = json.decode(response['body']);
+      } else if (response is http.Response) {
+        data = json.decode(response.body);
       } else if (response is List) {
-        products = response.map((e) => ProductResponse.fromJson(e)).toList();
+        data = response;
       } else {
-        throw Exception("Unexpected response type");
+        throw Exception("Unexpected response type: ${response.runtimeType}");
       }
 
-      // ✅ Update Hive cache incrementally (no full clear)
+      if (data is! List) {
+        throw Exception("API returned non-list data: $data");
+      }
+
+      // ✅ Convert to models
+      final List<ProductResponse> products =
+      data.map((e) => ProductResponse.fromJson(e)).toList();
+
+      // ✅ Cache in Hive
       for (var product in products) {
         box.put(product.id.toString(), deepConvertToStringKeys(product.toJson()));
       }
 
       if (kDebugMode) {
-        print("✅ ${products.length} products cached/updated successfully.");
+        print("✅ ${products.length} products fetched and cached successfully.");
       }
 
       return products;
-    } catch (e) {
+    } catch (e, st) {
       // 📴 Offline fallback
+      if (kDebugMode) {
+        print("⚠ [API ERROR] $e");
+        debugPrintStack(stackTrace: st);
+      }
+
       if (box.isNotEmpty) {
         try {
           final cachedProducts = box.values.map((e) {
             try {
               dynamic jsonData;
-
-              // Handle both Map and String formats
               if (e is String) {
                 jsonData = json.decode(e);
               } else if (e is Map) {
@@ -81,43 +97,33 @@ class ProductRepository { // Build #1.0.13 : added product search repository
               } else {
                 throw Exception("Invalid cache type: ${e.runtimeType}");
               }
-
               return ProductResponse.fromJson(Map<String, dynamic>.from(jsonData));
             } catch (err) {
               if (kDebugMode) print("⚠ Skipping bad cache entry: $err");
-              return null; // skip corrupted entries
+              return null;
             }
           }).whereType<ProductResponse>().toList();
 
-
-          // 🔍 Offline search (case-insensitive)
           if (searchQuery != null && searchQuery.isNotEmpty) {
             final q = searchQuery.toLowerCase();
             final filtered = cachedProducts
                 .where((p) => (p.name ?? '').toLowerCase().contains(q))
                 .toList();
-
-            if (kDebugMode) {
-              print("⚡ Offline search found ${filtered.length} products for '$searchQuery'");
-            }
+            print("⚡ Offline search found ${filtered.length} products for '$searchQuery'");
             return filtered;
           }
 
-          if (kDebugMode) {
-            print("⚠ Using ${cachedProducts.length} cached products due to: $e");
-          }
-
+          print("⚠ Using ${cachedProducts.length} cached products due to $e");
           return cachedProducts;
         } catch (err) {
-          if (kDebugMode) {
-            print("❌ Error reading cache: $err");
-          }
+          print("❌ Error reading cache: $err");
         }
       }
 
       throw Exception("Failed to fetch or load cached products: $e");
     }
   }
+
 
 //Build 1.1.36: Fetches product variations from the wc/v3 endpoint
   Future<List<ProductVariation>> fetchProductVariations(int productId) async {
@@ -178,7 +184,7 @@ class ProductRepository { // Build #1.0.13 : added product search repository
         print("💾 Cached ${normalized.length} variations for product $productId");
       }
     } catch (e) {
-      if (kDebugMode) print("⚠️ Failed to cache variations for product $productId: $e");
+      if (kDebugMode) print("⚠ Failed to cache variations for product $productId: $e");
     }
 
     return variations;

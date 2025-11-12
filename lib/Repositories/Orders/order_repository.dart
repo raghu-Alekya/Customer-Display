@@ -57,6 +57,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       'created_at': DateTime.now().toIso8601String(),
       'synced': false,
       'products': [],
+      'orderAgeRestricted': false,
     };
 
     await box.put(newOrderId.toString(), localOrder);
@@ -157,7 +158,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       final productsRaw = (offlineOrder['products'] ?? []) as List;
 
       // -----------------------------------------
-      // ✅ Separate valid Woo products & custom items
+      // ✅ Separate Woo products & custom items
       // -----------------------------------------
       final List<Map<String, dynamic>> lineItems = [];
       final List<Map<String, dynamic>> customFeeLines = [];
@@ -193,32 +194,47 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         });
       }
 
-      // Calculate total cash paid (excluding fees & payouts)
+      // -----------------------------------------
+      // ✅ Add payout(s) as product line if ID exists
+      // -----------------------------------------
+      final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
+      for (final p in payouts) {
+        final double amount =
+            double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0;
+        final int? productId =
+        int.tryParse(p['payout_product_id']?.toString() ?? '');
+
+        if (productId != null && productId > 0) {
+          // ✅ Treat payout as product line (negative total)
+          lineItems.add({
+            "product_id": productId,
+            "name": p['product_name'] ?? 'Payout',
+            "subtotal": amount.toStringAsFixed(2),
+            "total": amount.toStringAsFixed(2),
+            "quantity": 1,
+          });
+        } else {
+          // ✅ Fallback to fee line if payout product missing
+          customFeeLines.add({
+            "name": p['product_name'] ?? "Payout",
+            "tax_status": "none",
+            "total": amount.toStringAsFixed(2),
+          });
+        }
+      }
+
+      // -----------------------------------------
+      // ✅ Calculate total (excluding fees)
+      // -----------------------------------------
       final totalAmount = lineItems.fold<double>(
         0.0,
             (sum, p) => sum + (double.tryParse(p['total'].toString()) ?? 0.0),
       );
 
       // -----------------------------------------
-      // ✅ WooCommerce payout → fee_lines
+      // ✅ Combine fee lines (custom items only)
       // -----------------------------------------
-      final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
-      final payoutFeeLines = payouts.isNotEmpty
-          ? payouts.map((p) {
-        return {
-          "name": "Round off",
-          "tax_status": "none",
-          "total": "${p['amount'] ?? 0}"
-        };
-      }).toList()
-          : [
-        {"name": "Round off", "tax_status": "none", "total": "0.00"}
-      ];
-
-      // -----------------------------------------
-      // ✅ Combine: custom items + payouts
-      // -----------------------------------------
-      final allFeeLines = [...customFeeLines, ...payoutFeeLines];
+      final allFeeLines = [...customFeeLines];
 
       // -----------------------------------------
       // ✅ Additional meta data
@@ -254,6 +270,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         "tax_lines": [],
       };
 
+      print("🟢 [SYNC] Payload → ${jsonEncode(payload)}");
+
       final response = isUpdate
           ? await _helper.put(url, payload, true)
           : await _helper.post(url, payload, true);
@@ -262,32 +280,23 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
       if (decoded is Map<String, dynamic> && decoded['id'] != null) {
         final int serverOrderId = int.tryParse(decoded['id'].toString()) ?? 0;
-
         final double wooTax =
             double.tryParse(decoded['total_tax']?.toString() ?? "0") ?? 0.0;
-
         final double wooTotal =
             double.tryParse(decoded['total']?.toString() ?? "0") ?? 0.0;
 
         final box = Hive.box('offlineOrders');
-
-        // ✅ Determine LOCAL storage order ID
         final localOrderId = offlineOrder['id']?.toString() ??
             offlineOrder['order_id']?.toString() ??
             serverOrderId.toString();
-
-        // ✅ Store Woo data
         offlineOrder['wooOrderId'] = serverOrderId;
         offlineOrder['wooTax'] = wooTax;
         offlineOrder['wooTotal'] = wooTotal;
 
         await box.put(localOrderId, offlineOrder);
-
         await box.put(serverOrderId.toString(), {
           "__map_to_local__": localOrderId,
         });
-
-        // ✅ Send to customer display
         final int localOrderIdInt = int.tryParse(localOrderId) ?? serverOrderId;
         CustomerDisplayHelper.updateCustomerDisplay(localOrderIdInt);
 

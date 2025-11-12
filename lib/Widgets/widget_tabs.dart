@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
@@ -1969,9 +1970,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   // Ensured _isCustomItemLoading is shown during API calls.
   // Preserved success toast, UI refresh, and field clearing logic.
   // Removed commented-out navigation code, as it’s marked as not working.
-  void _handleAddCustomItem() async {
+  Future<void> _handleAddCustomItem() async {
     if (kDebugMode) print("#### DEBUG 55@99 _handleAddCustomItem");
 
+    // 🔹 Validate name
     if (_customItemName.isEmpty) {
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(
@@ -1983,6 +1985,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       return;
     }
 
+    // 🔹 Validate price
     if (_customItemPrice.isEmpty ||
         double.tryParse(_customItemPrice) == null ||
         double.parse(_customItemPrice) == 0) {
@@ -2006,6 +2009,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       final box = Hive.box('offlineOrders');
 
+      // ✅ Ensure order exists in Hive
       if (!box.containsKey(serverOrderId.toString())) {
         await box.put(serverOrderId.toString(), {
           'order_id': serverOrderId,
@@ -2014,6 +2018,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         });
       }
 
+      // ✅ TAX SLAB logic
       final List<Tax> taxes = await _assetDBHelper.getTaxList();
       String taxStatus = "";
       String taxClass = "";
@@ -2030,76 +2035,88 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         }
       }
 
-      final customItem = {
-        'id': DateTime.now().millisecondsSinceEpoch,
-        'name': _customItemName,
-        'price': double.parse(_customItemPrice),
-        'sku': _sku.trim(),
-        'taxStatus': taxStatus,
-        'taxClass': taxClass,
-        'tags': [TextConstants.customItem],
-        'quantity': 1,
-      };
+      // ✅ Ensure stable, normalized SKU
+      _sku = _sku.trim().isEmpty
+          ? _customItemName.trim().toLowerCase().replaceAll(' ', '')
+          : _sku.trim().toLowerCase();
+      final normalizedSku = _sku;
 
-      // ✅ 1️⃣ Fetch existing order data
-      final orderData = Map<String, dynamic>.from(
-          box.get(serverOrderId.toString()) ?? {});
+      // ✅ Safely load and normalize Hive order
+      final rawOrder = box.get(serverOrderId.toString()) ?? {};
+      final orderData = Map<String, dynamic>.from(_convertToJsonSafe(rawOrder));
+      final products = (orderData['products'] as List? ?? [])
+          .map((p) => Map<String, dynamic>.from(_convertToJsonSafe(p)))
+          .toList();
 
-      final List<Map<String, dynamic>> products =
-      List<Map<String, dynamic>>.from(orderData['products'] ?? []);
+      // ✅ Match duplicate items by SKU OR by Name (if SKU empty)
+      final existingIndex = products.indexWhere((p) {
+        final storedSku = (p['sku'] ?? '').toString().trim().toLowerCase();
+        final storedName = (p['name'] ?? '').toString().trim().toLowerCase();
+        final newName = _customItemName.trim().toLowerCase();
 
-      // ✅ 2️⃣ Check if the item with same SKU already exists
-      final existingIndex = products.indexWhere((p) =>
-      (p['sku']?.toString().trim().toLowerCase() ?? '') ==
-          _sku.trim().toLowerCase());
+        return storedSku == normalizedSku ||
+            (storedSku.isEmpty && storedName == newName);
+      });
 
       if (existingIndex != -1) {
+        // 🔁 Increase quantity if item already exists
         final existingItem = products[existingIndex];
         final currentQty = (existingItem['quantity'] ?? 1);
         existingItem['quantity'] = currentQty + 1;
         products[existingIndex] = existingItem;
-
-        if (kDebugMode) print("🔁 Increased quantity for SKU: $_sku");
+        if (kDebugMode) {
+          print("🔁 Increased quantity for SKU: $normalizedSku");
+        }
       } else {
+        // 🆕 Add new item if not found
+        final customItem = {
+          'id': normalizedSku.hashCode, // ✅ Stable ID for duplicate detection
+          'name': _customItemName,
+          'price': double.parse(_customItemPrice),
+          'sku': normalizedSku,
+          'taxStatus': taxStatus,
+          'taxClass': taxClass,
+          'tags': [TextConstants.customItem],
+          'quantity': 1,
+        };
         products.add(customItem);
-        if (kDebugMode) print("🆕 Added new custom item SKU: $_sku");
+        if (kDebugMode) print("🆕 Added new custom item SKU: $normalizedSku");
       }
 
-      // ✅ 3️⃣ Save updated order back to Hive
+      // ✅ Save updated order to Hive
       await box.put(serverOrderId.toString(), {
         ...orderData,
         'products': products,
       });
 
-      // ✅ 4️⃣ Save permanently in productCache for offline lookup
+      // ✅ Cache product in productCache (for barcode/offline use)
       final productBox = Hive.box('productCache');
-      final cacheKey = "sku_${_sku.trim().toLowerCase()}";
+      final cacheKey = "sku_$normalizedSku";
 
       final customProductJson = {
-        "id": customItem['id'],
-        "name": customItem['name'],
+        "id": normalizedSku.hashCode,
+        "name": _customItemName,
         "type": "custom",
-        "price": customItem['price'].toString(),
-        "sku": customItem['sku'],
-        "taxStatus": customItem['taxStatus'],
-        "taxClass": customItem['taxClass'],
+        "price": _customItemPrice,
+        "sku": normalizedSku,
+        "taxStatus": taxStatus,
+        "taxClass": taxClass,
         "images": [],
         "variations": [],
       };
 
-      // 🟢 FIX: Normalize all keys as String and save as JSON-safe structure
-      await productBox.put(
-        cacheKey,
-        Map<String, dynamic>.from({
-          "products": [Map<String, dynamic>.from(customProductJson)],
-        }),
-      );
+      await productBox.put(cacheKey, {
+        "products": [Map<String, dynamic>.from(customProductJson)],
+      });
 
+      // ✅ Instant in-memory cache for immediate scan recognition
+      OrderHelper.addToCache(normalizedSku, customProductJson);
       if (kDebugMode) {
-        print("💾 Custom item saved in productCache with key: $cacheKey");
+        print("💾 Custom item cached instantly under key: $cacheKey");
+        print("⚡ Added to in-memory cache for instant scan recognition");
       }
 
-      // ✅ 5️⃣ Reset UI
+      // ✅ Reset UI
       setState(() {
         _isCustomItemLoading = false;
         _customItemName = "";
@@ -2119,7 +2136,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         SnackBar(
           content: Text(
-            "✅ Custom item '${customItem['name']}' updated/added successfully",
+            "✅ Custom item added/updated successfully!",
           ),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 2),
@@ -2138,6 +2155,20 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     }
   }
 
+  /// ✅ Converts any deeply nested Map/List from Hive into JSON-safe Map<String, dynamic>
+  dynamic _convertToJsonSafe(dynamic value) {
+    if (value == null) return null;
+
+    if (value is Map) {
+      // Convert keys to String and recursively clean nested structures
+      return value.map((k, v) => MapEntry(k.toString(), _convertToJsonSafe(v)));
+    } else if (value is List) {
+      return value.map(_convertToJsonSafe).toList();
+    } else {
+      return value; // primitives remain unchanged
+    }
+  }
+
   // Handle adding the payout
   //Build #1.0.78: Explanation!
   // Moved payout insertion to OrderBloc.addPayout.
@@ -2147,7 +2178,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   // Ensured _isPayoutLoading is shown during API calls.
   // Preserved success toast and UI refresh logic.
   void _handleAddPayout() async {
-    if (_payoutAmount.isEmpty || _payoutAmount == "0" ||
+    print("🟦 [PAYOUT] START ---- _handleAddPayout() ----");
+
+    if (_payoutAmount.isEmpty ||
+        _payoutAmount == "0" ||
         double.tryParse(_payoutAmount) == null) {
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(
@@ -2162,110 +2196,123 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     setState(() => _isPayoutLoading = true);
 
     try {
-      final box = Hive.box('offlineOrders');
+      final offlineBox = Hive.box('offlineOrders');
+      final productBox = Hive.box('productCache');
       final payoutAmount = double.parse(_payoutAmount);
-      int? orderId = OrderHelper().activeOrderId;
 
-      // ✅ If no active order, create one
+      int? orderId = OrderHelper().activeOrderId;
       if (orderId == null) {
         orderId = DateTime.now().millisecondsSinceEpoch;
-        final newOrder = {
+        await offlineBox.put(orderId.toString(), {
           "order_id": orderId,
           "created_at": DateTime.now().toIso8601String(),
           "products": [],
           "payouts": [],
           "gross_total": 0.0,
-        };
-        await box.put(orderId.toString(), newOrder);
+        });
         OrderHelper().activeOrderId = orderId;
-        print("🆕 [Hive] New offline order created → $orderId");
       }
 
       final key = orderId.toString();
-      final existingOrder = box.get(key);
-      if (existingOrder == null) {
-        throw Exception("Offline order not found for ID $orderId");
-      }
+      final existingOrder = Map<String, dynamic>.from(offlineBox.get(key));
+
       final payouts = (existingOrder["payouts"] as List? ?? [])
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
-
-      final products = (existingOrder["products"] as List? ?? [])
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
-
-      // 🚫 If payout already exists → show message and stop
       if (payouts.isNotEmpty) {
         setState(() => _isPayoutLoading = false);
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
             content: Text("A payout already exists for this order."),
             backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
           ),
         );
         return;
       }
+      Map<String, dynamic>? payoutProduct;
+      for (final k in productBox.keys) {
+        if (k.toString().startsWith("products_")) {
+          final data = productBox.get(k);
+          if (data == null) continue;
 
-      // ✅ Add new payout only once
+          final list = json.decode(data["data"]);
+          for (final item in list) {
+            final name = (item["fast_key_item_name"] ?? "").toString().toLowerCase();
+            if (name.contains("payout")) {
+              payoutProduct = Map<String, dynamic>.from(item);
+              print("✅ [PAYOUT] Found dynamic payout product in Hive → $payoutProduct");
+              break;
+            }
+          }
+        }
+        if (payoutProduct != null) break;
+      }
+      payoutProduct ??= {
+        "fast_key_product_id": DateTime.now().millisecondsSinceEpoch,
+        "fast_key_item_name": "Payout",
+        "fast_key_item_price": 0,
+        "fast_key_item_image":
+        "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/payout-2-1.png",
+        "type": "simple",
+      };
       final payoutEntry = {
         "order_id": orderId,
+        "payout_product_id": payoutProduct["fast_key_product_id"],
+        "product_name": payoutProduct["fast_key_item_name"],
+        "product_image": payoutProduct["fast_key_item_image"],
         "amount": -payoutAmount,
         "type": "payout",
         "timestamp": DateTime.now().toIso8601String(),
       };
+
       payouts.add(payoutEntry);
 
-      // 🧮 Recalculate totals
+      final products = (existingOrder["products"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
       double total = 0.0;
       for (var p in products) {
         total += (p["price"] ?? 0) * (p["quantity"] ?? 1);
       }
-      total += payouts.fold(0.0, (sum, p) => sum + (p["amount"] ?? 0.0));
 
       final updatedOrder = {
         ...existingOrder,
+        "products": products,
         "payouts": payouts,
-        "gross_total": total,
+        "gross_total": total + (-payoutAmount),
       };
 
-      // 💾 Save back to Hive
-      await box.put(key, updatedOrder);
-      print("✅ [Hive] Added payout → $payoutEntry");
+      await offlineBox.put(key, updatedOrder);
 
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         SnackBar(
-          content: Text(
-            "Payout of ₹${payoutAmount.toStringAsFixed(2)} added successfully (offline)",
-          ),
+          content: Text("Payout of ₹${payoutAmount.toStringAsFixed(2)} added successfully"),
           backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
         ),
       );
 
-      // 🔄 Refresh UI
       setState(() {
         _payoutAmount = "";
         _isPayoutLoading = false;
       });
+
       await _loadOrderData();
       widget.refreshOrderList?.call();
 
+      print("✅ [PAYOUT] DONE ---- _handleAddPayout() ----");
     } catch (e, s) {
-      print("❌ [Hive] Error adding payout: $e\n$s");
+      print("🟥 [PAYOUT] ERROR: $e\n$s");
       setState(() => _isPayoutLoading = false);
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         SnackBar(
           content: Text("Error adding payout: $e"),
           backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
         ),
       );
     }
   }
-
 }
-// Simple clipper for the tab side curves
 class TabSideClipper extends CustomClipper<Path> {
   final int selectedIndex;
 
