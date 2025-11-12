@@ -1024,64 +1024,37 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       }
     }
   }
-
-  // Creates a new order and sets it as active
-  Future<int> createOrder({int? serverOrderId}) async {
+  Future<int> createOrder({int? serverOrderId}) async { // Build #1.0.11 : updated
+    ///check if 'orderServerId' is 0 or not, if yes show alert
     final db = await DBHelper.instance.database;
-
-    // 🔹 Set active order
     activeOrderId = serverOrderId;
-
-    // ✅ Insert a new order (no model objects, no age flag yet)
     await db.insert(AppDBConst.orderTable, {
       AppDBConst.userId: activeUserId ?? 1,
-      if (serverOrderId != null)
-        AppDBConst.orderServerId: serverOrderId, // server created order id
-      AppDBConst.orderTotal: 0.0, // initially 0
-      AppDBConst.orderStatus: "processing", // initial status
+      if (serverOrderId != null) AppDBConst.orderServerId: serverOrderId, /// server created order id, update after order created at backend
+      AppDBConst.orderTotal: 0.0, /// initially it will be 0
+      AppDBConst.orderStatus: "processing", /// initial value will be 'processing'
       AppDBConst.orderType: 'in-store',
-      AppDBConst.orderDate: DateTime.now().toIso8601String(),
-      AppDBConst.orderTime: DateTime.now().toIso8601String(),
-      // ❌ Do not include AppDBConst.orderAgeRestricted here (set later when verified)
+      AppDBConst.orderDate: DateTime.now().toString(), /// update these from order created on server
+      AppDBConst.orderTime: DateTime.now().toString(),
     });
 
-    // ✅ Update user order count
+    // Update the user's order count
     await db.rawUpdate('''
     UPDATE ${AppDBConst.userTable}
     SET ${AppDBConst.userOrderCount} = ${AppDBConst.userOrderCount} + 1
     WHERE ${AppDBConst.userId} = ?
-  ''', [activeUserId ?? 1]);
+    ''', [activeUserId ?? 1]);
 
-    // ✅ Save active order ID to SharedPreferences
+    // Save the newly created order ID in shared preferences
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('activeOrderId', activeOrderId!);
 
-    // ✅ Refresh in-memory order list
+    // Refresh the order list
     await loadData();
 
-    // ✅ Store clean Hive entry (map only)
-    try {
-      final hiveBox = Hive.box('offlineOrders');
-      final orderKey = activeOrderId.toString();
-
-      final newOrderMap = {
-        AppDBConst.orderServerId: serverOrderId,
-        AppDBConst.orderStatus: "processing",
-        AppDBConst.orderType: 'in-store',
-        AppDBConst.orderDate: DateTime.now().toIso8601String(),
-        AppDBConst.orderTime: DateTime.now().toIso8601String(),
-        AppDBConst.orderTotal: 0.0,
-        // 👇 don't store any Dart objects or model references
-      };
-
-      await hiveBox.put(orderKey, newOrderMap);
-      if (kDebugMode)
-        print("💾 Hive new order stored safely (no model objects) for #$activeOrderId");
-    } catch (e) {
-      if (kDebugMode) print("⚠ Hive not available or failed: $e");
+    if (kDebugMode) {
+      print("#### Order created with ID: $activeOrderId");
     }
-
-    if (kDebugMode) print("✅ Order created successfully (ID: $activeOrderId)");
 
     return activeOrderId!;
   }
