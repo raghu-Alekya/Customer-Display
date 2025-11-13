@@ -780,7 +780,7 @@ class NestedGridWidget extends StatelessWidget {
   final VoidCallback? onAddButtonPressed;
   final VoidCallback? onBackButtonPressed; // Callback for "Back to Categories"
   final Function(int, {bool variantAdded})
-      onItemTapped; // Update the callback to accept a named parameter
+  onItemTapped; // Update the callback to accept a named parameter
   final Function(int, int) onReorder;
   final Function(int) onDeleteItem;
   final bool showDeleteButton;
@@ -817,43 +817,43 @@ class NestedGridWidget extends StatelessWidget {
   Widget _buildImage(String imagePath) {
     final imageWidget = imagePath.startsWith("http")
         ? SizedBox(
+      width: 75,
+      height: 75,
+      child: Image.network(
+        imagePath,
+        width: 75,
+        height: 75,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
             width: 75,
             height: 75,
-            child: Image.network(
-              imagePath,
-              width: 75,
-              height: 75,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  width: 75,
-                  height: 75,
-                  color: Colors.grey.shade300,
-                  child: const Icon(Icons.broken_image, color: Colors.grey),
-                );
-              },
-            ),
-          )
+            color: Colors.grey.shade300,
+            child: const Icon(Icons.broken_image, color: Colors.grey),
+          );
+        },
+      ),
+    )
         : Platform.isWindows
-            ? Image.asset(
-                'assets/default.png',
-                height: 75,
-                width: 75,
-              )
-            : Image.file(
-                File(imagePath),
-                width: 75,
-                height: 75,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 75,
-                    height: 75,
-                    color: Colors.grey.shade300,
-                    child: const Icon(Icons.broken_image, color: Colors.grey),
-                  );
-                },
-              );
+        ? Image.asset(
+      'assets/default.png',
+      height: 75,
+      width: 75,
+    )
+        : Image.file(
+      File(imagePath),
+      width: 75,
+      height: 75,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          width: 75,
+          height: 75,
+          color: Colors.grey.shade300,
+          child: const Icon(Icons.broken_image, color: Colors.grey),
+        );
+      },
+    );
     return ClipRRect(
       borderRadius: BorderRadius.circular(5),
       child: imageWidget,
@@ -879,491 +879,508 @@ class NestedGridWidget extends StatelessWidget {
         child: isLoading
             ? ShimmerEffect.rectangular(height: 200)
             : Material(
-                color: Colors.transparent,
-                child: ReorderableGridView.builder(
-                  padding: const EdgeInsets.all(8),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    mainAxisSpacing: 8,
-                    crossAxisSpacing: 8,
-                    childAspectRatio: 2.2,
+          color: Colors.transparent,
+          child: ReorderableGridView.builder(
+            padding: const EdgeInsets.all(8),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 2.2,
+            ),
+            itemCount: totalCount,
+            dragEnabled: Misc
+                .enableReordering, // Build #1.0.204: Disable Re-Order for grid & Added this line to control drag functionality
+            onReorder: Misc.enableReordering
+                ? onReorder
+                : (oldIndex,
+                newIndex) {}, // Disable reorder callback if not enabled
+            itemBuilder: (context, index) {
+              // Handle "Add" button if enabled
+              if (showAddButton && index == 0) {
+                return Container(
+                  key: const ValueKey('add_button'),
+                  child: GestureDetector(
+                    onTap: onAddButtonPressed ?? () {},
+                    child: _getCardWidget(
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.add,
+                                size: 40, color: Color(0xFFFE6464)),
+                            //SizedBox(height: 2),
+                            Text(TextConstants.addProductText,
+                                style:
+                                TextStyle(color: Color(0xFFFE6464))),
+                          ],
+                        ),
+                        themeHelper,
+                        accentColor: Colors.redAccent),
                   ),
-                  itemCount: totalCount,
-                  dragEnabled: Misc
-                      .enableReordering, // Build #1.0.204: Disable Re-Order for grid & Added this line to control drag functionality
-                  onReorder: Misc.enableReordering
-                      ? onReorder
-                      : (oldIndex,
-                          newIndex) {}, // Disable reorder callback if not enabled
-                  itemBuilder: (context, index) {
-                    // Handle "Add" button if enabled
-                    if (showAddButton && index == 0) {
-                      return Container(
-                        key: const ValueKey('add_button'),
-                        child: GestureDetector(
-                          onTap: onAddButtonPressed ?? () {},
-                          child: _getCardWidget(
-                              Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.add,
-                                      size: 40, color: Color(0xFFFE6464)),
-                                  //SizedBox(height: 2),
-                                  Text(TextConstants.addProductText,
-                                      style:
-                                          TextStyle(color: Color(0xFFFE6464))),
-                                ],
-                              ),
-                              themeHelper,
-                              accentColor: Colors.redAccent),
+                );
+              }
+
+              // Handle "Back to Categories" button if enabled
+              if (showBackButton && index == (showAddButton ? 1 : 0)) {
+                return Container(
+                  key: const ValueKey('back_button'),
+                  child: GestureDetector(
+                    onTap: onBackButtonPressed ?? () {},
+                    child: _getCardWidget(
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Icon(Icons.arrow_back,
+                                size: 50, color: Colors.blue),
+                            SizedBox(height: 5),
+                            Text(TextConstants.backToCategories,
+                                style: TextStyle(color: Colors.blue)),
+                          ],
                         ),
-                      );
-                    }
+                        themeHelper),
+                  ),
+                );
+              }
 
-                    // Handle "Back to Categories" button if enabled
-                    if (showBackButton && index == (showAddButton ? 1 : 0)) {
-                      return Container(
-                        key: const ValueKey('back_button'),
-                        child: GestureDetector(
-                          onTap: onBackButtonPressed ?? () {},
-                          child: _getCardWidget(
-                              Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: const [
-                                  Icon(Icons.arrow_back,
-                                      size: 50, color: Colors.blue),
-                                  SizedBox(height: 5),
-                                  Text(TextConstants.backToCategories,
-                                      style: TextStyle(color: Colors.blue)),
-                                ],
-                              ),
-                              themeHelper),
-                        ),
-                      );
-                    }
+              // Adjust the index based on the presence of "Add" and "Back" buttons
+              final itemIndex = index -
+                  (showAddButton ? 1 : 0) -
+                  (showBackButton ? 1 : 0);
+              if (itemIndex < 0 || itemIndex >= items.length) {
+                return const SizedBox.shrink();
+              }
 
-                    // Adjust the index based on the presence of "Add" and "Back" buttons
-                    final itemIndex = index -
-                        (showAddButton ? 1 : 0) -
-                        (showBackButton ? 1 : 0);
-                    if (itemIndex < 0 || itemIndex >= items.length) {
-                      return const SizedBox.shrink();
-                    }
+              final isReordered = reorderedIndices.isNotEmpty &&
+                  reorderedIndices[itemIndex] != null;
+              final item = items[itemIndex];
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                decoration: BoxDecoration(
+                  border: isReordered
+                      ? Border.all(color: Colors.blue, width: 3)
+                      : null,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                key: ValueKey(
+                    'grid_item_${itemIndex}_${item["fast_key_item_name"]}'),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    GestureDetector(
+                      onTap: () async {
+                        try {
+                          print("🟩 TAP: Starting product add flow for item → ${item["fast_key_item_name"]}");
 
-                    final isReordered = reorderedIndices.isNotEmpty &&
-                        reorderedIndices[itemIndex] != null;
-                    final item = items[itemIndex];
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      decoration: BoxDecoration(
-                        border: isReordered
-                            ? Border.all(color: Colors.blue, width: 3)
-                            : null,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      key: ValueKey(
-                          'grid_item_${itemIndex}_${item["fast_key_item_name"]}'),
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          GestureDetector(
-                            onTap: () async {
-                              try {
-                                print("🟩 TAP: Starting product add flow for item → ${item["fast_key_item_name"]}");
+                          // 👇 Print complete product data for debug
+                          print("🧾 Full product data dump:");
+                          print(const JsonEncoder.withIndent('  ').convert(item));
 
-                                // 👇 Print complete product data for debug
-                                print("🧾 Full product data dump:");
-                                print(const JsonEncoder.withIndent('  ').convert(item));
+                          // 🆔 Extract core product fields
+                          final productId =
+                              int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
+                          final productName = (item["fast_key_item_name"] is String)
+                              ? item["fast_key_item_name"]
+                              : item["fast_key_item_name"]?["rendered"] ?? "Unnamed Product";
+                          final productPrice =
+                              double.tryParse(item["fast_key_item_price"].toString()) ?? 0.0;
+                          final productSku = item["fast_key_item_sku"] ?? "SKU-$productId";
+                          final productImage = (item["fast_key_item_image"] is String)
+                              ? item["fast_key_item_image"]
+                              : item["fast_key_item_image"]?["src"] ?? "";
 
-                                // 🆔 Extract core product fields
-                                final productId =
-                                    int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
-                                final productName = (item["fast_key_item_name"] is String)
-                                    ? item["fast_key_item_name"]
-                                    : item["fast_key_item_name"]?["rendered"] ?? "Unnamed Product";
-                                final productPrice =
-                                    double.tryParse(item["fast_key_item_price"].toString()) ?? 0.0;
-                                final productSku = item["fast_key_item_sku"] ?? "SKU-$productId";
-                                final productImage = (item["fast_key_item_image"] is String)
-                                    ? item["fast_key_item_image"]
-                                    : item["fast_key_item_image"]?["src"] ?? "";
+                          // ✅ Detect variants & restrictions
+                          final hasVariants = (item["type"] == "variable" ||
+                              (item["variations"] != null && item["variations"].isNotEmpty));
+                          final minAge =
+                              int.tryParse(item["fast_key_item_min_age"]?.toString() ?? "0") ?? 0;
+                          final hasAgeRestriction = minAge > 0;
 
-                                // ✅ Detect variants & restrictions
-                                final hasVariants = (item["type"] == "variable" ||
-                                    (item["variations"] != null && item["variations"].isNotEmpty));
-                                final minAge =
-                                    int.tryParse(item["fast_key_item_min_age"]?.toString() ?? "0") ?? 0;
-                                final hasAgeRestriction = minAge > 0;
+                          print(
+                              "🔍 Product details: id=$productId, name=$productName, price=$productPrice, hasVariants=$hasVariants, hasAgeRestriction=$hasAgeRestriction, minAge=$minAge");
 
-                                print(
-                                    "🔍 Product details: id=$productId, name=$productName, price=$productPrice, hasVariants=$hasVariants, hasAgeRestriction=$hasAgeRestriction, minAge=$minAge");
+                          // 🧠 Init or restore offline order
+                          final box = Hive.box('offlineOrders');
+                          int activeOrderId =
+                              orderHelper?.activeOrderId ?? box.get('lastOrderId', defaultValue: 1000);
 
-                                // 🧠 Init or restore offline order
-                                final box = Hive.box('offlineOrders');
-                                int activeOrderId =
-                                    orderHelper?.activeOrderId ?? box.get('lastOrderId', defaultValue: 1000);
+                          if (orderHelper?.activeOrderId == null) {
+                            orderHelper?.activeOrderId = activeOrderId;
+                            box.put('lastOrderId', activeOrderId);
+                          }
 
-                                if (orderHelper?.activeOrderId == null) {
-                                  orderHelper?.activeOrderId = activeOrderId;
-                                  box.put('lastOrderId', activeOrderId);
-                                }
+                          print("🆔 Active Order ID: $activeOrderId");
 
-                                print("🆔 Active Order ID: $activeOrderId");
+                          // 🔞 Age Verification Flow
+                          if (hasAgeRestriction && minAge > 0) {
+                            print("🔞 Age restriction detected → Checking verification for order $activeOrderId...");
+                            // Use SAME age key as barcode scan flow
+                            // Use SAME age key as barcode scan flow
+                            final orderKey = activeOrderId.toString();
+                            final hiveOrder = Map<String, dynamic>.from(
+                              box.get(orderKey, defaultValue: {}),
+                            );
 
-                                // 🔞 Age Verification Flow
-                                if (hasAgeRestriction && minAge > 0) {
-                                  print("🔞 Age restriction detected → Checking verification for order $activeOrderId...");
-                                  final verifiedKey = 'age_verified_order_$activeOrderId';
-                                  final alreadyVerified = box.get(verifiedKey, defaultValue: false);
+                            final alreadyVerified =
+                                hiveOrder["age_verified"] == true ||
+                                    hiveOrder["age_verified"] == 1 ||
+                                    hiveOrder["age_verified"]?.toString().toLowerCase() == "true";
 
-                                  if (alreadyVerified == true) {
-                                    print("✅ Age already verified → Skipping popup.");
-                                  } else {
-                                    final ageVerificationProvider = AgeVerificationProvider();
-                                    final isVerified =
-                                    await ageVerificationProvider.verifyAge(context, minAge: minAge);
+                            if (alreadyVerified) {
+                              print("✅ Age already verified → Skipping popup (Unified).");
+                            } else {
+                              print("🔞 Showing Age Verification Popup (Unified)");
 
-                                    print("🔞 Age verification result for '$productName': $isVerified");
-                                    if (!isVerified) {
-                                      print("❌ Age verification failed → Product blocked: $productName");
-                                      return;
-                                    }
+                              // FIX → create provider
+                              final prov = AgeVerificationProvider();
 
-                                    box.put(verifiedKey, true);
-                                  }
-                                } else {
-                                  print("✅ No age restriction for this product.");
-                                }
+                              final isVerified =
+                              await prov.verifyAge(context, minAge: minAge);
 
-                                // 🧩 Variant Handling
-                                if (hasVariants) {
-                                  print("🧩 Product has variants → Loading offline variants...");
-                                  List<Map<String, dynamic>> offlineVariations = [];
+                              if (!isVerified) {
+                                print("❌ Age verification failed → Product blocked");
+                                return;
+                              }
 
+                              // SAVE SUCCESS FLAG
+                              hiveOrder["age_verified"] = true;
+                              await box.put(orderKey, hiveOrder);
+
+                              print("💾 Saved age_verified = TRUE for order $orderKey");
+                            }
+
+                          } else {
+                            print("✅ No age restriction for this product.");
+                          }
+
+                          // 🧩 Variant Handling
+                          if (hasVariants) {
+                            print("🧩 Product has variants → Loading offline variants...");
+                            List<Map<String, dynamic>> offlineVariations = [];
+
+                            try {
+                              final productBox = Hive.box('productCache');
+                              final cacheKey = "product_${productId}_variations";
+                              final cachedData = productBox.get(cacheKey);
+                              print("📦 Checking cachedData for key=$cacheKey");
+
+                              List rawVariations = [];
+
+                              // 🔹 Try cached data
+                              if (cachedData != null) {
+                                if (cachedData is Map && cachedData["variations"] is List) {
+                                  rawVariations = cachedData["variations"];
+                                } else if (cachedData is List) {
+                                  rawVariations = cachedData;
+                                } else if (cachedData is String) {
                                   try {
-                                    final productBox = Hive.box('productCache');
-                                    final cacheKey = "product_${productId}_variations";
-                                    final cachedData = productBox.get(cacheKey);
-                                    print("📦 Checking cachedData for key=$cacheKey");
+                                    final decoded = jsonDecode(cachedData);
+                                    rawVariations =
+                                    decoded is Map ? decoded["variations"] ?? [] : decoded;
+                                  } catch (_) {
+                                    print("⚠️ Error decoding cachedData string");
+                                  }
+                                }
+                              }
 
-                                    List rawVariations = [];
+                              // 🩵 Fallback: Try item["variations"] if cache is empty
+                              if (rawVariations.isEmpty && item["variations"] != null) {
+                                for (var id in item["variations"]) {
+                                  var variantData = productBox.get("product_$id");
 
-                                    // 🔹 Try cached data
-                                    if (cachedData != null) {
-                                      if (cachedData is Map && cachedData["variations"] is List) {
-                                        rawVariations = cachedData["variations"];
-                                      } else if (cachedData is List) {
-                                        rawVariations = cachedData;
-                                      } else if (cachedData is String) {
-                                        try {
-                                          final decoded = jsonDecode(cachedData);
-                                          rawVariations =
-                                          decoded is Map ? decoded["variations"] ?? [] : decoded;
-                                        } catch (_) {
-                                          print("⚠️ Error decoding cachedData string");
-                                        }
-                                      }
-                                    }
-
-                                    // 🩵 Fallback: Try item["variations"] if cache is empty
-                                    if (rawVariations.isEmpty && item["variations"] != null) {
-                                      for (var id in item["variations"]) {
-                                        var variantData = productBox.get("product_$id");
-
-                                        if (variantData == null) {
-                                          print("⚠️ No cache found for variant id=$id, using fallback");
-                                          continue;
-                                        }
-
-                                        if (variantData is String) {
-                                          try {
-                                            variantData = jsonDecode(variantData);
-                                          } catch (_) {}
-                                        }
-
-                                        String name = "";
-                                        if (variantData?["name"] != null &&
-                                            variantData["name"].toString().isNotEmpty) {
-                                          name = variantData["name"];
-                                        } else if (variantData?["attributes"] != null &&
-                                            variantData["attributes"] is List &&
-                                            (variantData["attributes"] as List).isNotEmpty) {
-                                          name = (variantData["attributes"] as List)
-                                              .map((a) => a["option"] ?? "")
-                                              .where((o) => o.toString().isNotEmpty)
-                                              .join(", ");
-                                        } else {
-                                          name = "Variant $id";
-                                        }
-
-                                        final price = (variantData?["price"] ??
-                                            variantData?["regular_price"] ??
-                                            variantData?["sale_price"] ??
-                                            productPrice)
-                                            .toString();
-
-                                        final image = (variantData?["image"] is Map)
-                                            ? variantData["image"]["src"] ?? productImage
-                                            : (variantData?["image"] ?? productImage);
-
-                                        rawVariations.add({
-                                          "id": id,
-                                          "name": name,
-                                          "price": price,
-                                          "sku": variantData?["sku"] ?? "",
-                                          "image": image,
-                                        });
-                                      }
-
-                                      print("📥 Built ${rawVariations.length} variant objects manually.");
-                                    }
-
-                                    // 🧠 Normalize all variants
-                                    offlineVariations = rawVariations.map<Map<String, dynamic>>((v) {
-                                      if (v is String) {
-                                        try {
-                                          v = jsonDecode(v);
-                                        } catch (_) {}
-                                      }
-                                      if (v is Map) {
-                                        final map =
-                                        v.map((key, value) => MapEntry(key.toString(), value));
-
-                                        map["image"] = (map["image"] is Map && map["image"]["src"] != null)
-                                            ? map["image"]["src"]
-                                            : (map["image"] is String ? map["image"] : "");
-                                        map["name"] = (map["name"] is Map &&
-                                            map["name"]["rendered"] != null)
-                                            ? map["name"]["rendered"]
-                                            : (map["name"] is String
-                                            ? map["name"]
-                                            : "Unnamed Variant");
-                                        map["price"] = map["price"]?.toString() ?? "0";
-                                        return map;
-                                      }
-                                      return <String, dynamic>{};
-                                    }).where((v) => v.isNotEmpty).toList();
-
-                                    print("✅ Found ${offlineVariations.length} offline variants.");
-
-                                    // 🧩 Auto-refetch if variants are incomplete
-                                    final allSameAsParent = offlineVariations.isEmpty ||
-                                        offlineVariations
-                                            .every((v) => v["price"].toString() == productPrice.toString());
-
-                                    if (allSameAsParent) {
-                                      print("🔁 Cached variants incomplete → Refetching from API...");
-                                      await ProductRepository().fetchProductVariations(productId);
-
-                                      final refreshed = productBox.get(cacheKey);
-                                      if (refreshed is Map && refreshed["variations"] is List) {
-                                        offlineVariations = (refreshed["variations"] as List)
-                                            .map((v) => Map<String, dynamic>.from(v as Map))
-                                            .toList();
-                                      }
-                                    }
-                                  } catch (e, st) {
-                                    print("⚠️ Error decoding offline variations: $e");
-                                    print(st);
+                                  if (variantData == null) {
+                                    print("⚠️ No cache found for variant id=$id, using fallback");
+                                    continue;
                                   }
 
-                                  // 🪟 Show VariantsDialog
-                                  print("🪟 Showing VariantsDialog for $productName...");
-                                  await showDialog(
-                                    context: context,
-                                    builder: (ctx) => VariantsDialog(
-                                      title: productName,
-                                      variations: offlineVariations,
-                                      onAddVariant: (selectedVariant, qty) async {
-                                        final variantId =
-                                            int.tryParse(selectedVariant["id"].toString()) ?? -1;
-                                        final variantName =
-                                            selectedVariant["name"] ?? "Variant";
-                                        final variantPrice =
-                                            double.tryParse(selectedVariant["price"].toString()) ??
-                                                productPrice;
-                                        final variantSku =
-                                            selectedVariant["sku"] ?? productSku;
-                                        final variantImage =
-                                            selectedVariant["image"] ?? productImage;
+                                  if (variantData is String) {
+                                    try {
+                                      variantData = jsonDecode(variantData);
+                                    } catch (_) {}
+                                  }
 
-                                        print(
-                                            "🧾 Adding variant → id:$variantId, name:$variantName, price:$variantPrice, qty:$qty");
+                                  String name = "";
+                                  if (variantData?["name"] != null &&
+                                      variantData["name"].toString().isNotEmpty) {
+                                    name = variantData["name"];
+                                  } else if (variantData?["attributes"] != null &&
+                                      variantData["attributes"] is List &&
+                                      (variantData["attributes"] as List).isNotEmpty) {
+                                    name = (variantData["attributes"] as List)
+                                        .map((a) => a["option"] ?? "")
+                                        .where((o) => o.toString().isNotEmpty)
+                                        .join(", ");
+                                  } else {
+                                    name = "Variant $id";
+                                  }
 
-                                        await orderHelper?.addItemToOrder(
-                                          0,
-                                          "$productName - $variantName",
-                                          variantImage,
-                                          variantPrice,
-                                          qty,
-                                          variantSku,
-                                          activeOrderId,
-                                          type: 'variant',
-                                          productId: productId,
-                                          variationId: variantId,
-                                          variationName: variantName,
-                                          salesPrice: variantPrice,
-                                          regularPrice: variantPrice,
-                                          unitPrice: variantPrice,
-                                          onItemAdded: () async {
-                                            print("✅ Variant item added successfully!");
-                                            onItemTapped(index, variantAdded: true);
-                                            await orderHelper?.loadData();
-                                          },
-                                        );
-                                      },
-                                    ),
-                                  );
-                                  print("🪟 VariantsDialog closed for $productName");
-                                } else {
-                                  // 🟩 Simple Product
-                                  print("🟩 Simple product, adding directly...");
+                                  final price = (variantData?["price"] ??
+                                      variantData?["regular_price"] ??
+                                      variantData?["sale_price"] ??
+                                      productPrice)
+                                      .toString();
+
+                                  final image = (variantData?["image"] is Map)
+                                      ? variantData["image"]["src"] ?? productImage
+                                      : (variantData?["image"] ?? productImage);
+
+                                  rawVariations.add({
+                                    "id": id,
+                                    "name": name,
+                                    "price": price,
+                                    "sku": variantData?["sku"] ?? "",
+                                    "image": image,
+                                  });
+                                }
+
+                                print("📥 Built ${rawVariations.length} variant objects manually.");
+                              }
+
+                              // 🧠 Normalize all variants
+                              offlineVariations = rawVariations.map<Map<String, dynamic>>((v) {
+                                if (v is String) {
+                                  try {
+                                    v = jsonDecode(v);
+                                  } catch (_) {}
+                                }
+                                if (v is Map) {
+                                  final map =
+                                  v.map((key, value) => MapEntry(key.toString(), value));
+
+                                  map["image"] = (map["image"] is Map && map["image"]["src"] != null)
+                                      ? map["image"]["src"]
+                                      : (map["image"] is String ? map["image"] : "");
+                                  map["name"] = (map["name"] is Map &&
+                                      map["name"]["rendered"] != null)
+                                      ? map["name"]["rendered"]
+                                      : (map["name"] is String
+                                      ? map["name"]
+                                      : "Unnamed Variant");
+                                  map["price"] = map["price"]?.toString() ?? "0";
+                                  return map;
+                                }
+                                return <String, dynamic>{};
+                              }).where((v) => v.isNotEmpty).toList();
+
+                              print("✅ Found ${offlineVariations.length} offline variants.");
+
+                              // 🧩 Auto-refetch if variants are incomplete
+                              final allSameAsParent = offlineVariations.isEmpty ||
+                                  offlineVariations
+                                      .every((v) => v["price"].toString() == productPrice.toString());
+
+                              if (allSameAsParent) {
+                                print("🔁 Cached variants incomplete → Refetching from API...");
+                                await ProductRepository().fetchProductVariations(productId);
+
+                                final refreshed = productBox.get(cacheKey);
+                                if (refreshed is Map && refreshed["variations"] is List) {
+                                  offlineVariations = (refreshed["variations"] as List)
+                                      .map((v) => Map<String, dynamic>.from(v as Map))
+                                      .toList();
+                                }
+                              }
+                            } catch (e, st) {
+                              print("⚠️ Error decoding offline variations: $e");
+                              print(st);
+                            }
+
+                            // 🪟 Show VariantsDialog
+                            print("🪟 Showing VariantsDialog for $productName...");
+                            await showDialog(
+                              context: context,
+                              builder: (ctx) => VariantsDialog(
+                                title: productName,
+                                variations: offlineVariations,
+                                onAddVariant: (selectedVariant, qty) async {
+                                  final variantId =
+                                      int.tryParse(selectedVariant["id"].toString()) ?? -1;
+                                  final variantName =
+                                      selectedVariant["name"] ?? "Variant";
+                                  final variantPrice =
+                                      double.tryParse(selectedVariant["price"].toString()) ??
+                                          productPrice;
+                                  final variantSku =
+                                      selectedVariant["sku"] ?? productSku;
+                                  final variantImage =
+                                      selectedVariant["image"] ?? productImage;
+
+                                  print(
+                                      "🧾 Adding variant → id:$variantId, name:$variantName, price:$variantPrice, qty:$qty");
+
                                   await orderHelper?.addItemToOrder(
                                     0,
-                                    productName,
-                                    productImage,
-                                    productPrice,
-                                    1,
-                                    productSku,
+                                    "$productName - $variantName",
+                                    variantImage,
+                                    variantPrice,
+                                    qty,
+                                    variantSku,
                                     activeOrderId,
-                                    type: 'product',
+                                    type: 'variant',
                                     productId: productId,
-                                    variationId: -1,
-                                    salesPrice: productPrice,
-                                    regularPrice: productPrice,
-                                    unitPrice: productPrice,
+                                    variationId: variantId,
+                                    variationName: variantName,
+                                    salesPrice: variantPrice,
+                                    regularPrice: variantPrice,
+                                    unitPrice: variantPrice,
                                     onItemAdded: () async {
-                                      print("✅ Simple product added successfully!");
-                                      onItemTapped(index, variantAdded: false);
+                                      print("✅ Variant item added successfully!");
+                                      onItemTapped(index, variantAdded: true);
                                       await orderHelper?.loadData();
                                     },
                                   );
-                                }
+                                },
+                              ),
+                            );
+                            print("🪟 VariantsDialog closed for $productName");
+                          } else {
+                            // 🟩 Simple Product
+                            print("🟩 Simple product, adding directly...");
+                            await orderHelper?.addItemToOrder(
+                              0,
+                              productName,
+                              productImage,
+                              productPrice,
+                              1,
+                              productSku,
+                              activeOrderId,
+                              type: 'product',
+                              productId: productId,
+                              variationId: -1,
+                              salesPrice: productPrice,
+                              regularPrice: productPrice,
+                              unitPrice: productPrice,
+                              onItemAdded: () async {
+                                print("✅ Simple product added successfully!");
+                                onItemTapped(index, variantAdded: false);
+                                await orderHelper?.loadData();
+                              },
+                            );
+                          }
 
-                                print("🎉 Product flow completed for → $productName");
-                              } catch (e, s) {
-                                print("❌ ERROR in offline onTap: $e");
-                                print(s);
-                              }
-                            },
-                            onLongPress: () {
-                              if (onLongPress != null) {
-                                // Build #1.0.204
-                                onLongPress!(
-                                    itemIndex); // Safe to use ! since we checked for null
-                                if (kDebugMode) {
-                                  print("### TEST onLongPress");
-                                }
-                              } else {
-                                if (kDebugMode) {
-                                  print("### onLongPress is null, skipping");
-                                }
-                              }
-                            },
-                            child: _getCardWidget(
-                                Padding(
-                                  padding: const EdgeInsets.all(10.0),
-                                  child: Row(
+                          print("🎉 Product flow completed for → $productName");
+                        } catch (e, s) {
+                          print("❌ ERROR in offline onTap: $e");
+                          print(s);
+                        }
+                      },
+                      onLongPress: () {
+                        if (onLongPress != null) {
+                          // Build #1.0.204
+                          onLongPress!(
+                              itemIndex); // Safe to use ! since we checked for null
+                          if (kDebugMode) {
+                            print("### TEST onLongPress");
+                          }
+                        } else {
+                          if (kDebugMode) {
+                            print("### onLongPress is null, skipping");
+                          }
+                        }
+                      },
+                      child: _getCardWidget(
+                          Padding(
+                            padding: const EdgeInsets.all(10.0),
+                            child: Row(
+                              children: [
+                                _buildImage(item["fast_key_item_image"]),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                    mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
                                     children: [
-                                      _buildImage(item["fast_key_item_image"]),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceAround,
-                                          children: [
-                                            Text(
-                                              item["fast_key_item_name"],
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                //fontWeight: FontWeight.bold,
-                                                color: themeHelper.themeMode ==
-                                                        ThemeMode.dark
-                                                    ? ThemeNotifier.textDark
-                                                    : ThemeNotifier.textLight,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
+                                      Text(
+                                        item["fast_key_item_name"],
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          //fontWeight: FontWeight.bold,
+                                          color: themeHelper.themeMode ==
+                                              ThemeMode.dark
+                                              ? ThemeNotifier.textDark
+                                              : ThemeNotifier.textLight,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            '${TextConstants.currencySymbol}${double.tryParse(item["fast_key_item_price"].toString())?.toStringAsFixed(2) ?? "0.00"}',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              color: themeHelper
+                                                  .themeMode ==
+                                                  ThemeMode.dark
+                                                  ? ThemeNotifier.textDark
+                                                  : ThemeNotifier
+                                                  .textLight,
                                             ),
+                                          ),
+                                          const SizedBox(
+                                              width:
+                                              16), // Space between price and variations
+                                          if (item['variations'] !=
+                                              null &&
+                                              item['variations']
+                                                  .isNotEmpty) // Build #1.0.157: show variationIcon with count
                                             Row(
                                               children: [
-                                                Text(
-                                                  '${TextConstants.currencySymbol}${double.tryParse(item["fast_key_item_price"].toString())?.toStringAsFixed(2) ?? "0.00"}',
-                                                  style: TextStyle(
-                                                    fontSize: 14,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: themeHelper
-                                                                .themeMode ==
-                                                            ThemeMode.dark
-                                                        ? ThemeNotifier.textDark
-                                                        : ThemeNotifier
-                                                            .textLight,
-                                                  ),
-                                                ),
-                                                const SizedBox(
-                                                    width:
-                                                        16), // Space between price and variations
-                                                if (item['variations'] !=
-                                                        null &&
-                                                    item['variations']
-                                                        .isNotEmpty) // Build #1.0.157: show variationIcon with count
-                                                  Row(
-                                                    children: [
-                                                      SvgPicture.asset(
-                                                          SvgUtils
-                                                              .variationIcon,
-                                                          height: 10,
-                                                          width: 10),
-                                                      // SizedBox(width: 4),
-                                                      // Text(
-                                                      //   '${item["variations"].length}',
-                                                      //   style: TextStyle(
-                                                      //     fontSize: 12,
-                                                      //     color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
-                                                      //   ),
-                                                      // ),
-                                                    ],
-                                                  ),
+                                                SvgPicture.asset(
+                                                    SvgUtils
+                                                        .variationIcon,
+                                                    height: 10,
+                                                    width: 10),
+                                                // SizedBox(width: 4),
+                                                // Text(
+                                                //   '${item["variations"].length}',
+                                                //   style: TextStyle(
+                                                //     fontSize: 12,
+                                                //     color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
+                                                //   ),
+                                                // ),
                                               ],
                                             ),
-                                          ],
-                                        ),
+                                        ],
                                       ),
                                     ],
                                   ),
                                 ),
-                                themeHelper),
-                          ),
-                          if (enableIcons == true &&
-                              itemIndex ==
-                                  selectedItemIndex) // Build #1.0.204: Show icons only for long-pressed item
-                            Positioned(
-                              top: -5,
-                              right: -2,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (showDeleteButton)
-                                    IconButton(
-                                      icon: const Icon(Icons.delete,
-                                          color: Colors.red, size: 20),
-                                      onPressed: () => onDeleteItem(itemIndex),
-                                    ),
-                                  IconButton(
-                                    icon: const Icon(Icons.close,
-                                        color: Colors.grey, size: 20),
-                                    onPressed: onCancelReorder,
-                                  ),
-                                ],
-                              ),
+                              ],
                             ),
-                        ],
+                          ),
+                          themeHelper),
+                    ),
+                    if (enableIcons == true &&
+                        itemIndex ==
+                            selectedItemIndex) // Build #1.0.204: Show icons only for long-pressed item
+                      Positioned(
+                        top: -5,
+                        right: -2,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (showDeleteButton)
+                              IconButton(
+                                icon: const Icon(Icons.delete,
+                                    color: Colors.red, size: 20),
+                                onPressed: () => onDeleteItem(itemIndex),
+                              ),
+                            IconButton(
+                              icon: const Icon(Icons.close,
+                                  color: Colors.grey, size: 20),
+                              onPressed: onCancelReorder,
+                            ),
+                          ],
+                        ),
                       ),
-                    );
-                  },
+                  ],
                 ),
-              ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -1396,7 +1413,7 @@ class NestedGridWidget extends StatelessWidget {
           /// Thickness of the border
         ),
         borderRadius:
-            BorderRadius.circular(15.0), // Optional: for rounded corners
+        BorderRadius.circular(15.0), // Optional: for rounded corners
       ),
       child: widget,
     );

@@ -1115,69 +1115,131 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               return;
             }
 
-            // =====================================================================
-            // 7️⃣ AGE VERIFICATION
-            // =====================================================================
-            bool isRestricted = false;
 
-            try {
-              for (final m in (product.metaData ?? [])) {
-                final k = (m.key ?? "").toString().toLowerCase();
-                final v = (m.value ?? "").toString().toLowerCase();
-                if (k == "age_restricted" && (v == "true" || v == "1")) {
-                  isRestricted = true;
-                  break;
-                }
-              }
+/* -----------------------------------------------------------
+   ⭐ NULL-SAFE AGE RESTRICTED PRODUCT DETECTION WITH DEBUG LOGS
+----------//------------------------------------------------- */
+// AGE VERIFICATION — ONLY ONCE PER ORDER
+//------------------------------------------------- */
+/* -----------------------------------------------------------
+   ⭐ AGE RESTRICTION CHECK — ONE TIME PER ORDER (FINAL FIX)
+----------------------------------------------------------- */
 
-              for (final t in (product.tags ?? [])) {
-                final n = (t.name ?? "").toLowerCase();
-                final s = (t.slug ?? "").toLowerCase();
-
-                if (n.contains("alcohol") || s.contains("alcohol")) {
-                  isRestricted = true;
-                  break;
-                }
-              }
-
-              if (isRestricted) {
-                bool alreadyVerified = false;
-
-                final order = orderHelper.orders.firstWhere(
-                      (o) => o[AppDBConst.orderServerId] == activeOrderId,
-                  orElse: () => {},
-                );
-
-                if (order.containsKey(AppDBConst.orderAgeRestricted)) {
-                  final v = order[AppDBConst.orderAgeRestricted];
-                  alreadyVerified = (v == true ||
-                      v == 1 ||
-                      v.toString().toLowerCase() == "true");
-                }
-
-                if (!alreadyVerified) {
-                  final prov = AgeVerificationProvider();
-                  final ok = await prov.ageRestrictedProduct(context, product);
-
-                  if (!ok) {
-                    _isLoading = false;
-                    if (mounted) setState(() {});
-                    _scaffoldMessenger.showSnackBar(
-                      SnackBar(
-                        content: Text("❌ Age verification failed for $productName"),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                    return;
-                  }
-
-                  await orderHelper.updateOrderField(
-                      activeOrderId, AppDBConst.orderAgeRestricted, true);
-                }
-              }
-            } catch (e) {
-              if (kDebugMode) print("⚠ Age verification error: $e");
+            if (kDebugMode) {
+              print("\n---------------- AGE CHECK START ----------------");
+              print("Product Scanned: ID=${product.id}, Name=${product.name}");
             }
+
+// ======================================================
+// 1️⃣ INIT
+// ======================================================
+            bool isRestricted = false;
+            int minimumAge = 0;
+
+// ======================================================
+// 2️⃣ CHECK METADATA
+// ======================================================
+            for (final m in (product.metaData ?? [])) {
+              final key = (m.key ?? "").toLowerCase();
+              final val = (m.value ?? "").toLowerCase();
+
+              if (key == "age_restricted") {
+                if (val == "1" || val == "true") {
+                  isRestricted = true;
+                }
+
+                final int? parsedAge = int.tryParse(val);
+                if (parsedAge != null && parsedAge > 0) {
+                  minimumAge = parsedAge;
+                  isRestricted = true;
+                }
+              }
+            }
+
+// ======================================================
+// 3️⃣ CHECK TAGS
+// ======================================================
+            for (final tag in (product.tags ?? [])) {
+              final name = (tag.name ?? "").toLowerCase();
+              final slug = (tag.slug ?? "").toLowerCase();
+
+              if (name.contains("alcohol") || slug.contains("alcohol")) {
+                isRestricted = true;
+              }
+
+              final bool looksAgeTag =
+                  name.contains("18+") ||
+                      name.contains("21+") ||
+                      slug.contains("18+") ||
+                      slug.contains("21+") ||
+                      name.contains("age") ||
+                      slug.contains("age") ||
+                      name.contains("restricted") ||
+                      slug.contains("restricted");
+
+              if (looksAgeTag) {
+                final cleaned = slug.replaceAll(RegExp(r"[^0-9]"), "");
+                final int? parsedAge = int.tryParse(cleaned);
+
+                if (parsedAge != null && parsedAge > 0) {
+                  minimumAge = parsedAge;
+                  isRestricted = true;
+                }
+              }
+            }
+
+// ======================================================
+// 4️⃣ GET ORDER HIVE DATA
+// ======================================================
+            final hiveBox = Hive.box('offlineOrders');
+            final orderKey = orderHelper.activeOrderId.toString();
+
+            final Map<String, dynamic> hiveOrder = Map<String, dynamic>.from(
+              hiveBox.get(orderKey, defaultValue: {}),
+            );
+
+            final bool alreadyVerified =
+                hiveOrder["age_verified"] == true ||
+                    hiveOrder["age_verified"] == 1 ||
+                    hiveOrder["age_verified"]?.toString().toLowerCase() == "true";
+
+            if (kDebugMode) print("Already verified? → $alreadyVerified");
+
+// ======================================================
+// 5️⃣ SKIP ENTIRE AGE FLOW IF ALREADY VERIFIED
+// ======================================================
+            if (alreadyVerified) {
+              if (kDebugMode) print("✔ Age already verified → skipping popup.");
+            } else if (isRestricted) {
+              // FIRST TIME ONLY → SHOW POPUP THROUGH PROVIDER
+              if (kDebugMode) print("🔔 Showing Age Verification Popup (FIRST TIME)");
+
+              final prov = AgeVerificationProvider();
+              final bool ok = await prov.ageRestrictedProduct(context, product);
+
+              // User failed age verification
+              if (!ok) {
+                _isLoading = false;
+                if (mounted) setState(() {});
+                _scaffoldMessenger.showSnackBar(
+                  const SnackBar(
+                    content: Text("❌ Age verification failed"),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+
+              // SUCCESS → SAVE FLAG
+              hiveOrder["age_verified"] = true;
+              await hiveBox.put(orderKey, hiveOrder);
+
+              if (kDebugMode) print("💾 Saved age_verified = TRUE for order $orderKey");
+            } else {
+              if (kDebugMode) print("✔ Product is NOT age restricted.");
+            }
+
+            if (kDebugMode) print("---------------- AGE CHECK END ----------------\n");
 
             // =====================================================================
             // 8️⃣ VARIATIONS FLOW
@@ -1256,6 +1318,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 );
               },
             );
+
 
             await fetchOrderItems();
 
