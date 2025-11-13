@@ -165,7 +165,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         }
       }
     } else {
-      if (kDebugMode) print("⚠️ No valid offline order maps found in Hive");
+      if (kDebugMode) print("⚠ No valid offline order maps found in Hive");
       activeOrderId = null;
       orderIds = [];
       orders = [];
@@ -1220,7 +1220,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
     // 🛡 Prevent double execution
     if (_activeAdds.contains(key)) {
-      if (kDebugMode) print("⚠️ Duplicate addItemToOrder ignored for $key");
+      if (kDebugMode) print("⚠ Duplicate addItemToOrder ignored for $key");
       return;
     }
     _activeAdds.add(key);
@@ -1229,7 +1229,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       final box = Hive.box('offlineOrders');
       final order = box.get(orderId.toString());
       if (order == null) {
-        if (kDebugMode) print("⚠️ No offline order found for $orderId");
+        if (kDebugMode) print("⚠ No offline order found for $orderId");
         return;
       }
 
@@ -1300,7 +1300,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
   static Map<String, dynamic>? getFromCache(String sku) {
     return _inMemoryProductCache[sku.trim().toLowerCase()];
-    }
+  }
 
   Future<bool> orderHasItems(int orderId) async {
     try {

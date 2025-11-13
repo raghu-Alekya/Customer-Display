@@ -1319,7 +1319,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               },
             );
 
-
             await fetchOrderItems();
 
             _isLoading = false;
