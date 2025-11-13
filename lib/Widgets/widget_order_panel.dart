@@ -619,6 +619,22 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     logString += await orderBloc.createOrder(); // Build #1.0.128
     setState(() {});
   }
+  // =============================================================
+// GLOBAL HELPER — FIXES ALL MAP<dynamic, dynamic> ERRORS
+// =============================================================
+  dynamic deepCast(dynamic source) {
+    if (source is Map) {
+      return source.map(
+            (key, value) => MapEntry(key.toString(), deepCast(value)),
+      );
+    }
+
+    if (source is List) {
+      return source.map((e) => deepCast(e)).toList();
+    }
+
+    return source;
+  }
 
   // Scrolls to the last tab to ensure visibility
   void _scrollToSelectedTab() {
@@ -928,349 +944,330 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         onBarcodeScanned: (barcode) async {
           try {
             final trimmedBarcode = barcode.trim();
-            final normalizedSku = trimmedBarcode.toLowerCase(); // 🧩 FIX: normalize SKU
-            if (kDebugMode) print("🔹 Scanned → $normalizedSku");
+            if (kDebugMode) print("🔹 Scanned → $trimmedBarcode");
 
-            // ✅ Skip invalid or duplicate triggers
             if (!isOrderInForeground || trimmedBarcode.isEmpty || _isLoading || _isCustomItemLoading) return;
 
             _isLoading = true;
-            setState(() {});
+            if (mounted) setState(() {});
 
             final productBox = Hive.box('productCache');
-            final cacheKey = "sku_$normalizedSku";
+            final cacheKey = "sku_${trimmedBarcode.toLowerCase()}";
+
             SKU.ProductBySkuResponse? product;
             bool foundOffline = false;
 
-            // ✅ 0️⃣ Try in-memory cache first
+            // =====================================================================
+            // 1️⃣ IN MEMORY CACHE
+            // =====================================================================
             try {
-              final inMemoryProduct = OrderHelper.getFromCache(normalizedSku); // 🧩 FIX: use normalized
-              if (inMemoryProduct != null) {
-                if (kDebugMode) print("⚡ Found in-memory product: ${inMemoryProduct['name']}");
-                product = SKU.ProductBySkuResponse.fromJson(Map<String, dynamic>.from(inMemoryProduct));
+              final memory = OrderHelper.getFromCache(trimmedBarcode);
+              if (memory != null) {
+                product = SKU.ProductBySkuResponse.fromJson(deepCast(memory));
                 foundOffline = true;
+
+                _isLoading = false;
+                if (mounted) setState(() {});
+                return;
               }
             } catch (e) {
-              if (kDebugMode) print("⚠ In-memory cache lookup failed: $e");
+              if (kDebugMode) print("⚠ Memory cache parse error: $e");
             }
 
-            // ✅ 1️⃣ Try offline cache
-            final cached = productBox.get(cacheKey);
-            if (cached != null && product == null) {
-              try {
-                List<dynamic> productData = [];
+            // =====================================================================
+            // 2️⃣ HIVE PER-SKU CACHE  (FULLY FIXED)
+            // =====================================================================
+            try {
+              final cached = productBox.get(cacheKey);
+
+              if (cached != null) {
+                List<dynamic> items = [];
+
                 if (cached is Map && cached["products"] is List) {
-                  productData = cached["products"];
+                  items = cached["products"];
                 } else if (cached is List) {
-                  productData = cached;
+                  items = cached;
+                } else if (cached is Map) {
+                  items = [cached];
                 }
 
-                final products = productData
-                    .map((json) => SKU.ProductBySkuResponse.fromJson(Map<String, dynamic>.from(json)))
-                    .toList();
+                if (items.isNotEmpty) {
+                  final parsedList = items.map((e) {
+                    return SKU.ProductBySkuResponse.fromJson(deepCast(e));
+                  }).toList();
 
-                if (products.isNotEmpty) {
-                  product = products.first;
-                  foundOffline = true;
-                  if (kDebugMode) print("💾 Found offline product: ${product.name}");
+                  if (parsedList.isNotEmpty) {
+                    product = parsedList.first;
+                    foundOffline = true;
+
+                    if (kDebugMode)
+                      print("💾 Offline SKU match → ID: ${product?.id}, Name: ${product?.name}");
+
+                    // _isLoading = false;
+                    // if (mounted) setState(() {});
+                    // return;
+                  }
                 }
-              } catch (e) {
-                if (kDebugMode) print("⚠ Failed to parse Hive cache: $e");
               }
+            } catch (e) {
+              if (kDebugMode) print("⚠ Hive per-SKU parse error: $e");
             }
 
-            // ✅ 2️⃣ Try online if not found
+            // =====================================================================
+            // 3️⃣ FULL PRODUCT LIST CACHE (all_products_list)
+            // =====================================================================
+            try {
+              if (product == null) {
+                final cachedData = productBox.get("all_products_list");
+
+                if (cachedData != null && cachedData is List) {
+                  final allProducts = cachedData.map((e) {
+                    return SKU.ProductBySkuResponse.fromJson(deepCast(e));
+                  }).toList();
+
+                  final matches = allProducts.where((p) =>
+                  (p.sku ?? "").toLowerCase() == trimmedBarcode.toLowerCase());
+
+                  if (matches.isNotEmpty) {
+                    product = matches.first;
+                    foundOffline = true;
+
+                    if (kDebugMode)
+                      print("💾 Full list offline hit → ID: ${product?.id}, Name: ${product?.name}");
+
+                    _isLoading = false;
+                    if (mounted) setState(() {});
+                    return;
+                  }
+                }
+              }
+            } catch (e) {
+              if (kDebugMode) print("⚠ Hive full list parse error: $e");
+            }
+
+            // =====================================================================
+            // 4️⃣ API FETCH (Only if offline not found)
+            // =====================================================================
             if (product == null) {
               try {
-                final products = await ProductRepository().fetchProductBySku(normalizedSku);
+                final products = await ProductRepository().fetchProductBySku(trimmedBarcode);
+
                 if (products.isNotEmpty) {
                   product = products.first;
-                  final safeProducts = products.map((p) => _convertToJsonSafe(p.toJson())).toList();
+
+                  // Clean-safe JSON for caching
+                  final safeJsonList = products.map((p) {
+                    final j = deepCast(p.toJson());
+                    j["id"] = p.id ?? -1;
+                    j["sku"] = (j["sku"] ?? "").toString();
+                    return j;
+                  }).toList();
+
                   await productBox.put(cacheKey, {
-                    "products": safeProducts,
+                    "products": safeJsonList,
                     "timestamp": DateTime.now().toIso8601String(),
                   });
-                  if (kDebugMode) print("🌐 Product fetched online & safely cached: ${product.name}");
+
+                  if (kDebugMode)
+                    print("🌐 Online fetch → ID: ${product?.id}, Name: ${product?.name}");
                 }
               } catch (e) {
-                if (kDebugMode) print("📴 Offline mode active: cannot fetch from API.");
+                if (kDebugMode) print("📴 API fetch error: $e");
               }
             }
 
-            // ✅ 3️⃣ Handle not found case
+            // =====================================================================
+            // 5️⃣ No product → open custom item popup
+            // =====================================================================
             if (product == null) {
               _isLoading = false;
-              setState(() {});
-              await _openCustomItemDialog(context, normalizedSku);
+              if (mounted) setState(() {});
+              await _openCustomItemDialog(context, trimmedBarcode);
               return;
             }
 
+            // =====================================================================
+            // 6️⃣ Basic product fields
+            // =====================================================================
+            final int productId = product.id ?? -1;
+            final String productName = product.name ?? "Unnamed Product";
+            final String productSku = product.sku ?? trimmedBarcode;
+            final double productPrice =
+                double.tryParse(product.price?.toString() ?? "0") ?? 0;
 
-            // ✅ 4️⃣ Extract product details
-            final productName = product.name ?? "Unnamed Product";
-            final productSku = product.sku ?? trimmedBarcode;
-            final productPrice = double.tryParse(product.price?.toString() ?? "0.0") ?? 0.0;
-            String productImage = '';
+            String image = "";
             try {
-              if (product.images.isNotEmpty) {
-                productImage = product.images.first.src;
+              if ((product.images ?? []).isNotEmpty) {
+                image = product.images!.first.src ?? "";
               }
             } catch (_) {}
 
             final activeOrderId = orderHelper.activeOrderId;
             if (activeOrderId == null) {
               _isLoading = false;
-              setState(() {});
+              if (mounted) setState(() {});
               _scaffoldMessenger.showSnackBar(
                 const SnackBar(
-                  content: Text("⚠ No active order found. Please create an order first."),
+                  content: Text("⚠ No active order found."),
                   backgroundColor: Colors.orange,
-                  duration: Duration(seconds: 2),
                 ),
               );
               return;
             }
 
-            // 🚨 AGE VERIFICATION CHECK — should happen only once per order
+            // =====================================================================
+            // 7️⃣ AGE VERIFICATION
+            // =====================================================================
+            bool isRestricted = false;
+
             try {
-              bool isProductAgeRestricted = false;
-
-              // ✅ 1️⃣ Check metaData
-              try {
-                final metaList = product.metaData ?? [];
-                isProductAgeRestricted = metaList.any((meta) {
-                  final key = meta.key?.toString().toLowerCase();
-                  final value = meta.value?.toString().toLowerCase();
-                  return key == 'age_restricted' && (value == 'true' || value == '1');
-                });
-              } catch (e) {
-                if (kDebugMode) print("⚠ Failed to parse metaData: $e");
-              }
-
-              // ✅ 2️⃣ Check tags safely
-              if (!isProductAgeRestricted) {
-                try {
-                  final tags = product.tags ?? [];
-                  for (final tag in tags) {
-                    if (tag == null) continue;
-                    String name = (tag.name ?? '').toLowerCase().trim();
-                    String slug = (tag.slug ?? '').toLowerCase().trim();
-
-                    if (name.contains('age restricted') ||
-                        slug.contains('age restricted') ||
-                        name.contains('18+') ||
-                        slug == '18' ||
-                        slug == '21' ||
-                        name.contains('alcohol') ||
-                        slug.contains('alcohol')) {
-                      isProductAgeRestricted = true;
-                      if (kDebugMode)
-                        print("🔞 Found age-restricted tag: name='$name', slug='$slug'");
-                      break;
-                    }
-                  }
-                } catch (e) {
-                  if (kDebugMode) print("⚠ Failed to parse tags: $e");
+              for (final m in (product.metaData ?? [])) {
+                final k = (m.key ?? "").toString().toLowerCase();
+                final v = (m.value ?? "").toString().toLowerCase();
+                if (k == "age_restricted" && (v == "true" || v == "1")) {
+                  isRestricted = true;
+                  break;
                 }
               }
 
-              if (kDebugMode)
-                print("🧠 [AGE CHECK] ${product.name} → isRestricted=$isProductAgeRestricted");
+              for (final t in (product.tags ?? [])) {
+                final n = (t.name ?? "").toLowerCase();
+                final s = (t.slug ?? "").toLowerCase();
 
-              // ✅ 3️⃣ Handle verification once per order
-              if (isProductAgeRestricted) {
+                if (n.contains("alcohol") || s.contains("alcohol")) {
+                  isRestricted = true;
+                  break;
+                }
+              }
+
+              if (isRestricted) {
+                bool alreadyVerified = false;
+
                 final order = orderHelper.orders.firstWhere(
                       (o) => o[AppDBConst.orderServerId] == activeOrderId,
                   orElse: () => {},
                 );
 
-                print("🧩 Active order ID: $activeOrderId | "
-                    "AgeRestricted exists: ${order.containsKey(AppDBConst.orderAgeRestricted)} | "
-                    "Current value: ${order[AppDBConst.orderAgeRestricted]}");
-
-                bool isOrderAlreadyVerified = false;
-
                 if (order.containsKey(AppDBConst.orderAgeRestricted)) {
-                  final val = order[AppDBConst.orderAgeRestricted];
-                  isOrderAlreadyVerified =
-                      val == true || val == 1 || val.toString().toLowerCase() == 'true';
-                } else {
-                  // Fallback — read directly from DB if missing in memory
-                  final db = await DBHelper.instance.database;
-                  final result = await db.query(
-                    AppDBConst.orderTable,
-                    columns: [AppDBConst.orderAgeRestricted],
-                    where: '${AppDBConst.orderServerId} = ?',
-                    whereArgs: [activeOrderId],
-                  );
-                  if (result.isNotEmpty) {
-                    final dbVal = result.first[AppDBConst.orderAgeRestricted];
-                    isOrderAlreadyVerified =
-                        dbVal == true || dbVal == 1 || dbVal.toString().toLowerCase() == 'true';
-                    print("🧱 DB check → orderAgeRestricted=$dbVal");
-                  }
+                  final v = order[AppDBConst.orderAgeRestricted];
+                  alreadyVerified = (v == true ||
+                      v == 1 ||
+                      v.toString().toLowerCase() == "true");
                 }
 
-                if (!isOrderAlreadyVerified) {
-                  if (kDebugMode)
-                    print("⚠ [AGE VERIFICATION REQUIRED] for '${product.name}'");
+                if (!alreadyVerified) {
+                  final prov = AgeVerificationProvider();
+                  final ok = await prov.ageRestrictedProduct(context, product);
 
-                  final ageVerificationProvider = AgeVerificationProvider();
-                  final bool isVerified =
-                  await ageVerificationProvider.ageRestrictedProduct(context, product);
-
-                  if (!isVerified) {
+                  if (!ok) {
                     _isLoading = false;
-                    setState(() {});
+                    if (mounted) setState(() {});
                     _scaffoldMessenger.showSnackBar(
                       SnackBar(
-                        content: Text("❌ Age verification failed for ${product.name}."),
+                        content: Text("❌ Age verification failed for $productName"),
                         backgroundColor: Colors.red,
-                        duration: const Duration(seconds: 2),
                       ),
                     );
                     return;
                   }
 
-                  // ✅ Mark verified in DB, memory, and Hive
                   await orderHelper.updateOrderField(
-                    activeOrderId,
-                    AppDBConst.orderAgeRestricted,
-                    true,
-                  );
-                  print("✅ Age verification completed for Order #$activeOrderId");
-
-                  // ✅ Also mark in Hive for category product cross-check
-                  try {
-                    final box = Hive.box('offlineOrders');
-                    final verifiedKey = 'age_verified_order_$activeOrderId';
-                    await box.put(verifiedKey, true);
-                    print("📦 Hive updated → $verifiedKey = true");
-                  } catch (e) {
-                    print("⚠ Failed to store verification flag in Hive: $e");
-                  }
-                } else {
-                  if (kDebugMode)
-                    print("🟢 Skipping popup — already verified for this order.");
+                      activeOrderId, AppDBConst.orderAgeRestricted, true);
                 }
-              } else {
-                if (kDebugMode)
-                  print("🟢 '${product.name}' is not age restricted — skipping check.");
               }
             } catch (e) {
-              if (kDebugMode) print("⚠ Age verification block error: $e");
+              if (kDebugMode) print("⚠ Age verification error: $e");
             }
 
-            // ✅ 5️⃣ Handle variations
-            if (product.variations.isNotEmpty) {
-              final productId = product.id ?? -1;
-              if (kDebugMode) print("🔀 Product has variations for ID: $productId");
+            // =====================================================================
+            // 8️⃣ VARIATIONS FLOW
+            // =====================================================================
+            if ((product.variations ?? []).isNotEmpty) {
+              final id = product.id ?? -1;
+              productBloc.fetchProductVariations(id);
 
-              if (productId != -1) {
-                // Prevent multiple popups per scan
-                if (_isDialogOpen) {
-                  if (kDebugMode) print("🚫 Popup already open — skipping duplicate");
-                  return;
-                }
+              final response = await productBloc.variationStream
+                  .firstWhere((r) => r.status == Status.COMPLETED);
 
-                _isDialogOpen = true;
+              if (response.data != null && response.data!.isNotEmpty) {
+                final variants = response.data!.map((v) {
+                  return {
+                    "id": v.id ?? -1,
+                    "name": v.name ?? productName,
+                    "price": v.price ?? "0",
+                    "image": v.image?.src ?? "",
+                    "sku": v.sku ?? "",
+                  };
+                }).toList();
 
-                // Fetch variations once
-                productBloc.fetchProductVariations(productId);
-
-                // Wait for the first COMPLETED response
-                final variationResponse = await productBloc.variationStream.firstWhere(
-                      (response) => response.status == Status.COMPLETED,
+                await showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => VariantsDialog(
+                    title: productName,
+                    variations: variants,
+                    onAddVariant: (selected, qty) async {
+                      await orderHelper.addItemToOrder(
+                        selected["id"],
+                        selected["name"],
+                        selected["image"],
+                        double.tryParse(selected["price"].toString()) ?? 0,
+                        qty,
+                        selected["sku"],
+                        activeOrderId,
+                        type: ItemType.product.value,
+                        productId: id,
+                        variationId: selected["id"],
+                      );
+                      await fetchOrderItems();
+                    },
+                  ),
                 );
 
-                if (variationResponse.data != null && variationResponse.data!.isNotEmpty) {
-                  final variationList = variationResponse.data!;
-                  final variationMaps = variationList.map((v) {
-                    return {
-                      "id": v.id ?? -1,
-                      "name": v.name ?? product?.name,
-                      "price": v.price ?? "0.0",
-                      "image": v.image?.src ?? "",
-                      "sku": v.sku ?? "",
-                    };
-                  }).toList();
-
-                  // ✅ Show dialog only once
-                  await showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => VariantsDialog(
-                      title: product?.name ?? "Select Variant",
-                      variations: variationMaps,
-                      onAddVariant: (selectedVariant, quantity) async {
-                        final double variantPrice =
-                            double.tryParse(selectedVariant['price'].toString()) ?? 0.0;
-
-                        // ✅ Add ONLY the selected variant (no product reference)
-                        await orderHelper.addItemToOrder(
-                          selectedVariant['id'],          // variant ID
-                          selectedVariant['name'],        // variant name
-                          selectedVariant['image'],       // variant image
-                          variantPrice,                   // variant price
-                          quantity,                       // qty
-                          selectedVariant['sku'],         // variant SKU
-                          activeOrderId,                  // order ID
-                          type: ItemType.product.value,   // keep type same if needed
-                          variationId: selectedVariant['id'], // variant ID reference
-                        );
-
-                        await fetchOrderItems();
-                        _isLoading = false;
-                        if (mounted) setState(() {});
-                      },
-                    ),
-                  );
-                }
-
-                // ✅ Reset flag after popup closes
-                _isDialogOpen = false;
+                _isLoading = false;
+                if (mounted) setState(() {});
+                return;
               }
             }
 
-
-            // ✅ 6️⃣ Add normal product to order
-            // ✅ 6️⃣ Add normal product only if no variations exist
-            if (product.variations.isEmpty) {
-              await orderHelper.addItemToOrder(
-                product.id ?? -1,
-                productName,
-                productImage,
-                productPrice,
-                1,
-                productSku,
-                activeOrderId,
-                type: ItemType.product.value,
-                productId: product.id ?? -1,
-                variationId: -1,
-                onItemAdded: () {
-                  _scaffoldMessenger.showSnackBar(
-                    SnackBar(
-                      content: Text(foundOffline
-                          ? "✅ Added $productName (Offline)"
-                          : "✅ Added $productName (Online)"),
-                      backgroundColor: Colors.green,
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                },
-              );
-            }
+            // =====================================================================
+            // 9️⃣ NORMAL PRODUCT ADD
+            // =====================================================================
+            await orderHelper.addItemToOrder(
+              productId,
+              productName,
+              image,
+              productPrice,
+              1,
+              productSku,
+              activeOrderId,
+              type: ItemType.product.value,
+              productId: productId,
+              variationId: -1,
+              onItemAdded: () {
+                _scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text(foundOffline
+                        ? "✅ Added $productName (Offline)"
+                        : "✅ Added $productName"),
+                    backgroundColor: Colors.green,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              },
+            );
 
             await fetchOrderItems();
+
             _isLoading = false;
-            setState(() {});
+            if (mounted) setState(() {});
           } catch (e, s) {
-            if (kDebugMode) print("❌ onBarcodeScanned failed: $e\n$s");
+            if (kDebugMode) print("❌ Scan failed: $e\n$s");
             _isLoading = false;
-            setState(() {});
+            if (mounted) setState(() {});
             _scaffoldMessenger.showSnackBar(
               SnackBar(
-                content: Text("❌ Scan failed: ${e.toString()}"),
+                content: Text("❌ Scan error: $e"),
                 backgroundColor: Colors.red,
               ),
             );

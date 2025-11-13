@@ -5,6 +5,7 @@ import 'package:dotted_line/dotted_line.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
 import 'package:pinaka_pos/Helper/Extentions/extensions.dart';
 import 'package:shimmer/shimmer.dart';
@@ -234,134 +235,54 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
   @override
   void didUpdateWidget(OrderScreenPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Build #1.0.143: Fixed Issue : After return from order summary screen , order screen panel not refreshing with updated response
-    if (!_initialFetchDone && widget.fetchOrders) {
-      if (kDebugMode) {
-        print("##### widget.fetchOrders : ${widget.fetchOrders}");
-      }
+
+    // Always refresh when instructed by parent
+    if (widget.fetchOrders) {
       fetchOrdersData();
+      return;
     }
-    if (mounted && widget.activeOrderId != oldWidget.activeOrderId) {  // Build #1.0.118
-      if (kDebugMode) {
-        print("##### OrderPanel didUpdateWidget: activeOrderId changed from ${oldWidget.activeOrderId} to ${widget.activeOrderId}");
-      }
+
+    // Refresh when the activeOrderId changes
+    if (mounted && widget.activeOrderId != oldWidget.activeOrderId) {
       fetchOrdersData();
     }
   }
   var _order;
   // Build #1.0.118: Update fetchOrder to use widget.activeOrderId
   Future<void> fetchOrder() async {
-    if (widget.activeOrderId != null && OrderHelper().selectedOrderId != null) { // Build #1.0.251 : FIXED ISSUE - No Orders Case, the order panel still displays the first order from the total orders list instead of showing an empty state.
-      List<Map<String, dynamic>> ordersData = await orderHelper.getOrderById(widget.activeOrderId!);
-      _order = ordersData.firstWhere(
-            (o) => o[AppDBConst.orderServerId] == widget.activeOrderId,
-        orElse: () => {AppDBConst.orderStatus: ''},
-      );
-      // Extract server order ID for API calls
+    if (widget.activeOrderId != null) {
+
+      // SQLite order
+      List<Map<String, dynamic>> ordersData =
+      await orderHelper.getOrderById(widget.activeOrderId!);
+
+      _order = ordersData.isNotEmpty
+          ? ordersData.first
+          : {AppDBConst.orderStatus: ''};
+
       orderServerId = _order[AppDBConst.orderServerId] as int?;
 
-      if (kDebugMode) {
-        print("###### OrderScreenPanel - Fetched order server ID: $orderServerId");
+      // 🔥 Fetch WooCommerce synced data from Hive
+      if (orderServerId != null) {
+        final box = Hive.box('offlineOrders');
+        final hiveData = box.get(orderServerId.toString());
+
+        if (hiveData != null) {
+          _order['wooTotal'] = hiveData['wooTotal'];
+          _order['wooTax'] = hiveData['wooTax'];
+          _order['wooOrderId'] = hiveData['wooOrderId'];
+        }
+
+        print("🔥 Loaded Woo data from Hive: $_order");
       }
 
-      // Build #1.0.221 : Fetch payment details after getting order server ID
-      if (orderServerId != null) {
-        _fetchPaymentsByOrderId();
-      }
+      if (orderServerId != null) _fetchPaymentsByOrderId();
+
     } else {
       _order = {AppDBConst.orderStatus: ''};
       orderServerId = null;
-      widget.activeOrderId = null; // Build #1.0.251 : We have to clear active order if orders list is empty from api.
     }
   }
-
-  // // Build #1.0.10: Fetches the list of order tabs from OrderHelper
-  // void _getOrderTabs() async {
-  //   if (kDebugMode) {
-  //     print("##### DEBUG: _getOrderTabs - Loading order tabs");
-  //   }
-  //   await orderHelper.loadData(); // Load order data from DB
-  //
-  //   if (mounted) {
-  //     setState(() {
-  //       // Convert order IDs into tab format
-  //       tabs = orderHelper.orders
-  //           .asMap()
-  //           .entries
-  //           .map((entry) => {
-  //         "title": "#${entry.value[AppDBConst.orderServerId] ?? entry.value[AppDBConst.orderId]}",
-  //         "subtitle": "Tab ${entry.key + 1}",
-  //         "orderId": entry.value[AppDBConst.orderId] as Object, // Use db orderId, not serverId
-  //       }).toList();
-  //       if (kDebugMode) {
-  //         print("##### DEBUG: _getOrderTabs - Loaded ${tabs.length} tabs: $tabs");
-  //       }
-  //     });
-  //   }
-  //
-  //   if (!mounted) return; // Prevent controller initialization if unmounted
-  //   _initializeTabController(); // Initialize tab controller
-  //
-  //   if (tabs.isNotEmpty) {
-  //     int index = 0;
-  //     if (widget.activeOrderId != null) {
-  //       index = orderHelper.orderIds.indexOf(widget.activeOrderId!);
-  //       if (index == -1) {
-  //         if (kDebugMode) {
-  //           print("##### DEBUG: _getOrderTabs - Active order ID ${widget.activeOrderId} not found, defaulting to last tab");
-  //         }
-  //         index = tabs.length - 1;
-  //         await orderHelper.setActiveOrder(tabs[index]["orderId"] as int);
-  //       }
-  //     } else {
-  //       if (kDebugMode) {
-  //         print("##### DEBUG: _getOrderTabs - No active order, setting to last tab");
-  //       }
-  //       index = tabs.length - 1;
-  //       await orderHelper.setActiveOrder(tabs[index]["orderId"] as int);
-  //     }
-  //     if (mounted && _tabController != null) {
-  //       _tabController?.index = index;
-  //       if (kDebugMode) {
-  //         print("##### DEBUG: _getOrderTabs - Set tab index to $index, activeOrderId: ${widget.activeOrderId}");
-  //       }
-  //     }
-  //     await fetchOrderItems(); // Load items for active order
-  //   } else {
-  //     if (kDebugMode) {
-  //       print("##### DEBUG: _getOrderTabs - No tabs available");
-  //     }
-  //     if (mounted) {
-  //       setState(() {
-  //         orderItems.clear(); // Clear items if no tabs
-  //       });
-  //     }
-  //   }
-  // }
-
-  // void _fetchOrders() { //Build #1.0.40: fetch orders items from API sync & updating to UI
-  //   _fetchOrdersSubscription = orderBloc.fetchOrdersStream.listen((response) async {
-  //     if (!mounted) return;
-  //
-  //     if (response.status == Status.COMPLETED) {
-  //       if (kDebugMode) {
-  //         print("##### DEBUG: Fetched orders successfully");
-  //       }
-  //
-  //       await orderHelper.syncOrdersFromApi(response.data!.orders);
-  //       _getOrderTabs();
-  //     } else if (response.status == Status.ERROR) {
-  //       if (kDebugMode) {
-  //         print("##### ERROR: Fetch orders failed - ${response.message}");
-  //       }
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         SnackBar(content: Text(response.message ?? "Failed to fetch orders")),
-  //       );
-  //     }
-  //   });
-  //
-  //   orderBloc.fetchOrders();
-  // }
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
@@ -415,145 +336,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       setState(() => _isLoading = false); // Build #1.0.104: hide loader
     }
   }
-
-  // // Build #1.0.10: Initializes the tab controller and handles tab switching
-  // void _initializeTabController() {
-  //   if (!mounted) return; // Prevent initialization if unmounted
-  //   _tabController?.dispose(); // Dispose existing controller
-  //   _tabController = TabController(length: tabs.length, vsync: this);
-  //
-  //   _tabController!.addListener(() async {
-  //     if (!_tabController!.indexIsChanging && mounted) {
-  //       int selectedIndex = _tabController!.index; // Get selected tab index
-  //       int selectedOrderId = tabs[selectedIndex]["orderId"] as int;
-  //
-  //       if (kDebugMode) {
-  //         print("##### DEBUG: Tab changed to index: $selectedIndex, orderId: $selectedOrderId");
-  //       }
-  //
-  //       await orderHelper.setActiveOrder(selectedOrderId); // Set new active order
-  //       await fetchOrderItems(); // Load items for the selected order
-  //       if (mounted) {
-  //         setState(() {}); // Refresh UI
-  //       }
-  //     }
-  //   });
-  // }
-
-  // // Build #1.0.10: Creates a new order and adds it as a new tab
-  // void addNewTab() async {
-  //   int orderId = await orderHelper.createOrder(); // Create a new order
-  //   await orderHelper.setActiveOrder(orderId); // Set the new order as active
-  //
-  //   if (!mounted) return;
-  //   setState(() {
-  //     tabs.add({
-  //       "title": "#$orderId", // New order number
-  //       "subtitle": "Tab ${tabs.length + 1}", // Tab position
-  //       "orderId": orderId as Object,
-  //     });
-  //   });
-  //
-  //   if (!mounted) return;
-  //   _initializeTabController(); // Reinitialize tab controller
-  //   _tabController?.index = tabs.length - 1; // Select the new tab
-  //   _scrollToSelectedTab(); // Ensure new tab is visible
-  //   fetchOrderItems(); // Load items for the new order
-  // }
-
-  // void addNewTab() async { // Build #1.0.44 : Un-Comment if this func needed and test
-  //   if (kDebugMode) {
-  //     print("##### DEBUG: addNewTab - Creating new order via OrderBloc");
-  //   }
-  //   String deviceId = await getDeviceId();
-  //   OrderMetaData device = OrderMetaData(key: OrderMetaData.posDeviceId, value: deviceId);
-  //   OrderMetaData placedBy = OrderMetaData(key: OrderMetaData.posPlacedBy, value: '${orderHelper.activeUserId ?? 1}');
-  //   List<OrderMetaData> metaData = [device,placedBy];
-  //   // Create new order via API
-  //   await orderBloc.createOrder(metaData);
-  //   // Refresh tabs to include new order
-  //   _getOrderTabs();
-  //   // Set the new order as active
-  //   await orderHelper.setActiveOrder(tabs.last["orderId"] as int); // Set the new order as active
-  //   // Update tab controller and UI
-  //   _initializeTabController();
-  //   if (tabs.isNotEmpty) {
-  //     _tabController?.index = tabs.length - 1;
-  //     // Scroll to new tab
-  //     _scrollToSelectedTab();
-  //     // Fetch items for new order
-  //     await fetchOrderItems();
-  //     if (kDebugMode) {
-  //       print("##### DEBUG: addNewTab - Added tab for orderId: ${widget.activeOrderId}");
-  //     }
-  //   }
-  // }
-
-  // Scrolls to the last tab to ensure visibility
-  // void _scrollToSelectedTab() {
-  //   WidgetsBinding.instance.addPostFrameCallback((_) {
-  //     if (_scrollController.hasClients) {
-  //       _scrollController.animateTo(
-  //         _scrollController.position.maxScrollExtent,
-  //         duration: const Duration(milliseconds: 300),
-  //         curve: Curves.easeInOut,
-  //       );
-  //     }
-  //   });
-  // }
-
-  // Build #1.0.10: Removes a tab (order) from the UI and database
-  // void removeTab(int index) async {
-  //   if (tabs.isNotEmpty) {
-  //     int orderId = tabs[index]["orderId"] as int;
-  //     bool isRemovedTabActive = orderId == widget.activeOrderId;
-  //
-  //     await orderHelper.deleteOrder(orderId); // Delete order from DB
-  //
-  //     setState(() {
-  //       tabs.removeAt(index); // Remove tab from the UI
-  //
-  //       // Update subtitles to maintain order
-  //       for (int i = 0; i < tabs.length; i++) {
-  //         tabs[i]["subtitle"] = "Tab ${i + 1}";
-  //       }
-  //     });
-  //
-  //     _initializeTabController(); // Reinitialize tabs
-  //
-  //     if (tabs.isNotEmpty) {
-  //       if (isRemovedTabActive) {
-  //         // If the removed tab was active, switch to another tab
-  //         int newIndex = index >= tabs.length ? tabs.length - 1 : index;
-  //         _tabController!.index = newIndex;
-  //         int newActiveOrderId = tabs[newIndex]["orderId"] as int;
-  //         await orderHelper.setActiveOrder(newActiveOrderId);
-  //       } else {
-  //         // Keep the currently active tab
-  //         int currentActiveIndex = tabs.indexWhere((tab) => tab["orderId"] == widget.activeOrderId);
-  //         if (currentActiveIndex != -1) {
-  //           _tabController!.index = currentActiveIndex;
-  //         }
-  //       }
-  //
-  //       fetchOrderItems(); // Refresh order items list
-  //     } else {
-  //       // No orders left, reset active order and clear UI
-  //       widget.activeOrderId = null;
-  //       setState(() {
-  //         orderItems = []; // Clear order items
-  //       });
-  //     }
-  //   }
-  // }
-
-  // Build #1.0.10: Deletes an item from the active order
-  // void deleteItemFromOrder(int itemId) async {
-  //   if (widget.activeOrderId != null) {
-  //     await orderHelper.deleteItem(itemId); // Delete item from DB
-  //     fetchOrderItems(); // Refresh the order items list
-  //   }
-  // }
 
   @override
   void didChangeDependencies() {
@@ -799,83 +581,58 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
   }
 
-
-
-// Current Order UI
   Widget buildCurrentOrder() {
-    final theme = Theme.of(context); // Build #1.0.6 - added theme for order panel
+    final theme = Theme.of(context);
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final ScrollController _scrollController = ScrollController();
-    // Fetch the specific order if in history mode
-    final order = widget.activeOrderId != null
-        ? orderHelper.orders.firstWhere(
-          (o) => o[AppDBConst.orderServerId] == widget.activeOrderId,
-      orElse: () => {},
-    )
-        : {};
-
-    // Determine the date and time to display
+    final order = _order ?? {};
     String displayDate = widget.formattedDate;
     String displayTime = widget.formattedTime;
 
     if (order.isNotEmpty && order[AppDBConst.orderDate] != null) {
       try {
-        final DateTime createdDateTime = DateTime.parse(order[AppDBConst.orderDate].toString());
-        displayDate = DateFormat(TextConstants.dateFormat).format(createdDateTime);
-        displayTime = DateFormat(TextConstants.timeFormat).format(createdDateTime);
+        final DateTime createdDateTime =
+        DateTime.parse(order[AppDBConst.orderDate].toString());
+        displayDate =
+            DateFormat(TextConstants.dateFormat).format(createdDateTime);
+        displayTime =
+            DateFormat(TextConstants.timeFormat).format(createdDateTime);
       } catch (e) {
-        if (kDebugMode) {
-          print("Error parsing order creation date: $e");
-        }
-        // Fallback to raw data or default if parsing fails
+        print("Error parsing date: $e");
         displayDate = order[AppDBConst.orderDate].toString().split(' ').first;
       }
     }
-    if (kDebugMode) {
-      // print("Building Current Order Widget");
-    } // Debug print
-    // Fetch discount and tax for the active order
-    double orderDiscount = 0.0;
-    double merchantDiscount = 0.0;
-    double orderTax = 0.0;
-    num grossTotal = GlobalUtility.getGrossTotal(orderItems);  // Build #1.0.137: GrossTotal calculation form global class for code re usability
-    num netTotal = 0.0;
-    num netPayable = 0.0;  //Build #1.0.67
+    double orderDiscount =
+        (order[AppDBConst.orderDiscount] as num?)?.toDouble() ?? 0.0;
 
-    // Update the calculation section in buildCurrentOrder:
-    // if (widget.activeOrderId != null) {
-    // final order = orderHelper.orders.firstWhere(
-    //       (order) => order[AppDBConst.orderServerId] == widget.activeOrderId,
-    //   orElse: () => {},
-    // );
+    double merchantDiscount =
+        (order[AppDBConst.merchantDiscount] as num?)?.toDouble() ?? 0.0;
+    num grossTotal = GlobalUtility.getGrossTotal(orderItems);
+    double wooTax = (order['wooTax'] as num?)?.toDouble() ?? 0.0;
+    double wooTotal = (order['wooTotal'] as num?)?.toDouble() ?? 0.0;
+    double sqliteTax =
+        (order[AppDBConst.orderTax] as num?)?.toDouble() ?? 0.0;
+    double sqliteTotal =
+        (order[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0;
+    double orderTax = wooTax > 0 ? wooTax : sqliteTax;
+    num netTotal = grossTotal - orderDiscount - merchantDiscount;
+    if (netTotal < 0) netTotal = 0;
+    double localNetPayable = netTotal.toDouble() + orderTax;
+    double netPayable = wooTotal > 0 ? wooTotal : localNetPayable;
 
-    // Get values from order or default to 0
-    orderDiscount = order[AppDBConst.orderDiscount] as double? ?? 0.0;
-    merchantDiscount = order[AppDBConst.merchantDiscount] as double? ?? 0.0;
-    orderTax = order[AppDBConst.orderTax] as double? ?? 0.0;
-
-    // Build #1.0.138: Calculate net total
-    netTotal = grossTotal - orderDiscount ;
-
-    //Build #1.0.146: Apply merchant discount (this is typically a separate discount)
-    netTotal = netTotal - merchantDiscount;
-    ///map total with netPayable
-    netPayable =  order[AppDBConst.orderTotal] as double? ?? 0.0;
-
-    // Build #1.0.138: Ensure no negative values
-    netTotal = netTotal < 0 ? 0.0 : netTotal;
-    netPayable = netPayable < 0 ? 0.0 : netPayable;
-
-    if (kDebugMode) {  //Build #1.0.67
-      // print("#### ACTIVE ORDER ID: ${widget.activeOrderId}");
-      // print("#### orderItems: $orderItems");
-      // print("#### grossTotal: $grossTotal");
-      // print("#### orderDiscount: $orderDiscount");
-      // print("#### merchantDiscount: $merchantDiscount");
-      // print("#### orderTax: $orderTax");
-      // print("#### netTotal: $netTotal");
-      // print("#### netPayable: $netPayable");
-    }
+    if (netPayable < 0) netPayable = 0;
+    print("🟦 Summary Data:");
+    print("Gross Total         → $grossTotal");
+    print("SQLite Discount     → $orderDiscount");
+    print("SQLite M. Discount  → $merchantDiscount");
+    print("Woo Tax             → $wooTax");
+    print("Woo Total           → $wooTotal");
+    print("SQLite Tax          → $sqliteTax");
+    print("SQLite Total        → $sqliteTotal");
+    print("Final TAX Used      → $orderTax");
+    print("Net Local Total     → $netTotal");
+    print("Local Payable       → $localNetPayable");
+    print("Final Payable       → $netPayable");
 
     return Stack(
       children: [
