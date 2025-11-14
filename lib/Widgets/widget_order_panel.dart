@@ -1,3 +1,4 @@
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:core';
@@ -1699,42 +1700,83 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
     if (rawOfflineOrder == null) return;
 
-    final Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(rawOfflineOrder);
+    final Map<String, dynamic> offlineOrder =
+    Map<String, dynamic>.from(rawOfflineOrder);
 
-    // ✅ Determine if item is product or payout
-    final String itemType = (orderItem['item_type'] ?? '').toString().toLowerCase();
+    // 🔍 Detect type: product / payout / cashback
+    final String itemType =
+    (orderItem['item_type'] ?? '').toString().toLowerCase();
 
-    // Extract current product and payout lists
     final List<Map<String, dynamic>> products =
-        (offlineOrder['products'] as List?)?.map((e) => Map<String, dynamic>.from(e)).toList() ?? [];
+        (offlineOrder['products'] as List?)
+            ?.map((e) => Map<String, dynamic>.from(e))
+            .toList() ??
+            [];
 
     final List<Map<String, dynamic>> payouts =
-        (offlineOrder['payouts'] as List?)?.map((e) => Map<String, dynamic>.from(e)).toList() ?? [];
+        (offlineOrder['payouts'] as List?)
+            ?.map((e) => Map<String, dynamic>.from(e))
+            .toList() ??
+            [];
 
+    final List<Map<String, dynamic>> cashbacks =
+        (offlineOrder['cashbacks'] as List?)
+            ?.map((e) => Map<String, dynamic>.from(e))
+            .toList() ??
+            [];
+
+    // 🟦 DELETE PAYOUT
     if (itemType == 'payout') {
-      // 🧾 Match and remove payout
       payouts.removeWhere((p) {
         final amt1 = double.tryParse(p['amount']?.toString() ?? '0') ?? 0;
-        final amt2 = double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+        final amt2 =
+            double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
         return amt1 == amt2;
       });
+
       offlineOrder['payouts'] = payouts;
-    } else {
-      // 🛒 Match and remove product
+    }
+
+    // 🟩 DELETE CASHBACK
+    else if (itemType == 'cashback') {
+      cashbacks.removeWhere((cb) {
+        final amt1 = double.tryParse(cb['amount']?.toString() ?? '0') ?? 0;
+        final amt2 =
+            double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+        return amt1 == amt2;
+      });
+
+      offlineOrder['cashbacks'] = cashbacks;
+    }
+
+    // 🛒 DELETE PRODUCT
+    else {
       products.removeWhere((p) {
-        final name1 = (p['name'] ?? p['product_name'] ?? p['fast_key_item_name'] ?? '').toString().toLowerCase();
-        final name2 = (orderItem['item_name'] ?? '').toString().toLowerCase();
-        final price1 = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
-        final price2 = double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+        final name1 = (p['name'] ??
+            p['product_name'] ??
+            p['fast_key_item_name'] ??
+            '')
+            .toString()
+            .toLowerCase();
+        final name2 =
+        (orderItem['item_name'] ?? '').toString().toLowerCase();
+
+        final price1 =
+            double.tryParse(p['price']?.toString() ?? '0') ?? 0;
+        final price2 =
+            double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+
         return name1 == name2 && price1 == price2;
       });
+
       offlineOrder['products'] = products;
     }
 
     // 💾 Save updated order back to Hive
     await offlineBox.put(orderKey, offlineOrder);
 
-    await CustomerDisplayHelper.updateCustomerDisplay(orderHelper.activeOrderId!);
+    await CustomerDisplayHelper.updateCustomerDisplay(
+        orderHelper.activeOrderId!);
 
     if (kDebugMode) {
       print("🗑️ Deleted offline $itemType successfully!");
@@ -1742,7 +1784,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       print(const JsonEncoder.withIndent('  ').convert(offlineOrder));
     }
 
-    // 🔁 Refresh local UI list
+    // 🔁 Refresh UI
     setState(() {
       orderItems.remove(orderItem);
     });
@@ -1809,27 +1851,50 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         final offlinePayouts = ((offlineOrder['payouts'] ?? []) as List)
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
+        // 💰 Load cashback
+        final offlineCashback = ((offlineOrder['cashbacks'] ?? []) as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
 
         // 🧾 Combine for UI
         orderItems = [
+          // ---------------------- Products ----------------------
           ...offlineProducts.map((item) => {
             'item_name': item['name'] ?? item['product_name'] ?? '',
             'item_price': double.tryParse(item['price']?.toString() ?? '0') ?? 0.0,
             'items_count': int.tryParse(item['quantity']?.toString() ?? '1') ?? 1,
-            'item_sum_price': (double.tryParse(item['price']?.toString() ?? '0') ?? 0.0) *
+            'item_sum_price':
+            (double.tryParse(item['price']?.toString() ?? '0') ?? 0.0) *
                 (int.tryParse(item['quantity']?.toString() ?? '1') ?? 1),
             'item_image': item['image'] ?? '',
-            'item_type': 'Product',
+            'item_type': 'product',
           }),
+
+          // ---------------------- Payouts ----------------------
           ...offlinePayouts.map((payout) => {
             'item_name': 'Payout',
-            'item_price': double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0,
+            'item_price':
+            double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0,
             'items_count': 1,
-            'item_sum_price': double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0,
+            'item_sum_price':
+            double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0,
             'item_image': 'assets/svg/payout.svg',
             'item_type': 'payout',
           }),
+
+          // ---------------------- Cashback ----------------------
+          ...offlineCashback.map((cash) => {
+            'item_name': 'Cashback',
+            'item_price':
+            double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0,
+            'items_count': 1,
+            'item_sum_price':
+            double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0,
+            'item_image': 'assets/images/cashback.png', // <<< Use proper icon
+            'item_type': 'cashback',
+          }),
         ];
+
         totalItems = offlineProducts.fold(0, (sum, product) {
           final qty = int.tryParse(product['quantity']?.toString() ?? '1') ?? 1;
           return sum + qty;
@@ -1845,8 +1910,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         double payoutTotal = offlinePayouts.fold<double>(0, (sum, payout) {
           return sum + (double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0);
         });
+        double cashbackTotal = offlineCashback.fold(0, (sum, cash) {
+          return sum + (double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0);
+        });
 
-        grossTotal = productTotal + payoutTotal;
+        grossTotal = (productTotal + payoutTotal)- cashbackTotal;
 
         orderDiscount = (offlineOrder['orderDiscount'] is num)
             ? (offlineOrder['orderDiscount'] as num).toDouble()
@@ -1881,6 +1949,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           print("💾 Offline Order Calculation:");
           print("   productTotal: $productTotal");
           print("   payoutTotal: $payoutTotal");
+          print("cashbackTotal: $cashbackTotal");
           print("   grossTotal: $grossTotal");
           print("   merchantDiscount: $merchantDiscount (${isPercentageDiscount ? 'Percentage' : 'Fixed'})");
           print("   netTotal: $netTotal");
@@ -1996,6 +2065,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                     radius: const Radius.circular(8),
                     trackVisibility: true,
                     child: ReorderableListView.builder(
+                      buildDefaultDragHandles: false,
                       onReorder: (oldIndex, newIndex) {
                         if (kDebugMode) {
                           print("Reordering item from $oldIndex to $newIndex");
@@ -2026,6 +2096,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         /// if it is coupon change icon, name is coupon code (show last 4 digits, prefix with 'X' for each character before last 4), show amount in red colour
                         final itemType = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
                         /// Check if the item is a payout or a coupon
+                        final isCashback = itemType.contains("cashback");
                         final isPayout = itemType.contains(TextConstants.payoutText);
                         final isCoupon = itemType.contains(TextConstants.couponText);
                         final isCustomItem = itemType.contains(TextConstants.customItemText);
@@ -2043,9 +2114,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         }
                         /// Set display name based on item type
                         String displayName = originalName;
+
                         if (isPayout) {
                           displayName = 'Payout';
+                        } else if (isCashback) {
+                          displayName = 'Cashback';
                         } else if (isCoupon) {
+                          // masking logic for coupon
                           final visiblePartLength = 4;
                           final nameLength = originalName.length;
                           if (nameLength > visiblePartLength) {
@@ -2055,6 +2130,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             displayName = '$maskedPart$visiblePart';
                           }
                         }
+
 
                         /// Build #1.0.134: Item Price will check sales price if it is null/empty, check regular price else unit price
                         final salesPrice =
@@ -2213,20 +2289,35 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                 final updatedPayouts = ((offlineOrder['payouts'] ?? []) as List)
                                                     .map((e) => Map<String, dynamic>.from(e))
                                                     .toList();
+                                                final updatedCashbacks = ((offlineOrder['Cashback'] ?? []) as List)
+                                                    .map((e) => Map<String, dynamic>.from(e))
+                                                    .toList();
 
                                                 final updatedItems = [
                                                   ...updatedProducts,
+
+                                                  // ------------------ PAYOUTS ------------------
                                                   ...updatedPayouts.map((payout) => {
                                                     'item_name': 'Payout',
                                                     'item_price': double.tryParse(
-                                                        payout['amount']?.toString() ?? '0') ??
-                                                        0.0,
+                                                        payout['amount']?.toString() ?? '0') ?? 0.0,
                                                     'items_count': 1,
                                                     'item_sum_price': double.tryParse(
-                                                        payout['amount']?.toString() ?? '0') ??
-                                                        0.0,
+                                                        payout['amount']?.toString() ?? '0') ?? 0.0,
                                                     'item_image': 'assets/svg/payout.svg',
                                                     'item_type': 'payout',
+                                                  }),
+
+                                                  // ------------------ CASHBACK ------------------
+                                                  ...updatedCashbacks.map((cb) => {
+                                                    'item_name': 'Cashback',
+                                                    'item_price': double.tryParse(
+                                                        cb['amount']?.toString() ?? '0') ?? 0.0,
+                                                    'items_count': 1,
+                                                    'item_sum_price': double.tryParse(
+                                                        cb['amount']?.toString() ?? '0') ?? 0.0,
+                                                    'item_image': 'assets/images/cashback.png',   // <-- use any icon you want
+                                                    'item_type': 'cashback',
                                                   }),
                                                 ];
 

@@ -176,6 +176,8 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String vendorPayoutNotFound  = 'No vendor payouts found';
   static const String invalidCoupon         = "Invalid Coupon";
   static const String coupon                = "Coupon";
+  static const String cashback                = "Cashback";
+
   static const String invalidCouponDescription = "The coupon code you entered is not valid. Please check the code and try again.";
   static const String letsTryAgain          = "Let's, Try Again";
   static const String removePayoutFailed    = "Failed to remove payout";
@@ -207,6 +209,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String customItemAlert       = "Custom Item Alert";
   static const String customItemAlertDescription = "You're about to add a custom item. Make sure the item details are accurate before proceeding.";
   static const String addCustomItem         = "Add Custom Item";
+  static const String addCashbackAmount      = "Add Cash Back Amount";
   static const String couponNotApplied      = "Coupon Not Applied";
   static const String couponNotAppliedDescription = "The coupon couldn’t be applied. Please double-check the eligibility criteria or try a different code.";
   static const String invalidDiscount       = "Invalid Discount";

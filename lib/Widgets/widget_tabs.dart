@@ -41,7 +41,8 @@ class AppScreenTabWidget extends StatefulWidget {
 class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSelectionMixin {
   // Tab selection
   bool _isPayoutLoading = false;
-  bool _isCouponLoading = false;
+  // bool _isCouponLoading = false;
+  bool _isCashbackLoading = false;
   bool _isDiscountLoading = false;
   bool _isCustomItemLoading = false;
   final OrderHelper _orderHelper = OrderHelper(); // Add OrderHelper instance
@@ -55,6 +56,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
   // Coupon value
   String _couponCode = "";
+  String _cashbackAmount = "";
 
   // Custom item values
   String _customItemName = "";
@@ -268,7 +270,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               // Hide divider if current tab (0) or next tab (1) is selected
               if (_selectedTabIndex != 0 && _selectedTabIndex != 1)
                 Divider(height: 1, thickness: 0.1, indent: 10, endIndent: 10),
-              _buildTab(1, SvgUtils.addCouponIcon, TextConstants.coupons),
+              _buildTab(1, SvgUtils.addCouponIcon, TextConstants.cashback),
               const SizedBox(width: 10),
               // Hide divider if current tab (1) or next tab (2) is selected
               if (_selectedTabIndex != 1 && _selectedTabIndex != 2)
@@ -367,7 +369,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       case 0:
         return _buildDiscountsTab();
       case 1:
-        return _buildCouponsTab();
+        return _buildCashbackTab();
       case 2:
         return _buildCustomItemTab(context);
       case 3:
@@ -540,26 +542,121 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   }
 
   // COUPONS TAB
-  Widget _buildCouponsTab() {
+  // Widget _buildCouponsTab() {
+  //   final themeHelper = Provider.of<ThemeNotifier>(context);
+  //   return Padding(
+  //     padding: const EdgeInsets.only(top: 20),
+  //     child: Column(
+  //       children: [
+  //         // Title
+  //         Text(
+  //           TextConstants.enterCouponCode,
+  //           style: TextStyle(
+  //             fontSize: 20,
+  //             fontWeight: FontWeight.bold,
+  //             color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
+  //                 .textDark : Color(0xFF1E2745),
+  //           ),
+  //         ),
+  //
+  //         const SizedBox(height: 20),
+  //
+  //         // Coupon Code Display
+  //         Container(
+  //           width: MediaQuery
+  //               .of(context)
+  //               .size
+  //               .width / 2.75,
+  //           height: MediaQuery
+  //               .of(context)
+  //               .size
+  //               .height / 12,
+  //           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+  //           decoration: BoxDecoration(
+  //             color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
+  //                 .paymentEntryContainerColor : Colors.white,
+  //             borderRadius: BorderRadius.circular(10),
+  //             border: Border.all(
+  //                 color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
+  //                     .secondaryBackground : Colors.grey.shade300),
+  //           ),
+  //           alignment: Alignment.center,
+  //           child: Text(
+  //             _couponCode.isEmpty ? "Ex: 123456789" : _couponCode,
+  //             // Build #1.0.53 : updated code
+  //             style: TextStyle(
+  //               fontSize: 24,
+  //               fontWeight: FontWeight.bold,
+  //               color: _couponCode.isEmpty ? Colors.grey : themeHelper
+  //                   .themeMode == ThemeMode.dark
+  //                   ? ThemeNotifier.textDark
+  //                   : const Color(0xFF1E2745),
+  //             ),
+  //           ),
+  //         ),
+  //
+  //         const SizedBox(height: 20),
+  //
+  //         // Custom Numpad
+  //         SizedBox(
+  //           width: MediaQuery
+  //               .of(context)
+  //               .size
+  //               .width / 2.75,
+  //           height: MediaQuery
+  //               .of(context)
+  //               .size
+  //               .height / 2.25,
+  //           child: CustomNumPad(
+  //             onDigitPressed: (digit) {
+  //               setState(() {
+  //                 _couponCode += digit;
+  //               });
+  //             },
+  //             onClearPressed: () {
+  //               setState(() {
+  //                 _couponCode = "";
+  //               });
+  //             },
+  //             onDeletePressed: () { // Build #1.0.53 : updated code
+  //               setState(() {
+  //                 _couponCode = _couponCode.isNotEmpty ? _couponCode.substring(
+  //                     0, _couponCode.length - 1) : "";
+  //               });
+  //             },
+  //             actionButtonType: ActionButtonType.add,
+  //             onAddPressed: _handleAddCoupon,
+  //             isLoading: _isCouponLoading,
+  //             isDarkTheme: true,
+  //             numPadType: NumPadType.payment,
+  //             showAddInsteadOfPay: true,
+  //           ),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
+
+  Widget _buildCashbackTab() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
+
     return Padding(
       padding: const EdgeInsets.only(top: 20),
       child: Column(
         children: [
-          // Title
           Text(
-            TextConstants.enterCouponCode,
+            TextConstants.addCashbackAmount,
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                  .textDark : Color(0xFF1E2745),
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.textDark
+                  : const Color(0xFF1E2745),
             ),
           ),
-
           const SizedBox(height: 20),
 
-          // Coupon Code Display
+          // 💰 Payout Display
           Container(
             width: MediaQuery
                 .of(context)
@@ -569,33 +666,54 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                 .of(context)
                 .size
                 .height / 12,
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-            decoration: BoxDecoration(
-              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                  .paymentEntryContainerColor : Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                  color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                      .secondaryBackground : Colors.grey.shade300),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              _couponCode.isEmpty ? "Ex: 123456789" : _couponCode,
-              // Build #1.0.53 : updated code
+            margin: const EdgeInsets.only(top: 10),
+            child: TextField(
+              readOnly: true,
+              controller: TextEditingController(
+                // ✅ Add the symbol only here
+                text:
+                "${TextConstants.currencySymbol}${_cashbackAmount.isEmpty
+                    ? "0.00"
+                    : _cashbackAmount}",
+              ),
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: _couponCode.isEmpty ? Colors.grey : themeHelper
-                    .themeMode == ThemeMode.dark
+                fontWeight:
+                _isAmountEntered ? FontWeight.bold : FontWeight.normal,
+                color: _cashbackAmount.isEmpty
+                    ? Colors.grey.shade400
+                    : themeHelper.themeMode == ThemeMode.dark
                     ? ThemeNotifier.textDark
                     : const Color(0xFF1E2745),
+              ),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.paymentEntryContainerColor
+                    : Colors.white,
+                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF1E2745),
+                    width: 1,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF1E2745),
+                    width: 1,
+                  ),
+                ),
               ),
             ),
           ),
 
           const SizedBox(height: 20),
 
-          // Custom Numpad
+          // 🔢 Custom Numpad
           SizedBox(
             width: MediaQuery
                 .of(context)
@@ -608,26 +726,52 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
             child: CustomNumPad(
               onDigitPressed: (digit) {
                 setState(() {
-                  _couponCode += digit;
+                  // Clean numeric part only
+                  String cleanValue = _cashbackAmount.replaceAll(',', '').trim();
+                  int rawAmount =
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+
+                  if (digit == '00') {
+                    rawAmount = (rawAmount * 100) % 100000000;
+                  } else {
+                    int d = int.tryParse(digit) ?? 0;
+                    rawAmount = (rawAmount * 10 + d) % 100000000;
+                  }
+
+                  double displayValue = rawAmount / 100.0;
+                  _cashbackAmount =
+                      displayValue.toStringAsFixed(2); // ✅ no symbol
+                  _isAmountEntered = rawAmount != 0;
                 });
               },
+
+              onDeletePressed: () {
+                setState(() {
+                  String cleanValue = _cashbackAmount.replaceAll(',', '').trim();
+                  int rawAmount =
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                  rawAmount = rawAmount ~/ 10;
+
+                  double displayValue = rawAmount / 100.0;
+                  _cashbackAmount =
+                      displayValue.toStringAsFixed(2); // ✅ no symbol
+                  _isAmountEntered = rawAmount != 0;
+                });
+              },
+
               onClearPressed: () {
                 setState(() {
-                  _couponCode = "";
+                  _cashbackAmount = "0.00"; // ✅ no symbol
+                  _isAmountEntered = false;
                 });
               },
-              onDeletePressed: () { // Build #1.0.53 : updated code
-                setState(() {
-                  _couponCode = _couponCode.isNotEmpty ? _couponCode.substring(
-                      0, _couponCode.length - 1) : "";
-                });
-              },
+
               actionButtonType: ActionButtonType.add,
-              onAddPressed: _handleAddCoupon,
-              isLoading: _isCouponLoading,
-              isDarkTheme: true,
+              onAddPressed: _handleCashbackpayout,
+              isLoading: _isCashbackLoading,
               numPadType: NumPadType.payment,
               showAddInsteadOfPay: true,
+              isDarkTheme: themeHelper.themeMode == ThemeMode.dark,
             ),
           ),
         ],
@@ -1787,13 +1931,188 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     }
   }
 // Handle adding the coupon
-  void _handleAddCoupon() async {
-    if (_couponCode.isEmpty || _couponCode == "0") {
-      if (kDebugMode) print("### _couponCode is empty");
+//   void _handleAddCoupon() async {
+//     if (_couponCode.isEmpty || _couponCode == "0") {
+//       if (kDebugMode) print("### _couponCode is empty");
+//       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+//         const SnackBar(
+//           content: Text(TextConstants.invalidCouponError),
+//           // Build #1.0.181: Added through TextConstants
+//           backgroundColor: Colors.red,
+//           duration: Duration(seconds: 2),
+//         ),
+//       );
+//       return;
+//     }
+//
+//     final orderId = OrderHelper()
+//         .activeOrderId; //Build #1.0.134: get activeOrderId
+//     if (orderId == null) {
+//       if (kDebugMode) print("No active order selected");
+//       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+//         const SnackBar(
+//           content: Text(TextConstants.noActiveOrderError),
+//           // Build #1.0.181: Added through TextConstants
+//           backgroundColor: Colors.red,
+//           duration: Duration(seconds: 2),
+//         ),
+//       );
+//       return;
+//     }
+//
+//     setState(() {
+//       _isCouponLoading = true;
+//     });
+//
+//     try {
+//       final db = await DBHelper.instance.database;
+//
+//       final orderData = await db
+//           .query( // Build #1.0.128: updated missed condition
+//         AppDBConst.orderTable,
+//         where: '${AppDBConst.orderServerId} = ?',
+//         whereArgs: [orderId],
+//       );
+//
+//       if (orderData.isEmpty) {
+//         if (kDebugMode) print("Order $orderId not found in database");
+//         setState(() => _isCouponLoading = false);
+//         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+//           const SnackBar(
+//             content: Text(TextConstants.orderNotFoundError),
+//             // Build #1.0.181: Added through TextConstants
+//             backgroundColor: Colors.red,
+//             duration: Duration(seconds: 2),
+//           ),
+//         );
+//         return;
+//       }
+//
+//       // Check for existing coupon with the same couponCode
+//       final existingCoupons = await db.query(
+//         AppDBConst.purchasedItemsTable,
+//         where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst
+//             .itemName} = ? AND ${AppDBConst.itemType} = ?',
+//         whereArgs: [orderId, _couponCode, ItemType.coupon.value],
+//       );
+//
+//       if (existingCoupons.isNotEmpty) {
+//         if (kDebugMode) print(
+//             "Coupon with code $_couponCode already exists for order $orderId");
+//         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+//           const SnackBar(
+//             content: Text(TextConstants.couponAlreadyApplied),
+//             // Build #1.0.181: Added through TextConstants
+//             backgroundColor: Colors.orange,
+//             duration: Duration(seconds: 2),
+//           ),
+//         );
+//         setState(() {
+//           _isCouponLoading = false;
+//         });
+//         return;
+//       }
+//
+//       StreamSubscription? subscription;
+//       if (kDebugMode) print("### Subscribing to applyCouponStream");
+//       subscription = orderBloc.applyCouponStream.listen((response) async {
+//         if (!mounted) {
+//           subscription?.cancel();
+//           return;
+//         }
+//         if (response.status == Status.COMPLETED) {
+//           // Insert coupons into DB, ensuring no duplicates
+//           for (var coupon in response.data?.couponLines ?? []) {
+//             if (coupon.code == null || coupon.id == null) {
+//               if (kDebugMode) print("Invalid coupon data: code or id is null");
+//               continue;
+//             }
+//
+//             // Double-check for itemServerId to be extra safe
+//             final duplicateCheck = await db.query(
+//               AppDBConst.purchasedItemsTable,
+//               where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst
+//                   .itemServerId} = ?',
+//               whereArgs: [orderId, coupon.id],
+//             );
+//
+//             if (duplicateCheck.isEmpty) {
+//               await db.insert(AppDBConst.purchasedItemsTable, {
+//                 AppDBConst.orderIdForeignKey: orderId!,
+//                 AppDBConst.itemServerId: coupon.id,
+//                 AppDBConst.itemName: coupon.code!,
+//                 AppDBConst.itemSKU: '',
+//                 AppDBConst.itemPrice: coupon.nominalAmount?.toDouble() ?? 0.0,
+//                 AppDBConst.itemCount: 1,
+//                 AppDBConst.itemSumPrice: coupon.nominalAmount?.toDouble() ??
+//                     0.0,
+//                 AppDBConst.itemImage: 'assets/svg/coupon.svg',
+//                 AppDBConst.itemType: ItemType.coupon.value,
+//               });
+//             }
+//           }
+//           if (Misc.showDebugSnackBar) {
+//             ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+//               SnackBar(
+//                 content: Text("Coupon '${_couponCode}' applied successfully"),
+//                 backgroundColor: Colors.green,
+//                 duration: const Duration(seconds: 2),
+//               ),
+//             );
+//           }
+//
+//           setState(() { // Build #1.0.248: Fixed [SCRUM-400] -> Inappropriate Toast Message Displaying After Custom Item & Coupon Addition
+//             _couponCode = "";
+//             _isCouponLoading = false;
+//           });
+//
+//           // Refresh UI
+//           await _orderHelper.loadData();
+//           await _loadOrderData();
+//           widget.refreshOrderList?.call();
+//           subscription?.cancel();
+//         } else if (response.status == Status.ERROR) {
+//           if (kDebugMode) print("Failed to apply coupon: ${response.message}");
+//           ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+//             SnackBar(
+//               content: Text(response.message ?? "Failed to apply coupon"),
+//               backgroundColor: Colors.red,
+//               duration: const Duration(seconds: 2),
+//             ),
+//           );
+//           setState(() {
+//             _isCouponLoading = false;
+//           });
+//           subscription?.cancel();
+//         }
+//       }, onError: (error) {
+//         if (kDebugMode) print("### applyCouponStream error: $error");
+//         setState(() {
+//           _isCouponLoading = false;
+//         });
+//         subscription?.cancel();
+//       });
+//
+//       if (kDebugMode) print("### Calling orderBloc.applyCouponToOrder");
+//       await orderBloc.applyCouponToOrder(
+//           orderId: orderId!, couponCode: _couponCode);
+//     } catch (e) {
+//       if (kDebugMode) print("Error applying coupon: $e");
+//       setState(() {
+//         _isCouponLoading = false;
+//       });
+//     }
+//   }
+
+  void _handleCashbackpayout() async {
+    print("🟩 [CASHBACK] START ---- _handleAddCashback() ----");
+
+    if (_cashbackAmount.isEmpty ||
+        _cashbackAmount == "0" ||
+        double.tryParse(_cashbackAmount) == null) {
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(
-          content: Text(TextConstants.invalidCouponError),
-          // Build #1.0.181: Added through TextConstants
+          content: Text("Invalid cashback amount"),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 2),
         ),
@@ -1801,162 +2120,142 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       return;
     }
 
-    final orderId = OrderHelper()
-        .activeOrderId; //Build #1.0.134: get activeOrderId
-    if (orderId == null) {
-      if (kDebugMode) print("No active order selected");
-      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        const SnackBar(
-          content: Text(TextConstants.noActiveOrderError),
-          // Build #1.0.181: Added through TextConstants
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isCouponLoading = true;
-    });
+    setState(() => _isCashbackLoading = true);
 
     try {
-      final db = await DBHelper.instance.database;
+      final offlineBox = Hive.box('offlineOrders');
+      final productBox = Hive.box('productCache');
+      final cashbackAmount = double.parse(_cashbackAmount);
 
-      final orderData = await db
-          .query( // Build #1.0.128: updated missed condition
-        AppDBConst.orderTable,
-        where: '${AppDBConst.orderServerId} = ?',
-        whereArgs: [orderId],
-      );
-
-      if (orderData.isEmpty) {
-        if (kDebugMode) print("Order $orderId not found in database");
-        setState(() => _isCouponLoading = false);
-        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-          const SnackBar(
-            content: Text(TextConstants.orderNotFoundError),
-            // Build #1.0.181: Added through TextConstants
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        return;
+      int? orderId = OrderHelper().activeOrderId;
+      if (orderId == null) {
+        orderId = DateTime.now().millisecondsSinceEpoch;
+        await offlineBox.put(orderId.toString(), {
+          "order_id": orderId,
+          "created_at": DateTime.now().toIso8601String(),
+          "products": [],
+          "cashbacks": [],
+          "gross_total": 0.0,
+        });
+        OrderHelper().activeOrderId = orderId;
       }
 
-      // Check for existing coupon with the same couponCode
-      final existingCoupons = await db.query(
-        AppDBConst.purchasedItemsTable,
-        where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst
-            .itemName} = ? AND ${AppDBConst.itemType} = ?',
-        whereArgs: [orderId, _couponCode, ItemType.coupon.value],
-      );
+      final key = orderId.toString();
+      final existingOrder = Map<String, dynamic>.from(offlineBox.get(key));
 
-      if (existingCoupons.isNotEmpty) {
-        if (kDebugMode) print(
-            "Coupon with code $_couponCode already exists for order $orderId");
+      final cashbacks = (existingOrder["cashbacks"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      // ❌ Only 1 cashback allowed per order
+      if (cashbacks.isNotEmpty) {
+        setState(() => _isCashbackLoading = false);
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
-            content: Text(TextConstants.couponAlreadyApplied),
-            // Build #1.0.181: Added through TextConstants
+            content: Text("A cashback already exists for this order."),
             backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
           ),
         );
-        setState(() {
-          _isCouponLoading = false;
-        });
         return;
       }
 
-      StreamSubscription? subscription;
-      if (kDebugMode) print("### Subscribing to applyCouponStream");
-      subscription = orderBloc.applyCouponStream.listen((response) async {
-        if (!mounted) {
-          subscription?.cancel();
-          return;
-        }
-        if (response.status == Status.COMPLETED) {
-          // Insert coupons into DB, ensuring no duplicates
-          for (var coupon in response.data?.couponLines ?? []) {
-            if (coupon.code == null || coupon.id == null) {
-              if (kDebugMode) print("Invalid coupon data: code or id is null");
-              continue;
-            }
+      // 🔍 Search dynamic cashback product in productBox
+      Map<String, dynamic>? cashbackProduct;
 
-            // Double-check for itemServerId to be extra safe
-            final duplicateCheck = await db.query(
-              AppDBConst.purchasedItemsTable,
-              where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst
-                  .itemServerId} = ?',
-              whereArgs: [orderId, coupon.id],
-            );
+      for (final k in productBox.keys) {
+        if (k.toString().startsWith("products_")) {
+          final data = productBox.get(k);
+          if (data == null) continue;
 
-            if (duplicateCheck.isEmpty) {
-              await db.insert(AppDBConst.purchasedItemsTable, {
-                AppDBConst.orderIdForeignKey: orderId!,
-                AppDBConst.itemServerId: coupon.id,
-                AppDBConst.itemName: coupon.code!,
-                AppDBConst.itemSKU: '',
-                AppDBConst.itemPrice: coupon.nominalAmount?.toDouble() ?? 0.0,
-                AppDBConst.itemCount: 1,
-                AppDBConst.itemSumPrice: coupon.nominalAmount?.toDouble() ??
-                    0.0,
-                AppDBConst.itemImage: 'assets/svg/coupon.svg',
-                AppDBConst.itemType: ItemType.coupon.value,
-              });
+          final list = json.decode(data["data"]);
+          for (final item in list) {
+            final name =
+            (item["fast_key_item_name"] ?? "").toString().toLowerCase();
+            if (name.contains("cashback")) {
+              cashbackProduct = Map<String, dynamic>.from(item);
+              print("✅ [CASHBACK] Found dynamic cashback product → $cashbackProduct");
+              break;
             }
           }
-          if (Misc.showDebugSnackBar) {
-            ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-              SnackBar(
-                content: Text("Coupon '${_couponCode}' applied successfully"),
-                backgroundColor: Colors.green,
-                duration: const Duration(seconds: 2),
-              ),
-            );
-          }
-
-          setState(() { // Build #1.0.248: Fixed [SCRUM-400] -> Inappropriate Toast Message Displaying After Custom Item & Coupon Addition
-            _couponCode = "";
-            _isCouponLoading = false;
-          });
-
-          // Refresh UI
-          await _orderHelper.loadData();
-          await _loadOrderData();
-          widget.refreshOrderList?.call();
-          subscription?.cancel();
-        } else if (response.status == Status.ERROR) {
-          if (kDebugMode) print("Failed to apply coupon: ${response.message}");
-          ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-            SnackBar(
-              content: Text(response.message ?? "Failed to apply coupon"),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-          setState(() {
-            _isCouponLoading = false;
-          });
-          subscription?.cancel();
         }
-      }, onError: (error) {
-        if (kDebugMode) print("### applyCouponStream error: $error");
-        setState(() {
-          _isCouponLoading = false;
-        });
-        subscription?.cancel();
-      });
+        if (cashbackProduct != null) break;
+      }
 
-      if (kDebugMode) print("### Calling orderBloc.applyCouponToOrder");
-      await orderBloc.applyCouponToOrder(
-          orderId: orderId!, couponCode: _couponCode);
-    } catch (e) {
-      if (kDebugMode) print("Error applying coupon: $e");
+      // 🟦 Fallback if no cashback product exists in Hive
+      cashbackProduct ??= {
+        "fast_key_product_id": DateTime.now().millisecondsSinceEpoch,
+        "fast_key_item_name": "Cashback",
+        "fast_key_item_price": 0,
+        "fast_key_item_image":
+        "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/cashback.png",
+        "type": "simple",
+      };
+
+      // 🧾 Prepare Cashback Entry
+      final cashbackEntry = {
+        "order_id": orderId,
+        "cashback_product_id": cashbackProduct["fast_key_product_id"],
+        "product_name": cashbackProduct["fast_key_item_name"],
+        "product_image": cashbackProduct["fast_key_item_image"],
+        "amount": cashbackAmount, // Negative = reduce total
+        "type": "cashback",
+        "timestamp": DateTime.now().toIso8601String(),
+      };
+
+      cashbacks.add(cashbackEntry);
+      print("🟥 BEFORE SAVE - existingOrder: $existingOrder");
+      print("🟦 Cashback Entry Added: $cashbackEntry");
+
+
+      // 🧮 Recalculate products total
+      final products = (existingOrder["products"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      double total = 0.0;
+      for (var p in products) {
+        total += (p["price"] ?? 0) * (p["quantity"] ?? 1);
+      }
+
+      // 🔄 Update order with cashback
+      final updatedOrder = {
+        ...existingOrder,
+        "products": products,
+        "cashbacks": cashbacks,
+        "gross_total": total + (-cashbackAmount),
+      };
+
+      await offlineBox.put(key, updatedOrder);
+      print("🟩 SAVED ORDER TO HIVE: $updatedOrder");
+
+
+      // ✔ Success UI
+      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+        SnackBar(
+          content:
+          Text("Cashback of ₹${cashbackAmount.toStringAsFixed(2)} applied"),
+          backgroundColor: Colors.green,
+        ),
+      );
+
       setState(() {
-        _isCouponLoading = false;
+        _cashbackAmount = "";
+        _isCashbackLoading = false;
       });
+
+      await _loadOrderData();
+      widget.refreshOrderList?.call();
+
+      print("🟩 [CASHBACK] DONE ---- _handleAddCashback() ----");
+    } catch (e, s) {
+      print("🟥 [CASHBACK] ERROR: $e\n$s");
+      setState(() => _isCashbackLoading = false);
+      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+        SnackBar(
+          content: Text("Error adding cashback: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 

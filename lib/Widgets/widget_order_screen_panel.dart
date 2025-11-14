@@ -751,10 +751,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                         itemType.contains(TextConstants.payoutText);
                         final isCoupon =
                         itemType.contains(TextConstants.couponText);
+                        final isCashback  = itemType == 'cashback';
+
                         final isCustomItem =
                         itemType.contains(TextConstants.customItemText);
                         final isPayoutOrCouponOrCustomItem =
-                            isPayout || isCoupon || isCustomItem;
+                            isPayout || isCoupon || isCustomItem || isCashback;
+
                         final isCouponOrPayout = isPayout || isCoupon;
 
                         /// Get the original name
@@ -821,16 +824,21 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
                         /// Set display name based on item type
                         String displayName = originalName;
+
                         if (isPayout) {
                           displayName = 'Payout';
+
+                        } else if (isCashback) {
+                          displayName = 'Cashback';
+
                         } else if (isCoupon) {
                           final visiblePartLength = 4;
                           final nameLength = originalName.length;
+
                           if (nameLength > visiblePartLength) {
                             final maskedLength = nameLength - visiblePartLength;
                             final maskedPart = 'X' * maskedLength;
-                            final visiblePart = originalName
-                                .substring(nameLength - visiblePartLength);
+                            final visiblePart = originalName.substring(nameLength - visiblePartLength);
                             displayName = '$maskedPart$visiblePart';
                           }
                         }
