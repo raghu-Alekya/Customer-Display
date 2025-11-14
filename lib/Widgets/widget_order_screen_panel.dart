@@ -800,8 +800,15 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             : orderItem[AppDBConst.itemRegularPrice]!
                             .toDouble();
 
-                        final itemTotalPrice =
-                            orderItem[AppDBConst.itemSumPrice] ?? '';
+                        double itemTotalPrice = 0.0;
+
+                        if (isPayout) {
+                          itemTotalPrice = (orderItem['amount'] as num?)?.toDouble()
+                              ?? (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble()
+                              ?? 0.0;
+                        } else {
+                          itemTotalPrice = (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
+                        }
 
                         if (kDebugMode) {
                           print(
