@@ -665,174 +665,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   // Kept local deletion for non-API orders.
   bool _isDialogOpen = false;
 
-  void deleteItemFromOrder(int itemId) async {
-
-    if (orderHelper.activeOrderId != null) {
-
-      setState(() {
-        _isLoading = true;
-        if (kDebugMode) {
-          print("##### deleteItemFromOrder: _isLoading: $_isLoading");
-        }
-      }); // Show loader
-
-      // final order = orderHelper.orders.firstWhere(
-      //       (order) => order[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-      //   orElse: () => {},
-      // );
-      final serverOrderId = orderHelper.activeOrderId;//order[AppDBConst.orderServerId] as int?;
-      // final dbOrderId = orderHelper.activeOrderId!;
-      final item = orderItems.firstWhere(
-            (item) => item[AppDBConst.itemServerId] == itemId,
-        orElse: () => {},
-      );
-      final itemType = item[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
-      final isPayout = false;//itemType.contains(TextConstants.payoutText);// Build #1.0.198: uncomment if want to delete payout from fee_lines
-      final isCoupon = itemType.contains(TextConstants.couponText);
-      final isCustomItem = itemType.contains(TextConstants.customItemText);
-
-      if (serverOrderId != null) {
-        _updateOrderSubscription?.cancel();
-        if (isPayout) {
-          final db = await DBHelper.instance.database;
-          final payoutItem = await db.query(
-            AppDBConst.purchasedItemsTable,
-            where: '${AppDBConst.itemServerId} = ? AND ${AppDBConst.itemType} = ?',
-            whereArgs: [itemId, ItemType.payout.value],
-          );
-          if (payoutItem.isNotEmpty) {
-            final payoutId = payoutItem.first[AppDBConst.itemServerId] as int?;
-            if (payoutId != null) {
-              _removePayoutOrDiscountSubscription?.cancel(); //Build #1.0.99
-              retryCallback() async {
-                setState(() => _isLoading = true);
-                await orderBloc.removeFeeLine(orderId: serverOrderId, feeLineId: payoutId); //Build #1.0.92: dbOrderId and serverOrderId is same, no need then
-                //Build #1.0.99: Dismiss dialog after retry
-                Navigator.of(context, rootNavigator: true).pop();
-              }
-              _removePayoutOrDiscountSubscription = orderBloc.removePayoutStream.listen((response) async {
-                await _handleResponse(response, item, isPayout: true, retryCallback: retryCallback);
-              });
-              await orderBloc.removeFeeLine(orderId: serverOrderId, feeLineId: payoutId); //Build #1.0.92: dbOrderId and serverOrderId is same
-            } else {
-              await _handleLocalDelete(item, context);
-              _handleError("Payout ID not found in database, removed locally", isPayout: true);
-            }
-          } else {
-            _handleError("Payout not found", isPayout: true);
-          }
-        } else if (isCoupon) {
-          final couponCode = item[AppDBConst.itemName]?.toString() ?? '';
-          if (couponCode.isNotEmpty) {
-            _removeCouponSubscription?.cancel(); //Build #1.0.99
-            retryCallback() async {
-              setState(() => _isLoading = true);
-              await orderBloc.removeCoupon(orderId: serverOrderId, couponCode: couponCode);
-              //Build #1.0.99: Dismiss dialog after retry
-              Navigator.of(context, rootNavigator: true).pop();
-            }
-            _removeCouponSubscription = orderBloc.removeCouponStream.listen((response) async {
-              await _handleResponse(response, item, isCoupon: true, retryCallback: retryCallback);
-            });
-            await orderBloc.removeCoupon(orderId: serverOrderId, couponCode: couponCode);
-          } else {
-            await _handleLocalDelete(item, context);
-            _handleError("Coupon code not found in database, removed locally", isCoupon: true);
-          }
-        } else if (isCustomItem) {
-          final db = await DBHelper.instance.database;
-          final customItem = await db.query(
-            AppDBConst.purchasedItemsTable,
-            where: '${AppDBConst.itemServerId} = ? AND ${AppDBConst.itemType} = ?', //Build #1.0.92: updated to itemServerId
-            whereArgs: [itemId, ItemType.customProduct.value],
-          );
-          if (customItem.isNotEmpty) {
-            final customItemId = customItem.first[AppDBConst.itemServerId] as int?;
-            if (customItemId != null) {
-              retryCallback() async {
-                setState(() => _isLoading = true);
-                await orderBloc.deleteOrderItem(
-                  orderId: serverOrderId,
-                  // dbOrderId: dbOrderId,
-                  dbItemId: itemId,
-                  lineItems: [
-                    OrderLineItem(
-                      id: customItemId,
-                      quantity: 0,
-                      //  sku: item[AppDBConst.itemSKU] ?? '',
-                    ),
-                  ],
-                );
-                //Build #1.0.99 : Dismiss dialog after retry
-                Navigator.of(context, rootNavigator: true).pop();
-              }
-              _updateOrderSubscription = orderBloc.deleteOrderItemStream.listen((response) async {
-                await _handleResponse(response, item, isCustomItem: true, retryCallback: retryCallback);
-              });
-              await orderBloc.deleteOrderItem(
-                orderId: serverOrderId,
-                //  dbOrderId: dbOrderId,
-                dbItemId: itemId,
-                lineItems: [
-                  OrderLineItem(
-                    id: customItemId,
-                    quantity: 0,
-                    //   sku: item[AppDBConst.itemSKU] ?? '',
-                  ),
-                ],
-              );
-            } else {
-              await _handleLocalDelete(item, context);
-              _handleError("Custom item ID not found in database, removed locally", isCustomItem: true);
-            }
-          } else {
-            _handleError("Custom item not found", isCustomItem: true);
-          }
-        } else {
-          final productId = item[AppDBConst.itemServerId] as int?;
-          if (productId != null) {
-            retryCallback() async {
-              setState(() => _isLoading = true);
-              await orderBloc.deleteOrderItem(
-                orderId: serverOrderId,
-                // dbOrderId: dbOrderId,
-                dbItemId: itemId,
-                lineItems: [
-                  OrderLineItem(
-                    id: productId,
-                    quantity: 0,
-                    //   sku: item[AppDBConst.itemSKU] ?? '',
-                  ),
-                ],
-              );
-              //Build #1.0.99 : Dismiss dialog after retry
-              Navigator.of(context, rootNavigator: true).pop();
-            }
-            _updateOrderSubscription = orderBloc.deleteOrderItemStream.listen((response) async {
-              await _handleResponse(response, item, retryCallback: retryCallback);
-            });
-            await orderBloc.deleteOrderItem(
-              orderId: serverOrderId,
-              //  dbOrderId: dbOrderId,
-              dbItemId: itemId,
-              lineItems: [
-                OrderLineItem(
-                  id: productId,
-                  quantity: 0,
-                  //  sku: item[AppDBConst.itemSKU] ?? '',
-                ),
-              ],
-            );
-          } else {
-            await _handleLocalDelete(item, context);
-          }
-        }
-      } else {
-        await _handleLocalDelete(item, context);
-      }
-    }
-  }
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -1140,8 +972,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 // 2️⃣ CHECK METADATA
 // ======================================================
             for (final m in (product.metaData ?? [])) {
-              final key = (m.key ?? "").toLowerCase();
-              final val = (m.value ?? "").toLowerCase();
+              final key = (m.key ?? "");
+              final val = (m.value ?? "");
 
               if (key == "age_restricted") {
                 if (val == "1" || val == "true") {
@@ -1316,10 +1148,19 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                     duration: const Duration(seconds: 2),
                   ),
                 );
+
               },
             );
+            await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+
+            print("🟢 Customer Display Updated for Order → $activeOrderId");
+
+            final hive = Hive.box('offlineOrders');
+            print("📦 Hive Data After CD Update:");
+            print(const JsonEncoder.withIndent('  ').convert(hive.get(activeOrderId.toString())));
 
             await fetchOrderItems();
+
 
             _isLoading = false;
             if (mounted) setState(() {});
@@ -2034,6 +1875,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             if (kDebugMode) print("⚠️ Failed to parse offline order date: $e");
           }
         }
+
 
         if (kDebugMode) {
           print("💾 Offline Order Calculation:");

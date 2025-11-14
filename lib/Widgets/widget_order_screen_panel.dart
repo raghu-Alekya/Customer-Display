@@ -719,6 +719,19 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                       },
                       itemBuilder: (context, index) {
                         final orderItem = orderItems[index];
+
+                        final itemTypeRaw = orderItem[AppDBConst.itemType]
+                            ?.toString()
+                            .toLowerCase() ??
+                            '';
+
+                        if (itemTypeRaw.contains(TextConstants.couponText.toLowerCase())) {
+                          return Container(
+                            key: ValueKey("coupon_$index"),
+                            height: 0,
+                          );
+                        }
+
                         if (kDebugMode) {
                           print(
                               "@@@@@@@@@@@@@@@@@ orderItem Data : $orderItem");

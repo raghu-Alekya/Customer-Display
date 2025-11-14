@@ -16,7 +16,6 @@ import 'package:thermal_printer/esc_pos_utils_platform/esc_pos_utils_platform.da
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 
-
 import '../../Blocs/Orders/order_bloc.dart';
 import '../../Blocs/Payment/payment_bloc.dart';
 import '../../Constants/misc_features.dart';
@@ -29,6 +28,7 @@ import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/api_response.dart';
 import '../../Helper/customerdisplayhelper.dart';
+import '../../Models/Orders/orders_model.dart';
 import '../../Models/Payment/payment_model.dart';
 import '../../Models/Payment/void_payment_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
@@ -62,7 +62,6 @@ class OrderSummaryScreen extends StatefulWidget {
   final bool isOfflineSynced;
   final int? offlineOrderId;
 
-
   const OrderSummaryScreen({
     required this.formattedDate,
     required this.formattedTime,
@@ -82,23 +81,24 @@ class OrderSummaryScreen extends StatefulWidget {
   State<OrderSummaryScreen> createState() => _OrderSummaryScreenState();
 }
 
-
 class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   List<Map<String, dynamic>> orderItems = [];
   String selectedPaymentMethod = TextConstants.cash;
   TextEditingController amountController = TextEditingController();
-  final PaymentBloc paymentBloc = PaymentBloc(PaymentRepository()); // Added PaymentBloc
+  final PaymentBloc paymentBloc =
+  PaymentBloc(PaymentRepository()); // Added PaymentBloc
   final ScrollController _scrollController = ScrollController();
   int? userId; // Build #1.0.29: To store user ID
   String? userDisplayName; // Build #1.0.29: To store user ID
   String? userRole;
   int? orderId; // server id from order table
   String? orderDateTime = "";
+  double oldTax = 0.0;
   int shiftId = 1; // Hardcoded as per requirement
   int vendorId = 1; // Hardcoded as per requirement
   String serviceType = "default"; // Hardcoded as per requirement
   double total = 0.0;
-  double orderTotal = 0.0;  // Build #1.0.137
+  double orderTotal = 0.0; // Build #1.0.137
   String orderStatus = TextConstants.processing; // Build  #1.0.177
   double grossTotal = 0.0;
   double balanceAmount = 0.0;
@@ -115,7 +115,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isLoading = false; // Add this to track loading state
   bool isSummaryLoading = false;
   // final TextEditingController _paymentController = TextEditingController();
-  var _printerSettings =  PrinterSettings();
+  var _printerSettings = PrinterSettings();
   List<int> bytes = [];
   String? paymentId; // To store the transaction ID after wallet payment
   late OrderBloc orderBloc;
@@ -123,6 +123,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   String? _amountErrorText;
   bool _isAmountEntered = false;
 
+  double discountValue = 0.0;
 
   // Determine the date and time to display
   String _displayDate = "";
@@ -160,11 +161,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         print(jsonEncode(item)); // pretty-print each item as JSON
       }
     }
-
   }
 
   @override
-  void dispose() { //Build #1.0.99: Added Dispose
+  void dispose() {
+    //Build #1.0.99: Added Dispose
     _paymentListSubscription?.cancel();
     paymentBloc.dispose();
     _scrollController.dispose();
@@ -172,7 +173,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     super.dispose();
   }
 
-  Future<void> _fetchUserId() async { // Build #1.0.29: get the userId from db
+  Future<void> _fetchUserId() async {
+    // Build #1.0.29: get the userId from db
     final userData = await UserDbHelper().getUserData();
     if (userData != null && userData[AppDBConst.userId] != null) {
       setState(() {
@@ -195,25 +197,28 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       paymentBloc.getPaymentsByOrderId(orderId!);
       // Build #1.0.151: Fixed - too much of loading in order summary screen of order panel
       _paymentListSubscription?.cancel(); // Cancel any existing subscription
-      _paymentListSubscription = paymentBloc.paymentsListStream.listen((response) {
-        if (response.status == Status.COMPLETED) {
-          if (kDebugMode) {
-            print("###### _fetchPaymentsByOrderId Api call COMPLETED");
-          }
-          if (response.data!.isNotEmpty) { // Build #1.0.175: check empty or not
-            orderStatus = response.data?.first.orderStatus ?? TextConstants.processing;
-          }
-          _processPaymentList(response.data!);
-        } else if (response.status == Status.ERROR) {
-          if (kDebugMode) {
-            print("Error fetching payments: ${response.message}");
-          }
-        }
-        setState(() {
-          isSummaryLoading = false; // Hide loader
-        });
-      });
-    }else{
+      _paymentListSubscription =
+          paymentBloc.paymentsListStream.listen((response) {
+            if (response.status == Status.COMPLETED) {
+              if (kDebugMode) {
+                print("###### _fetchPaymentsByOrderId Api call COMPLETED");
+              }
+              if (response.data!.isNotEmpty) {
+                // Build #1.0.175: check empty or not
+                orderStatus =
+                    response.data?.first.orderStatus ?? TextConstants.processing;
+              }
+              _processPaymentList(response.data!);
+            } else if (response.status == Status.ERROR) {
+              if (kDebugMode) {
+                print("Error fetching payments: ${response.message}");
+              }
+            }
+            setState(() {
+              isSummaryLoading = false; // Hide loader
+            });
+          });
+    } else {
       if (kDebugMode) {
         print("###### orderId is null");
       }
@@ -227,16 +232,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     for (var payment in payments) {
       double amount = double.tryParse(payment.amount) ?? 0.0;
-      if (payment.paymentMethod == TextConstants.cash && payment.voidStatus == false) {  // Build #1.0.175: addition of all payment method cash & if it is not void
+      if (payment.paymentMethod == TextConstants.cash &&
+          payment.voidStatus == false) {
+        // Build #1.0.175: addition of all payment method cash & if it is not void
         cashTotal += amount;
-      } else if (payment.paymentMethod != TextConstants.cash && payment.voidStatus == false) { // Build #1.0.175: addition of all payment method others & if it is not void
+      } else if (payment.paymentMethod != TextConstants.cash &&
+          payment.voidStatus == false) {
+        // Build #1.0.175: addition of all payment method others & if it is not void
         otherTotal += amount;
       }
     }
 
     if (kDebugMode) {
-      print("###### _processPaymentList ->>> payByCash1: $cashTotal, payByOther1: $otherTotal");
-      print("###### _processPaymentList ->>> payByCash2: $payByCash, payByOther2: $payByOther, tenderAmount: $tenderAmount");
+      print(
+          "###### _processPaymentList ->>> payByCash1: $cashTotal, payByOther1: $otherTotal");
+      print(
+          "###### _processPaymentList ->>> payByCash2: $payByCash, payByOther2: $payByOther, tenderAmount: $tenderAmount");
     }
     setState(() {
       payByCash = cashTotal;
@@ -246,16 +257,19 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       balanceAmount = orderTotal - payByCash - payByOther;
       var isBalanceZero = balanceAmount <= 0;
       // Build  #1.0.177: -ve balanace will be shown as balance if order status is processing
-      changeAmount = isBalanceZero && (orderStatus != TextConstants.processing) ? balanceAmount.abs() : changeAmount;
-      balanceAmount = isBalanceZero && (orderStatus != TextConstants.processing) ? 0 : balanceAmount;
+      changeAmount = isBalanceZero && (orderStatus != TextConstants.processing)
+          ? balanceAmount.abs()
+          : changeAmount;
+      balanceAmount = isBalanceZero && (orderStatus != TextConstants.processing)
+          ? 0
+          : balanceAmount;
       tenderAmount = payByCash + payByOther;
-
     });
     if (kDebugMode) {
-      print("###### _processPaymentList ->>> payByCash3: $payByCash, payByOther3: $payByOther, tenderAmount: $tenderAmount");
+      print(
+          "###### _processPaymentList ->>> payByCash3: $payByCash, payByOther3: $payByOther, tenderAmount: $tenderAmount");
     }
   }
-
 
   // void fetchOrderItems() async {
   //   // TODO: Implement actual data fetching from database
@@ -277,12 +291,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     });
   }
 
-  void _callCreatePaymentAPI({double amount = 0.0}) { // Build #1.0.29
+  void _callCreatePaymentAPI({double amount = 0.0}) {
+    // Build #1.0.29
     if (kDebugMode) {
-      print("###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount");
+      print(
+          "###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount");
     }
     if (balanceAmount > 0) {
-      if (amountController.text.isEmpty) { //Build #1.0.34: updated code
+      if (amountController.text.isEmpty) {
+        //Build #1.0.34: updated code
         if (kDebugMode) {
           print("Error: Amount TextField is empty");
         }
@@ -290,7 +307,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       }
     }
 
-    String cleanAmount = amountController.text.replaceAll(TextConstants.currencySymbol, '').trim();
+    String cleanAmount = amountController.text
+        .replaceAll(TextConstants.currencySymbol, '')
+        .trim();
     final double amount = double.tryParse(cleanAmount) ?? 0.0;
     if (amount < 0.0) {
       if (kDebugMode) {
@@ -299,7 +318,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       return;
     }
     if (kDebugMode) {
-      print("_callCreatePaymentAPI cleanAmount: $cleanAmount, balanceAmount: $balanceAmount");
+      print(
+          "_callCreatePaymentAPI cleanAmount: $cleanAmount, balanceAmount: $balanceAmount");
     }
 
     setState(() {
@@ -307,7 +327,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     });
 
     // Prepare payment request
-    final String datetime = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    final String datetime =
+    DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
     final paymentRequest = PaymentRequestModel(
       title: selectedPaymentMethod,
       orderId: orderId ?? 0,
@@ -328,150 +349,167 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     //Build #1.0.34: updated code for API response and listen to stream then show popup
     paymentBloc.createPayment(paymentRequest);
     StreamSubscription? subscription;
-    subscription = paymentBloc.createPaymentStream.listen((paymentResponse) async {
-      if (kDebugMode) {
-        print("Payment stream response: $paymentResponse ++++ end of message");
-      }
-      if (paymentResponse.data != null) {
-        if (paymentResponse.status == Status.ERROR) {
+    subscription =
+        paymentBloc.createPaymentStream.listen((paymentResponse) async {
           if (kDebugMode) {
-            print("Payment API Error: ${paymentResponse.message}");
+            print("Payment stream response: $paymentResponse ++++ end of message");
           }
-          setState(() {
-            isLoading = false; // Hide loader on error
-          });
-          subscription?.cancel();
-        } else if (paymentResponse.status == Status.COMPLETED) {
-          final paymentData = paymentResponse.data!;
-          if (paymentData.message == "Payment Created Successfully") {
-            // // Build #1.0.99: Call fetch payment details by order id API call
-            // _fetchPaymentsByOrderId(); // Refresh payments after successful payment
+          if (paymentResponse.data != null) {
+            if (paymentResponse.status == Status.ERROR) {
+              if (kDebugMode) {
+                print("Payment API Error: ${paymentResponse.message}");
+              }
+              setState(() {
+                isLoading = false; // Hide loader on error
+              });
+              subscription?.cancel();
+            } else if (paymentResponse.status == Status.COMPLETED) {
+              final paymentData = paymentResponse.data!;
+              if (paymentData.message == "Payment Created Successfully") {
+                // // Build #1.0.99: Call fetch payment details by order id API call
+                // _fetchPaymentsByOrderId(); // Refresh payments after successful payment
 
-            if (widget.isOfflineSynced && widget.offlineOrderId != null) {
-              try {
-                final offlineId = widget.offlineOrderId!;
-                final offlineBox = Hive.box('offlineOrders');
+                if (widget.isOfflineSynced && widget.offlineOrderId != null) {
+                  try {
+                    final offlineId = widget.offlineOrderId!;
+                    final offlineBox = Hive.box('offlineOrders');
 
-                if (offlineBox.containsKey(offlineId.toString())) {
-                  await offlineBox.delete(offlineId.toString());
-                  if (kDebugMode) print("✅ Deleted offline order $offlineId from Hive after payment");
+                    if (offlineBox.containsKey(offlineId.toString())) {
+                      await offlineBox.delete(offlineId.toString());
+                      if (kDebugMode)
+                        print(
+                            "✅ Deleted offline order $offlineId from Hive after payment");
+                    }
+
+                    await orderHelper.deleteOrder(offlineId);
+                    if (kDebugMode)
+                      print(
+                          "✅ Deleted offline order $offlineId from SQLite after payment");
+                  } catch (e) {
+                    if (kDebugMode)
+                      print("⚠️ Failed to delete offline order after payment: $e");
+                  }
                 }
 
-                await orderHelper.deleteOrder(offlineId);
-                if (kDebugMode) print("✅ Deleted offline order $offlineId from SQLite after payment");
-              } catch (e) {
-                if (kDebugMode) print("⚠️ Failed to delete offline order after payment: $e");
-              }
-            }
+                setState(() {
+                  isLoading = false; // Hide loader on success
+                });
+                paidAmount = amount; // Current payment amount
 
+                // Capture paymentId for wallet payments
+                /// Build #1.0.175: Commented below code, because its only checking wallet payments
+                /// We need to save paymentId always
+                /// if required un-comment below line & change selectedPaymentMethod to wallet/cash
+                //  if (selectedPaymentMethod == TextConstants.wallet) {
+                //  paymentId = paymentData.paymentId; // Assuming the API response includes paymentId
+                // paymentId = "TXT_123456789"; // For testing purpose added here
+                paymentId = paymentData.paymentId.toString(); // paymentId
+                orderStatus = paymentData.orderStatus ?? TextConstants.processing;
+                if (kDebugMode) {
+                  print("Wallet payment successful. Transaction ID: $paymentId");
+                }
+                //  }
+
+                // Determine payment type
+                final bool isExactPayment = (amount == balanceAmount);
+                final bool isOverPayment = (amount > balanceAmount);
+                final bool isPartialPayment = (amount < balanceAmount);
+
+                if (kDebugMode) {
+                  // Build #1.0.168: Debug prints
+                  print("#### DEBUG 101 : $amount");
+                  print("#### DEBUG 102 : $balanceAmount");
+                }
+
+                if (isOverPayment) {
+                  if (kDebugMode) {
+                    print("#### isOverPayment");
+                  }
+                  changeAmount = amount -
+                      balanceAmount; // Build #1.0.168: Updated - Set changeAmount directly
+                  balanceAmount = 0.0; // Balance fully paid
+                  tenderAmount += amount;
+                } else if (isExactPayment) {
+                  if (kDebugMode) {
+                    print("#### isExactPayment");
+                  }
+                  tenderAmount += amount;
+                  changeAmount = 0.0; // No change for exact payment
+                  balanceAmount = 0.0; // Balance fully paid
+                } else if (isPartialPayment) {
+                  if (kDebugMode) {
+                    print("#### isPartialPayment");
+                  }
+                  tenderAmount += amount;
+                  balanceAmount -= amount; // Reduce balance for partial payment
+                  changeAmount = 0.0; // No change for partial payment
+                } else if (balanceAmount == 0 && amount > 0) {
+                  if (kDebugMode) {
+                    print("#### balanceAmount is 0");
+                  }
+                  // Case where balance is already 0, return the entire amount as change
+                  changeAmount =
+                      amount; // Build #1.0.168: Updated - Set change to the full amount
+                  tenderAmount += amount; // Reset tender to current payment
+                }
+
+                amountController.clear(); // Clear input textField
+                setState(() {}); // Update UI
+
+                balanceAmount =
+                    double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.00;
+                if (kDebugMode) {
+                  print(
+                      "Payment successful - Paid: $paidAmount, Balance: $balanceAmount, Change: $changeAmount, Tender: $tenderAmount");
+                }
+
+                // Show appropriate dialog based on payment amount
+                if (isPartialPayment && (balanceAmount != 0)) {
+                  if (kDebugMode) {
+                    print(
+                        "Showing partial payment dialog: Paid=$paidAmount, Remaining Balance=$balanceAmount");
+                  }
+                  _showPartialPaymentDialog(context, amount);
+                } else if (isExactPayment ||
+                    isOverPayment ||
+                    (balanceAmount == 0 && amount > 0)) {
+                  if (kDebugMode) {
+                    print(
+                        "Showing payment dialog: Paid=$paidAmount, Change=$changeAmount");
+                  }
+                  _fetchPaymentsByOrderId(); // Refresh payments after successful payment
+                  _showPaymentDialog(
+                    context,
+                    amount,
+                    changeAmount: changeAmount,
+                    showChange: changeAmount > 0,
+                  );
+                }
+              }
+              subscription?.cancel(); // Cancel subscription after handling
+            }
+          } else if (paymentResponse.status == Status.ERROR) {
+            if (kDebugMode) {
+              print(
+                  "Unauthorised : response.message ${paymentResponse.message!} ++ end");
+            }
             setState(() {
-              isLoading = false; // Hide loader on success
+              isLoading = false; // Build #1.0.248: Hide loader on ERROR
             });
-            paidAmount = amount; // Current payment amount
-
-            // Capture paymentId for wallet payments
-            /// Build #1.0.175: Commented below code, because its only checking wallet payments
-            /// We need to save paymentId always
-            /// if required un-comment below line & change selectedPaymentMethod to wallet/cash
-            //  if (selectedPaymentMethod == TextConstants.wallet) {
-            //  paymentId = paymentData.paymentId; // Assuming the API response includes paymentId
-            // paymentId = "TXT_123456789"; // For testing purpose added here
-            paymentId = paymentData.paymentId.toString(); // paymentId
-            orderStatus = paymentData.orderStatus ?? TextConstants.processing;
-            if (kDebugMode) {
-              print("Wallet payment successful. Transaction ID: $paymentId");
+            //Build #1.0.180
+            if (paymentResponse.message!.contains('Unauthorised')) {
+              Navigator.pushReplacement(
+                  context, MaterialPageRoute(builder: (context) => LoginScreen()));
             }
-            //  }
-
-            // Determine payment type
-            final bool isExactPayment = (amount == balanceAmount);
-            final bool isOverPayment = (amount > balanceAmount);
-            final bool isPartialPayment = (amount < balanceAmount);
-
-            if (kDebugMode) { // Build #1.0.168: Debug prints
-              print("#### DEBUG 101 : $amount");
-              print("#### DEBUG 102 : $balanceAmount");
-            }
-
-            if (isOverPayment) {
-              if (kDebugMode) {
-                print("#### isOverPayment");
-              }
-              changeAmount = amount - balanceAmount; // Build #1.0.168: Updated - Set changeAmount directly
-              balanceAmount = 0.0; // Balance fully paid
-              tenderAmount += amount;
-            } else if (isExactPayment) {
-              if (kDebugMode) {
-                print("#### isExactPayment");
-              }
-              tenderAmount += amount;
-              changeAmount = 0.0; // No change for exact payment
-              balanceAmount = 0.0; // Balance fully paid
-            } else if (isPartialPayment) {
-              if (kDebugMode) {
-                print("#### isPartialPayment");
-              }
-              tenderAmount += amount;
-              balanceAmount -= amount; // Reduce balance for partial payment
-              changeAmount = 0.0; // No change for partial payment
-            } else if (balanceAmount == 0 && amount > 0) {
-              if (kDebugMode) {
-                print("#### balanceAmount is 0");
-              }
-              // Case where balance is already 0, return the entire amount as change
-              changeAmount = amount; // Build #1.0.168: Updated - Set change to the full amount
-              tenderAmount += amount; // Reset tender to current payment
-            }
-
-            amountController.clear(); // Clear input textField
-            setState(() {}); // Update UI
-
-            balanceAmount = double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.00;
-            if (kDebugMode) {
-              print("Payment successful - Paid: $paidAmount, Balance: $balanceAmount, Change: $changeAmount, Tender: $tenderAmount");
-            }
-
-            // Show appropriate dialog based on payment amount
-            if (isPartialPayment && (balanceAmount != 0)) {
-              if (kDebugMode) {
-                print("Showing partial payment dialog: Paid=$paidAmount, Remaining Balance=$balanceAmount");
-              }
-              _showPartialPaymentDialog(context, amount);
-            } else if (isExactPayment || isOverPayment || (balanceAmount == 0 && amount > 0)) {
-              if (kDebugMode) {
-                print("Showing payment dialog: Paid=$paidAmount, Change=$changeAmount");
-              }
-              _fetchPaymentsByOrderId(); // Refresh payments after successful payment
-              _showPaymentDialog(
-                context,
-                amount,
-                changeAmount: changeAmount,
-                showChange: changeAmount > 0,
-              );
-            }
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Unauthorised. Session is expired on this device."),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 2),
+              ),
+            );
           }
-          subscription?.cancel(); // Cancel subscription after handling
-        }
-      } else if (paymentResponse.status == Status.ERROR) {
-        if (kDebugMode) {
-          print("Unauthorised : response.message ${paymentResponse.message!} ++ end");
-        }
-        setState(() {
-          isLoading = false; // Build #1.0.248: Hide loader on ERROR
         });
-        //Build #1.0.180
-        if (paymentResponse.message!.contains('Unauthorised')) {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LoginScreen()));
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Unauthorised. Session is expired on this device."),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    });
   }
 
   @override
@@ -480,7 +518,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     ResponsiveLayout.init(context);
     return Scaffold(
-      backgroundColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.white,
+      backgroundColor: themeHelper.themeMode == ThemeMode.dark
+          ? ThemeNotifier.secondaryBackground
+          : Colors.white,
       body: SafeArea(
         child: Column(
           children: [
@@ -524,7 +564,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return Container(
       height: ResponsiveLayout.getHeight(60),
-      color: themeHelper.themeMode == ThemeMode.dark ?ThemeNotifier.primaryBackground : Colors.grey[100],
+      color: themeHelper.themeMode == ThemeMode.dark
+          ? ThemeNotifier.primaryBackground
+          : Colors.grey[100],
       padding: ResponsiveLayout.getResponsivePadding(
         horizontal: 16,
         vertical: 0,
@@ -534,7 +576,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         children: [
           // Pinaka logo with triangle above it
           SvgPicture.asset(
-            themeHelper.themeMode == ThemeMode.dark ? 'assets/svg/app_logo.svg' : 'assets/svg/app_icon.svg',
+            themeHelper.themeMode == ThemeMode.dark
+                ? 'assets/svg/app_logo.svg'
+                : 'assets/svg/app_icon.svg',
             height: ResponsiveLayout.getHeight(40),
             width: ResponsiveLayout.getWidth(40),
           ),
@@ -543,15 +587,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           Row(
             children: [
               Container(
-                height: ResponsiveLayout.getHeight(45),  //45
-                margin:  EdgeInsets.all(ResponsiveLayout.getPadding(10)),
+                height: ResponsiveLayout.getHeight(45), //45
+                margin: EdgeInsets.all(ResponsiveLayout.getPadding(10)),
                 padding: EdgeInsets.symmetric(
-                    horizontal: ResponsiveLayout.getPadding(16),
-                    vertical: 0
-                ),
+                    horizontal: ResponsiveLayout.getPadding(16), vertical: 0),
                 decoration: BoxDecoration(
-                  color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.white,
-                  borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(15)),
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.secondaryBackground
+                      : Colors.white,
+                  borderRadius:
+                  BorderRadius.circular(ResponsiveLayout.getRadius(15)),
                 ),
                 child: Row(
                   children: [
@@ -559,7 +604,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       radius: ResponsiveLayout.getRadius(18),
                       backgroundColor: Colors.deepPurple,
                       child: Text(
-                        (userDisplayName ?? TextConstants.unknown).substring(0,1),//"A", /// use initial for the login user
+                        (userDisplayName ?? TextConstants.unknown).substring(
+                            0, 1), //"A", /// use initial for the login user
                         style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -572,14 +618,19 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          userDisplayName ?? "",//'A Raghav Kumar', /// use login user display name
+                          userDisplayName ??
+                              "", //'A Raghav Kumar', /// use login user display name
                           style: TextStyle(
                               fontWeight: FontWeight.w500,
-                              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
+                              color: themeHelper.themeMode == ThemeMode.dark
+                                  ? ThemeNotifier.textDark
+                                  : ThemeNotifier.textLight,
                               fontSize: ResponsiveLayout.getFontSize(14)),
                         ),
                         Text(
-                          userRole ?? TextConstants.unknown ,//'I am Cashier', /// use user role
+                          userRole ??
+                              TextConstants
+                                  .unknown, //'I am Cashier', /// use user role
                           style: TextStyle(color: Colors.grey, fontSize: 12),
                         ),
                       ],
@@ -590,7 +641,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               SizedBox(width: ResponsiveLayout.getWidth(16)),
               Container(
                 decoration: BoxDecoration(
-                  color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.white,
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.secondaryBackground
+                      : Colors.white,
                   shape: BoxShape.circle,
                 ),
                 padding: EdgeInsets.all(ResponsiveLayout.getPadding(10)),
@@ -623,9 +676,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     if (order.isNotEmpty && order[AppDBConst.orderDate] != null) {
       try {
-        final DateTime createdDateTime = DateTime.parse(order[AppDBConst.orderDate].toString());
-        _displayDate = DateFormat(TextConstants.dateFormat).format(createdDateTime);
-        _displayTime = DateFormat(TextConstants.timeFormat).format(createdDateTime);
+        final DateTime createdDateTime =
+        DateTime.parse(order[AppDBConst.orderDate].toString());
+        _displayDate =
+            DateFormat(TextConstants.dateFormat).format(createdDateTime);
+        _displayTime =
+            DateFormat(TextConstants.timeFormat).format(createdDateTime);
       } catch (e) {
         if (kDebugMode) {
           print("Error parsing order creation date: $e");
@@ -645,22 +701,23 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           right: ResponsiveLayout.getPadding(20),
           top: ResponsiveLayout.getPadding(20),
           bottom: ResponsiveLayout.getPadding(15),
-
         ),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(10)),
-          color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.appBarBackground : Colors.grey[100],
+          color: themeHelper.themeMode == ThemeMode.dark
+              ? ThemeNotifier.appBarBackground
+              : Colors.grey[100],
         ),
         padding: EdgeInsets.symmetric(
             horizontal: ResponsiveLayout.getPadding(6),
-            vertical: ResponsiveLayout.getPadding(6)
-        ),
+            vertical: ResponsiveLayout.getPadding(6)),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             // Back button
             InkWell(
-              borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+              borderRadius:
+              BorderRadius.circular(ResponsiveLayout.getRadius(8)),
               onTap: () {
                 _showExitPaymentConfirmation(context);
               },
@@ -668,8 +725,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 width: ResponsiveLayout.getWidth(80),
                 padding: EdgeInsets.all(ResponsiveLayout.getPadding(5)),
                 decoration: BoxDecoration(
-                  color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground :Colors.white,
-                  borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.secondaryBackground
+                      : Colors.white,
+                  borderRadius:
+                  BorderRadius.circular(ResponsiveLayout.getRadius(8)),
                   boxShadow: [
                     BoxShadow(
                         color: Colors.black.withValues(alpha: 0.05),
@@ -685,9 +745,17 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: Colors.white,
-                            border: Border.all(color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.black12)
-                        ),
-                        child: Icon(Icons.chevron_left_rounded, size: 18, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textLight : Colors.black,)),
+                            border: Border.all(
+                                color: themeHelper.themeMode == ThemeMode.dark
+                                    ? ThemeNotifier.secondaryBackground
+                                    : Colors.black12)),
+                        child: Icon(
+                          Icons.chevron_left_rounded,
+                          size: 18,
+                          color: themeHelper.themeMode == ThemeMode.dark
+                              ? ThemeNotifier.textLight
+                              : Colors.black,
+                        )),
                     // BackButton(
                     //   style: ButtonStyle(
                     //       alignment: Alignment.centerLeft,
@@ -700,7 +768,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     const SizedBox(width: 10),
                     Text(
                       TextConstants.back,
-                      style: TextStyle(fontSize: ResponsiveLayout.getFontSize(15)),
+                      style:
+                      TextStyle(fontSize: ResponsiveLayout.getFontSize(15)),
                     ),
                   ],
                 ),
@@ -729,12 +798,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color:
-                        Theme.of(context).brightness == Brightness.dark
+                        color: Theme.of(context).brightness == Brightness.dark
                             ? Colors.white
                             : Colors.black,
                       ),
-
                     ),
                   ],
                 ),
@@ -752,15 +819,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     ),
                     SizedBox(width: ResponsiveLayout.getWidth(4)),
                     Text(
-                      _displayTime,//'11:41 A.M',
+                      _displayTime, //'11:41 A.M',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color:
-                        Theme.of(context).brightness == Brightness.dark
+                        color: Theme.of(context).brightness == Brightness.dark
                             ? Colors.white
                             : Colors.black,
-                      ),),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -770,6 +837,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
+
   Widget _buildOrderSummary() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final theme = Theme.of(context);
@@ -786,11 +854,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         margin: EdgeInsets.only(
             left: ResponsiveLayout.getPadding(20),
             right: ResponsiveLayout.getPadding(20),
-            bottom: ResponsiveLayout.getPadding(20)
-        ),
+            bottom: ResponsiveLayout.getPadding(20)),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(10)),
-          color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.grey[100],
+          color: themeHelper.themeMode == ThemeMode.dark
+              ? ThemeNotifier.primaryBackground
+              : Colors.grey[100],
           boxShadow: [
             BoxShadow(
               color: Colors.grey.withOpacity(0.1),
@@ -805,8 +874,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               left: ResponsiveLayout.getPadding(15),
               right: ResponsiveLayout.getPadding(15),
               bottom: ResponsiveLayout.getPadding(15),
-              top: ResponsiveLayout.getPadding(10)
-          ),
+              top: ResponsiveLayout.getPadding(10)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -835,14 +903,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   ),
                 ],
               ),
-
               SizedBox(height: ResponsiveLayout.getHeight(8)),
-
               Expanded(
                 flex: 6,
                 child: Container(
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(10)),
+                    borderRadius:
+                    BorderRadius.circular(ResponsiveLayout.getRadius(10)),
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? ThemeNotifier.secondaryBackground
                         : Colors.white,
@@ -872,10 +939,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   ),
                 ),
               ),
-
               Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(10)),
+                  borderRadius:
+                  BorderRadius.circular(ResponsiveLayout.getRadius(10)),
                   color: themeHelper.themeMode == ThemeMode.dark
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
@@ -887,9 +954,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   child: _showFullSummary
                       ? Container(
                     height: ResponsiveLayout.getHeight(205),
-                    margin: EdgeInsets.all(ResponsiveLayout.getPadding(8)),
+                    margin:
+                    EdgeInsets.all(ResponsiveLayout.getPadding(8)),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(10)),
+                      borderRadius: BorderRadius.circular(
+                          ResponsiveLayout.getRadius(10)),
                       color: themeHelper.themeMode == ThemeMode.dark
                           ? ThemeNotifier.primaryBackground
                           : Colors.white,
@@ -905,31 +974,40 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         ? Center(child: CircularProgressIndicator())
                         : Column(
                       children: [
-                        _buildOrderCalculation(TextConstants.grossTotal,
+                        _buildOrderCalculation(
+                            TextConstants.grossTotal,
                             '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
                             isTotal: true),
-                        _buildOrderCalculation(TextConstants.discountText,
+                        _buildOrderCalculation(
+                            TextConstants.discountText,
                             '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}',
                             isDiscount: true),
-                        _buildOrderCalculation(TextConstants.merchantDiscount,
+                        _buildOrderCalculation(
+                            TextConstants.merchantDiscount,
                             '-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}'),
-                        _buildOrderCalculation(TextConstants.taxText,
+                        _buildOrderCalculation(
+                            TextConstants.taxText,
                             '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
                         DottedLine(
-                          dashColor: themeHelper.themeMode == ThemeMode.dark
+                          dashColor: themeHelper.themeMode ==
+                              ThemeMode.dark
                               ? Colors.grey
                               : Colors.black54,
                           lineThickness: 1.5,
                           dashGapLength: 4,
                         ),
-                        _buildOrderCalculation(TextConstants.netPayable,
+                        _buildOrderCalculation(
+                            TextConstants.netPayable,
                             '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
                             isTotal: true),
-                        _buildOrderCalculation(TextConstants.payByCash,
+                        _buildOrderCalculation(
+                            TextConstants.payByCash,
                             '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
-                        _buildOrderCalculation(TextConstants.payByOther,
+                        _buildOrderCalculation(
+                            TextConstants.payByOther,
                             '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
-                        _buildOrderCalculation(TextConstants.tenderAmount,
+                        _buildOrderCalculation(
+                            TextConstants.tenderAmount,
                             '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'),
                         _buildOrderCalculation(TextConstants.change,
                             '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
@@ -943,19 +1021,29 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 onTap: _toggleSummary,
                 child: Container(
                   margin: EdgeInsets.only(
-                    top: _showFullSummary ? ResponsiveLayout.getPadding(2) : ResponsiveLayout.getPadding(8),
+                    top: _showFullSummary
+                        ? ResponsiveLayout.getPadding(2)
+                        : ResponsiveLayout.getPadding(8),
                     right: ResponsiveLayout.getPadding(8),
                     left: ResponsiveLayout.getPadding(8),
                     bottom: ResponsiveLayout.getPadding(8),
                   ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.only(
-                      bottomRight: Radius.circular(ResponsiveLayout.getRadius(10)),
-                      bottomLeft: Radius.circular(ResponsiveLayout.getRadius(10)),
-                      topLeft: _showFullSummary ? Radius.zero : Radius.circular(ResponsiveLayout.getRadius(10)),
-                      topRight: _showFullSummary ? Radius.zero : Radius.circular(ResponsiveLayout.getRadius(10)),
+                      bottomRight:
+                      Radius.circular(ResponsiveLayout.getRadius(10)),
+                      bottomLeft:
+                      Radius.circular(ResponsiveLayout.getRadius(10)),
+                      topLeft: _showFullSummary
+                          ? Radius.zero
+                          : Radius.circular(ResponsiveLayout.getRadius(10)),
+                      topRight: _showFullSummary
+                          ? Radius.zero
+                          : Radius.circular(ResponsiveLayout.getRadius(10)),
                     ),
-                    color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.orderPanelSummary : Colors.grey.shade300,
+                    color: themeHelper.themeMode == ThemeMode.dark
+                        ? ThemeNotifier.orderPanelSummary
+                        : Colors.grey.shade300,
                   ),
                   padding: EdgeInsets.symmetric(
                     horizontal: ResponsiveLayout.getPadding(8),
@@ -966,9 +1054,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     children: [
                       Text(
                         "${TextConstants.totalItemsText}: $totalItems",
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.bold),
                       ),
-
                       Row(
                         children: [
                           Text(
@@ -985,7 +1073,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           ),
                           SizedBox(width: ResponsiveLayout.getPadding(8)),
                           Icon(
-                            _showFullSummary ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up,
+                            _showFullSummary
+                                ? Icons.keyboard_arrow_down
+                                : Icons.keyboard_arrow_up,
                             color: themeHelper.themeMode == ThemeMode.dark
                                 ? ThemeNotifier.textDark
                                 : ThemeNotifier.textLight,
@@ -1004,13 +1094,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     );
   }
 
-  final OrderHelper orderHelper = OrderHelper(); // Helper instance to manage orders
+  final OrderHelper orderHelper =
+  OrderHelper(); // Helper instance to manage orders
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
     if (orderHelper.activeOrderId != null) {
-      var orderData = await orderHelper.getOrderById(orderHelper.activeOrderId!);
-      List<Map<String, dynamic>> items = await orderHelper.getOrderItems(orderData.first[AppDBConst.orderServerId]);
+      var orderData =
+      await orderHelper.getOrderById(orderHelper.activeOrderId!);
+      List<Map<String, dynamic>> items = await orderHelper
+          .getOrderItems(orderData.first[AppDBConst.orderServerId]);
 
       //Build #1.0.29:  Fetch the orderServerId from the database
       // final db = await DBHelper.instance.database;
@@ -1028,19 +1121,31 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       if (orderData.isNotEmpty) {
         setState(() {
           orderId = orderData.first[AppDBConst.orderServerId] as int? ?? 0;
-          orderDateTime = "${orderData.first[AppDBConst.orderDate]} ${orderData.first[AppDBConst.orderTime]}" ;
-          discount = (orderData.first[AppDBConst.orderDiscount] as num?)?.toDouble() ?? 0.0; // Fetch discount
-          merchantDiscount = (orderData.first[AppDBConst.merchantDiscount] as num?)?.toDouble() ?? 0.0; // Build #1.0.80
-          tax = (orderData.first[AppDBConst.orderTax] as num?)?.toDouble() ?? 0.0;
-          orderTotal = (orderData.first[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0; // Build #1.0.80
-          orderStatus = (orderData.first[AppDBConst.orderStatus] as String?) ?? TextConstants.processing; // Build  #1.0.177
+          orderDateTime =
+          "${orderData.first[AppDBConst.orderDate]} ${orderData.first[AppDBConst.orderTime]}";
+          discount =
+              (orderData.first[AppDBConst.orderDiscount] as num?)?.toDouble() ??
+                  0.0; // Fetch discount
+          merchantDiscount =
+              (orderData.first[AppDBConst.merchantDiscount] as num?)
+                  ?.toDouble() ??
+                  0.0; // Build #1.0.80
+          tax =
+              (orderData.first[AppDBConst.orderTax] as num?)?.toDouble() ?? 0.0;
+          orderTotal =
+              (orderData.first[AppDBConst.orderTotal] as num?)?.toDouble() ??
+                  0.0; // Build #1.0.80
+          orderStatus = (orderData.first[AppDBConst.orderStatus] as String?) ??
+              TextConstants.processing; // Build  #1.0.177
           if (kDebugMode) {
-            print("Fetched orderServerId: $orderId, Discount: $discount for activeOrderId: ${orderHelper.activeOrderId}, Time: $orderDateTime");
+            print(
+                "Fetched orderServerId: $orderId, Discount: $discount for activeOrderId: ${orderHelper.activeOrderId}, Time: $orderDateTime");
           }
         });
       } else {
         if (kDebugMode) {
-          print("No orderServerId found for activeOrderId: ${orderHelper.activeOrderId}");
+          print(
+              "No orderServerId found for activeOrderId: ${orderHelper.activeOrderId}");
         }
       }
 
@@ -1057,13 +1162,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       if (kDebugMode) {
         print("##### fetchOrderItems :$items");
         print("Calculated balance amount: $total");
-        print("##### DEBUG 1001 orderTotal: $orderTotal, payByCash: $payByCash");
+        print(
+            "##### DEBUG 1001 orderTotal: $orderTotal, payByCash: $payByCash");
       }
 
       setState(() {
         orderItems = items;
-        grossTotal = GlobalUtility.getGrossTotal(orderItems);  // Build #1.0.138: GrossTotal calculation form global class for code re usability
-        balanceAmount = orderTotal; // Build #1.0.138: using orderTotal from API value #No need our calculation here
+        grossTotal = GlobalUtility.getGrossTotal(
+            orderItems); // Build #1.0.138: GrossTotal calculation form global class for code re usability
+        balanceAmount =
+            orderTotal; // Build #1.0.138: using orderTotal from API value #No need our calculation here
         tenderAmount = 0.0; // Reset for new order
         changeAmount = 0.0; // Reset for new order
         paidAmount = 0.0; // Reset for new order
@@ -1089,12 +1197,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final int itemCount = (orderItem['items_count'] ?? 0).toInt();
     final double itemSumPrice = (orderItem['item_sum_price'] ?? 0).toDouble();
     final String itemImage = orderItem['item_image']?.toString() ?? '';
-    final String itemType = orderItem['item_type']?.toString().toLowerCase() ?? '';
+    final String itemType =
+        orderItem['item_type']?.toString().toLowerCase() ?? '';
 
     final bool isPayout = itemType.contains(TextConstants.payoutText);
     final bool isCoupon = itemType.contains(TextConstants.couponText);
     final bool isCustomItem = itemType.contains(TextConstants.customItemText);
-    final bool isPayoutOrCouponOrCustomItem = isPayout || isCoupon || isCustomItem;
+    final bool isPayoutOrCouponOrCustomItem =
+        isPayout || isCoupon || isCustomItem;
 
     if (kDebugMode) {
       print("🧩 Building Order Item #$index → $itemName | $itemType");
@@ -1205,30 +1315,34 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     : ThemeNotifier.textLight,
               ),
             ),
-
           ],
         ),
       ),
     );
   }
 
-
   Widget _buildOrderCalculation(String label, String amount,
       {bool isTotal = false, bool isDiscount = false}) {
     // //Build #1.0.34: Update the amount based on the label
     final themeHelper = Provider.of<ThemeNotifier>(context);
     if (label == TextConstants.tenderAmount) {
-      amount = '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}';
+      amount =
+      '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}';
     } else if (label == TextConstants.change) {
-      amount = '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}';
+      amount =
+      '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}';
     } else if (label == TextConstants.total) {
-      amount = '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
+      amount =
+      '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
     } else if (label == TextConstants.payByCash) {
-      amount = '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'; //Build #1.0.99: updated from api
-    }else if (label == TextConstants.payByOther) {
-      amount = '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
+      amount =
+      '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'; //Build #1.0.99: updated from api
+    } else if (label == TextConstants.payByOther) {
+      amount =
+      '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
     } else if (label == TextConstants.discountText) {
-      amount = '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}'; // Display discount from DB
+      amount =
+      '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}'; // Display discount from DB
     }
 
     // Determine colors and icons based on label
@@ -1242,7 +1356,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     if (isTotal) {
       amountColor = themeHelper.themeMode == ThemeMode.dark
-          ? ThemeNotifier.textDark : Colors.black87;
+          ? ThemeNotifier.textDark
+          : Colors.black87;
     } else if (label == TextConstants.discountText || isDiscount) {
       labelColor = Colors.green[600]!;
       amountColor = Colors.green[600]!;
@@ -1264,9 +1379,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       );
     }
 
-
     return Container(
-      margin: EdgeInsets.symmetric(vertical: ResponsiveLayout.getPadding(2)),  //ResponsiveLayout.getResponsiveMargin(vertical: 4),
+      margin: EdgeInsets.symmetric(
+          vertical: ResponsiveLayout.getPadding(
+              2)), //ResponsiveLayout.getResponsiveMargin(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1275,28 +1391,43 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             children: [
               if (leadingIcon != null) ...[
                 leadingIcon,
-                //SizedBox(width: ResponsiveLayout.getPadding(8)),
               ],
+
               Text(
                 label,
                 style: TextStyle(
-                    fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500,
-                    fontSize: ResponsiveLayout.getFontSize(isTotal ? 14 : 12),
-                    color: labelColor
-                  //height: 1,
+                  fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500,
+                  fontSize: ResponsiveLayout.getFontSize(isTotal ? 14 : 12),
+                  color: labelColor,
+                ),
+              ),
+              if ((label == TextConstants.discountText || isDiscount) && discount > 0)
+                GestureDetector(
+                  onTap: () async => await _removeAppliedCoupon(),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 5),
+                    child: Icon(
+                      Icons.delete_forever,
+                      color: Colors.red,
+                      size: 20,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          Row(
+            children: [
+              Text(
+                amount,
+                style: TextStyle(
+                  fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500,
+                  fontSize: ResponsiveLayout.getFontSize(isTotal ? 14 : 12),
+                  color: amountColor,
                 ),
               ),
             ],
           ),
-          Text(
-            amount,
-            style: TextStyle(
-                fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500,
-                fontSize: ResponsiveLayout.getFontSize(isTotal ? 14 : 12),
-                color: amountColor
-              //height: 1,
-            ),
-          ),
+
         ],
       ),
     );
@@ -1313,7 +1444,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(10)),
-        color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground :Colors.grey[100],
+        color: themeHelper.themeMode == ThemeMode.dark
+            ? ThemeNotifier.primaryBackground
+            : Colors.grey[100],
       ),
       child: Padding(
         padding: EdgeInsets.only(
@@ -1324,13 +1457,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.start, // Changed to start for better alignment
+          crossAxisAlignment:
+          CrossAxisAlignment.start, // Changed to start for better alignment
           children: [
             Expanded(
               flex: 3,
-              child: Column( // Remove SingleChildScrollView to avoid height issues
+              child: Column(
+                // Remove SingleChildScrollView to avoid height issues
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.start, // Changed from spaceEvenly
+                mainAxisAlignment:
+                MainAxisAlignment.start, // Changed from spaceEvenly
                 children: [
                   // Payment amount display row
                   Row(
@@ -1343,11 +1479,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
                         amountColor: Colors.red,
                       ),
-                      _buildAmountDisplay(
-                          TextConstants.tenderAmount,
+                      _buildAmountDisplay(TextConstants.tenderAmount,
                           '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}',
-                          amountColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : null
-                      ),
+                          amountColor: themeHelper.themeMode == ThemeMode.dark
+                              ? ThemeNotifier.textDark
+                              : null),
                       _buildAmountDisplay(
                         TextConstants.change,
                         '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}',
@@ -1359,7 +1495,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   SizedBox(height: ResponsiveLayout.getHeight(12)),
 
                   // Payment methods section
-                  Expanded( // Make this expand to fill available space
+                  Expanded(
+                    // Make this expand to fill available space
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1369,7 +1506,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded( // Make the payment container expand to fill space
+                              Expanded(
+                                // Make the payment container expand to fill space
                                 child: Container(
                                   width: double.infinity, // Take full width
                                   padding: EdgeInsets.only(
@@ -1379,11 +1517,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                     bottom: ResponsiveLayout.getPadding(8),
                                   ),
                                   decoration: BoxDecoration(
-                                    color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.white,
-                                    borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                                    color:
+                                    themeHelper.themeMode == ThemeMode.dark
+                                        ? ThemeNotifier.secondaryBackground
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(
+                                        ResponsiveLayout.getRadius(8)),
                                   ),
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                    CrossAxisAlignment.start,
                                     children: [
                                       // Label container
                                       Container(
@@ -1391,35 +1534,59 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                         width: double.infinity,
                                         padding: EdgeInsets.only(
                                             top: ResponsiveLayout.getPadding(7),
-                                            left: ResponsiveLayout.getPadding(7)
-                                        ),
+                                            left:
+                                            ResponsiveLayout.getPadding(7)),
                                         decoration: BoxDecoration(
-                                          color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.tabsBackground : Colors.red[50],
-                                          borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(6)),
+                                          color: themeHelper.themeMode ==
+                                              ThemeMode.dark
+                                              ? ThemeNotifier.tabsBackground
+                                              : Colors.red[50],
+                                          borderRadius: BorderRadius.circular(
+                                              ResponsiveLayout.getRadius(6)),
                                         ),
                                         child: Text(
                                           TextConstants.cashPayment,
                                           style: TextStyle(
                                             color: Colors.red,
                                             fontWeight: FontWeight.w500,
-                                            fontSize: ResponsiveLayout.getFontSize(12),
+                                            fontSize:
+                                            ResponsiveLayout.getFontSize(
+                                                12),
                                           ),
                                         ),
                                       ),
-                                      SizedBox(height: ResponsiveLayout.getHeight(8)),
+                                      SizedBox(
+                                          height:
+                                          ResponsiveLayout.getHeight(8)),
 
                                       // Amount TextField
                                       Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                         children: [
                                           Container(
-                                            height: ResponsiveLayout.getHeight(43),
+                                            height:
+                                            ResponsiveLayout.getHeight(43),
                                             decoration: BoxDecoration(
-                                              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.paymentEntryContainerColor : Colors.white,
-                                              borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(6)),
-                                              border: Border.all(color: _amountErrorText != null
-                                                  ? Colors.red
-                                                  : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.borderColor : Colors.grey.shade300),
+                                              color: themeHelper.themeMode ==
+                                                  ThemeMode.dark
+                                                  ? ThemeNotifier
+                                                  .paymentEntryContainerColor
+                                                  : Colors.white,
+                                              borderRadius:
+                                              BorderRadius.circular(
+                                                  ResponsiveLayout
+                                                      .getRadius(6)),
+                                              border: Border.all(
+                                                  color: _amountErrorText !=
+                                                      null
+                                                      ? Colors.red
+                                                      : themeHelper.themeMode ==
+                                                      ThemeMode.dark
+                                                      ? ThemeNotifier
+                                                      .borderColor
+                                                      : Colors
+                                                      .grey.shade300),
                                             ),
                                             // child: TextField(
                                             //   controller: amountController,
@@ -1452,31 +1619,46 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                               textAlign: TextAlign.right,
                                               enabled: false,
                                               decoration: InputDecoration(
-                                                contentPadding: EdgeInsets.only(right: ResponsiveLayout.getPadding(16)),
+                                                contentPadding: EdgeInsets.only(
+                                                    right: ResponsiveLayout
+                                                        .getPadding(16)),
                                                 border: InputBorder.none,
-                                                hintText: '${TextConstants.currencySymbol}0.00',
+                                                hintText:
+                                                '${TextConstants.currencySymbol}0.00',
                                                 hintStyle: TextStyle(
-                                                  color: themeHelper.themeMode == ThemeMode.dark
+                                                  color: themeHelper
+                                                      .themeMode ==
+                                                      ThemeMode.dark
                                                       ? ThemeNotifier.textDark
                                                       : Colors.grey[400],
-                                                  fontSize: ResponsiveLayout.getFontSize(20),
-                                                  fontWeight: FontWeight.normal, // hint is normal
+                                                  fontSize: ResponsiveLayout
+                                                      .getFontSize(20),
+                                                  fontWeight: FontWeight
+                                                      .normal, // hint is normal
                                                 ),
                                               ),
                                               style: TextStyle(
                                                 color: _isAmountEntered
-                                                    ? (themeHelper.themeMode == ThemeMode.dark
+                                                    ? (themeHelper.themeMode ==
+                                                    ThemeMode.dark
                                                     ? ThemeNotifier.textDark
                                                     : Colors.grey[800])
-                                                    : (themeHelper.themeMode == ThemeMode.dark
+                                                    : (themeHelper.themeMode ==
+                                                    ThemeMode.dark
                                                     ? ThemeNotifier.textDark
-                                                    : Colors.grey[400]), // same as hint color when cleared
-                                                fontSize: ResponsiveLayout.getFontSize(20),
-                                                fontWeight: _isAmountEntered ? FontWeight.bold : FontWeight.normal, // bold only when digits entered
+                                                    : Colors.grey[
+                                                400]), // same as hint color when cleared
+                                                fontSize: ResponsiveLayout
+                                                    .getFontSize(20),
+                                                fontWeight: _isAmountEntered
+                                                    ? FontWeight.bold
+                                                    : FontWeight
+                                                    .normal, // bold only when digits entered
                                               ),
                                               keyboardType: TextInputType.none,
                                               onTap: () {
-                                                FocusScope.of(context).unfocus();
+                                                FocusScope.of(context)
+                                                    .unfocus();
                                               },
                                             ),
                                           ),
@@ -1485,29 +1667,39 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                               _amountErrorText!,
                                               style: TextStyle(
                                                 color: Colors.red,
-                                                fontSize: ResponsiveLayout.getFontSize(12),
+                                                fontSize: ResponsiveLayout
+                                                    .getFontSize(12),
                                               ),
                                             ),
                                         ],
                                       ),
-                                      SizedBox(height: ResponsiveLayout.getHeight(8)),
+                                      SizedBox(
+                                          height:
+                                          ResponsiveLayout.getHeight(8)),
 
                                       // Quick amount buttons
                                       if (balanceAmount > 0)
                                         Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: _generateQuickAmounts(balanceAmount)
-                                              .map((amount) => _buildQuickAmountButton(
-                                              '${TextConstants.currencySymbol} ${amount.toStringAsFixed(2)}'))
+                                          mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                          children: _generateQuickAmounts(
+                                              balanceAmount)
+                                              .map((amount) =>
+                                              _buildQuickAmountButton(
+                                                  '${TextConstants.currencySymbol} ${amount.toStringAsFixed(2)}'))
                                               .toList(),
                                         ),
 
-                                      SizedBox(height: ResponsiveLayout.getHeight(12)),
+                                      SizedBox(
+                                          height:
+                                          ResponsiveLayout.getHeight(12)),
                                       Expanded(
                                         child: CustomNumPad(
                                           numPadType: NumPadType.payment,
-                                          isDarkTheme: themeHelper.themeMode == ThemeMode.dark,
-                                          getPaidAmount: () => amountController.text,
+                                          isDarkTheme: themeHelper.themeMode ==
+                                              ThemeMode.dark,
+                                          getPaidAmount: () =>
+                                          amountController.text,
                                           balanceAmount: balanceAmount,
                                           // onDigitPressed: (value) {
                                           //   if (balanceAmount <= 0) {
@@ -1533,18 +1725,24 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                                             // Handle both "0" and "00"
                                             if (value == '00') {
-                                              _rawAmount = (_rawAmount * 100) % 100000000; // shift by 2 digits
+                                              _rawAmount = (_rawAmount * 100) %
+                                                  100000000; // shift by 2 digits
                                             } else {
-                                              int digit = int.tryParse(value) ?? 0;
-                                              _rawAmount = (_rawAmount * 10 + digit) % 100000000;
+                                              int digit =
+                                                  int.tryParse(value) ?? 0;
+                                              _rawAmount =
+                                                  (_rawAmount * 10 + digit) %
+                                                      100000000;
                                             }
 
-                                            double displayValue = _rawAmount / 100.0;
+                                            double displayValue =
+                                                _rawAmount / 100.0;
                                             amountController.text =
                                             '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
                                             setState(() {
-                                              _isAmountEntered = _rawAmount != 0;
+                                              _isAmountEntered =
+                                                  _rawAmount != 0;
                                             });
                                           },
 
@@ -1559,14 +1757,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           // },
                                           onClearPressed: () {
                                             _rawAmount = 0;
-                                            amountController.text = '${TextConstants.currencySymbol}0.00';
+                                            amountController.text =
+                                            '${TextConstants.currencySymbol}0.00';
                                             if (_amountErrorText != null) {
                                               setState(() {
                                                 _amountErrorText = null;
                                               });
                                             }
                                             setState(() {
-                                              _isAmountEntered = false; // make unbold after clear
+                                              _isAmountEntered =
+                                              false; // make unbold after clear
                                             });
                                           },
                                           // onDeletePressed: () {
@@ -1578,26 +1778,39 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           onDeletePressed: () {
                                             // Remove last digit (rightmost)
                                             _rawAmount = _rawAmount ~/ 10;
-                                            double displayValue = _rawAmount / 100.0;
-                                            amountController.text = '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+                                            double displayValue =
+                                                _rawAmount / 100.0;
+                                            amountController.text =
+                                            '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
                                             setState(() {
-                                              _isAmountEntered = _rawAmount != 0;
+                                              _isAmountEntered =
+                                                  _rawAmount != 0;
                                             });
                                           },
                                           onPayPressed: () {
                                             if (balanceAmount <= 0) {
                                               setState(() {
                                                 _amountErrorText = null;
-                                                _callCreatePaymentAPI(amount: 0.0);
+                                                _callCreatePaymentAPI(
+                                                    amount: 0.0);
                                               });
                                             } else {
-                                              String paidAmount = amountController.text;
-                                              String cleanAmount = paidAmount.replaceAll('${TextConstants.currencySymbol}', '').trim();
-                                              double amount = double.tryParse(cleanAmount) ?? 0.0;
+                                              String paidAmount =
+                                                  amountController.text;
+                                              String cleanAmount = paidAmount
+                                                  .replaceAll(
+                                                  '${TextConstants.currencySymbol}',
+                                                  '')
+                                                  .trim();
+                                              double amount = double.tryParse(
+                                                  cleanAmount) ??
+                                                  0.0;
 
                                               setState(() {
                                                 if (amount == 0.0) {
-                                                  _amountErrorText = TextConstants.amountValidation;
+                                                  _amountErrorText =
+                                                      TextConstants
+                                                          .amountValidation;
                                                 } else {
                                                   _amountErrorText = null;
                                                   _callCreatePaymentAPI();
@@ -1705,31 +1918,39 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       width: double.infinity,
                       padding: EdgeInsets.all(ResponsiveLayout.getPadding(8)),
                       decoration: BoxDecoration(
-                        color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.white,
-                        borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(5)),
+                        color: themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.secondaryBackground
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(
+                            ResponsiveLayout.getRadius(5)),
                       ),
                       child: Column(
                         children: [
-                          _buildPaymentModeButton(TextConstants.cash, Icons.money,
-                              isSelected: selectedPaymentMethod == TextConstants.cash, onTap: () {
-                                setState(() {
-                                  selectedPaymentMethod = TextConstants.cash;
-                                });
-                              }),
+                          _buildPaymentModeButton(
+                              TextConstants.cash, Icons.money,
+                              isSelected: selectedPaymentMethod ==
+                                  TextConstants.cash, onTap: () {
+                            setState(() {
+                              selectedPaymentMethod = TextConstants.cash;
+                            });
+                          }),
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
-                          _buildPaymentModeButton(TextConstants.card, Icons.credit_card, onTap: () {
+                          _buildPaymentModeButton(
+                              TextConstants.card, Icons.credit_card, onTap: () {
                             setState(() {
                               selectedPaymentMethod = TextConstants.card;
                             });
                           }),
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
-                          _buildPaymentModeButton(TextConstants.wallet, Icons.account_balance_wallet, onTap: () {
-                            setState(() {
-                              selectedPaymentMethod = TextConstants.wallet;
-                            });
-                          }),
+                          _buildPaymentModeButton(TextConstants.wallet,
+                              Icons.account_balance_wallet, onTap: () {
+                                setState(() {
+                                  selectedPaymentMethod = TextConstants.wallet;
+                                });
+                              }),
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
-                          _buildPaymentModeButton(TextConstants.ebtText, Icons.payment, onTap: () {
+                          _buildPaymentModeButton(
+                              TextConstants.ebtText, Icons.payment, onTap: () {
                             setState(() {
                               selectedPaymentMethod = TextConstants.ebtText;
                             });
@@ -1746,17 +1967,29 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     flex: 2, // Give less space to payment options
                     child: Container(
                       width: double.infinity,
-                      padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                      padding:
+                      EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                       decoration: BoxDecoration(
-                        color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.white,
-                        borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(5)),
+                        color: themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.secondaryBackground
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(
+                            ResponsiveLayout.getRadius(5)),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _buildPaymentOptionButton(TextConstants.redeemPoints, Icons.stars),
-                          _buildPaymentOptionButton(TextConstants.manualDiscount, Icons.discount),
-                          _buildPaymentOptionButton(TextConstants.giftReceipt, Icons.card_giftcard),
+                          _buildPaymentOptionButton(
+                              TextConstants.redeemPoints, Icons.stars),
+                            GestureDetector(
+                              onTap: () => _openCouponPopup(),
+                              child: _buildPaymentOptionButton(
+                                TextConstants.coupon,
+                                Icons.discount,
+                              ),
+                            ),
+                        _buildPaymentOptionButton(
+                              TextConstants.giftReceipt, Icons.card_giftcard),
                         ],
                       ),
                     ),
@@ -1770,14 +2003,206 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     );
   }
 
+  Future<void> _removeAppliedCoupon() async {
+    if (widget.orderId == null || widget.orderId == 0) return;
+
+    setState(() => isSummaryLoading = true);
+
+    try {
+      await orderBloc.removeCoupon(
+        orderId: widget.orderId!,
+        couponCode: "",
+      );
+
+      print("✔ Coupon Removed");
+
+      setState(() {
+        discount = 0.0;
+        discountValue = 0.0;
+
+        tax = oldTax;
+        computedNetPayable =
+            grossTotal + tax - merchantDiscount;
+
+        balanceAmount = computedNetPayable;
+      });
+
+    } catch (e) {
+      print("❌ ERROR removing coupon: $e");
+    } finally {
+      setState(() => isSummaryLoading = false);
+    }
+  }
+
+  void _openCouponPopup() {
+    final TextEditingController _couponCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(26),
+            width: MediaQuery.of(context).size.width * 0.30,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  blurRadius: 12,
+                  offset: Offset(0, 4),
+                  color: Colors.black.withOpacity(0.15),
+                )
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Text(
+                    "Apply Coupon",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,   // 🔥 Title color updated
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                TextField(
+                  controller: _couponCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: "Enter Coupon Code",
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.grey, width: 1.0),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 25),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: BorderSide(color: Colors.red, width: 1),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(
+                        "Cancel",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 12),
+
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red, // 🔥 Button background updated
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 12),
+                      ),
+                      onPressed: () async {
+                        final code = _couponCtrl.text.trim();
+
+                        if (code.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text("Please enter coupon code"),
+                              backgroundColor: Colors.redAccent,
+                            ),
+                          );
+                          return;
+                        }
+
+                        Navigator.pop(context);
+                        await _applyCoupon(code);
+                      },
+                      child: Text("Apply"),
+                    ),
+                  ],
+                )
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+  Future<void> _applyCoupon(String code) async {
+    if (widget.orderId == null || widget.orderId == 0) return;
+
+    setState(() => isSummaryLoading = true);
+
+    try {
+      final response = await orderBloc.applyCouponToOrder(
+        orderId: widget.orderId!,
+        couponCode: code,
+      );
+
+      if (response != null) {
+
+        oldTax = tax;
+
+        double appliedDiscount =
+            double.tryParse(response.discountTotal) ?? 0.0;
+
+        double updatedTax =
+            double.tryParse(response.totalTax) ?? tax;
+        double backendNet =
+            double.tryParse(response.total) ?? computedNetPayable;
+
+        print("✔ Discount = $appliedDiscount");
+        print("✔ Updated Tax = $updatedTax");
+        print("✔ Final Net = $backendNet");
+
+        setState(() {
+          discount = appliedDiscount;
+          tax = updatedTax;
+          computedNetPayable = backendNet;
+          balanceAmount = backendNet;
+        });
+      }
+
+    } catch (e) {
+      print("❌ ERROR applying coupon: $e");
+    } finally {
+      setState(() => isSummaryLoading = false);
+    }
+  }
+
   Widget _buildAmountDisplay(
       String label,
-      String amount,
-      {
+      String amount, {
         Color? amountColor = Colors.black,
       }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
-    var size  = MediaQuery.of(context).size;
+    var size = MediaQuery.of(context).size;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.start,
@@ -1786,8 +2211,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           label,
           style: TextStyle(
               fontSize: ResponsiveLayout.getFontSize(12),
-              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.black54
-          ),
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.textDark
+                  : Colors.black54),
         ),
         SizedBox(height: ResponsiveLayout.getHeight(4)),
         Container(
@@ -1796,7 +2222,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           alignment: Alignment.centerLeft,
           padding: EdgeInsets.only(left: 10),
           decoration: BoxDecoration(
-            color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground :  Colors.white,
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.secondaryBackground
+                : Colors.white,
             borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
           ),
           child: Text(
@@ -1834,13 +2262,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   // }
 
   // Update _buildQuickAmountButton to remove isHighlighted logic for enabling
-  Widget _buildQuickAmountButton(String amount) { // Build #1.0.29: updated
+  Widget _buildQuickAmountButton(String amount) {
+    // Build #1.0.29: updated
     return GestureDetector(
       onTap: () {
         // Remove '$' and ensure the value is numeric
-        String cleanAmount = amount.replaceAll(TextConstants.currencySymbol, '');
+        String cleanAmount =
+        amount.replaceAll(TextConstants.currencySymbol, '');
         double numericValue = double.parse(cleanAmount);
-        amountController.text = '${TextConstants.currencySymbol} ${numericValue.toStringAsFixed(2)}';
+        amountController.text =
+        '${TextConstants.currencySymbol} ${numericValue.toStringAsFixed(2)}';
         setState(() {});
       },
       child: Container(
@@ -1857,8 +2288,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: ResponsiveLayout.getFontSize(16),
-              color: Color(0xFF518C3A)
-          ),
+              color: Color(0xFF518C3A)),
         ),
       ),
     );
@@ -1939,9 +2369,18 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       padding: ResponsiveLayout.getResponsivePadding(vertical: 10),
       margin: EdgeInsets.symmetric(vertical: 5),
       decoration: BoxDecoration(
-          color: isSelected ? Colors.red.shade100 : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.white,
+          color: isSelected
+              ? Colors.red.shade100
+              : themeHelper.themeMode == ThemeMode.dark
+              ? ThemeNotifier.primaryBackground
+              : Colors.white,
           borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(5)),
-          border: isSelected ? Border.all(color: Colors.red.shade300) : Border.all(color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.borderColor :Colors.grey.shade200),
+          border: isSelected
+              ? Border.all(color: Colors.red.shade300)
+              : Border.all(
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.borderColor
+                  : Colors.grey.shade200),
           boxShadow: [
             BoxShadow(
               color: Colors.grey.withOpacity(0.1),
@@ -1949,21 +2388,28 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               blurRadius: 2,
               offset: const Offset(0, 1),
             ),
-          ]
-      ),
+          ]),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             icon,
-            color: isSelected ? Colors.red : themeHelper.themeMode == ThemeMode.dark ? Color(0xFFE1E1E1) : Colors.grey,
+            color: isSelected
+                ? Colors.red
+                : themeHelper.themeMode == ThemeMode.dark
+                ? Color(0xFFE1E1E1)
+                : Colors.grey,
             size: ResponsiveLayout.getIconSize(25),
           ),
           SizedBox(width: ResponsiveLayout.getWidth(8)),
           Text(
             label,
             style: TextStyle(
-              color: isSelected ? Colors.red :themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark :  Colors.grey,
+              color: isSelected
+                  ? Colors.red
+                  : themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.textDark
+                  : Colors.grey,
               fontWeight: FontWeight.w500,
               fontSize: ResponsiveLayout.getFontSize(14),
             ),
@@ -1982,9 +2428,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       //   horizontal: 8,
       // ),
       decoration: BoxDecoration(
-        color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.grey.shade100,
+        color: themeHelper.themeMode == ThemeMode.dark
+            ? ThemeNotifier.primaryBackground
+            : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
-        border: Border.all(color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.borderColor :Colors.grey.shade300),
+        border: Border.all(
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.borderColor
+                : Colors.grey.shade300),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1992,9 +2443,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           Icon(
             icon,
             color: Colors.grey,
-            size: ResponsiveLayout.getIconSize(16),),
+            size: ResponsiveLayout.getIconSize(16),
+          ),
           SizedBox(width: ResponsiveLayout.getWidth(8)),
-          Text(label, style: TextStyle(color: Colors.grey, fontSize: ResponsiveLayout.getFontSize(14))),
+          Text(label,
+              style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: ResponsiveLayout.getFontSize(14))),
         ],
       ),
     );
@@ -2005,7 +2460,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   void _handleVoidPayment(BuildContext context, {required bool isPartial}) {
     if (orderId == null || orderId == 0) {
       if (kDebugMode) {
-        print("_handleVoidPayment -> Invalid order ID: $orderId. Cannot void transaction.");
+        print(
+            "_handleVoidPayment -> Invalid order ID: $orderId. Cannot void transaction.");
       }
       Navigator.of(context).pop(); // Close the dialog
       return;
@@ -2013,7 +2469,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     // DEBUG: Log the void payment attempt
     if (kDebugMode) {
-      print("_handleVoidPayment -> Attempting to void payment for order ID: $orderId, paymentId: $paymentId, isPartial: $isPartial");
+      print(
+          "_handleVoidPayment -> Attempting to void payment for order ID: $orderId, paymentId: $paymentId, isPartial: $isPartial");
     }
 
     final request = VoidPaymentRequestModel(
@@ -2027,7 +2484,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     subscription = paymentBloc.voidPaymentStream.listen((response) {
       if (!mounted) {
         if (kDebugMode) {
-          print("_handleVoidPayment -> Widget not mounted, skipping UI updates");
+          print(
+              "_handleVoidPayment -> Widget not mounted, skipping UI updates");
         }
         subscription?.cancel();
         return;
@@ -2035,17 +2493,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
       if (response.status == Status.COMPLETED) {
         if (kDebugMode) {
-          print("_handleVoidPayment -> Void successful: ${response.data!.message}");
+          print(
+              "_handleVoidPayment -> Void successful: ${response.data!.message}");
         }
 
         // Update UI with response values for partial void
         setState(() {
           if (kDebugMode) {
             print("🔹 Before Update:");
-            print("orderTotal: $orderTotal, tenderAmount: $tenderAmount, balanceAmount: $balanceAmount, changeAmount: $changeAmount, orderStatus: $orderStatus");
+            print(
+                "orderTotal: $orderTotal, tenderAmount: $tenderAmount, balanceAmount: $balanceAmount, changeAmount: $changeAmount, orderStatus: $orderStatus");
 
             print("🔹 Response Data:");
-            print("orderTotal: ${response.data!.orderTotal}, totalPaid: ${response.data!.totalPaid}, remainingAmount: ${response.data!.remainingAmount}, orderStatus: ${response.data!.orderStatus}");
+            print(
+                "orderTotal: ${response.data!.orderTotal}, totalPaid: ${response.data!.totalPaid}, remainingAmount: ${response.data!.remainingAmount}, orderStatus: ${response.data!.orderStatus}");
           }
 
           // Build #1.0.175: Call fetch payment details by order id API call
@@ -2066,12 +2527,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
           if (kDebugMode) {
             print("✅ After Update:");
-            print("orderTotal: $orderTotal, tenderAmount: $tenderAmount, balanceAmount: $balanceAmount, changeAmount: $changeAmount, orderStatus: $orderStatus");
+            print(
+                "orderTotal: $orderTotal, tenderAmount: $tenderAmount, balanceAmount: $balanceAmount, changeAmount: $changeAmount, orderStatus: $orderStatus");
             print("payByCash: $payByCash, payByOther: $payByOther");
           }
         });
 
-        if (Misc.showDebugSnackBar) { // Build #1.0.254
+        if (Misc.showDebugSnackBar) {
+          // Build #1.0.254
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -2093,6 +2556,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           }
           // Navigator.of(context).pop(TextConstants.refresh); // Navigate back for complete void
           OrderHelper.isOrderPanelLoaded = false;
+
           ///Update! on 9-Sep-25: asked by Shravan, void button click will result in cancelling of payment only, no need to change order status to cancelled now. If balance amount is changed then order will be pending else it will be processing
           // Navigator.pushReplacement(result: TextConstants.refresh,
           //   context,
@@ -2123,7 +2587,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   void _handleVoidOrder(BuildContext context) {
     if (orderId == null || orderId == 0) {
       if (kDebugMode) {
-        print("_handleVoidOrder -> Invalid order ID: $orderId. Cannot void order.");
+        print(
+            "_handleVoidOrder -> Invalid order ID: $orderId. Cannot void order.");
       }
       Navigator.of(context).pop(); // Close the dialog
       return;
@@ -2147,7 +2612,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
       if (response.status == Status.COMPLETED) {
         if (kDebugMode) {
-          print("_handleVoidOrder -> Void order successful: ${response.data!.message}");
+          print(
+              "_handleVoidOrder -> Void order successful: ${response.data!.message}");
         }
 
         // Reset UI values after voiding order
@@ -2158,11 +2624,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           changeAmount = 0.0;
           balanceAmount = orderTotal; // Reset to original order total
           if (kDebugMode) {
-            print("_handleVoidOrder -> Balance reset to original order total: $balanceAmount");
+            print(
+                "_handleVoidOrder -> Balance reset to original order total: $balanceAmount");
           }
         });
 
-        if (Misc.showDebugSnackBar) { // Build #1.0.254
+        if (Misc.showDebugSnackBar) {
+          // Build #1.0.254
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -2182,8 +2650,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         if (kDebugMode) {
           print("_handleVoidOrder -> 2: ${response.data!.message}");
         }
+
         ///This is for voiding completed payment
         OrderHelper.isOrderPanelLoaded = false;
+
         ///Update! on 9-Sep-25: asked by Shravan, void button click will result in cancelling of payment only, no need to change order status to cancelled now. If balance amount is changed then order will be pending else it will be processing
         // Navigator.pushReplacement(result: TextConstants.refresh,
         //   context,
@@ -2191,7 +2661,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         // );
       } else if (response.status == Status.ERROR) {
         if (kDebugMode) {
-          print("_handleVoidOrder -> Void order failed: ${response.data!.message}");
+          print(
+              "_handleVoidOrder -> Void order failed: ${response.data!.message}");
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2212,7 +2683,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   // --------------------
   void _showPartialPaymentDialog(BuildContext context, double amount) {
     if (kDebugMode) {
-      print("Showing Partial Payment Dialog with amount: $amount, Remaining Balance: $balanceAmount");
+      print(
+          "Showing Partial Payment Dialog with amount: $amount, Remaining Balance: $balanceAmount");
     }
     showDialog(
       context: context,
@@ -2221,7 +2693,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         status: PaymentStatus.partial,
         mode: PaymentMode.cash,
         amount: amount,
-        onVoid: () => showVoidExitConfirmation(context, true),/// pass true to change order status to pending, as this is partial payment , voided by user
+        onVoid: () => showVoidExitConfirmation(context, true),
+
+        /// pass true to change order status to pending, as this is partial payment , voided by user
         onNextPayment: () {
           if (kDebugMode) {
             print("Proceeding to next payment");
@@ -2241,10 +2715,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         required bool showChange,
       }) async {
     if (kDebugMode) {
-      print("Showing Payment Dialog: amount=$amount, showChange=$showChange, changeAmount=$changeAmount");
+      print(
+          "Showing Payment Dialog: amount=$amount, showChange=$showChange, changeAmount=$changeAmount");
     }
     final storeInfo = PinakaPreferences.getLoggedInStore();
-    Future<void> _updateCustomerDisplayWelcome(Map<String, String?> storeInfo) async {
+    Future<void> _updateCustomerDisplayWelcome(
+        Map<String, String?> storeInfo) async {
       if (storeInfo.isNotEmpty) {
         if (kDebugMode) {
           print(">>> Updating Customer Display with store info:");
@@ -2267,8 +2743,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         await CustomerDisplayService.showWelcome();
       }
     }
+
     try {
-      if (kDebugMode) print(">>> Showing THANK YOU screen before receipt options");
+      if (kDebugMode)
+        print(">>> Showing THANK YOU screen before receipt options");
       await CustomerDisplayService.showThankYou();
     } catch (e) {
       if (kDebugMode) print(">>> Error showing Thank You screen: $e");
@@ -2291,7 +2769,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           if (kDebugMode) {
             print("DEBUG 0011 : $selectedOption, $email, ${email?.isNotEmpty}");
           }
-          if (selectedOption == TextConstants.email && email != null && email.isNotEmpty) {
+          if (selectedOption == TextConstants.email &&
+              email != null &&
+              email.isNotEmpty) {
             if (orderId == null || orderId == 0) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -2305,12 +2785,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
             paymentBloc.sendOrderDetails(orderId!, email);
             StreamSubscription? subscription;
-            subscription = paymentBloc.sendOrderDetailsStream.listen((response) async {
-              subscription?.cancel();
-              if (kDebugMode) print(">>> Email sent, updating customer display");
-              await _updateCustomerDisplayWelcome(storeInfo);
-              changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
-            });
+            subscription =
+                paymentBloc.sendOrderDetailsStream.listen((response) async {
+                  subscription?.cancel();
+                  if (kDebugMode)
+                    print(">>> Email sent, updating customer display");
+                  await _updateCustomerDisplayWelcome(storeInfo);
+                  changeStatusToCompletedAndExit(true,
+                      selectedOption: selectedOption);
+                });
             return;
           }
           if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
@@ -2328,15 +2811,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
   Future<Map<String, dynamic>?> loadPrinterData() async {
     var printerDB = await PrinterDBHelper().getPrinterFromDB();
-    if(printerDB.isEmpty){
+    if (printerDB.isEmpty) {
       if (kDebugMode) {
         print(">>>>> OrderSummaryScreen : printerDB is empty");
       }
       return null;
     }
     return printerDB.first;
-
   }
+
   Future _preparePrintTicket() async {
     if (kDebugMode) {
       print("OrderSummaryScreen _preparePrintTicket call print receipt");
@@ -2355,7 +2838,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     // -------------------------------
     final ByteData data;
     if (logo != "") {
-      data = await GlobalUtility.fileToByteData(File(logo)) ?? await rootBundle.load('assets/Bubbas_logo.png');
+      data = await GlobalUtility.fileToByteData(File(logo)) ??
+          await rootBundle.load('assets/Bubbas_logo.png');
     } else {
       data = await rootBundle.load('assets/Bubbas_logo.png');
     }
@@ -2364,7 +2848,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       final Uint8List imageBytes = data.buffer.asUint8List();
       final decodedImage = img.decodeImage(imageBytes)!;
       img.Image thumbnail = img.copyResize(decodedImage, height: 280);
-      img.Image originalImg = img.copyResize(decodedImage, width: 470, height: 280);
+      img.Image originalImg =
+      img.copyResize(decodedImage, width: 470, height: 280);
       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
       var padding = (originalImg.width - thumbnail.width) / 2;
       drawImage(originalImg, thumbnail, dstX: padding.toInt());
@@ -2382,11 +2867,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     var storeDetails = await AssetDBHelper.instance.getStoreDetails();
     var storeName = "${storeDetails?.name}";
     var address = "${storeDetails?.address},";
-    var cityStateZip = "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
+    var cityStateZip =
+        "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
     var orderIdToPrint = '$orderId';
 
     final userData = await UserDbHelper().getUserData();
-    var cashierName = "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
+    var cashierName =
+        "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
     var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
 
     if (header != "") {
@@ -2426,16 +2913,28 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     bytes += ticket.feed(1);
 
     // Address and Phone
-    bytes += ticket.row([PosColumn(text: address, width: 12, styles: PosStyles(align: PosAlign.center))]);
-    bytes += ticket.row([PosColumn(text: cityStateZip, width: 12, styles: PosStyles(align: PosAlign.center))]);
     bytes += ticket.row([
-      PosColumn(text: "Phone: $storePhone", width: 12, styles: PosStyles(align: PosAlign.center)),
+      PosColumn(
+          text: address, width: 12, styles: PosStyles(align: PosAlign.center))
+    ]);
+    bytes += ticket.row([
+      PosColumn(
+          text: cityStateZip,
+          width: 12,
+          styles: PosStyles(align: PosAlign.center))
+    ]);
+    bytes += ticket.row([
+      PosColumn(
+          text: "Phone: $storePhone",
+          width: 12,
+          styles: PosStyles(align: PosAlign.center)),
     ]);
 
     bytes += ticket.feed(1);
 
     bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
+      PosColumn(
+          text: "-----------------------------------------------", width: 12),
     ]);
 
     bytes += ticket.feed(1);
@@ -2460,7 +2959,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     bytes += ticket.feed(1);
     bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
+      PosColumn(
+          text: "-----------------------------------------------", width: 12),
     ]);
 
     bytes += ticket.feed(1);
@@ -2471,9 +2971,18 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     bytes += ticket.row([
       PosColumn(text: "#", width: 1, styles: PosStyles(bold: true)),
       PosColumn(text: "Description", width: 5, styles: PosStyles(bold: true)),
-      PosColumn(text: "Qty", width: 1, styles: PosStyles(align: PosAlign.center, bold: true)),
-      PosColumn(text: "Rate", width: 2, styles: PosStyles(align: PosAlign.right, bold: true)),
-      PosColumn(text: "Amt", width: 3, styles: PosStyles(align: PosAlign.right, bold: true)),
+      PosColumn(
+          text: "Qty",
+          width: 1,
+          styles: PosStyles(align: PosAlign.center, bold: true)),
+      PosColumn(
+          text: "Rate",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right, bold: true)),
+      PosColumn(
+          text: "Amt",
+          width: 3,
+          styles: PosStyles(align: PosAlign.right, bold: true)),
     ]);
 
     bytes += ticket.feed(1);
@@ -2513,10 +3022,17 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       bytes += ticket.row([
         PosColumn(text: "${i + 1}", width: 1),
         PosColumn(text: itemName, width: 5),
-        PosColumn(text: "$qty", width: 1, styles: PosStyles(align: PosAlign.center)),
-        PosColumn(text: "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)}",
-            width: 2, styles: PosStyles(align: PosAlign.right)),
-        PosColumn(text: formattedTotal, width: 3, styles: PosStyles(align: PosAlign.right)),
+        PosColumn(
+            text: "$qty", width: 1, styles: PosStyles(align: PosAlign.center)),
+        PosColumn(
+            text:
+            "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)}",
+            width: 2,
+            styles: PosStyles(align: PosAlign.right)),
+        PosColumn(
+            text: formattedTotal,
+            width: 3,
+            styles: PosStyles(align: PosAlign.right)),
       ]);
 
       bytes += ticket.emptyLines(1);
@@ -2529,78 +3045,108 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     bytes += ticket.feed(1);
     bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
+      PosColumn(
+          text: "-----------------------------------------------", width: 12),
     ]);
     bytes += ticket.feed(1);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.grossTotal, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}",
-          width: 2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text:
+          "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.discountText, width: 10),
-      PosColumn(text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}",
-          width: 2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text:
+          "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.merchantDiscount, width: 10),
-      PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
-          width: 2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text:
+          "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.taxText, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}",
-          width: 2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
+      PosColumn(
+          text: "-----------------------------------------------", width: 12),
     ]);
 
     bytes += ticket.feed(1);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.netPayable, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${orderTotal.toStringAsFixed(2)}",
-          width: 2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text:
+          "${TextConstants.currencySymbol}${orderTotal.toStringAsFixed(2)}",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByCash, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}",
-          width: 2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text:
+          "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByOther, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}",
-          width: 2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text:
+          "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.tenderAmount, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
-          width: 2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text:
+          "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.change, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}",
-          width: 2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text:
+          "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
+      PosColumn(
+          text: "-----------------------------------------------", width: 12),
     ]);
 
     // Footer
     if (footer != "") {
       bytes += ticket.row([
-        PosColumn(text: footer, width: 12, styles: PosStyles(align: PosAlign.center)),
+        PosColumn(
+            text: footer, width: 12, styles: PosStyles(align: PosAlign.center)),
       ]);
       bytes += ticket.feed(1);
     }
@@ -2688,18 +3234,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             ),
           );
 
-          Navigator.push(context, MaterialPageRoute(
-            builder: (context) => PrinterSetup(),
-          )).then((result) {
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PrinterSetup(),
+              )).then((result) {
             if (result == TextConstants.refresh) {
               _printerSettings.loadPrinter();
               setState(() {
-                if(!Misc.disablePrinter) {
+                if (!Misc.disablePrinter) {
                   _printTicket(); // retry only when NOT manual
                 }
               });
             } else {
-              if(mounted) {
+              if (mounted) {
                 _showReceiptDialog(context, paidAmount);
               }
             }
@@ -2715,10 +3263,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
     List<int> bytes = [];
 
-    final ticket =  await _printerSettings.getTicket();
+    final ticket = await _printerSettings.getTicket();
     bytes += ticket.row([
       PosColumn(text: "#", width: 1),
-      PosColumn(text: "Description", width:5),
+      PosColumn(text: "Description", width: 5),
       PosColumn(text: "Qty", width: 1),
       PosColumn(text: "Rate", width: 2),
       PosColumn(text: "Dis", width: 1),
@@ -2727,13 +3275,17 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     bytes += ticket.feed(1);
     bytes += ticket.row([
       PosColumn(text: "1", width: 1),
-      PosColumn(text: "Shan Haleem Masala Mix", width:5),
+      PosColumn(text: "Shan Haleem Masala Mix", width: 5),
       PosColumn(text: "1.0", width: 1),
-      PosColumn(text: "420.0", width:2),
+      PosColumn(text: "420.0", width: 2),
       PosColumn(text: "0.0", width: 1),
       PosColumn(text: "420.0", width: 2),
     ]);
-    bytes += ticket.row([PosColumn(text: "sfgasa sdfasdfasdf asdfasdfasdfsdfasdfasdf adfasdfasdfasdf", width: 12),]);
+    bytes += ticket.row([
+      PosColumn(
+          text: "sfgasa sdfasdfasdf asdfasdfasdfsdfasdfasdf adfasdfasdfasdf",
+          width: 12),
+    ]);
     final result = await _printerSettings.printTicket(bytes, ticket);
 
     if (kDebugMode) {
@@ -2744,7 +3296,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       // BluetoothPrinter printer = result.value;
         break;
       case Error<BluetoothPrinter>():
-        WidgetsBinding.instance.addPostFrameCallback((_) { // Build #1.0.16
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          // Build #1.0.16
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -2755,21 +3308,26 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               duration: const Duration(seconds: 3),
             ),
           );
+
           /// call printer setup screen
           if (kDebugMode) {
             print("call printer setup screen");
           }
-          Navigator.push(context, MaterialPageRoute(
-            builder: (context) => PrinterSetup(),
-          )).then((result) {
-            if (result == TextConstants.refresh) { // Build #1.0.175: added TextConstants
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PrinterSetup(),
+              )).then((result) {
+            if (result == TextConstants.refresh) {
+              // Build #1.0.175: added TextConstants
               _printerSettings.loadPrinter();
               setState(() {
                 // Update state to refresh the UI
                 if (kDebugMode) {
-                  print("SettingScreen - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
+                  print(
+                      "SettingScreen - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
                 }
-                if(!Misc.disablePrinter) {
+                if (!Misc.disablePrinter) {
                   _printTicket();
                 }
               });
@@ -2802,12 +3360,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         onNoReceipt: () {
           changeStatusToCompletedAndExit(false);
         },
-        onDone: (selectedOption, {String? email}) { // Build #1.0.159: Integrated Send Email Order Details API
+        onDone: (selectedOption, {String? email}) {
+          // Build #1.0.159: Integrated Send Email Order Details API
           if (kDebugMode) {
             print("DEBUG 0011 : $selectedOption, $email, ${email?.isNotEmpty}");
           }
           // Call API only if email option is selected and an email is provided
-          if (selectedOption == TextConstants.email && email != null && email.isNotEmpty) {
+          if (selectedOption == TextConstants.email &&
+              email != null &&
+              email.isNotEmpty) {
             if (orderId == null || orderId == 0) {
               if (kDebugMode) {
                 print("Invalid order ID: $orderId. Cannot send email.");
@@ -2823,44 +3384,49 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             }
 
             if (kDebugMode) {
-              print("Sending receipt to email: $email for order ID: $orderId on Done button click");
+              print(
+                  "Sending receipt to email: $email for order ID: $orderId on Done button click");
             }
 
             paymentBloc.sendOrderDetails(orderId!, email);
             StreamSubscription? subscription;
-            subscription = paymentBloc.sendOrderDetailsStream.listen((response) {
-              if (response.status == Status.COMPLETED) {
-                if (kDebugMode) {
-                  print("Email sent successfully: ${response.data!.message}");
-                }
-                if (Misc.showDebugSnackBar) { // Build #1.0.254
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(response.data!.message),
-                      backgroundColor: Colors.green,
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
-                }
-              } else if (response.status == Status.ERROR) {
-                if (kDebugMode) {
-                  print("Failed to send email: ${response.message}");
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(TextConstants.failedSendEmail),
-                    backgroundColor: Colors.red,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
-              }
-              subscription?.cancel();
-              // Proceed to complete the order after email API response
-              changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
-            });
+            subscription =
+                paymentBloc.sendOrderDetailsStream.listen((response) {
+                  if (response.status == Status.COMPLETED) {
+                    if (kDebugMode) {
+                      print("Email sent successfully: ${response.data!.message}");
+                    }
+                    if (Misc.showDebugSnackBar) {
+                      // Build #1.0.254
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(response.data!.message),
+                          backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  } else if (response.status == Status.ERROR) {
+                    if (kDebugMode) {
+                      print("Failed to send email: ${response.message}");
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(TextConstants.failedSendEmail),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                  subscription?.cancel();
+                  // Proceed to complete the order after email API response
+                  changeStatusToCompletedAndExit(true,
+                      selectedOption: selectedOption);
+                });
           } else {
             // For non-email options, proceed directly to complete the order
-            changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
+            changeStatusToCompletedAndExit(true,
+                selectedOption: selectedOption);
           }
         },
       ),
@@ -2869,7 +3435,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
   ///Use this function to change status to complete the order after payment
   ///it is used called by no receipt and print receipt on order payment completed - print button tap
-  void changeStatusToCompletedAndExit(bool isReceipt, {String selectedOption = TextConstants.print}){
+  void changeStatusToCompletedAndExit(bool isReceipt,
+      {String selectedOption = TextConstants.print}) {
     /// Build #1.0.168: Fixed Issue - Change is showing as zero only
     /// No need here to reset changeAmount,balanceAmount or tenderAmount
     /// Every time comes to this screen we are already resetting initially in fetchOrderItems method
@@ -2879,7 +3446,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     // });
 
     if (kDebugMode) {
-      print("OrderSummaryScreen _showReceiptDialog Done call print receipt = $isReceipt");
+      print(
+          "OrderSummaryScreen _showReceiptDialog Done call print receipt = $isReceipt");
     }
 
     // if (selectedOption == TextConstants.print) {
@@ -2903,9 +3471,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     //
     // }
     if (kDebugMode) {
-      print("changeStatusToCompletedAndExit called with isReceipt=$isReceipt, selectedOption=$selectedOption");
-    }
-    else if (selectedOption == TextConstants.sms) {// SMS receipt
+      print(
+          "changeStatusToCompletedAndExit called with isReceipt=$isReceipt, selectedOption=$selectedOption");
+    } else if (selectedOption == TextConstants.sms) {
+      // SMS receipt
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(TextConstants.smsConfiguration),
@@ -2938,14 +3507,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     //     }
     /// Build #1.0.175: No need change status to completed API call
     /// It was handling from backend
-    Navigator.of(context).pop();  // Dismiss the receipt dialog
+    Navigator.of(context).pop(); // Dismiss the receipt dialog
     // Navigator.of(context).pop(TextConstants.refresh); // Dismiss back to the previous screen with a refresh signal
     if (kDebugMode) {
       print("changeStatusToCompletedAndExit -> 3:");
     }
+
     ///Completed order
     OrderHelper.isOrderPanelLoaded = false;
-    Navigator.pushReplacement(result: TextConstants.refresh,
+    Navigator.pushReplacement(
+      result: TextConstants.refresh,
       context,
       MaterialPageRoute(builder: (_) => FastKeyScreen()),
     );
@@ -2987,7 +3558,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   void showVoidExitConfirmation(BuildContext context, bool isPartial) {
     // DEBUG: Log void confirmation details
     if (kDebugMode) {
-      print("showVoidExitConfirmation -> isPartial: $isPartial, orderId: $orderId, paymentId: $paymentId");
+      print(
+          "showVoidExitConfirmation -> isPartial: $isPartial, orderId: $orderId, paymentId: $paymentId");
     }
 
     showDialog(
@@ -2996,7 +3568,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       builder: (context) => PaymentDialog.voidConfirmation(
         onVoidCancel: () {
           if (kDebugMode) {
-            print("showVoidExitConfirmation -> User canceled void, closing dialog");
+            print(
+                "showVoidExitConfirmation -> User canceled void, closing dialog");
           }
           Navigator.of(context).pop(); // Dismiss the confirm dialog
         },
@@ -3004,13 +3577,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           if (isPartial) {
             // Build #1.0.175: For partial payment void - call voidPayment API
             if (kDebugMode) {
-              print("showVoidExitConfirmation -> Partial payment void: calling voidPayment API");
+              print(
+                  "showVoidExitConfirmation -> Partial payment void: calling voidPayment API");
             }
             _handleVoidPayment(context, isPartial: true);
           } else {
             // Build #1.0.175: For complete payment void - call voidOrder API
             if (kDebugMode) {
-              print("showVoidExitConfirmation -> Complete payment void: calling voidOrder API");
+              print(
+                  "showVoidExitConfirmation -> Complete payment void: calling voidOrder API");
             }
             // _handleVoidOrder(context);
             _handleVoidPayment(context, isPartial: true);
@@ -3024,13 +3599,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   void _showExitPaymentConfirmation(BuildContext context) {
     // DEBUG: Log the current payment and balance status
     if (kDebugMode) {
-      print("_showExitPaymentConfirmation -> payByCash: $payByCash, payByOther: $payByOther, balanceAmount: $balanceAmount, orderTotal: $orderTotal, orderStatus: $orderStatus");
+      print(
+          "_showExitPaymentConfirmation -> payByCash: $payByCash, payByOther: $payByOther, balanceAmount: $balanceAmount, orderTotal: $orderTotal, orderStatus: $orderStatus");
     }
 
     // Build #1.0.175: If order_status is pending, show confirmation dialog
     if (orderStatus == TextConstants.pending) {
       if (kDebugMode) {
-        print("_showExitPaymentConfirmation -> Order status is pending, showing confirmation dialog");
+        print(
+            "_showExitPaymentConfirmation -> Order status is pending, showing confirmation dialog");
       }
       showDialog(
         context: context,
@@ -3039,19 +3616,23 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           status: PaymentStatus.exitConfirmation,
           onExitCancel: () {
             if (kDebugMode) {
-              print("_showExitPaymentConfirmation -> User canceled exit, closing dialog");
+              print(
+                  "_showExitPaymentConfirmation -> User canceled exit, closing dialog");
             }
             Navigator.of(context).pop(); // Close the dialog
           },
           onExitConfirm: () {
             if (kDebugMode) {
-              print("_showExitPaymentConfirmation -> User confirmed exit, navigating back");
+              print(
+                  "_showExitPaymentConfirmation -> User confirmed exit, navigating back");
             }
+
             ///Partial payment back button exit
             Navigator.of(context).pop(); // Close exit confirmation dialog
             // Navigator.of(context).pop(TextConstants.refresh); // Navigate back to previous screen
             OrderHelper.isOrderPanelLoaded = false;
-            Navigator.pushReplacement(result: TextConstants.refresh,
+            Navigator.pushReplacement(
+              result: TextConstants.refresh,
               context,
               MaterialPageRoute(builder: (_) => FastKeyScreen()),
             );
@@ -3071,7 +3652,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     } else {
       // Build #1.0.175: If order_status is not pending, navigate back without popup
       if (kDebugMode) {
-        print("_showExitPaymentConfirmation -> Order status is not pending, navigating back directly");
+        print(
+            "_showExitPaymentConfirmation -> Order status is not pending, navigating back directly");
       }
       Navigator.of(context).pop(); // Direct navigation back to previous screen
     }

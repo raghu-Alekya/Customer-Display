@@ -1283,9 +1283,6 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
       await box.put(orderId.toString(), {...order, 'products': products});
 
-      // ✅ SQLite update logic stays same ...
-      // (you can keep your DB update code here)
-
       await loadData();
       if (onItemAdded != null) onItemAdded();
     } finally {

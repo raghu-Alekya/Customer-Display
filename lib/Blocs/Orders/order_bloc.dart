@@ -657,86 +657,99 @@ class OrderBloc { // Build #1.0.25 - added by naveen
   }
 
   // 3. Apply Coupon to Order
-  Future<void> applyCouponToOrder({required int orderId, required String couponCode}) async {
-    if (_applyCouponController.isClosed) return;
+  Future<dynamic> applyCouponToOrder({
+    required int orderId,
+    required String couponCode,
+  }) async {
+    if (_applyCouponController.isClosed) return null;
 
     applyCouponSink.add(APIResponse.loading(TextConstants.loading));
+
     try {
       final request = ApplyCouponRequestModel(
         couponLines: [CouponLine(code: couponCode)],
       );
+
       final response = await _orderRepository.applyCouponToOrder(
         orderId: orderId,
         request: request,
       );
 
-      // Build #1.0.226: Fixed Issue -> Unable to remove Payout , after coupon addition
-      // Update coupons response with line items as well
-      // Clear existing items for this order
       OrderHelper orderHelper = OrderHelper();
       await orderHelper.clearOrderItems(orderId);
 
-      // Debug print: Clearing order items
-      if (kDebugMode) {
-        print("#### OrderBloc - applyCouponToOrder: Cleared existing items for orderId $orderId");
-      }
-      // Build #1.0.92: Update order table and handle coupon lines
       final db = await DBHelper.instance.database;
-      if (kDebugMode) {
-        print("#### OrderBloc - Updating order table for orderId $orderId, total: ${double.tryParse(response.total) ?? 0.0}, discount: ${double.tryParse(response.discountTotal) ?? 0.0}");
-      }
-      // Update merchantDiscount id & value
-      double merchantDiscount = 0.0;  // Build #1.0.278: Updating merchant discount data into order table
+
+      double merchantDiscount = 0.0;
       var merchantDiscountIds = "";
-      // Build #1.0.92: Clear existing coupon items and add new ones from response
+
       await db.delete(
         AppDBConst.purchasedItemsTable,
         where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
         whereArgs: [orderId, ItemType.coupon.value],
       );
 
-      // Build #1.0.226: Added updated line items from the API response
       for (var lineItem in response.lineItems) {
-        final String variationName = lineItem.productVariationData?.metaData?.firstWhere(
-              (e) => e.key == "custom_name",
-          orElse: () => model.MetaData(id: 0, key: "", value: ""),
-        ).value ?? "";
-        final int variationCount = lineItem.productData.variations?.length ?? 0;
-        final String combo = lineItem.metaData.firstWhere(
-              (e) => e.value.contains('Combo'),
-          orElse: () => model.MetaData(id: 0, key: "", value: ""),
-        ).value.split(' ').first ?? "";
-        final bool hasVariations = lineItem.productData.variations != null && lineItem.productData.variations!.isNotEmpty;
-        final double salesPrice = hasVariations
-            ? double.tryParse(lineItem.productVariationData?.salePrice?.isNotEmpty == true ? lineItem.productVariationData!.salePrice! : "0.0") ?? 0.0
-            : double.tryParse(lineItem.productData.salePrice?.isNotEmpty == true ? lineItem.productData.salePrice! : "0.0") ?? 0.0;
-        final double regularPrice = hasVariations
-            ? double.tryParse(lineItem.productVariationData?.regularPrice?.isNotEmpty == true ? lineItem.productVariationData!.regularPrice! : "0.0") ?? 0.0
-            : double.tryParse(lineItem.productData.regularPrice?.isNotEmpty == true ? lineItem.productData.regularPrice! : "0.0") ?? 0.0;
-        final double unitPrice = hasVariations
-            ? double.tryParse(lineItem.productVariationData?.price?.isNotEmpty == true ? lineItem.productVariationData!.price! : "0.0") ?? 0.0
-            : double.tryParse(lineItem.productData.price?.isNotEmpty == true ? lineItem.productData.price! : "0.0") ?? 0.0;
-        final double itemPrice = double.tryParse(lineItem.subtotal.isNotEmpty == true ? lineItem.subtotal : '0.0') ?? 0.0;
-        bool isCustomItem = lineItem.productData.tags.any((tag) => tag.name == TextConstants.customItem);
+        final String variationName = lineItem.productVariationData?.metaData
+            ?.firstWhere((e) => e.key == "custom_name",
+            orElse: () =>
+                model.MetaData(id: 0, key: "", value: ""))
+            .value ??
+            "";
 
-        if (kDebugMode) {
-          print("#### OrderBloc - applyCouponToOrder: Adding lineItem ${lineItem.id}, orderId: $orderId, ProductId: ${lineItem.productId}, VariationId: ${lineItem.variationId}");
-          print("#### OrderBloc - applyCouponToOrder: variationName $variationName, variationCount: $variationCount, combo: $combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
-        }
-        // Build #1.0.278: Updating merchant discount data into order table
-        if (lineItem.name == TextConstants.discountText) { // Updated: Detect 'Discount' in line_items
-          if (kDebugMode) {
-            print("#### OrderBloc - Adding merchant discount item: id: ${lineItem.id}, total: ${lineItem.total}");
-          }
-          merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
-          merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
-          if (kDebugMode) {
-            print("#### TEST 1111  - $merchantDiscountIds");
-          }
-        }else if ((lineItem.name == TextConstants.payout)) {  /// Build #1.0.205: payout is added as product so while updating order table check here as well
-          if (kDebugMode) {
-            print("#### OrderBloc - Adding payout item: id: ${response.lineItems!.last.id}, total: ${response.lineItems!.last.total}");
-          }
+        final int variationCount =
+            lineItem.productData.variations?.length ?? 0;
+
+        final String combo = lineItem.metaData
+            .firstWhere((e) => e.value.contains('Combo'),
+            orElse: () =>
+                model.MetaData(id: 0, key: "", value: ""))
+            .value
+            .split(' ')
+            .first ??
+            "";
+
+        final bool hasVariations =
+            lineItem.productData.variations != null &&
+                lineItem.productData.variations!.isNotEmpty;
+
+        final double salesPrice = hasVariations
+            ? double.tryParse(
+            lineItem.productVariationData?.salePrice ?? "0.0") ??
+            0.0
+            : double.tryParse(lineItem.productData.salePrice ?? "0.0") ??
+            0.0;
+
+        final double regularPrice = hasVariations
+            ? double.tryParse(
+            lineItem.productVariationData?.regularPrice ??
+                "0.0") ??
+            0.0
+            : double.tryParse(
+            lineItem.productData.regularPrice ?? "0.0") ??
+            0.0;
+
+        final double unitPrice = hasVariations
+            ? double.tryParse(
+            lineItem.productVariationData?.price ?? "0.0") ??
+            0.0
+            : double.tryParse(lineItem.productData.price ?? "0.0") ??
+            0.0;
+
+        final double itemPrice =
+            double.tryParse(lineItem.subtotal) ?? 0.0;
+
+        bool isCustomItem = lineItem.productData.tags
+            .any((tag) => tag.name == TextConstants.customItem);
+
+        if (lineItem.name == TextConstants.discountText) {
+          merchantDiscount +=
+              double.parse(lineItem.total ?? '0.0').abs();
+          merchantDiscountIds =
+          merchantDiscountIds.isEmpty
+              ? "${lineItem.id}"
+              : "$merchantDiscountIds,${lineItem.id}";
+        } else if (lineItem.name == TextConstants.payout) {
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name ?? '',
@@ -747,7 +760,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             type: ItemType.payout.value,
           );
-        } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
+        } else {
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name,
@@ -758,7 +771,9 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             productId: lineItem.productId,
             variationId: lineItem.variationId,
-            type: isCustomItem ? ItemType.customProduct.value : ItemType.product.value,
+            type: isCustomItem
+                ? ItemType.customProduct.value
+                : ItemType.product.value,
             variationName: variationName,
             variationCount: variationCount,
             combo: combo,
@@ -770,9 +785,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       }
 
       for (var couponLine in response.couponLines) {
-        if (kDebugMode) {
-          print("#### OrderBloc - Adding coupon line: id: ${couponLine.id}, code: ${couponLine.code}, amount: ${couponLine.nominalAmount}");
-        }
         await orderHelper.addItemToOrder(
           couponLine.id,
           couponLine.code ?? '',
@@ -785,8 +797,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
         );
       }
 
-      // Build #1.0.278: Updating merchant discount data into order table
-      // replaced placement from above to here , because we have to collect merchantDiscount, merchantDiscountIds then append into order table
       await db.update(
         AppDBConst.orderTable,
         {
@@ -796,12 +806,15 @@ class OrderBloc { // Build #1.0.25 - added by naveen
           AppDBConst.orderDate: response.dateCreated,
           AppDBConst.orderTime: response.dateCreated,
           AppDBConst.orderPaymentMethod: response.paymentMethod,
-          AppDBConst.orderDiscount: double.tryParse(response.discountTotal) ?? 0.0,
+          AppDBConst.orderDiscount:
+          double.tryParse(response.discountTotal) ?? 0.0,
           AppDBConst.orderTax: double.tryParse(response.totalTax) ?? 0.0,
-          AppDBConst.orderShipping: double.tryParse(response.shippingTotal) ?? 0.0,
-          AppDBConst.orderAgeRestricted: response.metaData.firstWhere( //Build #1.0.234: Saving Age Restricted value in order table
+          AppDBConst.orderShipping:
+          double.tryParse(response.shippingTotal) ?? 0.0,
+          AppDBConst.orderAgeRestricted: response.metaData.firstWhere(
                 (meta) => meta.key == TextConstants.ageRestrictedKey,
-            orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
+            orElse: () =>
+                model.MetaData(id: 0, key: '', value: 'false'),
           ).value.toString(),
           AppDBConst.merchantDiscount: merchantDiscount,
           AppDBConst.merchantDiscountIds: merchantDiscountIds,
@@ -809,23 +822,13 @@ class OrderBloc { // Build #1.0.25 - added by naveen
         where: '${AppDBConst.orderServerId} = ?',
         whereArgs: [orderId],
       );
-      await CustomerDisplayHelper.updateCustomerDisplay(orderId);
 
-      if (kDebugMode) {
-        print("OrderBloc - Coupon applied to order ID: ${response.id}");
-        print("OrderBloc - New total: ${response.total}");
-        print("OrderBloc - Order Status: ${response.status}");
-        print("OrderBloc - Coupon lines count: ${response.couponLines.length}");
-      }
       applyCouponSink.add(APIResponse.completed(response));
+      return response;
+
     } catch (e) {
-      if (e.toString().contains('Unauthorised')) {
-        applyCouponSink.add(APIResponse.error("Unauthorised. Session is expired."));
-      }
-      else {
-        applyCouponSink.add(APIResponse.error(_extractErrorMessage(e)));
-      }
-      if (kDebugMode) print("Exception in applyCouponToOrder: $e");
+      applyCouponSink.add(APIResponse.error(_extractErrorMessage(e)));
+      return null;
     }
   }
 
@@ -2116,8 +2119,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
           print("#### OrderBloc - removeCoupon: Final items in DB - orderId: $orderId, productId: ${item[AppDBConst.itemProductId]}, variationId: ${item[AppDBConst.itemVariationId]}, itemId: ${item[AppDBConst.itemServerId]}");
         }
       }
-      await CustomerDisplayHelper.updateCustomerDisplay(orderId);
-
       removeCouponSink.add(APIResponse.completed(response));
     } catch (e) {
       if (e.toString().contains('Unauthorised')) {
