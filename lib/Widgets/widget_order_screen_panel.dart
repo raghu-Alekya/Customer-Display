@@ -936,11 +936,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                       vertical: 1, horizontal: 8),
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                      color: themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? Color(0xFF252837)
-                                          : Color(0xFFE8E8E8), // ThemeNotifier.secondaryBackground color of items in order panel
-                                      borderRadius: BorderRadius.circular(8),
+                                    color: themeHelper.themeMode ==
+                                        ThemeMode.dark
+                                        ? Color(0xFF252837)
+                                        : Color(0xFFE8E8E8), // ThemeNotifier.secondaryBackground color of items in order panel
+                                    borderRadius: BorderRadius.circular(8),
                                     //   BoxShadow(
                                     //     color: Colors.black12,
                                     //     blurRadius: 5,
@@ -1876,19 +1876,19 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             final result = await Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (_) =>
-                                      OrderSummaryScreen(
-                                        formattedDate: displayDate,
-                                        formattedTime: displayTime,
-                                        orderItems: orderItems,
-                                        grossTotal: grossTotal.toDouble(),
-                                        orderDiscount: orderDiscount,
-                                        merchantDiscount: merchantDiscount,
-                                        orderTax: orderTax,
-                                        netPayable: netPayable.toDouble(),
-                                        orderId: orderHelper.activeOrderId,
+                                builder: (_) =>
+                                    OrderSummaryScreen(
+                                      formattedDate: displayDate,
+                                      formattedTime: displayTime,
+                                      orderItems: orderItems,
+                                      grossTotal: grossTotal.toDouble(),
+                                      orderDiscount: orderDiscount,
+                                      merchantDiscount: merchantDiscount,
+                                      orderTax: orderTax,
+                                      netPayable: netPayable.toDouble(),
+                                      orderId: orderHelper.activeOrderId,
 
-                                      ),
+                                    ),
                               ),
                             );
                             if (kDebugMode) {
@@ -2189,7 +2189,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
-   // bytes += ticket.feed(1);
+    // bytes += ticket.feed(1);
 
     //Item header
     bytes += ticket.row([
@@ -2339,7 +2339,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
     ]);
     bytes += ticket.row([
-    PosColumn(text: "-----------------------------------------------", width: 12),
+      PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
     //bytes += ticket.feed(1);
 
