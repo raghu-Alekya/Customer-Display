@@ -2105,7 +2105,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 //   }
 
   void _handleCashbackpayout() async {
-    print("🟩 [CASHBACK] START ---- _handleAddCashback() ----");
+    print("🟩 [CASHBACK] START ---- _handleCashbackpayout() ----");
 
     if (_cashbackAmount.isEmpty ||
         _cashbackAmount == "0" ||
@@ -2128,12 +2128,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       final cashbackAmount = double.parse(_cashbackAmount);
 
       int? orderId = OrderHelper().activeOrderId;
+
+      // Create new order if none exists
       if (orderId == null) {
         orderId = DateTime.now().millisecondsSinceEpoch;
         await offlineBox.put(orderId.toString(), {
           "order_id": orderId,
           "created_at": DateTime.now().toIso8601String(),
           "products": [],
+          "payouts": [],
           "cashbacks": [],
           "gross_total": 0.0,
         });
@@ -2141,99 +2144,151 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       }
 
       final key = orderId.toString();
-      final existingOrder = Map<String, dynamic>.from(offlineBox.get(key));
+      final existingOrder =
+      Map<String, dynamic>.from(offlineBox.get(key) ?? {});
 
-      final cashbacks = (existingOrder["cashbacks"] as List? ?? [])
-          .map((e) => Map<String, dynamic>.from(e as Map))
+      final List<Map<String, dynamic>> cashbacks =
+      (existingOrder["cashbacks"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
-      // ❌ Only 1 cashback allowed per order
+      // ❌ Only 1 cashback allowed
       if (cashbacks.isNotEmpty) {
         setState(() => _isCashbackLoading = false);
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
-            content: Text("A cashback already exists for this order."),
+            content: Text("Cashback already applied."),
             backgroundColor: Colors.orange,
           ),
         );
         return;
       }
 
-      // 🔍 Search dynamic cashback product in productBox
+      // -------------------------------------------------------
+      // 🟢 UNIVERSAL PRODUCT SEARCH FOR "Cashback"
+      // -------------------------------------------------------
       Map<String, dynamic>? cashbackProduct;
 
       for (final k in productBox.keys) {
-        if (k.toString().startsWith("products_")) {
-          final data = productBox.get(k);
-          if (data == null) continue;
+        final data = productBox.get(k);
 
-          final list = json.decode(data["data"]);
-          for (final item in list) {
-            final name =
-            (item["fast_key_item_name"] ?? "").toString().toLowerCase();
-            if (name.contains("cashback")) {
-              cashbackProduct = Map<String, dynamic>.from(item);
-              print("✅ [CASHBACK] Found dynamic cashback product → $cashbackProduct");
-              break;
+        if (data == null) continue;
+
+        // Case A: Direct product map (YOUR MAIN storage)
+        if (data is Map) {
+          final name = (data["fast_key_item_name"] ??
+              data["name"] ??
+              "").toString().toLowerCase();
+
+          if (name.contains("cashback")) {
+            cashbackProduct = Map<String, dynamic>.from(data);
+            break;
+          }
+        }
+
+        // Case B: { "products": [ ... ] } format
+        if (data is Map && data.containsKey("products")) {
+          final list = data["products"];
+          if (list is List) {
+            for (final item in list) {
+              final name = (item["fast_key_item_name"] ??
+                  item["name"] ??
+                  "").toString().toLowerCase();
+
+              if (name.contains("cashback")) {
+                cashbackProduct = Map<String, dynamic>.from(item);
+                break;
+              }
             }
           }
         }
+
+        // Case C: { "data": [...] } format
+        if (data is Map && data.containsKey("data")) {
+          final list = json.decode(data["data"]);
+          if (list is List) {
+            for (final item in list) {
+              final name = (item["fast_key_item_name"] ??
+                  item["name"] ??
+                  "").toString().toLowerCase();
+
+              if (name.contains("cashback")) {
+                cashbackProduct = Map<String, dynamic>.from(item);
+                break;
+              }
+            }
+          }
+        }
+
         if (cashbackProduct != null) break;
       }
 
-      // 🟦 Fallback if no cashback product exists in Hive
-      cashbackProduct ??= {
-        "fast_key_product_id": DateTime.now().millisecondsSinceEpoch,
-        "fast_key_item_name": "Cashback",
-        "fast_key_item_price": 0,
-        "fast_key_item_image":
-        "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/cashback.png",
-        "type": "simple",
-      };
+      if (cashbackProduct == null) {
+        throw "Dynamic cashback product not found in productCache!";
+      }
 
-      // 🧾 Prepare Cashback Entry
+      print("🟢 FOUND CASHBACK PRODUCT → $cashbackProduct");
+
+      // -------------------------------------------------------
+      // 🧾 PREPARE CASHBACK ENTRY
+      // -------------------------------------------------------
       final cashbackEntry = {
         "order_id": orderId,
         "cashback_product_id": cashbackProduct["fast_key_product_id"],
         "product_name": cashbackProduct["fast_key_item_name"],
         "product_image": cashbackProduct["fast_key_item_image"],
-        "amount": cashbackAmount, // Negative = reduce total
-        "type": "cashback",
+
+        // ---- your amount ----
+        "amount": cashbackAmount,
+
+        // ---- REQUIRED FOR ORDER PANEL ----
+        AppDBConst.itemPrice: cashbackAmount.abs(),          // ⭐ MUST
+        AppDBConst.itemSumPrice: cashbackAmount.abs(),       // ⭐ MUST
+        AppDBConst.itemCount: 1,                             // ⭐ MUST
+        AppDBConst.itemName: "Cashback",                     // optional but clean
+        AppDBConst.itemType: "cashback",
+
         "timestamp": DateTime.now().toIso8601String(),
       };
 
+
+
       cashbacks.add(cashbackEntry);
-      print("🟥 BEFORE SAVE - existingOrder: $existingOrder");
-      print("🟦 Cashback Entry Added: $cashbackEntry");
 
+      print("🟦 Cashback Entry Added → $cashbackEntry");
 
-      // 🧮 Recalculate products total
-      final products = (existingOrder["products"] as List? ?? [])
-          .map((e) => Map<String, dynamic>.from(e as Map))
+      // -------------------------------------------------------
+      // 🔄 Recalculate total
+      // -------------------------------------------------------
+      final List<Map<String, dynamic>> products =
+      (existingOrder["products"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
-      double total = 0.0;
+      double productsTotal = 0.0;
       for (var p in products) {
-        total += (p["price"] ?? 0) * (p["quantity"] ?? 1);
+        productsTotal +=
+            (double.tryParse(p["price"].toString()) ?? 0.0) *
+                (double.tryParse(p["quantity"].toString()) ?? 1.0);
       }
 
-      // 🔄 Update order with cashback
+      // Cashback reduces total
       final updatedOrder = {
         ...existingOrder,
         "products": products,
         "cashbacks": cashbacks,
-        "gross_total": total + (-cashbackAmount),
+        "gross_total": productsTotal - cashbackAmount,
       };
 
       await offlineBox.put(key, updatedOrder);
-      print("🟩 SAVED ORDER TO HIVE: $updatedOrder");
+      print("🟩 SAVED ORDER → $updatedOrder");
 
-
-      // ✔ Success UI
+      // -------------------------------------------------------
+      // ✔ UI feedback
+      // -------------------------------------------------------
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         SnackBar(
-          content:
-          Text("Cashback of ₹${cashbackAmount.toStringAsFixed(2)} applied"),
+          content: Text("Cashback ₹${cashbackAmount.toStringAsFixed(2)} applied"),
           backgroundColor: Colors.green,
         ),
       );
@@ -2246,18 +2301,17 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       await _loadOrderData();
       widget.refreshOrderList?.call();
 
-      print("🟩 [CASHBACK] DONE ---- _handleAddCashback() ----");
     } catch (e, s) {
-      print("🟥 [CASHBACK] ERROR: $e\n$s");
+      print("🟥 [CASHBACK ERROR] $e\n$s");
       setState(() => _isCashbackLoading = false);
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        SnackBar(
-          content: Text("Error adding cashback: $e"),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text("Error adding cashback: $e"), backgroundColor: Colors.red),
       );
     }
   }
+
+
+
 
   // Handle adding the custom item
   //Build #1.0.78: Explanation!

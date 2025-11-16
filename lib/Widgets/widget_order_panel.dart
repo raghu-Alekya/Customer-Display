@@ -1856,6 +1856,19 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
 
+        final productBox = Hive.box('productCache');
+        final cashbackProduct = productBox.values.firstWhere(
+              (p) =>
+          p['title']?.toString().toLowerCase().contains('cashback') == true ||
+              p['name']?.toString().toLowerCase().contains('cashback') == true,
+          orElse: () => null,
+        );
+
+
+
+        final cashbackImageUrl = cashbackProduct?['image'] ?? '';
+
+
         // 🧾 Combine for UI
         orderItems = [
           // ---------------------- Products ----------------------
@@ -1890,8 +1903,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             'items_count': 1,
             'item_sum_price':
             double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0,
-            'item_image': 'assets/images/cashback.png', // <<< Use proper icon
+            'item_image': cashbackImageUrl,
+
             'item_type': 'cashback',
+
           }),
         ];
 

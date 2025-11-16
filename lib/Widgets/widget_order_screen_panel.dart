@@ -751,14 +751,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                         itemType.contains(TextConstants.payoutText);
                         final isCoupon =
                         itemType.contains(TextConstants.couponText);
-                        final isCashback  = itemType == 'cashback';
+                        final isCashback =
+                            itemType.contains('cashback') ||
+                                (orderItem[AppDBConst.itemName]?.toString().toLowerCase() == 'cashback');
 
                         final isCustomItem =
                         itemType.contains(TextConstants.customItemText);
                         final isPayoutOrCouponOrCustomItem =
                             isPayout || isCoupon || isCustomItem || isCashback;
 
-                        final isCouponOrPayout = isPayout || isCoupon;
+                        final isCouponOrPayout = isPayout || isCoupon || isCashback;
 
                         /// Get the original name
                         final originalName =
@@ -805,13 +807,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
                         double itemTotalPrice = 0.0;
 
-                        if (isPayout) {
-                          itemTotalPrice = (orderItem['amount'] as num?)?.toDouble()
-                              ?? (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble()
-                              ?? 0.0;
+                        if (isPayout || isCashback) {
+                          itemTotalPrice =
+                              (orderItem['amount'] as num?)?.toDouble() ??
+                                  (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??
+                                  0.0;
                         } else {
-                          itemTotalPrice = (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
+                          itemTotalPrice =
+                              (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
                         }
+
 
                         if (kDebugMode) {
                           print(
@@ -1217,18 +1222,31 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                           // ),
                                           Text(
                                             isPayout
-                                                ? "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! * orderItem[AppDBConst.itemPrice]!.abs()).toStringAsFixed(2)}"
-                                                : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! * (isCoupon ? orderItem[AppDBConst.itemPrice]!.abs() : salesPrice)).toStringAsFixed(2)}",
+                                                ? "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.abs().toStringAsFixed(2)}"
+                                                : isCashback
+                                                ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.toStringAsFixed(2)}"
+                                                : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! *
+                                                (isCoupon
+                                                    ? orderItem[AppDBConst.itemPrice]!.abs()
+                                                    : salesPrice)).toStringAsFixed(2)}",
                                             style: TextStyle(
                                               fontSize: 14,
                                               fontWeight: FontWeight.bold,
-                                              color: isPayout || isCoupon
-                                                  ? Colors.red
-                                                  : themeHelper.themeMode == ThemeMode.dark
+                                              color: isPayout
+                                                  ? Colors.red                          // payout red
+                                                  : isCashback
+                                                  ? (themeHelper.themeMode == ThemeMode.dark
+                                                  ? ThemeNotifier.textDark        // cashback black/dark mode
+                                                  : ThemeNotifier.textLight)      // cashback black/light mode
+                                                  : (isCoupon
+                                                  ? Colors.red                    // coupon remains red
+                                                  : (themeHelper.themeMode == ThemeMode.dark
                                                   ? ThemeNotifier.textDark
-                                                  : ThemeNotifier.textLight,
+                                                  : ThemeNotifier.textLight)),
                                             ),
-                                          ),
+                                          )
+
+
                                         ],
                                       ),
                                     ],
@@ -2223,9 +2241,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       final itemType = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
       final isPayout = itemType.contains(TextConstants.payoutText);
       final isCoupon = itemType.contains(TextConstants.couponText);
+      final isCashback = itemType.contains("cashback") ||
+          (orderItem[AppDBConst.itemName]?.toString().toLowerCase() == "cashback");
+
+
       final isCustomItem = itemType.contains(TextConstants.customItemText);
-      final isPayoutOrCouponOrCustomItem = isPayout || isCoupon || isCustomItem;
-      final isCouponOrPayout = isPayout || isCoupon;
+      final isPayoutOrCouponOrCustomItem = isPayout || isCoupon || isCustomItem ||isCashback;
+      final isCouponOrPayout = isPayout || isCoupon||isCashback;
 
       final salesPrice =
       (orderItem[AppDBConst.itemSalesPrice] == null || (orderItem[AppDBConst.itemSalesPrice]?.toDouble() ?? 0.0) == 0.0)

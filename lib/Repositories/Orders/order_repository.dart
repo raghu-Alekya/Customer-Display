@@ -223,32 +223,32 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         }
       }
 
-      // final cashbacks = (offlineOrder['cashbacks'] ?? []) as List? ?? [];
-      // for (final c in cashbacks) {
-      //   final double amount =
-      //       double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
-      //   final int? productId =
-      //   int.tryParse(c['cashback_product_id']?.toString() ?? '');
-      //
-      //   if (productId != null && productId > 0) {
-      //     // ✅ Treat cashback as product line (negative total)
-      //     lineItems.add({
-      //       "product_id": productId,
-      //       "name": c['product_name'] ?? 'Cashback',
-      //       "subtotal": amount.toStringAsFixed(2),
-      //       "total": amount.toStringAsFixed(2),
-      //       "quantity": 1,
-      //     });
-      //   } else {
-      //     // ✅ Fallback to fee line if cashback product missing
-      //     customFeeLines.add({
-      //       "name": c['product_name'] ?? "Cashback",
-      //       "tax_status": "none",
-      //       "total": amount.toStringAsFixed(2),
-      //     });
-      //   }
-      // }
-      //
+      final cashbacks = (offlineOrder['cashbacks'] ?? []) as List? ?? [];
+      for (final c in cashbacks) {
+        final double amount =
+            double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
+        final int? productId =
+        int.tryParse(c['cashback_product_id']?.toString() ?? '');
+
+        if (productId != null && productId > 0) {
+          // ✅ Treat cashback as product line (negative total)
+          lineItems.add({
+            "product_id": productId,
+            "name": c['product_name'] ?? 'Cashback',
+            "subtotal": amount.toStringAsFixed(2),
+            "total": amount.toStringAsFixed(2),
+            "quantity": 1,
+          });
+        } else {
+          // ✅ Fallback to fee line if cashback product missing
+          customFeeLines.add({
+            "name": c['product_name'] ?? "Cashback",
+            "tax_status": "none",
+            "total": amount.toStringAsFixed(2),
+          });
+        }
+      }
+
 
       // -----------------------------------------
       // ✅ Calculate total (excluding fees)
