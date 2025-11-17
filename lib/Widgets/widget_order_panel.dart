@@ -1929,7 +1929,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           return sum + (double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0);
         });
 
-        grossTotal = (productTotal + payoutTotal)- cashbackTotal;
+        grossTotal = productTotal + payoutTotal+ cashbackTotal;
 
         orderDiscount = (offlineOrder['orderDiscount'] is num)
             ? (offlineOrder['orderDiscount'] as num).toDouble()
