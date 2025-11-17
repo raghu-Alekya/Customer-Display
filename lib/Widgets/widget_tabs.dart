@@ -2229,6 +2229,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       print("🟢 FOUND CASHBACK PRODUCT → $cashbackProduct");
 
+
+
       // -------------------------------------------------------
       // 🧾 PREPARE CASHBACK ENTRY
       // -------------------------------------------------------
@@ -2236,9 +2238,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         "order_id": orderId,
         "cashback_product_id": cashbackProduct["fast_key_product_id"],
         "product_name": cashbackProduct["fast_key_item_name"],
-        "product_image": cashbackProduct["fast_key_item_image"],
+    "product_image": "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/cashback-line-item.jpg",
 
-        // ---- your amount ----
+
+    // ---- your amount ----
         "amount": cashbackAmount,
 
         // ---- REQUIRED FOR ORDER PANEL ----

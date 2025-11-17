@@ -1856,17 +1856,17 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
 
-        final productBox = Hive.box('productCache');
-        final cashbackProduct = productBox.values.firstWhere(
-              (p) =>
-          p['title']?.toString().toLowerCase().contains('cashback') == true ||
-              p['name']?.toString().toLowerCase().contains('cashback') == true,
-          orElse: () => null,
-        );
-
-
-
-        final cashbackImageUrl = cashbackProduct?['image'] ?? '';
+        // final productBox = Hive.box('productCache');
+        // final cashbackProduct = productBox.values.firstWhere(
+        //       (p) =>
+        //   p['title']?.toString().toLowerCase().contains('cashback') == true ||
+        //       p['name']?.toString().toLowerCase().contains('cashback') == true,
+        //   orElse: () => null,
+        // );
+        //
+        //
+        //
+        // final cashbackImageUrl = cashbackProduct?['image'] ?? '';
 
 
         // 🧾 Combine for UI
@@ -1903,7 +1903,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             'items_count': 1,
             'item_sum_price':
             double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0,
-            'item_image': cashbackImageUrl,
+            'item_image':
+            cash['product_image'] ??
+                cash['item_image'] ??
+                cash['image'] ??
+                "",
+
 
             'item_type': 'cashback',
 
@@ -2116,7 +2121,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         final isCoupon = itemType.contains(TextConstants.couponText);
                         final isCustomItem = itemType.contains(TextConstants.customItemText);
                         final isPayoutOrCouponOrCustomItem = isPayout || isCoupon || isCustomItem;
-                        final isCouponOrPayout = isPayout || isCoupon;
+                        final isCouponOrPayout = isPayout || isCoupon|| isCashback;
                         /// Get the original name
                         final originalName = orderItem[AppDBConst.itemName]?.toString() ?? '';
                         final variationName = orderItem[AppDBConst.itemVariationCustomName]?.toString() ?? 'N/A';
@@ -2290,12 +2295,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                   'items_count':
                                                   double.tryParse(item['quantity']?.toString() ?? '1') ??
                                                       1,
-                                                  'item_sum_price': (double.tryParse(
-                                                      item['price']?.toString() ?? '0') ??
-                                                      0.0) *
-                                                      (double.tryParse(
-                                                          item['quantity']?.toString() ?? '1') ??
-                                                          1),
+                                                  // 'item_sum_price': (double.tryParse(
+                                                  //     item['price']?.toString() ?? '0') ??
+                                                  //     0.0) *
+                                                  //     (double.tryParse(
+                                                  //         item['quantity']?.toString() ?? '1') ??
+                                                  //         1),
                                                   'item_type': 'Product',
                                                   'item_image': item['image'] ?? '',
                                                 })
@@ -2331,7 +2336,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                     'items_count': 1,
                                                     'item_sum_price': double.tryParse(
                                                         cb['amount']?.toString() ?? '0') ?? 0.0,
-                                                    'item_image': 'assets/images/cashback.png',   // <-- use any icon you want
+                                                    'item_image':
+                                                    cb['product_image'] ??
+                                                        cb['item_image'] ??
+                                                        cb['image'] ??
+                                                        "",
+
+                                                    // <-- use any icon you want
                                                     'item_type': 'cashback',
                                                   }),
                                                 ];

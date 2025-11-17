@@ -107,7 +107,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   double changeAmount = 0.0;
   double discount = 0.0; // Add this to track discount
   double merchantDiscount = 0.0; // Add this to track merchant discount
-  double tax = 0.0; // AddED tax variable
+  double tax = 0.0;
+  double cashback = 0.0;
+  double servicecharges = 0.0;
+  double NetTotal=0.0;
+  // AddED tax variable
   double payByCash = 0.0;
   double payByOther = 0.0;
   // String? orderStatus = ""; // Build #1.0.175: save orderStatus value
@@ -147,6 +151,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     computedNetPayable = grossTotal + tax - discount - merchantDiscount;
     balanceAmount = computedNetPayable;
     orderTotal = computedNetPayable;
+    NetTotal = grossTotal - discount;
 
     _fetchUserId();
     if (kDebugMode) {
@@ -838,6 +843,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     );
   }
 
+
   Widget _buildOrderSummary() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final theme = Theme.of(context);
@@ -954,8 +960,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   child: _showFullSummary
                       ? Container(
                     height: ResponsiveLayout.getHeight(205),
-                    margin:
-                    EdgeInsets.all(ResponsiveLayout.getPadding(8)),
+                    margin: EdgeInsets.all(ResponsiveLayout.getPadding(8)),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(
                           ResponsiveLayout.getRadius(10)),
@@ -963,59 +968,98 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           ? ThemeNotifier.primaryBackground
                           : Colors.white,
                       border: Border.all(
-                          color: themeHelper.themeMode == ThemeMode.dark
-                              ? ThemeNotifier.borderColor
-                              : Colors.grey.shade200),
+                        color: themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.borderColor
+                            : Colors.grey.shade200,
+                      ),
                     ),
                     padding: EdgeInsets.symmetric(
                       horizontal: ResponsiveLayout.getPadding(8),
                     ),
+
                     child: isSummaryLoading
                         ? Center(child: CircularProgressIndicator())
-                        : Column(
-                      children: [
-                        _buildOrderCalculation(
-                            TextConstants.grossTotal,
-                            '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
-                            isTotal: true),
-                        _buildOrderCalculation(
-                            TextConstants.discountText,
-                            '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}',
-                            isDiscount: true),
-                        _buildOrderCalculation(
-                            TextConstants.merchantDiscount,
-                            '-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}'),
-                        _buildOrderCalculation(
-                            TextConstants.taxText,
-                            '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
-                        DottedLine(
-                          dashColor: themeHelper.themeMode ==
-                              ThemeMode.dark
-                              ? Colors.grey
-                              : Colors.black54,
-                          lineThickness: 1.5,
-                          dashGapLength: 4,
+                        : Scrollbar(
+                      thumbVisibility: true,
+                      radius: Radius.circular(10),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            _buildOrderCalculation(
+                                TextConstants.grossTotal,
+                                '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
+                                isTotal: true),
+                            _buildOrderCalculation(
+                                TextConstants.discountText,
+                                '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}',
+                                isDiscount: true),
+
+                            DottedLine(
+                              dashColor: themeHelper.themeMode == ThemeMode.dark
+                                  ? Colors.grey
+                                  : Colors.black54,
+                              lineThickness: 1.5,
+                              dashGapLength: 4,
+                            ),
+
+                            _buildOrderCalculation(
+                              TextConstants.NetTotal,
+                              '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
+                            ),
+
+                            _buildOrderCalculation(
+                                TextConstants.taxText,
+                                '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
+                            _buildOrderCalculation(
+                                TextConstants.merchantDiscount,
+                                '-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}'),
+
+                            /// Cashback
+                            _buildOrderCalculation(
+                                TextConstants.cashback,
+                                '${TextConstants.currencySymbol}${cashback.toStringAsFixed(2)}'),
+
+                            /// Service Charges
+                            _buildOrderCalculation(
+                                TextConstants.servicecharges,
+                                '${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}'),
+
+                            DottedLine(
+                              dashColor: themeHelper.themeMode == ThemeMode.dark
+                                  ? Colors.grey
+                                  : Colors.black54,
+                              lineThickness: 1.5,
+                              dashGapLength: 4,
+                            ),
+
+                            _buildOrderCalculation(
+                                TextConstants.netPayable,
+                                '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                                isTotal: true),
+
+                            _buildOrderCalculation(
+                                TextConstants.payByCash,
+                                '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
+
+                            _buildOrderCalculation(
+                                TextConstants.payByOther,
+                                '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
+
+                            _buildOrderCalculation(
+                                TextConstants.tenderAmount,
+                                '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'),
+
+                            _buildOrderCalculation(
+                                TextConstants.change,
+                                '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
+                          ],
                         ),
-                        _buildOrderCalculation(
-                            TextConstants.netPayable,
-                            '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
-                            isTotal: true),
-                        _buildOrderCalculation(
-                            TextConstants.payByCash,
-                            '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
-                        _buildOrderCalculation(
-                            TextConstants.payByOther,
-                            '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
-                        _buildOrderCalculation(
-                            TextConstants.tenderAmount,
-                            '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'),
-                        _buildOrderCalculation(TextConstants.change,
-                            '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
-                      ],
+                      ),
                     ),
                   )
                       : SizedBox.shrink(),
                 ),
+
               ),
               GestureDetector(
                 onTap: _toggleSummary,
@@ -1047,7 +1091,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   ),
                   padding: EdgeInsets.symmetric(
                     horizontal: ResponsiveLayout.getPadding(8),
-                    vertical: ResponsiveLayout.getPadding(8),
+                    vertical: ResponsiveLayout.getPadding(14),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1320,6 +1364,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
+  FontWeight labelFontWeight = FontWeight.w500;
+  FontWeight amountFontWeight = FontWeight.w600;
+
 
   Widget _buildOrderCalculation(String label, String amount,
       {bool isTotal = false, bool isDiscount = false}) {
@@ -1378,6 +1425,42 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         // color: Colors.blue[600],
       );
     }
+    // ---------------- CASHBACK ( #55CBCD ) ----------------
+    else if (label == TextConstants.cashback || label.toLowerCase().contains("cashback")) {
+      labelColor = const Color(0xFF55CBCD);
+      amountColor = const Color(0xFF55CBCD);
+      leadingIcon = SvgPicture.asset(
+        'assets/cashicon.svg', // update your asset name if needed
+        colorFilter: const ColorFilter.mode(Color(0xFF55CBCD), BlendMode.srcIn),
+      );
+    }
+
+// ---------------- SERVICE CHARGE ( #0A122D ) ----------------
+    else if (label == TextConstants.servicecharges || label.toLowerCase().contains("service")) {
+      labelColor = const Color(0xFF0A122D);
+      amountColor = const Color(0xFF0A122D);
+      leadingIcon = SvgPicture.asset(
+        'assets/cashicon.svg', // update asset name
+        colorFilter: const ColorFilter.mode(Color(0xFF0A122D), BlendMode.srcIn),
+      );
+    }
+    // ---------------- NET TOTAL ( #373535 ) ----------------
+    else if (label == TextConstants.NetTotal ||
+        label.toLowerCase().contains("net total"))
+    {
+      labelColor = const Color(0xFF373535);
+      amountColor = const Color(0xFF373535);
+
+      // Make NET TOTAL bold
+      labelFontWeight = FontWeight.w900;
+      amountFontWeight = FontWeight.w900;
+
+      leadingIcon = SvgPicture.asset(
+        'assets/svg/net_total.svg',
+        colorFilter: const ColorFilter.mode(Color(0xFF373535), BlendMode.srcIn),
+      );
+    }
+
 
     return Container(
       margin: EdgeInsets.symmetric(

@@ -1274,7 +1274,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                     duration: Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
                     child: _showFullSummary
-                        ? Container(
+                        ? SizedBox(                // 👈 FORCE height here (outside)
+                        height: 550,
+                        child: Container(
                       margin: const EdgeInsets.only(
                           top: 8, right: 7, left: 7),
                       // margin: const EdgeInsets.only(top: 8, right: 8, left: 8),
@@ -1315,7 +1317,10 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                         ],
                       ),
                       padding: const EdgeInsets.all(8),
-                      child: Column(
+                          child: SingleChildScrollView(        // ✅ scroll added
+                            physics: const BouncingScrollPhysics(),
+
+                            child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
@@ -1387,149 +1392,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                           color: Colors.blue,
                                           fontSize: 14)),
 
-                                  // GestureDetector(
-                                  //   onTap: () async {
-                                  //     if (kDebugMode) {
-                                  //       print("####################### Merchant Discount onTap");
-                                  //     }
-                                  //
-                                  //     if (orderHelper.activeOrderId != null) {
-                                  //       // Step 1: Show confirmation dialog
-                                  //       bool? confirmed = await CustomDialog.showRemoveDiscountConfirmation(context);
-                                  //       if (confirmed != true) return;
-                                  //
-                                  //       // Step 2: Show loading with shimmer effect
-                                  //       setState(() => _isLoading = true);
-                                  //
-                                  //       final order = orderHelper.orders.firstWhere(
-                                  //             (order) => order[AppDBConst.orderId] == orderHelper.activeOrderId,
-                                  //         orElse: () => {},
-                                  //       );
-                                  //       final serverOrderId = order[AppDBConst.orderServerId] as int?;
-                                  //
-                                  //       if (serverOrderId != null) {
-                                  //         final db = await DBHelper.instance.database;
-                                  //         final payoutItem = await db.query(
-                                  //           AppDBConst.purchasedItemsTable,
-                                  //           where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
-                                  //           whereArgs: [orderHelper.activeOrderId, ItemType.payout.value],
-                                  //         );
-                                  //
-                                  //         if (payoutItem.isNotEmpty) {
-                                  //           final payoutId = payoutItem.first[AppDBConst.itemServerId] as int?;
-                                  //
-                                  //           if (payoutId != null) {
-                                  //             retryCallback() async {
-                                  //               setState(() => _isLoading = true);
-                                  //               orderBloc.removePayoutStream.listen((response) async {
-                                  //                 setState(() => _isLoading = false);
-                                  //                 if (response.status == Status.COMPLETED) {
-                                  //                   await db.update(
-                                  //                     AppDBConst.orderTable,
-                                  //                     {AppDBConst.merchantDiscount: 0.0},
-                                  //                     where: '${AppDBConst.orderId} = ?',
-                                  //                     whereArgs: [orderHelper.activeOrderId],
-                                  //                   );
-                                  //                   await orderHelper.deleteItem(payoutItem.first[AppDBConst.itemId] as int);
-                                  //                   fetchOrderItems();
-                                  //                   widget.refreshOrderList?.call();
-                                  //
-                                  //                   ScaffoldMessenger.of(context).showSnackBar(
-                                  //                     SnackBar(
-                                  //                       content: Text("Merchant Discount removed successfully"),
-                                  //                       backgroundColor: Colors.green,
-                                  //                       duration: const Duration(seconds: 2),
-                                  //                     ),
-                                  //                   );
-                                  //                 } else {
-                                  //                   ScaffoldMessenger.of(context).showSnackBar(
-                                  //                     SnackBar(
-                                  //                       content: Text(response.message ?? "Failed to remove discount"),
-                                  //                       backgroundColor: Colors.red,
-                                  //                       duration: const Duration(seconds: 2),
-                                  //                     ),
-                                  //                   );
-                                  //                   await CustomDialog.showDiscountNotApplied(
-                                  //                     context,
-                                  //                     errorMessageTitle: TextConstants.removeDiscountFailed,
-                                  //                     errorMessageDes: response.message ?? TextConstants.discountNotAppliedDescription,
-                                  //                     onRetry: retryCallback,
-                                  //                   );
-                                  //                 }
-                                  //               });
-                                  //               await orderBloc.removePayout(orderId: serverOrderId, payoutId: payoutId);
-                                  //             }
-                                  //             // THIS CALL FOR LETS RETRY BUTTON TAP ON ALERT DIALOG, WE HAVE TO CALL AGAIN THIS API
-                                  //             orderBloc.removePayoutStream.listen((response) async {
-                                  //               setState(() => _isLoading = false);
-                                  //               if (response.status == Status.COMPLETED) {
-                                  //                 await db.update(
-                                  //                   AppDBConst.orderTable,
-                                  //                   {AppDBConst.merchantDiscount: 0.0},
-                                  //                   where: '${AppDBConst.orderId} = ?',
-                                  //                   whereArgs: [orderHelper.activeOrderId],
-                                  //                 );
-                                  //                 await orderHelper.deleteItem(payoutItem.first[AppDBConst.itemId] as int);
-                                  //                 fetchOrderItems();
-                                  //                 widget.refreshOrderList?.call();
-                                  //                 ScaffoldMessenger.of(context).showSnackBar(
-                                  //                   SnackBar(
-                                  //                     content: Text("Merchant Discount removed successfully"),
-                                  //                     backgroundColor: Colors.green,
-                                  //                     duration: const Duration(seconds: 2),
-                                  //                   ),
-                                  //                 );
-                                  //               } else {
-                                  //                 ScaffoldMessenger.of(context).showSnackBar(
-                                  //                   SnackBar(
-                                  //                     content: Text(response.message ?? "Failed to remove discount"),
-                                  //                     backgroundColor: Colors.red,
-                                  //                     duration: const Duration(seconds: 2),
-                                  //                   ),
-                                  //                 );
-                                  //                 await CustomDialog.showDiscountNotApplied(
-                                  //                   context,
-                                  //                   errorMessageTitle: TextConstants.removeDiscountFailed,
-                                  //                   errorMessageDes: response.message ?? TextConstants.discountNotAppliedDescription,
-                                  //                   onRetry: retryCallback,
-                                  //                 );
-                                  //               }
-                                  //             });
-                                  //             await orderBloc.removePayout(orderId: serverOrderId, payoutId: payoutId);
-                                  //           } else {
-                                  //             setState(() => _isLoading = false);
-                                  //             ScaffoldMessenger.of(context).showSnackBar(
-                                  //               SnackBar(
-                                  //                 content: Text("Payout ID not found"),
-                                  //                 backgroundColor: Colors.red,
-                                  //                 duration: const Duration(seconds: 2),
-                                  //               ),
-                                  //             );
-                                  //           }
-                                  //         } else {
-                                  //           setState(() => _isLoading = false);
-                                  //           ScaffoldMessenger.of(context).showSnackBar(
-                                  //             SnackBar(
-                                  //               content: Text("No payout found for this order"),
-                                  //               backgroundColor: Colors.red,
-                                  //               duration: const Duration(seconds: 2),
-                                  //             ),
-                                  //           );
-                                  //         }
-                                  //       } else {
-                                  //         setState(() => _isLoading = false);
-                                  //         ScaffoldMessenger.of(context).showSnackBar(
-                                  //           SnackBar(
-                                  //             content: Text("Server Order ID not found"),
-                                  //             backgroundColor: Colors.red,
-                                  //             duration: const Duration(seconds: 2),
-                                  //           ),
-                                  //         );
-                                  //       }
-                                  //     }
-                                  //   },
-                                  //   child: SvgPicture.asset("assets/svg/delete.svg", height: 12, width: 12),
-                                  // ),
+
                                 ],
                               ),
                               Text(
@@ -1686,8 +1549,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                           ),
                         ],
                       ),
-                    )
-                        : SizedBox.shrink(),
+                    )))
+                        : SizedBox.shrink()
+
                   ),
                   if(widget.activeOrderId != null)
                     GestureDetector(
@@ -1745,21 +1609,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                   // Payment button - outside the container
                   if (widget.activeOrderId != null)
                     Container(
-                      // margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                      // width: double.infinity,
-                      // height: MediaQuery.of(context).size.height * 0.0585,
-                      // // 👇 outer container adds shadow
-                      // decoration: BoxDecoration(
-                      //   borderRadius: BorderRadius.circular(8),
-                      //   boxShadow: [
-                      //     BoxShadow(
-                      //       color: Colors.black.withOpacity(0.5),
-                      //       offset: const Offset(0, 4),  // push shadow downward
-                      //       blurRadius: 4,               // soft, natural spread
-                      //       spreadRadius: 0,              // makes shadow fuller
-                      //     ),
-                      //   ],
-                      // ),
+
                       margin: const EdgeInsets.symmetric(
                           horizontal: 7, vertical: 5),
                       width: double.infinity,
@@ -1833,37 +1683,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),
-                        // child: Ink(
-                        //   decoration: BoxDecoration(
-                        //     gradient: orderItems.isNotEmpty
-                        //         ? const LinearGradient(
-                        //       begin: Alignment(1.09, 0.57),
-                        //       end: Alignment(-0.08, 0.57),
-                        //       colors: [
-                        //         Color(0xFF43517E),
-                        //         Color(0xFF172145),
-                        //       ],
-                        //     )
-                        //         : null,
-                        //     color: orderItems.isEmpty ? const Color(0xFF172145) : null, // fallback
-                        //     borderRadius: BorderRadius.circular(10),
-                        //   ),
-                        //   child: Container(
-                        //     alignment: Alignment.center,
-                        //     height: 60, // same height as Pay button
-                        //     child: _isPayBtnLoading
-                        //         ? const CircularProgressIndicator(color: Colors.white)
-                        //         : Text(
-                        //       TextConstants.printInvoice,
-                        //       style: const TextStyle(
-                        //         fontSize: 16,
-                        //         fontWeight: FontWeight.w500,
-                        //         color: Colors.white, // ✅ keep white text like Pay button
-                        //       ),
-                        //     ),
-                        //   ),
-                        // ),
-
+                        //
 
                         child:
                         _isPayBtnLoading //Build 1.1.36: added loader for pay button in order panel
@@ -2308,6 +2128,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       print(" >>>>> Printer Order paidAmount $paidAmount ");
 
     }
+
+
     //Breakdown
     //         balanceAmount = total - discount - merchantDiscount + tax;
     //         tenderAmount = 0.0; // Reset for new order
@@ -2324,17 +2146,53 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       PosColumn(text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
     ]);
     // bytes += ticket.feed(1);
-    bytes += ticket.row([
-      PosColumn(text: TextConstants.merchantDiscount, width: 10),
-      PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
-    ]);
+    // bytes += ticket.row([
+    //   PosColumn(text: TextConstants.merchantDiscount, width: 10),
+    //   PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+    // ]);
     // bytes += ticket.feed(1);
+    // bytes += ticket.row([
+    //   PosColumn(text: TextConstants.taxText, width: 10),
+    //   PosColumn(text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+    // ]);
+    // bytes += ticket.row([
+    //   PosColumn(text: TextConstants.merchantDiscount, width: 10),
+    //   PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+    // ]);
+
+    // bytes += ticket.feed(1);
+    //line
+    bytes += ticket.row([
+      PosColumn(text: "-----------------------------------------------", width: 12),
+    ]);
     bytes += ticket.row([
       PosColumn(text: TextConstants.taxText, width: 10),
       PosColumn(text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    // bytes += ticket.feed(1);
-    //line
+    bytes += ticket.row([
+      PosColumn(text: TextConstants.merchantDiscount, width: 10),
+      PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+    ]);
+    // bytes += ticket.row([
+    //   PosColumn(text: TextConstants.cashback, width: 10),
+    //   PosColumn(
+    //     text: "-${TextConstants.currencySymbol}${cashback.toStringAsFixed(2)}",
+    //     width: 2,
+    //     styles: PosStyles(align: PosAlign.right),
+    //   ),
+    // ]);
+    // bytes += ticket.row([
+    //   PosColumn(text: TextConstants.servicecharges, width: 10),
+    //   PosColumn(
+    //     text: "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}",
+    //     width: 2,
+    //     styles: PosStyles(align: PosAlign.right),
+    //   ),
+    // ]);
+    //
+
+
+
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
