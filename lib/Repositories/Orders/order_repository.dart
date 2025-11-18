@@ -302,6 +302,12 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       final response = isUpdate
           ? await _helper.put(url, payload, true)
           : await _helper.post(url, payload, true);
+      final responseJson = jsonDecode(response.body);
+
+      debugPrint(
+        "[SYNC] Raw API Response → ${jsonEncode(responseJson)}",
+        wrapWidth: 1024,
+      );
 
       final decoded = (response is String) ? jsonDecode(response) : response;
 

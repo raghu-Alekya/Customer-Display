@@ -2295,12 +2295,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                   'items_count':
                                                   double.tryParse(item['quantity']?.toString() ?? '1') ??
                                                       1,
-                                                  // 'item_sum_price': (double.tryParse(
-                                                  //     item['price']?.toString() ?? '0') ??
-                                                  //     0.0) *
-                                                  //     (double.tryParse(
-                                                  //         item['quantity']?.toString() ?? '1') ??
-                                                  //         1),
+                                                  'item_sum_price': (double.tryParse(
+                                                      item['price']?.toString() ?? '0') ??
+                                                      0.0) *
+                                                      (double.tryParse(
+                                                          item['quantity']?.toString() ?? '1') ??
+                                                          1),
                                                   'item_type': 'Product',
                                                   'item_image': item['image'] ?? '',
                                                 })

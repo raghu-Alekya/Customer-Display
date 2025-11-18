@@ -1247,9 +1247,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final bool isPayout = itemType.contains(TextConstants.payoutText);
     final bool isCoupon = itemType.contains(TextConstants.couponText);
     final bool isCustomItem = itemType.contains(TextConstants.customItemText);
-    final bool isPayoutOrCouponOrCustomItem =
-        isPayout || isCoupon || isCustomItem;
+    final bool isCashback = itemType.contains("cashback");
 
+    final bool isPayoutOrCouponOrCustomItem =
+        isPayout || isCoupon || isCustomItem||isCashback;
     if (kDebugMode) {
       print("🧩 Building Order Item #$index → $itemName | $itemType");
     }
