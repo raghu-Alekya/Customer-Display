@@ -1644,267 +1644,182 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           ResponsiveLayout.getHeight(8)),
 
                                       // Amount TextField
+                                      // Amount TextField
                                       Column(
-                                        crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Container(
-                                            height:
-                                            ResponsiveLayout.getHeight(43),
+                                            height: ResponsiveLayout.getHeight(43),
                                             decoration: BoxDecoration(
-                                              color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
-                                                  ? ThemeNotifier
-                                                  .paymentEntryContainerColor
+                                              color: themeHelper.themeMode == ThemeMode.dark
+                                                  ? ThemeNotifier.paymentEntryContainerColor
                                                   : Colors.white,
                                               borderRadius:
-                                              BorderRadius.circular(
-                                                  ResponsiveLayout
-                                                      .getRadius(6)),
+                                              BorderRadius.circular(ResponsiveLayout.getRadius(6)),
                                               border: Border.all(
-                                                  color: _amountErrorText !=
-                                                      null
-                                                      ? Colors.red
-                                                      : themeHelper.themeMode ==
-                                                      ThemeMode.dark
-                                                      ? ThemeNotifier
-                                                      .borderColor
-                                                      : Colors
-                                                      .grey.shade300),
+                                                color: _amountErrorText != null
+                                                    ? Colors.red
+                                                    : themeHelper.themeMode == ThemeMode.dark
+                                                    ? ThemeNotifier.borderColor
+                                                    : Colors.grey.shade300,
+                                              ),
                                             ),
-                                            // child: TextField(
-                                            //   controller: amountController,
-                                            //   readOnly: true,
-                                            //   textAlign: TextAlign.right,
-                                            //   enabled: false,
-                                            //   decoration: InputDecoration(
-                                            //     contentPadding: EdgeInsets.only(right: ResponsiveLayout.getPadding(16)),
-                                            //     border: InputBorder.none,
-                                            //     hintText: '${TextConstants.currencySymbol}0.00',
-                                            //     hintStyle: TextStyle(
-                                            //       color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey[400],
-                                            //       fontSize: ResponsiveLayout.getFontSize(20),
-                                            //       fontWeight: FontWeight.bold,
-                                            //     ),
-                                            //   ),
-                                            //   style: TextStyle(
-                                            //     color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey[800],
-                                            //     fontSize: ResponsiveLayout.getFontSize(20),
-                                            //     fontWeight: FontWeight.bold,
-                                            //   ),
-                                            //   keyboardType: TextInputType.none,
-                                            //   onTap: () {
-                                            //     FocusScope.of(context).unfocus();
-                                            //   },
-                                            // ),
                                             child: TextField(
                                               controller: amountController,
                                               readOnly: true,
+                                              enabled: true,
                                               textAlign: TextAlign.right,
-                                              enabled: false,
                                               decoration: InputDecoration(
-                                                contentPadding: EdgeInsets.only(
-                                                    right: ResponsiveLayout
-                                                        .getPadding(16)),
                                                 border: InputBorder.none,
-                                                hintText:
-                                                '${TextConstants.currencySymbol}0.00',
+                                                contentPadding: EdgeInsets.only(
+                                                    right: ResponsiveLayout.getPadding(16)),
+                                                hintText: '${TextConstants.currencySymbol}0.00',
                                                 hintStyle: TextStyle(
-                                                  color: themeHelper
-                                                      .themeMode ==
-                                                      ThemeMode.dark
+                                                  color: themeHelper.themeMode == ThemeMode.dark
                                                       ? ThemeNotifier.textDark
                                                       : Colors.grey[400],
-                                                  fontSize: ResponsiveLayout
-                                                      .getFontSize(20),
-                                                  fontWeight: FontWeight
-                                                      .normal, // hint is normal
+                                                  fontSize: ResponsiveLayout.getFontSize(20),
+                                                  fontWeight: FontWeight.normal,
                                                 ),
                                               ),
                                               style: TextStyle(
                                                 color: _isAmountEntered
-                                                    ? (themeHelper.themeMode ==
-                                                    ThemeMode.dark
+                                                    ? (themeHelper.themeMode == ThemeMode.dark
                                                     ? ThemeNotifier.textDark
                                                     : Colors.grey[800])
-                                                    : (themeHelper.themeMode ==
-                                                    ThemeMode.dark
+                                                    : (themeHelper.themeMode == ThemeMode.dark
                                                     ? ThemeNotifier.textDark
-                                                    : Colors.grey[
-                                                400]), // same as hint color when cleared
-                                                fontSize: ResponsiveLayout
-                                                    .getFontSize(20),
-                                                fontWeight: _isAmountEntered
-                                                    ? FontWeight.bold
-                                                    : FontWeight
-                                                    .normal, // bold only when digits entered
+                                                    : Colors.grey[400]),
+                                                fontSize: ResponsiveLayout.getFontSize(20),
+                                                fontWeight: _isAmountEntered ? FontWeight.bold : FontWeight.normal,
                                               ),
-                                              keyboardType: TextInputType.none,
-                                              onTap: () {
-                                                FocusScope.of(context)
-                                                    .unfocus();
-                                              },
                                             ),
                                           ),
+
                                           if (_amountErrorText != null)
                                             Text(
                                               _amountErrorText!,
                                               style: TextStyle(
                                                 color: Colors.red,
-                                                fontSize: ResponsiveLayout
-                                                    .getFontSize(12),
+                                                fontSize: ResponsiveLayout.getFontSize(12),
                                               ),
                                             ),
                                         ],
                                       ),
-                                      SizedBox(
-                                          height:
-                                          ResponsiveLayout.getHeight(8)),
 
-                                      // Quick amount buttons
+                                      SizedBox(height: ResponsiveLayout.getHeight(8)),
+
+// QUICK AMOUNT BUTTONS - FIXED
                                       if (balanceAmount > 0)
                                         Row(
-                                          mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                          children: _generateQuickAmounts(
-                                              balanceAmount)
-                                              .map((amount) =>
-                                              _buildQuickAmountButton(
-                                                  '${TextConstants.currencySymbol} ${amount.toStringAsFixed(2)}'))
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: _generateQuickAmounts(balanceAmount)
+                                              .map(
+                                                (amount) => GestureDetector(
+                                              onTap: () {
+                                                setState(() {
+                                                  _rawAmount = (amount * 100).toInt();  // <-- FIX: Overwrite
+                                                  amountController.text =
+                                                  '${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}';
+                                                  _isAmountEntered = true;
+                                                });
+                                              },
+                                              child: _buildQuickAmountButton(
+                                                  '${TextConstants.currencySymbol} ${amount.toStringAsFixed(2)}'),
+                                            ),
+                                          )
                                               .toList(),
                                         ),
 
-                                      SizedBox(
-                                          height:
-                                          ResponsiveLayout.getHeight(12)),
+                                      SizedBox(height: ResponsiveLayout.getHeight(12)),
+
+// NUM PAD - FIXED LOGIC
                                       Expanded(
                                         child: CustomNumPad(
                                           numPadType: NumPadType.payment,
-                                          isDarkTheme: themeHelper.themeMode ==
-                                              ThemeMode.dark,
-                                          getPaidAmount: () =>
-                                          amountController.text,
+                                          isDarkTheme: themeHelper.themeMode == ThemeMode.dark,
+                                          getPaidAmount: () => amountController.text,
                                           balanceAmount: balanceAmount,
-                                          // onDigitPressed: (value) {
-                                          //   if (balanceAmount <= 0) {
-                                          //     return;
-                                          //   }
-                                          //   if (_amountErrorText != null) {
-                                          //     setState(() {
-                                          //       _amountErrorText = null;
-                                          //     });
-                                          //   }
-                                          //   String cleanText = amountController.text.replaceAll(TextConstants.currencySymbol, '');
-                                          //   amountController.text = '${TextConstants.currencySymbol}' + cleanText + value;
-                                          //   setState(() {});
-                                          // },
+
                                           onDigitPressed: (value) {
                                             if (balanceAmount <= 0) return;
 
                                             if (_amountErrorText != null) {
-                                              setState(() {
-                                                _amountErrorText = null;
-                                              });
+                                              _amountErrorText = null;
                                             }
 
-                                            // Handle both "0" and "00"
+                                            // Reset for next partial payment if previous one finished
+                                            if (_rawAmount > balanceAmount * 100) {
+                                              _rawAmount = 0; // <-- IMPORTANT FIX
+                                            }
+
                                             if (value == '00') {
-                                              _rawAmount = (_rawAmount * 100) %
-                                                  100000000; // shift by 2 digits
+                                              _rawAmount = (_rawAmount * 100) % 100000000;
                                             } else {
-                                              int digit =
-                                                  int.tryParse(value) ?? 0;
-                                              _rawAmount =
-                                                  (_rawAmount * 10 + digit) %
-                                                      100000000;
+                                              int digit = int.tryParse(value) ?? 0;
+                                              _rawAmount = (_rawAmount * 10 + digit) % 100000000;
                                             }
 
-                                            double displayValue =
-                                                _rawAmount / 100.0;
+                                            double displayValue = _rawAmount / 100.0;
                                             amountController.text =
                                             '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
                                             setState(() {
-                                              _isAmountEntered =
-                                                  _rawAmount != 0;
+                                              _isAmountEntered = _rawAmount != 0;
                                             });
                                           },
 
-                                          // onClearPressed: () {
-                                          //   if (_amountErrorText != null) {
-                                          //     setState(() {
-                                          //       _amountErrorText = null;
-                                          //     });
-                                          //   }
-                                          //   amountController.clear();
-                                          //   setState(() {});
-                                          // },
                                           onClearPressed: () {
                                             _rawAmount = 0;
                                             amountController.text =
                                             '${TextConstants.currencySymbol}0.00';
-                                            if (_amountErrorText != null) {
-                                              setState(() {
-                                                _amountErrorText = null;
-                                              });
-                                            }
+                                            _amountErrorText = null;
+
                                             setState(() {
-                                              _isAmountEntered =
-                                              false; // make unbold after clear
+                                              _isAmountEntered = false;
                                             });
                                           },
-                                          // onDeletePressed: () {
-                                          //   if (amountController.text.isNotEmpty) {
-                                          //     amountController.text = amountController.text.substring(0, amountController.text.length - 1);
-                                          //     setState(() {});
-                                          //   }
-                                          // },
+
                                           onDeletePressed: () {
-                                            // Remove last digit (rightmost)
                                             _rawAmount = _rawAmount ~/ 10;
-                                            double displayValue =
-                                                _rawAmount / 100.0;
+
+                                            double displayValue = _rawAmount / 100.0;
                                             amountController.text =
                                             '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+
                                             setState(() {
-                                              _isAmountEntered =
-                                                  _rawAmount != 0;
+                                              _isAmountEntered = _rawAmount != 0;
                                             });
                                           },
-                                          onPayPressed: () {
-                                            if (balanceAmount <= 0) {
-                                              setState(() {
-                                                _amountErrorText = null;
-                                                _callCreatePaymentAPI(
-                                                    amount: 0.0);
-                                              });
-                                            } else {
-                                              String paidAmount =
-                                                  amountController.text;
-                                              String cleanAmount = paidAmount
-                                                  .replaceAll(
-                                                  '${TextConstants.currencySymbol}',
-                                                  '')
-                                                  .trim();
-                                              double amount = double.tryParse(
-                                                  cleanAmount) ??
-                                                  0.0;
 
+                                          onPayPressed: () {
+                                            String cleanAmount = amountController.text
+                                                .replaceAll(TextConstants.currencySymbol, '')
+                                                .trim();
+
+                                            double amount = double.tryParse(cleanAmount) ?? 0.0;
+
+                                            if (amount == 0.0) {
                                               setState(() {
-                                                if (amount == 0.0) {
-                                                  _amountErrorText =
-                                                      TextConstants
-                                                          .amountValidation;
-                                                } else {
-                                                  _amountErrorText = null;
-                                                  _callCreatePaymentAPI();
-                                                }
+                                                _amountErrorText = TextConstants.amountValidation;
                                               });
+                                              return;
                                             }
+
+                                            _amountErrorText = null;
+                                            _callCreatePaymentAPI();
+
+                                            // Reset after successful payment
+                                            _rawAmount = 0;
+                                            amountController.text =
+                                            '${TextConstants.currencySymbol}0.00';
+                                            _isAmountEntered = false;
                                           },
+
                                           isLoading: isLoading,
                                         ),
                                       ),
+
                                       // Expanded numpad to fill remaining space
                                       // Expanded(
                                       //   child: CustomNumPad(
@@ -2103,6 +2018,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       setState(() {
         discount = 0.0;
         discountValue = 0.0;
+        NetTotal = grossTotal;
 
         tax = oldTax;
         computedNetPayable =
@@ -2268,6 +2184,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         setState(() {
           discount = appliedDiscount;
           tax = updatedTax;
+          NetTotal = grossTotal - discount;
           computedNetPayable = backendNet;
           balanceAmount = backendNet;
         });

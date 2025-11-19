@@ -45,7 +45,7 @@ class _EditProductState extends State<EditProduct> {
 
   void updateQuantity(int newQuantity) {
     setState(() {
-      if (newQuantity < 1) newQuantity = 1;
+      if (newQuantity < 0) newQuantity = 0;
       quantity = newQuantity;
       controller.text = quantity.toString();
     });
@@ -180,21 +180,22 @@ class _EditProductState extends State<EditProduct> {
                   isDarkTheme: isDark,
                   onDigitPressed: (digit) {
                     int newQty = int.tryParse(
-                      (controller.text.isEmpty ? "0" : controller.text) +
-                          digit,
-                    ) ??
-                        quantity;
+                      (controller.text.isEmpty ? "0" : controller.text) + digit,
+                    ) ?? quantity;
                     updateQuantity(newQty);
                   },
                   onClearPressed: () => updateQuantity(0),
-                  onAddPressed: () {
+                  onAddPressed: quantity > 0
+                      ? () {
                     widget.onQuantityUpdated(quantity);
                     Navigator.pop(context);
-                  },
+                  }
+                      : null,
                   actionButtonType: ActionButtonType.add,
                   gridPadding: EdgeInsets.zero,
                 ),
               ),
+
             ],
           ),
         ),

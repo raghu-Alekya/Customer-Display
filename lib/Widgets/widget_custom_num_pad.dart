@@ -287,12 +287,28 @@ class CustomNumPad extends StatelessWidget {
   // New method for ADD button (similar styling to PAY button but different color and callback)
   Widget _buildAddButton(BuildContext context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
+    final isDark = themeHelper.themeMode == ThemeMode.dark;
+
+    bool isEnabled = onAddPressed != null;
+
+    // *** REVERSED COLORS LOGIC ***
+    Color bgColor;
+    Color textColor;
+
+    if (isEnabled) {
+      // Normal color when quantity > 0
+      bgColor = isDark ? Colors.white70 : const Color(0xFF1E2745);
+      textColor = isDark ? ThemeNotifier.primaryBackground : Colors.white;
+    } else {
+      // Reverse color when quantity = 0
+      bgColor = isDark ? const Color(0xFF1E2745) : Colors.white70;
+      textColor = isDark ? Colors.white : Colors.black;
+    }
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: (themeHelper.themeMode == ThemeMode.dark && isDarkTheme
-            ? Colors.white70
-            : const Color(0xFF1E2745)), // Same as login pad ADD button color
+        color: bgColor,
         borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
@@ -303,7 +319,7 @@ class CustomNumPad extends StatelessWidget {
         ],
       ),
       child: TextButton(
-        onPressed: onAddPressed,
+        onPressed: isEnabled ? onAddPressed : null,
         style: TextButton.styleFrom(
           padding: EdgeInsets.zero,
           backgroundColor: Colors.transparent,
@@ -311,28 +327,18 @@ class CustomNumPad extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
         ),
-        child: (isLoading ?? false) // Show loader when loading
-            ? const SizedBox(
-          height: 40,
-          width: 40,
-          child: CircularProgressIndicator(
-            color: Colors.white,
-            strokeWidth: 2,
-          ),
-        )
-            : Text(
+        child: Text(
           'ADD',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w600,
-            color: themeHelper.themeMode == ThemeMode.dark && isDarkTheme
-                ? ThemeNotifier.primaryBackground
-                : Colors.white,
+            color: textColor,
           ),
         ),
       ),
     );
   }
+
 
   // // New method for Manual Verify button
   // Widget _buildManualVerifyButton() {
@@ -481,18 +487,49 @@ class CustomNumPad extends StatelessWidget {
   // Get Action Button Color
   Color _getActionButtonColor(context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
-    return (actionButtonType == ActionButtonType.ok || actionButtonType == ActionButtonType.add)
-        ? themeHelper.themeMode == ThemeMode.dark ? Colors.white70 : Color(0xFF1E2745) // OK & Add use same color
-        : Colors.white;
+    final isDark = themeHelper.themeMode == ThemeMode.dark;
+
+    bool isAdd = actionButtonType == ActionButtonType.add;
+    bool isEnabled = onAddPressed != null; // <-- KEY FIX
+
+    if (isAdd) {
+      return isEnabled
+          ? (isDark ? Colors.white70 : const Color(0xFF1E2745))     // normal
+          : (isDark ? const Color(0xFF1E2745) : Colors.white70);    // reversed
+    }
+
+    // OK button – normal
+    if (actionButtonType == ActionButtonType.ok) {
+      return isDark ? Colors.white70 : const Color(0xFF1E2745);
+    }
+
+    // Delete button
+    return Colors.white;
   }
 
   // Get Action Button Text Color
   Color _getActionButtonTextColor(context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
-    return (actionButtonType == ActionButtonType.ok || actionButtonType == ActionButtonType.add)
-        ? themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.white
-        : Colors.black;
+    final isDark = themeHelper.themeMode == ThemeMode.dark;
+
+    bool isAdd = actionButtonType == ActionButtonType.add;
+    bool isEnabled = onAddPressed != null; // <-- KEY FIX
+
+    if (isAdd) {
+      return isEnabled
+          ? (isDark ? ThemeNotifier.primaryBackground : Colors.white)   // normal
+          : (isDark ? Colors.white : Colors.black);                     // reversed
+    }
+
+    // OK button – normal
+    if (actionButtonType == ActionButtonType.ok) {
+      return isDark ? ThemeNotifier.primaryBackground : Colors.white;
+    }
+
+    // Delete button
+    return Colors.black;
   }
+
 
   // Build Numeric Key
   Widget _buildKey(String value, {bool isDarkTheme = false}) {
