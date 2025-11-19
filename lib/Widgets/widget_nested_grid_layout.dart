@@ -1295,13 +1295,13 @@ class NestedGridWidget extends StatelessWidget {
                                         item["fast_key_item_name"],
                                         style: TextStyle(
                                           fontSize: 12,
-                                          //fontWeight: FontWeight.bold,
-                                          color: themeHelper.themeMode ==
-                                              ThemeMode.dark
+                                          color: themeHelper.themeMode == ThemeMode.dark
                                               ? ThemeNotifier.textDark
                                               : ThemeNotifier.textLight,
                                         ),
+                                        maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
+                                        softWrap: true,
                                       ),
                                       Row(
                                         children: [

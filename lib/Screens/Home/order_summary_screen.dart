@@ -10,6 +10,7 @@ import 'package:hive/hive.dart';
 import 'package:intl/intl.dart'; // Added for date formatting
 import 'package:pinaka_pos/Database/assets_db_helper.dart';
 import 'package:pinaka_pos/Helper/Extentions/extensions.dart';
+import 'package:pinaka_pos/Screens/Home/redeem_points_popup_screen.dart';
 import 'package:pinaka_pos/Utilities/printer_settings.dart';
 import 'package:provider/provider.dart';
 import 'package:thermal_printer/esc_pos_utils_platform/esc_pos_utils_platform.dart';
@@ -110,6 +111,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   double tax = 0.0;
   double cashback = 0.0;
   double servicecharges = 0.0;
+  bool isRedeemActive = false;
+  bool isCouponActive = false;
+  bool isGiftReceiptActive = false;
+
   double NetTotal=0.0;
   // AddED tax variable
   double payByCash = 0.0;
@@ -135,6 +140,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   int _rawAmount = 0;
   double computedNetPayable = 0.0;
 // holds value in paise/cents, e.g. 2345
+  bool showCustomerInput = false;
+  final TextEditingController mobileController = TextEditingController();
+  bool isPhoneValid = false;
+  int availablePoints = 0;        // from backend API
+  double orderTotalAmount = 0.0;  // from order helper / cart total
+  bool isMobileValid = false;
+  double redeemedValue = 0.0;
 
   @override
   void initState() {
@@ -152,6 +164,18 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     balanceAmount = computedNetPayable;
     orderTotal = computedNetPayable;
     NetTotal = grossTotal - discount;
+
+    //redeeem points
+    mobileController.addListener(() {
+      setState(() {
+        isMobileValid = RegExp(r'^[0-9]{10}$').hasMatch(mobileController.text);
+
+        // If mobile becomes invalid, auto-disable redeem
+        if (!isMobileValid) {
+          isRedeemActive = false;
+        }
+        });
+      });
 
     _fetchUserId();
     if (kDebugMode) {
@@ -780,63 +804,73 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 ),
               ),
             ),
-            SizedBox(width: ResponsiveLayout.getWidth(16)),
+            SizedBox(width: ResponsiveLayout.getWidth(6)),
 
             // Date and Time Container
             Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
+                // Order ID
+                Text(
+                  '${TextConstants.orderId} #$orderId', // e.g., Build #1.0.29
+                  style: TextStyle(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white70
+                        : Colors.black87,
+                    fontWeight: FontWeight.bold,
+                    fontSize: ResponsiveLayout.getFontSize(14),
+                  ),
+                ),
+                const SizedBox(width: 4),
+
                 // Date
                 Row(
                   children: [
-                    SvgPicture.asset(
-                      'assets/svg/calendar.svg',
-                      width: 20,
-                      height: 20,
+                    Icon(
+                      Icons.calendar_month_rounded,
+                      size: ResponsiveLayout.getIconSize(14),
                       color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white
-                          : Colors.black, // or your light mode color
+                          ? Colors.white70
+                          : Colors.black87,
                     ),
                     SizedBox(width: ResponsiveLayout.getWidth(4)),
                     Text(
                       _displayDate, //'Sunday, 16 March 2025',
                       style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
                         color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white
-                            : Colors.black,
+                            ? Colors.white70
+                            : Colors.black87,
+                        fontSize: ResponsiveLayout.getFontSize(12),
                       ),
                     ),
                   ],
                 ),
-                SizedBox(width: ResponsiveLayout.getWidth(10)),
+                SizedBox(width: ResponsiveLayout.getWidth(4)),
+
                 // Time
                 Row(
                   children: [
-                    SvgPicture.asset(
-                      'assets/svg/clock.svg',
-                      width: 20,
-                      height: 20,
+                    Icon(
+                      Icons.access_time,
+                      size: ResponsiveLayout.getIconSize(14),
                       color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white
-                          : Colors.black,
+                          ? Colors.white70
+                          : Colors.black87,
                     ),
                     SizedBox(width: ResponsiveLayout.getWidth(4)),
                     Text(
                       _displayTime, //'11:41 A.M',
                       style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
                         color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white
-                            : Colors.black,
+                            ? Colors.white70
+                            : Colors.black87,
+                        fontSize: ResponsiveLayout.getFontSize(12),
                       ),
                     ),
                   ],
                 ),
               ],
             ),
+            const SizedBox(width: 2)
           ],
         ),
       ),
@@ -885,30 +919,134 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  // Label
                   Text(
-                    '${TextConstants.orderId} #$orderId',
+                    "Cust Info:",
                     style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
+                      fontSize: ResponsiveLayout.getFontSize(16),
+                      fontWeight: FontWeight.w500,
                       color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white
-                          : Colors.black,
+                          ? Colors.white70
+                          : Colors.black87,
                     ),
                   ),
-                  Text(
-                    TextConstants.paymentSummary,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white
-                          : Colors.grey,
+
+                  const SizedBox(width: 8),
+
+                  // Input container
+                  Expanded(
+                    child: Container(
+                      height: 42,
+                      margin: const EdgeInsets.only(right: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? const Color(0xFF2C2C2E) // Dark mode background
+                            : const Color(0xFFFFFDFD), // Light mode background
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          width: 1,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey.shade800
+                              : const Color(0xFFF1EEEE),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          // TextField
+                          Expanded(
+                            child: StatefulBuilder(
+                              builder: (context, innerSetState) {
+                                return TextField(
+                                  controller: mobileController,
+                                  keyboardType: TextInputType.number,
+                                  maxLength: 10,
+                                  textAlign: TextAlign.start,
+                                  textAlignVertical: TextAlignVertical.center,
+                                  onChanged: (value) {
+                                    innerSetState(() {});
+                                    setState(() {
+                                      isPhoneValid = value.length == 10;
+                                    });
+                                  },
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    fontFamily: 'Inter',
+                                    color: Theme.of(context).brightness == Brightness.dark
+                                        ? Colors.white
+                                        : Colors.black87,
+                                  ),
+                                  decoration: InputDecoration(
+                                    counterText: "",
+                                    hintText: "Add Customer number",
+                                    hintStyle: TextStyle(
+                                      color: Theme.of(context).brightness == Brightness.dark
+                                          ? Colors.grey.shade500
+                                          : const Color(0xFFCCCCCC),
+                                      fontSize: 12,
+                                      fontFamily: 'Inter',
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    border: InputBorder.none,
+                                    isCollapsed: true,
+                                    contentPadding: const EdgeInsets.only(left: 8, top: 8, bottom: 8),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+
+                          const SizedBox(width: 10),
+
+                          // Add / Cancel button
+                          InkWell(
+                            onTap: isPhoneValid
+                                ? () {
+                              setState(() {
+                                showCustomerInput = !showCustomerInput;
+
+                                if (!showCustomerInput) {
+                                  mobileController.clear();
+                                  isPhoneValid = false;
+                                }
+
+                                isRedeemActive = showCustomerInput;
+                              });
+                            }
+                                : null,
+                            child: Container(
+                              margin: const EdgeInsets.all(2),
+                              padding: const EdgeInsets.fromLTRB(20, 8, 28, 8),
+                              decoration: BoxDecoration(
+                                color: !isPhoneValid
+                                    ? Colors.grey.shade400
+                                    : showCustomerInput
+                                    ? Colors.red
+                                    : Theme.of(context).brightness == Brightness.dark
+                                    ? const Color(0xFF262D41) // Dark mode add button color
+                                    : const Color(0xFF3B4259), // Light mode add button color
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                showCustomerInput ? "× Cancel" : "+ Add",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
               ),
+
               SizedBox(height: ResponsiveLayout.getHeight(8)),
               Expanded(
                 flex: 6,
@@ -1052,6 +1190,26 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             _buildOrderCalculation(
                                 TextConstants.change,
                                 '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
+
+                            if (redeemedValue > 0) ...[
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  'Rewards Redeemed',
+                                  style: TextStyle(
+                                    color: Color(0xFF2FC921),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+
+                              _buildOrderCalculation(
+                                "Rewards Redeemed",
+                                "-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}",
+                                isDiscount: true,
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -1978,17 +2136,70 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _buildPaymentOptionButton(
-                              TextConstants.redeemPoints, Icons.stars),
-                            GestureDetector(
-                              onTap: () => _openCouponPopup(),
-                              child: _buildPaymentOptionButton(
-                                TextConstants.coupon,
-                                Icons.discount,
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              /// ⭐ Redeem Points
+                              _buildPaymentOptionButton(
+                                TextConstants.redeemPoints,
+                                "assets/redeem.jpg",
+                                isActive: isRedeemActive,
+                                onTap: () {
+                                  // If button is not active, block the tap
+                                  if (!isRedeemActive) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text("Enter valid 10-digit mobile number"),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  // If active but mobile invalid → still block
+                                  if (!isMobileValid) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text("Enter valid 10-digit mobile number"),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  // ✔ Redeem is active
+                                  // ✔ Mobile is valid
+                                  // → OPEN POPUP
+                                  showDialog(
+                                    context: context,
+                                    barrierDismissible: false,
+                                    builder: (_) {
+                                      return RedeemPointsDialog(
+                                        customerMobile: mobileController.text,
+                                        availablePoints: availablePoints,
+                                        orderTotal: orderTotalAmount,
+                                      );
+                                    },
+                                  );
+                                },
                               ),
-                            ),
-                        _buildPaymentOptionButton(
-                              TextConstants.giftReceipt, Icons.card_giftcard),
+                              const SizedBox(height: 20),
+
+                              /// ⭐ Coupon
+                              _buildPaymentOptionButton(
+                                TextConstants.coupon,
+                                "assets/coupon.jpg",
+                                isActive: isCouponActive,
+                                onTap: () {
+                                  _openCouponPopup();
+                                  setState(() {
+                                    isCouponActive = !isCouponActive;
+                                  });
+                                },
+                              ),
+                            ],
+                          )
+
                         ],
                       ),
                     ),
@@ -2420,38 +2631,39 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     );
   }
 
-  Widget _buildPaymentOptionButton(String label, IconData icon) {
-    final themeHelper = Provider.of<ThemeNotifier>(context);
-    return Container(
-      height: ResponsiveLayout.getHeight(50),
-      // padding: ResponsiveLayout.getResponsivePadding(
-      //   vertical: 8,
-      //   horizontal: 8,
-      // ),
-      decoration: BoxDecoration(
-        color: themeHelper.themeMode == ThemeMode.dark
-            ? ThemeNotifier.primaryBackground
-            : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
-        border: Border.all(
-            color: themeHelper.themeMode == ThemeMode.dark
-                ? ThemeNotifier.borderColor
-                : Colors.grey.shade300),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            color: Colors.grey,
-            size: ResponsiveLayout.getIconSize(16),
-          ),
-          SizedBox(width: ResponsiveLayout.getWidth(8)),
-          Text(label,
+  Widget _buildPaymentOptionButton(
+      String title,
+      String iconPath, {
+        required bool isActive,
+        required VoidCallback onTap,
+      }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF27AE60) : Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          children: [
+            ColorFiltered(
+              colorFilter: (title == TextConstants.redeemPoints && isActive)
+                  ? const ColorFilter.mode(Colors.white, BlendMode.srcIn)
+                  : const ColorFilter.mode(Colors.black87, BlendMode.srcIn),
+              child: Image.asset(iconPath, width: 20, height: 20),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              title,
               style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: ResponsiveLayout.getFontSize(14))),
-        ],
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isActive ? Colors.white : Colors.black87,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

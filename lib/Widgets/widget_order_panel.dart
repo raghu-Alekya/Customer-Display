@@ -2603,24 +2603,19 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(TextConstants.grossTotal, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight), ),
+                                Text(TextConstants.subTotalText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight), ),
                                 Text("${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", //Build #1.0.68
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
                               ],
                             ),
                             SizedBox(height: 2),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                Row(
-                                  spacing: 5,
-                                  children: [
-                                    SvgPicture.asset("assets/svg/discount_star.svg", height: 12, width: 12),
-                                    Text(TextConstants.discountText, style: TextStyle(color: Colors.green, fontSize: 14)),
-                                  ],
-                                ),
-                                Text("-${TextConstants.currencySymbol}${orderDiscount.toStringAsFixed(2)}",
-                                    style: TextStyle(color: Color(0xFF05B10C), fontSize: 12)),
+                                Text(TextConstants.taxText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12,color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 : Colors.grey),),
+                                Text("${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}", //Build #1.0.92: removed minus "-"
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 :Colors.grey)),
                               ],
                             ),
                             SizedBox(height: 2),
@@ -2710,103 +2705,93 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               ],
                             ),
                             SizedBox(height: 2),
-                            ShaderMask(
-                              shaderCallback: (Rect bounds) {
-                                return LinearGradient(
-                                  begin: Alignment.centerLeft,
-                                  end: Alignment.centerRight,
-                                  colors: themeHelper.themeMode ==
-                                      ThemeMode.dark
-                                      ? [
-                                    Colors.white.withOpacity(0.1),
-                                    Colors.white.withOpacity(0.7),
-                                    Colors.white.withOpacity(0.1),
-                                  ]
-                                      : [
-                                    Colors.black.withOpacity(0.1),
-                                    Colors.black.withOpacity(0.7),
-                                    Colors.black.withOpacity(0.1),
-                                  ],
-                                  stops: const [0.0, 0.5, 1.0],
-                                ).createShader(bounds);
-                              },
-                              blendMode: BlendMode.srcIn,
-                              child: DottedLine(
-                                dashLength: 6,
-                                dashGapLength: 4,
-                                lineThickness: 1,
-                                direction: Axis.horizontal,
-                                dashColor: themeHelper.themeMode ==
-                                    ThemeMode.dark
-                                    ? Colors.white
-                                    : Colors
-                                    .black, // ✅ ensures gradient works correctly
-                              ),
-                            ),
-                            SizedBox(height: 2),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Text(TextConstants.netTotalText,style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight),),
-                                Text("${TextConstants.currencySymbol}${netTotal.toStringAsFixed(2)}",
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
-                              ],
-                            ),
-                            SizedBox(height: 2),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Text(TextConstants.taxText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12,color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 : Colors.grey),),
-                                Text("${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}", //Build #1.0.92: removed minus "-"
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 :Colors.grey)),
-                              ],
-                            ),
-                            SizedBox(height: 2),
-                            ShaderMask(
-                              shaderCallback: (Rect bounds) {
-                                return LinearGradient(
-                                  begin: Alignment.centerLeft,
-                                  end: Alignment.centerRight,
-                                  colors: themeHelper.themeMode ==
-                                      ThemeMode.dark
-                                      ? [
-                                    Colors.white.withOpacity(0.1),
-                                    Colors.white.withOpacity(0.7),
-                                    Colors.white.withOpacity(0.1),
-                                  ]
-                                      : [
-                                    Colors.black.withOpacity(0.1),
-                                    Colors.black.withOpacity(0.7),
-                                    Colors.black.withOpacity(0.1),
-                                  ],
-                                  stops: const [0.0, 0.5, 1.0],
-                                ).createShader(bounds);
-                              },
-                              blendMode: BlendMode.srcIn,
-                              child: DottedLine(
-                                dashLength: 6,
-                                dashGapLength: 4,
-                                lineThickness: 1,
-                                direction: Axis.horizontal,
-                                dashColor: themeHelper.themeMode ==
-                                    ThemeMode.dark
-                                    ? Colors.white
-                                    : Colors
-                                    .black, // ✅ ensures gradient works correctly
-                              ),
-                            ),
-                            SizedBox(height: 2),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Text(TextConstants.netPayable, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
-                                Text("${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
-                                    style: TextStyle(fontWeight: FontWeight.bold, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
-                              ],
-                            ),
+                            // ShaderMask(
+                            //   shaderCallback: (Rect bounds) {
+                            //     return LinearGradient(
+                            //       begin: Alignment.centerLeft,
+                            //       end: Alignment.centerRight,
+                            //       colors: themeHelper.themeMode ==
+                            //           ThemeMode.dark
+                            //           ? [
+                            //         Colors.white.withOpacity(0.1),
+                            //         Colors.white.withOpacity(0.7),
+                            //         Colors.white.withOpacity(0.1),
+                            //       ]
+                            //           : [
+                            //         Colors.black.withOpacity(0.1),
+                            //         Colors.black.withOpacity(0.7),
+                            //         Colors.black.withOpacity(0.1),
+                            //       ],
+                            //       stops: const [0.0, 0.5, 1.0],
+                            //     ).createShader(bounds);
+                            //   },
+                            //   blendMode: BlendMode.srcIn,
+                            //   child: DottedLine(
+                            //     dashLength: 6,
+                            //     dashGapLength: 4,
+                            //     lineThickness: 1,
+                            //     direction: Axis.horizontal,
+                            //     dashColor: themeHelper.themeMode ==
+                            //         ThemeMode.dark
+                            //         ? Colors.white
+                            //         : Colors
+                            //         .black, // ✅ ensures gradient works correctly
+                            //   ),
+                            // ),
+                            // SizedBox(height: 2),
+                            // Row(
+                            //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            //   crossAxisAlignment: CrossAxisAlignment.center,
+                            //   children: [
+                            //     Text(TextConstants.taxText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12,color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 : Colors.grey),),
+                            //     Text("${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}", //Build #1.0.92: removed minus "-"
+                            //         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 :Colors.grey)),
+                            //   ],
+                            // ),
+                            // SizedBox(height: 2),
+                            // ShaderMask(
+                            //   shaderCallback: (Rect bounds) {
+                            //     return LinearGradient(
+                            //       begin: Alignment.centerLeft,
+                            //       end: Alignment.centerRight,
+                            //       colors: themeHelper.themeMode ==
+                            //           ThemeMode.dark
+                            //           ? [
+                            //         Colors.white.withOpacity(0.1),
+                            //         Colors.white.withOpacity(0.7),
+                            //         Colors.white.withOpacity(0.1),
+                            //       ]
+                            //           : [
+                            //         Colors.black.withOpacity(0.1),
+                            //         Colors.black.withOpacity(0.7),
+                            //         Colors.black.withOpacity(0.1),
+                            //       ],
+                            //       stops: const [0.0, 0.5, 1.0],
+                            //     ).createShader(bounds);
+                            //   },
+                            //   blendMode: BlendMode.srcIn,
+                            //   child: DottedLine(
+                            //     dashLength: 6,
+                            //     dashGapLength: 4,
+                            //     lineThickness: 1,
+                            //     direction: Axis.horizontal,
+                            //     dashColor: themeHelper.themeMode ==
+                            //         ThemeMode.dark
+                            //         ? Colors.white
+                            //         : Colors
+                            //         .black, // ✅ ensures gradient works correctly
+                            //   ),
+                            // ),
+                            // SizedBox(height: 2),
+                            // Row(
+                            //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            //   crossAxisAlignment: CrossAxisAlignment.center,
+                            //   children: [
+                            //     Text(TextConstants.netPayable, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
+                            //     Text("${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
+                            //         style: TextStyle(fontWeight: FontWeight.bold, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
+                            //   ],
+                            // ),
                           ],
                         ),
                       )
@@ -2850,8 +2835,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               children: [
                                 Text(
                                     _showFullSummary
-                                        ? 'Net Payable: ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}'
-                                        : 'Net Payable: ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}',
+                                        ? 'Amount: ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}'
+                                        : 'Amount: ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}',
                                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                                 const SizedBox(width: 8),
                                 Icon(_showFullSummary ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up),
@@ -2992,7 +2977,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         child: _isPayBtnLoading
                             ? const CircularProgressIndicator(color: Colors.white)
                             : Text(
-                          "Pay  ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
+                          "Check Out",
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
