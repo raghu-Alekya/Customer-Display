@@ -2185,18 +2185,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               ),
                               const SizedBox(height: 20),
 
-                              /// ⭐ Coupon
-                              _buildPaymentOptionButton(
+                              _buildCouponButton(
                                 TextConstants.coupon,
                                 "assets/coupon.jpg",
-                                isActive: isCouponActive,
                                 onTap: () {
                                   _openCouponPopup();
-                                  setState(() {
-                                    isCouponActive = !isCouponActive;
-                                  });
                                 },
                               ),
+
                             ],
                           )
 
@@ -2212,6 +2208,42 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
+
+  Widget _buildCouponButton(
+      String title,
+      String iconPath, {
+        required VoidCallback onTap,
+      }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.blue, // 🔵 Always blue
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          children: [
+            ColorFiltered(
+              colorFilter:
+              const ColorFilter.mode(Colors.white, BlendMode.srcIn), // White icon
+              child: Image.asset(iconPath, width: 20, height: 20),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.white, // White text
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
 
   Future<void> _removeAppliedCoupon() async {
     if (widget.orderId == null || widget.orderId == 0) return;
