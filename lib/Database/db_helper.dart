@@ -26,6 +26,7 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String userShiftId = 'shift_id'; // Build #1.0.149: Added shift_id column
   static const String themeMode = 'theme_mode';
   static const String layoutSelection = 'layout_selection';
+  static const String orderCashbackFee = "order_cashback_fee";
 
   // Orders Table
   static const String orderTable = 'orders_table';

@@ -22,6 +22,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String ownReceiptText        = "Customize your own receipt";
   static const String companyNameText       = "Company Name";
   static const String companyNameHintText   = "Company Name";
+  static const String cashbackFee               = "CashbackFee";
   static const String gstinText             = "GSTIN";
   static const String gstinHintText         = "GSTIN";
   static const String headerText            = "Header";

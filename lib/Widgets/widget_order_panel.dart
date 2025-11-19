@@ -98,6 +98,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   late ScaffoldMessengerState _scaffoldMessenger;
   bool _isFetchingInitialData = false; // Build #1.0.128: Added this flag to track if we're in the middle of initial fetch
   int _listVersion = 0;  // Build 1.0.214: Added this version counter
+  double cashbackFee =0.0;
 
   void _toggleSummary() {
     setState(() {
@@ -2888,6 +2889,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 if (syncResult != null) {
                                   serverOrderId = syncResult["order_id"];
                                   final syncedTax = syncResult["tax"] ?? 0.0;
+                                  final syncedCashbackFee =
+                                  (syncResult["cashback_fee"] ?? 0.0) is num
+                                      ? (syncResult["cashback_fee"] as num).toDouble()
+                                      : double.tryParse(syncResult["cashback_fee"]?.toString() ?? '0') ?? 0.0;
 
                                   if (kDebugMode) {
                                     print("✅ Offline order sync completed → Server ID: $serverOrderId, Tax: $syncedTax");
@@ -2895,22 +2900,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                                   // Update local tax
                                   orderTax = syncedTax;
+                                  cashbackFee = syncedCashbackFee;
 
-                                  // // ✅ Immediately delete synced offline order from Hive
-                                  // final offlineOrderId = orderHelper.activeOrderId;
-                                  // if (offlineOrderId != null) {
-                                  //   if (kDebugMode) print("🧹 Removing synced offline order $offlineOrderId from Hive...");
-                                  //   final offlineBox = Hive.box('offlineOrders');
-                                  //
-                                  //   if (offlineBox.containsKey(offlineOrderId.toString())) {
-                                  //     await offlineBox.delete(offlineOrderId.toString());
-                                  //     if (kDebugMode) print("✅ Deleted offline order $offlineOrderId from Hive");
-                                  //   }
-                                  //
-                                  //   // ✅ Also remove from SQLite
-                                  //   await orderHelper.deleteOrder(offlineOrderId);
-                                  //   if (kDebugMode) print("✅ Deleted offline order $offlineOrderId from SQLite");
-                                  // }
+
                                 } else {
                                   if (kDebugMode) print("⚠️ Sync succeeded but no server data found");
                                 }
@@ -2946,6 +2938,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   orderId: serverOrderId ?? orderHelper.activeOrderId,
                                   isOfflineSynced: serverOrderId != null,
                                   offlineOrderId: orderHelper.activeOrderId,
+                                  cashbackFee: cashbackFee,
                                 ),
                               ),
                             );

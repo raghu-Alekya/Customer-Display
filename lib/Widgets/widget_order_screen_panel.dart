@@ -92,6 +92,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
   double payByOther = 0.0;
   double tenderAmount = 0.0;
   double changeAmount = 0.0;
+  double cashbackFee = 0.0;
+
   String orderStatus = TextConstants.processing;
   int? orderServerId; // Server order ID for API calls
   double total = 0.0;
@@ -1271,286 +1273,286 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                 children: [
                   // Summary container
                   AnimatedSize(
-                    duration: Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                    child: _showFullSummary
-                        ? SizedBox(                // 👈 FORCE height here (outside)
-                        height: 550,
-                        child: Container(
-                      margin: const EdgeInsets.only(
-                          top: 8, right: 7, left: 7),
-                      // margin: const EdgeInsets.only(top: 8, right: 8, left: 8),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.only(
-                            topRight: Radius.circular(8),
-                            topLeft: Radius.circular(8)),
-                        color: themeHelper.themeMode == ThemeMode.dark
-                            ? ThemeNotifier.orderPanelSummary
-                            : Colors.white,
-                        boxShadow: [
-                          // Shadow at the bottom
-                          BoxShadow(
-                            // color: Colors.black.withOpacity(0.25),
-                            color: themeHelper.themeMode == ThemeMode.dark
-                                ? Color(0xFFF0F0F0).withOpacity(
-                                0.15) // stronger shadow for dark mode
-                                : Colors.black.withOpacity(
-                                0.25), // lighter shadow for light mode
-                            offset: Offset(
-                                0, 4), // 0 horizontal, 4 vertical (down)
-                            blurRadius: 6,
-                            spreadRadius: -0.5,
-                          ),
-                          // Shadow at the top
-                          BoxShadow(
-                            color: themeHelper.themeMode == ThemeMode.dark
-                                ? Color(0xFFF0F0F0).withOpacity(
-                                0.15) // dark mode top shadow
-                                : Colors.black.withOpacity(
-                                0.15), // light mode top shadow
-                            // color: Colors.black.withOpacity(0.15),
-                            offset: Offset(
-                                0, -4), // 0 horizontal, -4 vertical (up)
-                            blurRadius: 6,
-                            spreadRadius: -0.5,
-                          ),
-                        ],
-                      ),
-                      padding: const EdgeInsets.all(8),
-                          child: SingleChildScrollView(        // ✅ scroll added
-                            physics: const BouncingScrollPhysics(),
-
-                            child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                TextConstants.grossTotal,
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18),
-                              ),
-                              Text(
-                                  "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", //Build #1.0.68
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                      color: themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? ThemeNotifier.textDark
-                                          : ThemeNotifier.textLight)),
-                            ],
-                          ),
-                          SizedBox(
-                            height: 2,
-                          ),
-                          Row(
-                            mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                spacing: 5,
-                                children: [
-                                  SvgPicture.asset(
-                                    "assets/svg/discount_star.svg",
-                                    height: 12,
-                                    width: 12,
+                      duration: Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      child: _showFullSummary
+                          ? SizedBox(                // 👈 FORCE height here (outside)
+                          height: 550,
+                          child: Container(
+                              margin: const EdgeInsets.only(
+                                  top: 8, right: 7, left: 7),
+                              // margin: const EdgeInsets.only(top: 8, right: 8, left: 8),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.only(
+                                    topRight: Radius.circular(8),
+                                    topLeft: Radius.circular(8)),
+                                color: themeHelper.themeMode == ThemeMode.dark
+                                    ? ThemeNotifier.orderPanelSummary
+                                    : Colors.white,
+                                boxShadow: [
+                                  // Shadow at the bottom
+                                  BoxShadow(
+                                    // color: Colors.black.withOpacity(0.25),
+                                    color: themeHelper.themeMode == ThemeMode.dark
+                                        ? Color(0xFFF0F0F0).withOpacity(
+                                        0.15) // stronger shadow for dark mode
+                                        : Colors.black.withOpacity(
+                                        0.25), // lighter shadow for light mode
+                                    offset: Offset(
+                                        0, 4), // 0 horizontal, 4 vertical (down)
+                                    blurRadius: 6,
+                                    spreadRadius: -0.5,
                                   ),
-                                  Text(TextConstants.discountText,
-                                      style: TextStyle(
-                                          color: Colors.green,
-                                          fontSize: 14)),
-                                ],
-                              ),
-                              Text(
-                                  "-${TextConstants.currencySymbol}${orderDiscount.toStringAsFixed(2)}",
-                                  style: TextStyle(
-                                      color: Colors.green, fontSize: 14)),
-                            ],
-                          ),
-                          SizedBox(
-                            height: 2,
-                          ),
-                          Row(
-                            mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                spacing: 5,
-                                children: [
-                                  SvgPicture.asset(
-                                    "assets/svg/discount_star.svg",
-                                    height: 12,
-                                    width: 12,
-                                    color: Colors.blue, // 👈 apply blue color
+                                  // Shadow at the top
+                                  BoxShadow(
+                                    color: themeHelper.themeMode == ThemeMode.dark
+                                        ? Color(0xFFF0F0F0).withOpacity(
+                                        0.15) // dark mode top shadow
+                                        : Colors.black.withOpacity(
+                                        0.15), // light mode top shadow
+                                    // color: Colors.black.withOpacity(0.15),
+                                    offset: Offset(
+                                        0, -4), // 0 horizontal, -4 vertical (up)
+                                    blurRadius: 6,
+                                    spreadRadius: -0.5,
                                   ),
-                                  Text(TextConstants.merchantDiscount,
-                                      style: TextStyle(
-                                          color: Colors.blue,
-                                          fontSize: 14)),
+                                ],
+                              ),
+                              padding: const EdgeInsets.all(8),
+                              child: SingleChildScrollView(        // ✅ scroll added
+                                physics: const BouncingScrollPhysics(),
+
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          TextConstants.grossTotal,
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 18),
+                                        ),
+                                        Text(
+                                            "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", //Build #1.0.68
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                                color: themeHelper.themeMode ==
+                                                    ThemeMode.dark
+                                                    ? ThemeNotifier.textDark
+                                                    : ThemeNotifier.textLight)),
+                                      ],
+                                    ),
+                                    SizedBox(
+                                      height: 2,
+                                    ),
+                                    Row(
+                                      mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          spacing: 5,
+                                          children: [
+                                            SvgPicture.asset(
+                                              "assets/svg/discount_star.svg",
+                                              height: 12,
+                                              width: 12,
+                                            ),
+                                            Text(TextConstants.discountText,
+                                                style: TextStyle(
+                                                    color: Colors.green,
+                                                    fontSize: 14)),
+                                          ],
+                                        ),
+                                        Text(
+                                            "-${TextConstants.currencySymbol}${orderDiscount.toStringAsFixed(2)}",
+                                            style: TextStyle(
+                                                color: Colors.green, fontSize: 14)),
+                                      ],
+                                    ),
+                                    SizedBox(
+                                      height: 2,
+                                    ),
+                                    Row(
+                                      mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          spacing: 5,
+                                          children: [
+                                            SvgPicture.asset(
+                                              "assets/svg/discount_star.svg",
+                                              height: 12,
+                                              width: 12,
+                                              color: Colors.blue, // 👈 apply blue color
+                                            ),
+                                            Text(TextConstants.merchantDiscount,
+                                                style: TextStyle(
+                                                    color: Colors.blue,
+                                                    fontSize: 14)),
 
 
-                                ],
-                              ),
-                              Text(
-                                  "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
-                                  style: TextStyle(
-                                      color: Colors.blue, fontSize: 14)),
-                            ],
-                          ),
-                          SizedBox(
-                            height: 2,
-                          ),
-                          // const DottedLine(),
-                          ShaderMask(
-                            shaderCallback: (Rect bounds) {
-                              return LinearGradient(
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                                colors: themeHelper.themeMode ==
-                                    ThemeMode.dark
-                                    ? [
-                                  Colors.white.withOpacity(0.1),
-                                  Colors.white.withOpacity(0.7),
-                                  Colors.white.withOpacity(0.1),
-                                ]
-                                    : [
-                                  Colors.black.withOpacity(0.1),
-                                  Colors.black.withOpacity(0.7),
-                                  Colors.black.withOpacity(0.1),
-                                ],
-                                stops: const [0.0, 0.5, 1.0],
-                              ).createShader(bounds);
-                            },
-                            blendMode: BlendMode.srcIn,
-                            child: DottedLine(
-                              dashLength: 6,
-                              dashGapLength: 4,
-                              lineThickness: 1,
-                              direction: Axis.horizontal,
-                              dashColor: themeHelper.themeMode ==
-                                  ThemeMode.dark
-                                  ? Colors.white
-                                  : Colors
-                                  .black, // ✅ ensures gradient works correctly
-                            ),
-                          ),
-                          SizedBox(
-                            height: 2,
-                          ),
-                          Row(
-                            mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Text(
-                                TextConstants.netTotalText,
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12),
-                              ),
-                              Text(
-                                  "${TextConstants.currencySymbol}${netTotal.toStringAsFixed(2)}",
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                      color: themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? ThemeNotifier.textDark
-                                          : ThemeNotifier.textLight)),
-                            ],
-                          ),
-                          SizedBox(
-                            height: 2,
-                          ),
-                          Row(
-                            mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Text(
-                                TextConstants.taxText,
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 10,
-                                    color: Colors.grey),
-                              ),
-                              Text(
-                                  "${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}",
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 10,
-                                      color: themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? Colors.white54
-                                          : Colors.grey)),
-                            ],
-                          ),
-                          SizedBox(
-                            height: 2,
-                          ),
-                          //const DottedLine(),
-                          ShaderMask(
-                            shaderCallback: (Rect bounds) {
-                              return LinearGradient(
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                                colors: themeHelper.themeMode ==
-                                    ThemeMode.dark
-                                    ? [
-                                  Colors.white.withOpacity(0.1),
-                                  Colors.white.withOpacity(0.7),
-                                  Colors.white.withOpacity(0.1),
-                                ]
-                                    : [
-                                  Colors.black.withOpacity(0.1),
-                                  Colors.black.withOpacity(0.7),
-                                  Colors.black.withOpacity(0.1),
-                                ],
-                                stops: const [0.0, 0.5, 1.0],
-                              ).createShader(bounds);
-                            },
-                            blendMode: BlendMode.srcIn,
-                            child: DottedLine(
-                              dashLength: 6,
-                              dashGapLength: 4,
-                              lineThickness: 1,
-                              direction: Axis.horizontal,
-                              dashColor: themeHelper.themeMode ==
-                                  ThemeMode.dark
-                                  ? Colors.white
-                                  : Colors
-                                  .black, // ✅ ensures gradient works correctly
-                            ),
-                          ),
-                          SizedBox(
-                            height: 2,
-                          ),
-                          Row(
-                            mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Text(TextConstants.netPayable,
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold)),
-                              Text(
-                                  "${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? ThemeNotifier.textDark
-                                          : ThemeNotifier.textLight)),
-                            ],
-                          ),
-                        ],
-                      ),
-                    )))
-                        : SizedBox.shrink()
+                                          ],
+                                        ),
+                                        Text(
+                                            "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
+                                            style: TextStyle(
+                                                color: Colors.blue, fontSize: 14)),
+                                      ],
+                                    ),
+                                    SizedBox(
+                                      height: 2,
+                                    ),
+                                    // const DottedLine(),
+                                    ShaderMask(
+                                      shaderCallback: (Rect bounds) {
+                                        return LinearGradient(
+                                          begin: Alignment.centerLeft,
+                                          end: Alignment.centerRight,
+                                          colors: themeHelper.themeMode ==
+                                              ThemeMode.dark
+                                              ? [
+                                            Colors.white.withOpacity(0.1),
+                                            Colors.white.withOpacity(0.7),
+                                            Colors.white.withOpacity(0.1),
+                                          ]
+                                              : [
+                                            Colors.black.withOpacity(0.1),
+                                            Colors.black.withOpacity(0.7),
+                                            Colors.black.withOpacity(0.1),
+                                          ],
+                                          stops: const [0.0, 0.5, 1.0],
+                                        ).createShader(bounds);
+                                      },
+                                      blendMode: BlendMode.srcIn,
+                                      child: DottedLine(
+                                        dashLength: 6,
+                                        dashGapLength: 4,
+                                        lineThickness: 1,
+                                        direction: Axis.horizontal,
+                                        dashColor: themeHelper.themeMode ==
+                                            ThemeMode.dark
+                                            ? Colors.white
+                                            : Colors
+                                            .black, // ✅ ensures gradient works correctly
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      height: 2,
+                                    ),
+                                    Row(
+                                      mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          TextConstants.netTotalText,
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12),
+                                        ),
+                                        Text(
+                                            "${TextConstants.currencySymbol}${netTotal.toStringAsFixed(2)}",
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12,
+                                                color: themeHelper.themeMode ==
+                                                    ThemeMode.dark
+                                                    ? ThemeNotifier.textDark
+                                                    : ThemeNotifier.textLight)),
+                                      ],
+                                    ),
+                                    SizedBox(
+                                      height: 2,
+                                    ),
+                                    Row(
+                                      mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          TextConstants.taxText,
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 10,
+                                              color: Colors.grey),
+                                        ),
+                                        Text(
+                                            "${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}",
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 10,
+                                                color: themeHelper.themeMode ==
+                                                    ThemeMode.dark
+                                                    ? Colors.white54
+                                                    : Colors.grey)),
+                                      ],
+                                    ),
+                                    SizedBox(
+                                      height: 2,
+                                    ),
+                                    //const DottedLine(),
+                                    ShaderMask(
+                                      shaderCallback: (Rect bounds) {
+                                        return LinearGradient(
+                                          begin: Alignment.centerLeft,
+                                          end: Alignment.centerRight,
+                                          colors: themeHelper.themeMode ==
+                                              ThemeMode.dark
+                                              ? [
+                                            Colors.white.withOpacity(0.1),
+                                            Colors.white.withOpacity(0.7),
+                                            Colors.white.withOpacity(0.1),
+                                          ]
+                                              : [
+                                            Colors.black.withOpacity(0.1),
+                                            Colors.black.withOpacity(0.7),
+                                            Colors.black.withOpacity(0.1),
+                                          ],
+                                          stops: const [0.0, 0.5, 1.0],
+                                        ).createShader(bounds);
+                                      },
+                                      blendMode: BlendMode.srcIn,
+                                      child: DottedLine(
+                                        dashLength: 6,
+                                        dashGapLength: 4,
+                                        lineThickness: 1,
+                                        direction: Axis.horizontal,
+                                        dashColor: themeHelper.themeMode ==
+                                            ThemeMode.dark
+                                            ? Colors.white
+                                            : Colors
+                                            .black, // ✅ ensures gradient works correctly
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      height: 2,
+                                    ),
+                                    Row(
+                                      mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        Text(TextConstants.netPayable,
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold)),
+                                        Text(
+                                            "${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: themeHelper.themeMode ==
+                                                    ThemeMode.dark
+                                                    ? ThemeNotifier.textDark
+                                                    : ThemeNotifier.textLight)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              )))
+                          : SizedBox.shrink()
 
                   ),
                   if(widget.activeOrderId != null)
@@ -1733,6 +1735,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                       orderTax: orderTax,
                                       netPayable: netPayable.toDouble(),
                                       orderId: orderHelper.activeOrderId,
+                                      cashbackFee: cashbackFee,
 
                                     ),
                               ),

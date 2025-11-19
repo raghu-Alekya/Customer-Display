@@ -270,7 +270,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               // Hide divider if current tab (0) or next tab (1) is selected
               if (_selectedTabIndex != 0 && _selectedTabIndex != 1)
                 Divider(height: 1, thickness: 0.1, indent: 10, endIndent: 10),
-              _buildTab(1, SvgUtils.addCouponIcon, TextConstants.cashback),
+              _buildTab(1, SvgUtils.addCouponIcon, TextConstants.cashbackFee),
               const SizedBox(width: 10),
               // Hide divider if current tab (1) or next tab (2) is selected
               if (_selectedTabIndex != 1 && _selectedTabIndex != 2)
@@ -2238,10 +2238,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         "order_id": orderId,
         "cashback_product_id": cashbackProduct["fast_key_product_id"],
         "product_name": cashbackProduct["fast_key_item_name"],
-    "product_image": "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/cashback-line-item.jpg",
+        "product_image": "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/cashback-line-item.jpg",
 
 
-    // ---- your amount ----
+        // ---- your amount ----
         "amount": cashbackAmount,
 
         // ---- REQUIRED FOR ORDER PANEL ----
@@ -2280,8 +2280,14 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         ...existingOrder,
         "products": products,
         "cashbacks": cashbacks,
+
+        // Cashback reduces total
         "gross_total": productsTotal - cashbackAmount,
+
+        // ⭐ NEW: Store cashback fee
+        AppDBConst.orderCashbackFee: cashbackAmount,
       };
+
 
       await offlineBox.put(key, updatedOrder);
       print("🟩 SAVED ORDER → $updatedOrder");
@@ -2427,6 +2433,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
           'taxClass': taxClass,
           'tags': [TextConstants.customItem],
           'quantity': 1,
+          // ✅ ADD THIS
+          AppDBConst.itemImage: 'assets/custom.png',
+          AppDBConst.itemType: TextConstants.customItemText,
         };
         products.add(customItem);
         if (kDebugMode) print("🆕 Added new custom item SKU: $normalizedSku");
@@ -2446,10 +2455,21 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         "sku": normalizedSku,
         "taxStatus": taxStatus,
         "taxClass": taxClass,
-        "images": [],
+        'is_custom_item': true,
         "variations": [],
+        "images": [
+          {"src": "assets/custom.png"}
+        ],
+        // ✅ ADD THIS IMAGE PATH
+        AppDBConst.itemImage: "assets/custom.png",
+        AppDBConst.itemType: TextConstants.customItemText
+
       };
+      print("🔥 Before saving Hive: $cacheKey");
       await productBox.put(cacheKey, {"products": [customProductJson]});
+      print("🔥 After saving Hive");
+      print("🔥 Hive value: ${productBox.get(cacheKey)}");
+
       OrderHelper.addToCache(normalizedSku, customProductJson);
 
       if (kDebugMode) {

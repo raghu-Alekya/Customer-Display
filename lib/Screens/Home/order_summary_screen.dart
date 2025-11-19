@@ -62,6 +62,7 @@ class OrderSummaryScreen extends StatefulWidget {
   final int? orderId;
   final bool isOfflineSynced;
   final int? offlineOrderId;
+  final double cashbackFee;
 
   const OrderSummaryScreen({
     required this.formattedDate,
@@ -73,6 +74,7 @@ class OrderSummaryScreen extends StatefulWidget {
     required this.orderTax,
     required this.netPayable,
     required this.orderId,
+    required this.cashbackFee,
     this.isOfflineSynced = false,
     this.offlineOrderId,
     super.key,
@@ -114,6 +116,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isRedeemActive = false;
   bool isCouponActive = false;
   bool isGiftReceiptActive = false;
+  double cashbackFee =0.0;
 
   double NetTotal=0.0;
   // AddED tax variable
@@ -163,6 +166,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     computedNetPayable = grossTotal + tax - discount - merchantDiscount;
     balanceAmount = computedNetPayable;
     orderTotal = computedNetPayable;
+    cashbackFee = widget.cashbackFee;
     NetTotal = grossTotal - discount;
 
     //redeeem points
@@ -186,6 +190,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       print("Tax: ${widget.orderTax}");
       print("Net Payable: ${widget.netPayable}");
       print("📦 Full Order Items Data:");
+      print("Cashback Fee: $cashbackFee");
       for (var item in orderItems) {
         print(jsonEncode(item)); // pretty-print each item as JSON
       }
@@ -963,14 +968,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                   controller: mobileController,
                                   keyboardType: TextInputType.number,
                                   maxLength: 10,
+
+                                  // ⛔ Block alphabets & symbols
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+
                                   textAlign: TextAlign.start,
                                   textAlignVertical: TextAlignVertical.center,
+
                                   onChanged: (value) {
                                     innerSetState(() {});
                                     setState(() {
                                       isPhoneValid = value.length == 10;
                                     });
                                   },
+
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
@@ -979,6 +992,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                         ? Colors.white
                                         : Colors.black87,
                                   ),
+
                                   decoration: InputDecoration(
                                     counterText: "",
                                     hintText: "Add Customer number",
@@ -1152,11 +1166,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 TextConstants.merchantDiscount,
                                 '-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}'),
 
-                            /// Cashback
-                            _buildOrderCalculation(
-                                TextConstants.cashback,
-                                '${TextConstants.currencySymbol}${cashback.toStringAsFixed(2)}'),
-
+                            if (cashbackFee > 0)
+                              _buildOrderCalculation(
+                                  TextConstants.cashbackFee,
+                                  '${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}',
+                                  ),
                             /// Service Charges
                             _buildOrderCalculation(
                                 TextConstants.servicecharges,
@@ -1337,6 +1351,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           orderTotal =
               (orderData.first[AppDBConst.orderTotal] as num?)?.toDouble() ??
                   0.0; // Build #1.0.80
+          cashbackFee = (orderData.first[AppDBConst.orderCashbackFee] as num?)?.toDouble()??0.0;
           orderStatus = (orderData.first[AppDBConst.orderStatus] as String?) ??
               TextConstants.processing; // Build  #1.0.177
           if (kDebugMode) {
@@ -1585,7 +1600,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       );
     }
     // ---------------- CASHBACK ( #55CBCD ) ----------------
-    else if (label == TextConstants.cashback || label.toLowerCase().contains("cashback")) {
+    else if (label == TextConstants.cashbackFee || label.toLowerCase().contains("cashback")) {
       labelColor = const Color(0xFF55CBCD);
       amountColor = const Color(0xFF55CBCD);
       leadingIcon = SvgPicture.asset(
@@ -2280,12 +2295,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   void _openCouponPopup() {
     final TextEditingController _couponCtrl = TextEditingController();
 
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // THEME COLORS
+    final Color dialogBg = isDark ? const Color(0xFF252837) : Colors.white;
+    final Color borderColor = isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade300;
+    final Color textPrimary = isDark ? Colors.white : Colors.black87;
+    final Color textSecondary = isDark ? Colors.white70 : Colors.black54;
+    final Color hintColor = isDark ? Colors.white38 : Colors.grey;
+    final Color redPrimary = const Color(0xFFFD6464); // SAME for both modes
+
     showDialog(
       context: context,
       barrierDismissible: true,
       builder: (context) {
         return Dialog(
-          backgroundColor: Colors.white,
+          backgroundColor: dialogBg,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -2293,43 +2318,53 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             padding: const EdgeInsets.all(26),
             width: MediaQuery.of(context).size.width * 0.30,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: dialogBg,
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
-                BoxShadow(
-                  blurRadius: 12,
-                  offset: Offset(0, 4),
-                  color: Colors.black.withOpacity(0.15),
-                )
+                if (!isDark)
+                  BoxShadow(
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                    color: Colors.black.withOpacity(0.15),
+                  ),
               ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+
+                // ---------- TITLE ----------
                 Center(
                   child: Text(
                     "Apply Coupon",
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
-                      color: Colors.red,   // 🔥 Title color updated
+                      color: redPrimary,
                     ),
                   ),
                 ),
 
                 const SizedBox(height: 20),
 
+                // ---------- TEXTFIELD ----------
                 TextField(
                   controller: _couponCtrl,
                   keyboardType: TextInputType.number,
+                  style: TextStyle(color: textPrimary),
                   decoration: InputDecoration(
                     labelText: "Enter Coupon Code",
+                    labelStyle: TextStyle(color: textSecondary),
+                    hintStyle: TextStyle(color: hintColor),
+                    filled: true,
+                    fillColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: redPrimary, width: 1),
                     ),
                     enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.grey, width: 1.0),
+                      borderSide: BorderSide(color: borderColor, width: 1.0),
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
@@ -2337,38 +2372,39 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                 const SizedBox(height: 25),
 
+                // ---------- BUTTONS ----------
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
+
+                    // CANCEL BUTTON
                     TextButton(
                       style: TextButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: BorderSide(color: Colors.red, width: 1),
+                        foregroundColor: redPrimary,
+                        side: BorderSide(color: redPrimary, width: 1),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                       ),
                       onPressed: () => Navigator.pop(context),
-                      child: Text(
+                      child: const Text(
                         "Cancel",
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
 
                     const SizedBox(width: 12),
 
+                    // APPLY BUTTON
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red, // 🔥 Button background updated
+                        backgroundColor: redPrimary,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                       ),
                       onPressed: () async {
                         final code = _couponCtrl.text.trim();
@@ -2376,7 +2412,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         if (code.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text("Please enter coupon code"),
+                              content: const Text("Please enter coupon code"),
                               backgroundColor: Colors.redAccent,
                             ),
                           );
@@ -2386,7 +2422,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         Navigator.pop(context);
                         await _applyCoupon(code);
                       },
-                      child: Text("Apply"),
+                      child: const Text("Apply"),
                     ),
                   ],
                 )

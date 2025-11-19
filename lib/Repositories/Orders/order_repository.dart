@@ -302,14 +302,28 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       final response = isUpdate
           ? await _helper.put(url, payload, true)
           : await _helper.post(url, payload, true);
-      // final responseJson = jsonDecode(response.body);
 
-      // debugPrint(
-      //   "[SYNC] Raw API Response → ${jsonEncode(responseJson)}",
-      //   wrapWidth: 1024,
-      // );
 
       final decoded = (response is String) ? jsonDecode(response) : response;
+      // 🔵 PRINT THE RESPONSE
+      debugPrint(
+        "🟦 [SYNC] Decoded API Response → ${jsonEncode(decoded)}",
+        wrapWidth: 1024,
+      );
+      // 🔥 Extract Cashback Fee directly from Woo response
+      double cashbackFee = 0.0;
+
+      final feeLines = decoded["fee_lines"] as List? ?? [];
+      for (final fee in feeLines) {
+        final name = fee["name"]?.toString().toLowerCase() ?? "";
+        if (name.contains("cashback fee")) {
+          cashbackFee = double.tryParse(fee["total"]?.toString() ?? "0") ?? 0.0;
+        }
+      }
+
+      print("🟧 Cashback Fee Found: $cashbackFee");
+
+
 
       if (decoded is Map<String, dynamic> && decoded['id'] != null) {
         final int serverOrderId = int.tryParse(decoded['id'].toString()) ?? 0;
@@ -328,7 +342,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
         await box.put(localOrderId, offlineOrder);
         await box.put(serverOrderId.toString(), {
-          "__map_to_local__": localOrderId,
+          "_map_to_local_": localOrderId,
         });
         final int localOrderIdInt = int.tryParse(localOrderId) ?? serverOrderId;
         CustomerDisplayHelper.updateCustomerDisplay(localOrderIdInt);
@@ -337,6 +351,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           "order_id": serverOrderId,
           "tax": wooTax,
           "total": wooTotal,
+          "cashback_fee": cashbackFee,
         };
       }
     } catch (e, s) {
