@@ -117,6 +117,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isCouponActive = false;
   bool isGiftReceiptActive = false;
   double cashbackFee =0.0;
+  bool isPhoneValid = false;
+  bool isEmailValid = false;
+
 
   double NetTotal=0.0;
   // AddED tax variable
@@ -145,7 +148,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 // holds value in paise/cents, e.g. 2345
   bool showCustomerInput = false;
   final TextEditingController mobileController = TextEditingController();
-  bool isPhoneValid = false;
   int availablePoints = 0;        // from backend API
   double orderTotalAmount = 0.0;  // from order helper / cart total
   bool isMobileValid = false;
@@ -163,12 +165,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     orderId = widget.orderId;
     _displayDate = widget.formattedDate;
     _displayTime = widget.formattedTime;
-    computedNetPayable = grossTotal + tax - discount - merchantDiscount;
-    balanceAmount = computedNetPayable;
-    orderTotal = computedNetPayable;
     cashbackFee = widget.cashbackFee;
     NetTotal = grossTotal - discount;
-
+    computedNetPayable = grossTotal + tax - discount - merchantDiscount + cashbackFee;
+    balanceAmount = computedNetPayable;
+    orderTotal = computedNetPayable;
     //redeeem points
     mobileController.addListener(() {
       setState(() {
@@ -966,13 +967,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               builder: (context, innerSetState) {
                                 return TextField(
                                   controller: mobileController,
-                                  keyboardType: TextInputType.number,
-                                  maxLength: 10,
-
-                                  // ⛔ Block alphabets & symbols
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly,
-                                  ],
+                                  keyboardType: TextInputType.emailAddress, // supports email + numbers
+                                  maxLength: 50, // allow longer input for emails
 
                                   textAlign: TextAlign.start,
                                   textAlignVertical: TextAlignVertical.center,
@@ -980,7 +976,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                   onChanged: (value) {
                                     innerSetState(() {});
                                     setState(() {
-                                      isPhoneValid = value.length == 10;
+                                      // Check if numeric 10-digit phone
+                                      isPhoneValid = RegExp(r'^[0-9]{10}$').hasMatch(value);
+
+                                      // Check if valid email
+                                      isEmailValid = RegExp(
+                                          r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+                                      ).hasMatch(value);
                                     });
                                   },
 
@@ -995,7 +997,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                                   decoration: InputDecoration(
                                     counterText: "",
-                                    hintText: "Add Customer number",
+                                    hintText: "Add Customer Number or Email",
                                     hintStyle: TextStyle(
                                       color: Theme.of(context).brightness == Brightness.dark
                                           ? Colors.grey.shade500
@@ -1017,7 +1019,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                           // Add / Cancel button
                           InkWell(
-                            onTap: isPhoneValid
+                            onTap: (isPhoneValid || isEmailValid)
                                 ? () {
                               setState(() {
                                 showCustomerInput = !showCustomerInput;
@@ -1025,6 +1027,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 if (!showCustomerInput) {
                                   mobileController.clear();
                                   isPhoneValid = false;
+                                  isEmailValid = false;
                                 }
 
                                 isRedeemActive = showCustomerInput;
@@ -1035,7 +1038,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               margin: const EdgeInsets.all(2),
                               padding: const EdgeInsets.fromLTRB(20, 8, 28, 8),
                               decoration: BoxDecoration(
-                                color: !isPhoneValid
+                                color: !(isPhoneValid || isEmailValid)
                                     ? Colors.grey.shade400
                                     : showCustomerInput
                                     ? Colors.red
@@ -2172,10 +2175,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                   }
 
                                   // If active but mobile invalid → still block
-                                  if (!isMobileValid) {
+                                  if (!isMobileValid && !isEmailValid) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                        content: Text("Enter valid 10-digit mobile number"),
+                                        content: Text("Enter valid mobile number or email"),
                                         duration: Duration(seconds: 2),
                                       ),
                                     );
@@ -2259,7 +2262,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     );
   }
 
-
   Future<void> _removeAppliedCoupon() async {
     if (widget.orderId == null || widget.orderId == 0) return;
 
@@ -2271,19 +2273,24 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         couponCode: "",
       );
 
-      print("✔ Coupon Removed");
-
+      // RESET VALUES
       setState(() {
         discount = 0.0;
         discountValue = 0.0;
         NetTotal = grossTotal;
 
         tax = oldTax;
-        computedNetPayable =
-            grossTotal + tax - merchantDiscount;
-
+        computedNetPayable = grossTotal + tax - merchantDiscount;
         balanceAmount = computedNetPayable;
       });
+
+      // 🟢 SUCCESS SNACKBAR (always show)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Coupon removed successfully"),
+          backgroundColor: Colors.green,
+        ),
+      );
 
     } catch (e) {
       print("❌ ERROR removing coupon: $e");
@@ -2444,37 +2451,59 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         couponCode: code,
       );
 
-      if (response != null) {
-
-        oldTax = tax;
-
-        double appliedDiscount =
-            double.tryParse(response.discountTotal) ?? 0.0;
-
-        double updatedTax =
-            double.tryParse(response.totalTax) ?? tax;
-        double backendNet =
-            double.tryParse(response.total) ?? computedNetPayable;
-
-        print("✔ Discount = $appliedDiscount");
-        print("✔ Updated Tax = $updatedTax");
-        print("✔ Final Net = $backendNet");
-
-        setState(() {
-          discount = appliedDiscount;
-          tax = updatedTax;
-          NetTotal = grossTotal - discount;
-          computedNetPayable = backendNet;
-          balanceAmount = backendNet;
-        });
+      // ❗ Handle backend / BLoC errors
+      if (response == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Invalid coupon or unable to apply coupon"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
       }
+
+      // SUCCESS FLOW
+      oldTax = tax;
+
+      final appliedDiscount = double.tryParse(response.discountTotal) ?? 0.0;
+      final updatedTax = double.tryParse(response.totalTax) ?? tax;
+      final backendNet = double.tryParse(response.total) ?? computedNetPayable;
+
+      print("✔ Discount = $appliedDiscount");
+      print("✔ Updated Tax = $updatedTax");
+      print("✔ Final Net = $backendNet");
+
+      setState(() {
+        discount = appliedDiscount;
+        tax = updatedTax;
+        NetTotal = grossTotal - discount;
+        computedNetPayable = backendNet;
+        balanceAmount = backendNet;
+      });
+
+      // SUCCESS SNACKBAR
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Coupon applied successfully"),
+          backgroundColor: Colors.green,
+        ),
+      );
 
     } catch (e) {
       print("❌ ERROR applying coupon: $e");
+
+      // Fallback generic error
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Something went wrong"),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       setState(() => isSummaryLoading = false);
     }
   }
+
 
   Widget _buildAmountDisplay(
       String label,

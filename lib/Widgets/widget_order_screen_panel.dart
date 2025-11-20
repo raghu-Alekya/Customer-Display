@@ -1277,7 +1277,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                       curve: Curves.easeInOut,
                       child: _showFullSummary
                           ? SizedBox(                // 👈 FORCE height here (outside)
-                          height: 550,
                           child: Container(
                               margin: const EdgeInsets.only(
                                   top: 8, right: 7, left: 7),

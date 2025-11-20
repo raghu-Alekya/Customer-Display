@@ -1008,20 +1008,20 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
         box.put('lastOrderId', activeOrderId);
       }
 
-      // 🔞 Age restriction
-      if (hasAgeRestriction && minAge > 0) {
-        final verifiedKey = 'age_verified_order_$activeOrderId';
-        final alreadyVerified = box.get(verifiedKey, defaultValue: false);
-        if (!alreadyVerified) {
-          final ageVerificationProvider = AgeVerificationProvider();
-          final isVerified = await ageVerificationProvider.verifyAge(context, minAge: minAge);
-          if (!isVerified) {
-            print("❌ Age verification failed → Product blocked");
-            return;
-          }
-          box.put(verifiedKey, true);
-        }
-      }
+      // // 🔞 Age restriction
+      // if (hasAgeRestriction && minAge > 0) {
+      //   final verifiedKey = 'age_verified_order_$activeOrderId';
+      //   final alreadyVerified = box.get(verifiedKey, defaultValue: false);
+      //   if (!alreadyVerified) {
+      //     final ageVerificationProvider = AgeVerificationProvider();
+      //     final isVerified = await ageVerificationProvider.verifyAge(context, minAge: minAge);
+      //     if (!isVerified) {
+      //       print("❌ Age verification failed → Product blocked");
+      //       return;
+      //     }
+      //     box.put(verifiedKey, true);
+      //   }
+      // }
 
       // 🧩 If product has variants
       if (hasVariants) {

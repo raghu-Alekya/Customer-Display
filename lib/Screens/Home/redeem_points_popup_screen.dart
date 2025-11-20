@@ -117,7 +117,7 @@ class _RedeemPointsDialogState extends State<RedeemPointsDialog> {
             Row(
               children: [
                 Text(
-                  "    Cust. Mobile No:",
+                  "    Cust. Mobile No or Email:",
                   style: TextStyle(
                     fontSize: 14,
                     color: textSecondary,
