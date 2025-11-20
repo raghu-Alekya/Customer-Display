@@ -179,8 +179,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         if (!isMobileValid) {
           isRedeemActive = false;
         }
-        });
       });
+    });
 
     _fetchUserId();
     if (kDebugMode) {
@@ -1019,21 +1019,56 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                           // Add / Cancel button
                           InkWell(
-                            onTap: (isPhoneValid || isEmailValid)
-                                ? () {
-                              setState(() {
-                                showCustomerInput = !showCustomerInput;
-
-                                if (!showCustomerInput) {
+                            onTap: () async {
+                              if (showCustomerInput) {
+                                // USER PRESSED CANCEL → JUST RESET UI
+                                setState(() {
                                   mobileController.clear();
+                                  showCustomerInput = false;
                                   isPhoneValid = false;
                                   isEmailValid = false;
-                                }
+                                });
+                                return; // STOP — DO NOT CALL API
+                              }
 
-                                isRedeemActive = showCustomerInput;
-                              });
-                            }
-                                : null,
+                              // USER PRESSED ADD → VALIDATE THEN CALL API
+                              if (!(isPhoneValid || isEmailValid)) return;
+
+                              setState(() => isSummaryLoading = true);
+
+                              final contact = mobileController.text.trim();
+                              final orderId = widget.orderId ?? 0;
+
+                              try {
+                                final rawResponse = await orderBloc.addLoyaltyPoints(
+                                  orderId: orderId,
+                                  contact: contact,
+                                );
+
+                                final result = jsonDecode(rawResponse);
+                                final rawPoints = result["data"]["available_points"];
+                                final newPoints = int.tryParse(rawPoints.toString()) ?? 0;
+
+                                if (mounted) {
+                                  setState(() {
+                                    availablePoints = newPoints;
+                                    isRedeemActive = true;
+                                    showCustomerInput = true;
+                                  });
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Loyalty Points Added Successfully!"),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                print("❌ Loyalty API Error: $e");
+                              } finally {
+                                if (mounted) setState(() => isSummaryLoading = false);
+                              }
+                            },
                             child: Container(
                               margin: const EdgeInsets.all(2),
                               padding: const EdgeInsets.fromLTRB(20, 8, 28, 8),
@@ -1171,9 +1206,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                             if (cashbackFee > 0)
                               _buildOrderCalculation(
-                                  TextConstants.cashbackFee,
-                                  '${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}',
-                                  ),
+                                TextConstants.cashbackFee,
+                                '${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}',
+                              ),
                             /// Service Charges
                             _buildOrderCalculation(
                                 TextConstants.servicecharges,
@@ -2160,7 +2195,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               /// ⭐ Redeem Points
                               _buildPaymentOptionButton(
                                 TextConstants.redeemPoints,
-                                "assets/redeem.jpg",
+                                "assets/redeem.png",
                                 isActive: isRedeemActive,
                                 onTap: () {
                                   // If button is not active, block the tap
@@ -2205,7 +2240,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                               _buildCouponButton(
                                 TextConstants.coupon,
-                                "assets/coupon.jpg",
+                                "assets/coupon.png",
                                 onTap: () {
                                   _openCouponPopup();
                                 },
@@ -2235,6 +2270,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return InkWell(
       onTap: onTap,
       child: Container(
+        height: 74,
+        width: 168,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.blue, // 🔵 Always blue
@@ -2280,7 +2317,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         NetTotal = grossTotal;
 
         tax = oldTax;
-        computedNetPayable = grossTotal + tax - merchantDiscount;
+        computedNetPayable = grossTotal + tax - merchantDiscount + cashbackFee;
         balanceAmount = computedNetPayable;
       });
 
@@ -2737,6 +2774,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return InkWell(
       onTap: onTap,
       child: Container(
+        height: 74,
+        width: 168,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: isActive ? const Color(0xFF27AE60) : Colors.grey.shade200,

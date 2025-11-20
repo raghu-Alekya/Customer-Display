@@ -656,6 +656,17 @@ class OrderBloc { // Build #1.0.25 - added by naveen
     }
   }
 
+  Future<dynamic> addLoyaltyPoints({
+    required int orderId,
+    required String contact,
+  }) async {
+    return await _orderRepository.addLoyaltyPoints(
+      orderId: orderId,
+      contact: contact,
+    );
+  }
+
+
   // 3. Apply Coupon to Order
   Future<dynamic> applyCouponToOrder({
     required int orderId,

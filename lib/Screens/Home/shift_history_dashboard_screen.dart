@@ -233,7 +233,7 @@ class _ShiftHistoryDashboardScreenState
                     size: 20,
                   ),
                   label: const Text(
-                    'Add',
+                    'Update',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 14,

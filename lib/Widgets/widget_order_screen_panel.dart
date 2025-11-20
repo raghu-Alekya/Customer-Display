@@ -42,6 +42,7 @@ import '../Screens/Home/Settings/image_utils.dart';
 import '../Screens/Home/Settings/printer_setup_screen.dart';
 import '../Screens/Home/edit_product_screen.dart';
 import '../Utilities/printer_settings.dart';
+import '../Utilities/responsive_layout.dart';
 import '../Utilities/result_utility.dart';
 
 class OrderScreenPanel extends StatefulWidget {
@@ -101,6 +102,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
   double paidAmount = 0.0;
   double discount = 0.0; // Add this to track discount
   double merchantDiscount = 0.0; // Add this to track merchant discount
+  double servicecharges = 0.0;
   double tax = 0.0; // AddED tax variable
   final _printerSettings =  PrinterSettings();
   List<int> bytes = [];
@@ -1276,7 +1278,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                       duration: Duration(milliseconds: 300),
                       curve: Curves.easeInOut,
                       child: _showFullSummary
-                          ? SizedBox(                // 👈 FORCE height here (outside)
+                          ? SizedBox(
                           child: Container(
                               margin: const EdgeInsets.only(
                                   top: 8, right: 7, left: 7),
@@ -1372,40 +1374,10 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                 color: Colors.green, fontSize: 14)),
                                       ],
                                     ),
+
                                     SizedBox(
                                       height: 2,
                                     ),
-                                    Row(
-                                      mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Row(
-                                          spacing: 5,
-                                          children: [
-                                            SvgPicture.asset(
-                                              "assets/svg/discount_star.svg",
-                                              height: 12,
-                                              width: 12,
-                                              color: Colors.blue, // 👈 apply blue color
-                                            ),
-                                            Text(TextConstants.merchantDiscount,
-                                                style: TextStyle(
-                                                    color: Colors.blue,
-                                                    fontSize: 14)),
-
-
-                                          ],
-                                        ),
-                                        Text(
-                                            "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
-                                            style: TextStyle(
-                                                color: Colors.blue, fontSize: 14)),
-                                      ],
-                                    ),
-                                    SizedBox(
-                                      height: 2,
-                                    ),
-                                    // const DottedLine(),
                                     ShaderMask(
                                       shaderCallback: (Rect bounds) {
                                         return LinearGradient(
@@ -1439,6 +1411,10 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                             .black, // ✅ ensures gradient works correctly
                                       ),
                                     ),
+                                    SizedBox(
+                                      height: 2,
+                                    ),
+                                    // const DottedLine(),
                                     SizedBox(
                                       height: 2,
                                     ),
@@ -1490,6 +1466,56 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                     : Colors.grey)),
                                       ],
                                     ),
+                                    Row(
+                                      mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          spacing: 5,
+                                          children: [
+                                            SvgPicture.asset(
+                                              "assets/svg/discount_star.svg",
+                                              height: 12,
+                                              width: 12,
+                                              color: Colors.blue, // 👈 apply blue color
+                                            ),
+                                            Text(TextConstants.merchantDiscount,
+                                                style: TextStyle(
+                                                    color: Colors.blue,
+                                                    fontSize: 14)),
+
+
+                                          ],
+                                        ),
+                                        Text(
+                                            "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
+                                            style: TextStyle(
+                                                color: Colors.blue, fontSize: 14)),
+                                      ],
+                                    ),
+
+                                    if (cashbackFee > 0)
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(TextConstants.cashbackFee),
+                                          Text(
+                                            "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
+                                            style: const TextStyle(color: Colors.green, fontSize: 14),
+                                          ),
+                                        ],
+                                      ),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(TextConstants.servicecharges),
+                                        Text(
+                                          "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}",
+                                          style: const TextStyle(color: Colors.green, fontSize: 14),
+                                        ),
+                                      ],
+                                    ),
+
                                     SizedBox(
                                       height: 2,
                                     ),
@@ -1547,6 +1573,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                     ? ThemeNotifier.textDark
                                                     : ThemeNotifier.textLight)),
                                       ],
+
                                     ),
                                   ],
                                 ),

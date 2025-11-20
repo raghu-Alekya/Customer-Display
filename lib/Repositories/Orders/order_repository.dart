@@ -535,6 +535,41 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
   }
 
+  // ADD LOYALTY POINTS API
+  Future<dynamic> addLoyaltyPoints({
+    required int orderId,
+    required String contact,
+  }) async {
+
+    // Build base-url exactly like getOrder()
+    final String url =
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.loyaltyCreateCustomer}";
+
+    final body = {
+      "order_id": orderId.toString(),
+      "contact": contact,
+    };
+
+    if (kDebugMode) {
+      print("🔵 Add Loyalty Points URL: $url");
+      print("🔵 Add Loyalty Points Body: $body");
+    }
+
+    final response = await _helper.post(
+      url,
+      body,
+      true,
+      validateMarchentUrl: true,
+    );
+
+    if (kDebugMode) {
+      print("🔵 Add Loyalty Points Response: $response");
+    }
+
+    return response;
+  }
+
+
   // 3. Apply Coupon to Order
   Future<OrderModel> applyCouponToOrder({required int orderId, required ApplyCouponRequestModel request,}) async {
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";

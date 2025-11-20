@@ -72,7 +72,7 @@ class _RedeemPointsDialogState extends State<RedeemPointsDialog> {
       insetPadding: const EdgeInsets.symmetric(horizontal: 30, vertical: 30),
       backgroundColor: Colors.transparent,
       child: Container(
-        width: 900,
+        width: 700,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: bgPrimary,
@@ -113,11 +113,12 @@ class _RedeemPointsDialogState extends State<RedeemPointsDialog> {
 
             const SizedBox(height: 20),
 
-            // MOBILE ROW
             Row(
               children: [
+                const SizedBox(width: 25),
+                // ----- LABEL 1 -----
                 Text(
-                  "    Cust. Mobile No or Email:",
+                  "Cust. Mobile No or Email:",
                   style: TextStyle(
                     fontSize: 14,
                     color: textSecondary,
@@ -126,15 +127,45 @@ class _RedeemPointsDialogState extends State<RedeemPointsDialog> {
                 ),
                 const SizedBox(width: 12),
 
+                // ----- VALUE BOX 1 -----
                 Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
                     color: bgSecondary,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     widget.customerMobile,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 35),
+
+                // ----- LABEL 2 -----
+                Text(
+                  "Net Payable:",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // ----- VALUE BOX 2 -----
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: bgSecondary,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    "${TextConstants.currencySymbol}${widget.orderTotal.toStringAsFixed(2)}",
                     style: TextStyle(
                       fontSize: 14,
                       color: textSecondary,
@@ -174,10 +205,17 @@ class _RedeemPointsDialogState extends State<RedeemPointsDialog> {
 
                         buildLabelHelperBox(
                           title: "Redeem Points:",
-                          helper: "Enter points to redeem.",
-                          controller: redeemController,
-                          isEditable: true,
+                          helper: "Points to redeem.",
+                          value: redeemPoints.toString(),
+                          isEditable: false,
                         ),
+
+                        // buildLabelHelperBox(
+                        //   title: "Redeem Points:",
+                        //   helper: "Enter points to redeem.",
+                        //   controller: redeemController,
+                        //   isEditable: true,
+                        // ),
                         const SizedBox(height: 24),
 
                         buildLabelHelperBox(
@@ -198,20 +236,20 @@ class _RedeemPointsDialogState extends State<RedeemPointsDialog> {
                     ),
                   ),
 
-                  const SizedBox(width: 30),
-
-                  // ---------------- RIGHT KEYPAD -------------------
-                  Column(
-                    children: [
-                      buildKeypadRow(["1", "2", "3"]),
-                      const SizedBox(height: 12),
-                      buildKeypadRow(["4", "5", "6"]),
-                      const SizedBox(height: 12),
-                      buildKeypadRow(["7", "8", "9"]),
-                      const SizedBox(height: 12),
-                      buildKeypadRow(["Clear", "0", "⌫"]),
-                    ],
-                  ),
+                  const SizedBox(width: 10),
+                  //
+                  // // ---------------- RIGHT KEYPAD -------------------
+                  // Column(
+                  //   children: [
+                  //     buildKeypadRow(["1", "2", "3"]),
+                  //     const SizedBox(height: 12),
+                  //     buildKeypadRow(["4", "5", "6"]),
+                  //     const SizedBox(height: 12),
+                  //     buildKeypadRow(["7", "8", "9"]),
+                  //     const SizedBox(height: 12),
+                  //     buildKeypadRow(["Clear", "0", "⌫"]),
+                  //   ],
+                  // ),
                 ],
               ),
             ),
@@ -255,67 +293,6 @@ class _RedeemPointsDialogState extends State<RedeemPointsDialog> {
       color: textHint,
     ),
   );
-
-  // KEYPAD ROW
-  Widget buildKeypadRow(List<String> values) {
-    return Row(
-      children: values
-          .map(
-            (value) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          child: keypadButton(value),
-        ),
-      )
-          .toList(),
-    );
-  }
-
-  // KEYPAD BUTTON
-  Widget keypadButton(String value) {
-    return InkWell(
-      onTap: () {
-        redeemFocusNode.requestFocus();
-
-        if (value.trim() == "Clear") {
-          redeemController.clear();
-        } else if (value == "⌫") {
-          if (redeemController.text.isNotEmpty) {
-            redeemController.text =
-                redeemController.text.substring(0, redeemController.text.length - 1);
-          }
-        } else {
-          redeemController.text += value;
-        }
-
-        updateValues();
-      },
-      child: Container(
-        width: 100,
-        height: 60,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: keypadButtonColor,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(
-              color: isDark ? Colors.black45 : const Color(0x3F000000),
-              blurRadius: 2,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Text(
-          value,
-          style: TextStyle(
-            fontSize: 20,
-            color: isDark ? Colors.white : const Color(0xFF4C5F7D),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ),
-    );
-  }
-
   // CANCEL BUTTON
   Widget footerCancelButton() {
     return InkWell(
@@ -440,7 +417,7 @@ class _RedeemPointsDialogState extends State<RedeemPointsDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          flex: 2,
+          flex: 1,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -491,4 +468,65 @@ class _RedeemPointsDialogState extends State<RedeemPointsDialog> {
       ],
     );
   }
+
+  // KEYPAD ROW
+  // Widget buildKeypadRow(List<String> values) {
+  //   return Row(
+  //     children: values
+  //         .map(
+  //           (value) => Padding(
+  //         padding: const EdgeInsets.symmetric(horizontal: 6),
+  //         child: keypadButton(value),
+  //       ),
+  //     )
+  //         .toList(),
+  //   );
+  // }
+
+  // // KEYPAD BUTTON
+  // Widget keypadButton(String value) {
+  //   return InkWell(
+  //     onTap: () {
+  //       redeemFocusNode.requestFocus();
+  //
+  //       if (value.trim() == "Clear") {
+  //         redeemController.clear();
+  //       } else if (value == "⌫") {
+  //         if (redeemController.text.isNotEmpty) {
+  //           redeemController.text =
+  //               redeemController.text.substring(0, redeemController.text.length - 1);
+  //         }
+  //       } else {
+  //         redeemController.text += value;
+  //       }
+  //
+  //       updateValues();
+  //     },
+  //     child: Container(
+  //       width: 100,
+  //       height: 60,
+  //       alignment: Alignment.center,
+  //       decoration: BoxDecoration(
+  //         color: keypadButtonColor,
+  //         borderRadius: BorderRadius.circular(10),
+  //         boxShadow: [
+  //           BoxShadow(
+  //             color: isDark ? Colors.black45 : const Color(0x3F000000),
+  //             blurRadius: 2,
+  //             offset: const Offset(0, 1),
+  //           ),
+  //         ],
+  //       ),
+  //       child: Text(
+  //         value,
+  //         style: TextStyle(
+  //           fontSize: 20,
+  //           color: isDark ? Colors.white : const Color(0xFF4C5F7D),
+  //           fontWeight: FontWeight.w500,
+  //         ),
+  //       ),
+  //     ),
+  //   );
+  // }
+
 }

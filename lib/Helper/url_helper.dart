@@ -123,6 +123,7 @@ class UrlMethodConstants { // Build #1.0.13
   static const String safes                = "safes";
   static const String vendorPayments       = "vendor_payments";
   static const String totalOrders          = "total-orders"; // Build #1.0.118
+  static const String loyaltyCreateCustomer = "loyalty/create-customer";
 }
 
 class UrlParameterConstants { // Build #1.0.13
