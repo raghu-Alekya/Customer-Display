@@ -1192,9 +1192,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
                                 isTotal: true),
                             _buildOrderCalculation(
-                                TextConstants.discountText,
-                                '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}',
-                                isDiscount: true),
+                              TextConstants.discountText,
+                              '-₹${discount.toStringAsFixed(2)}',
+                              isDiscount: true,
+                              isCoupon: true,   // 👈 Add this
+                            ),
 
                             DottedLine(
                               dashColor: themeHelper.themeMode == ThemeMode.dark
@@ -1239,13 +1241,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
                                 isTotal: true),
 
-                            if (redeemedValue > 0)
-                              _buildOrderCalculation(
-                                "Redeemed Amount",
-                                '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
-                                isDiscount: true,
-                              ),
-
+                            _buildOrderCalculation(
+                              TextConstants.discountText,
+                              '-₹${discount.toStringAsFixed(2)}',
+                              isDiscount: true,
+                              isCoupon: true,   // 👈 Add this
+                            ),
 
                             _buildOrderCalculation(
                                 TextConstants.payByCash,
@@ -1443,6 +1444,30 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
   }
 
+  Future<void> _removeRedeemedPoints() async {
+    try {
+      setState(() {
+        redeemedValue = 0;
+
+        // Recalculate net payable after removing redeemed amount
+        computedNetPayable =
+            grossTotal + tax - discount - merchantDiscount + cashbackFee;
+
+        balanceAmount = computedNetPayable;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Redeemed points removed"),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    } catch (e) {
+      print("❌ Error removing redeemed points: $e");
+    }
+  }
+
+
   Widget _buildOrderItem(int index) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final orderItem = orderItems[index];
@@ -1589,8 +1614,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   FontWeight amountFontWeight = FontWeight.w600;
 
 
-  Widget _buildOrderCalculation(String label, String amount,
-      {bool isTotal = false, bool isDiscount = false}) {
+  Widget _buildOrderCalculation(
+      String label,
+      String amount, {
+        bool isTotal = false,
+        bool isDiscount = false,
+        bool isCoupon = false,
+        bool isRedeem = false,
+      }) {
     // //Build #1.0.34: Update the amount based on the label
     final themeHelper = Provider.of<ThemeNotifier>(context);
     if (label == TextConstants.tenderAmount) {
@@ -1705,18 +1736,24 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   color: labelColor,
                 ),
               ),
-              if ((label == TextConstants.discountText || isDiscount) && discount > 0)
+              if (isCoupon && discount > 0)
                 GestureDetector(
                   onTap: () async => await _removeAppliedCoupon(),
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 5),
-                    child: Icon(
-                      Icons.delete_forever,
-                      color: Colors.red,
-                      size: 20,
-                    ),
+                  child: const Padding(
+                    padding: EdgeInsets.only(left: 5),
+                    child: Icon(Icons.delete_forever, color: Colors.red, size: 20),
                   ),
                 ),
+
+              if (isRedeem && redeemedValue > 0)
+                GestureDetector(
+                  onTap: () async => await _removeRedeemedPoints(),
+                  child: const Padding(
+                    padding: EdgeInsets.only(left: 5),
+                    child: Icon(Icons.close, color: Colors.orange, size: 20),
+                  ),
+                ),
+
             ],
           ),
           Row(
