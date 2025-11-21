@@ -21,6 +21,7 @@ class _RedeemPointsDialogState extends State<RedeemPointsDialog> {
   late double valueRedeemed;
   late double existingNetPayable;
   late double newPayableAmount;
+  bool isRedeemLoading = false;
 
   @override
   void initState() {
@@ -290,31 +291,62 @@ class _RedeemPointsDialogState extends State<RedeemPointsDialog> {
 
   Widget footerPrimaryButton(String text) {
     return InkWell(
-      onTap: () async {
-        // ⭐ CALL REDEEM API HERE
-        final response = await OrderRepository().redeemLoyaltyPoints(
-        orderId: widget.apiData["order_id"],
-          contact: widget.apiData["contact"],
-          redeemAmount: valueRedeemed,
-          redeemPoints: redeemPoints,
-        );
+      onTap: isRedeemLoading
+          ? null
+          : () async {
+        setState(() => isRedeemLoading = true);
 
-        // POPUP RETURNS THE API DATA TO ORDER-SUMMARY PAGE
-        Navigator.pop(context, {
-          "redeemedPoints": redeemPoints,
-          "redeemedValue": valueRedeemed,
-          "apiResponse": response
-        });
+        try {
+          final response = await OrderRepository().redeemLoyaltyPoints(
+            orderId: widget.apiData["order_id"],
+            contact: widget.apiData["contact"],
+            redeemAmount: valueRedeemed,
+            redeemPoints: redeemPoints,
+          );
+
+          // POPUP RETURNS THE API DATA TO ORDER-SUMMARY PAGE
+          if (mounted) {
+            Navigator.pop(context, {
+              "redeemedPoints": redeemPoints,
+              "redeemedValue": valueRedeemed,
+              "apiResponse": response,
+            });
+          }
+        } catch (e) {
+          print("❌ Redeem API Error: $e");
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Failed to redeem points"),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        } finally {
+          if (mounted) setState(() => isRedeemLoading = false);
+        }
       },
       child: Container(
         width: 150,
         height: 40,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: const Color(0xFFFD6464),
+          color: isRedeemLoading
+              ? Colors.grey.shade400 // Disabled color
+              : const Color(0xFFFD6464), // Active color
           borderRadius: BorderRadius.circular(10),
         ),
-        child: const Text(
+        child: isRedeemLoading
+            ? const SizedBox(
+          height: 18,
+          width: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Colors.white,
+          ),
+        )
+            : const Text(
           "Redeem Points",
           style: TextStyle(
             color: Colors.white,
