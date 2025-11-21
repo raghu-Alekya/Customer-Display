@@ -1003,7 +1003,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                                   decoration: InputDecoration(
                                     counterText: "",
-                                    hintText: "Add Customer Number or Email",
+                                    hintText: "Add Mobile No or Email",
                                     hintStyle: TextStyle(
                                       color: Theme.of(context).brightness ==
                                               Brightness.dark
@@ -1081,7 +1081,17 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 }
                               } catch (e) {
                                 print("❌ Loyalty API Error: $e");
-                              } finally {
+
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text("Failed to add loyalty points. Please try again."),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                              finally {
                                 if (mounted)
                                   setState(() => isAddLoading = false);
                               }
@@ -2298,8 +2308,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                   if (!isMobileValid && !isEmailValid) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                          content: Text(
-                                              "Enter valid mobile number or email")),
+                                        content: Text("Enter valid mobile number or email"),
+                                        backgroundColor: Colors.red,
+                                      ),
                                     );
                                     return;
                                   }
