@@ -145,6 +145,29 @@ class ProductBySkuResponse { // Build #1.0.43: Added by naveen
     required this.links,
   });
 
+  // ✅ DETECT CUSTOM ITEM (MUST BE INSIDE CLASS)
+  bool get isCustomItem {
+    try {
+      return type.toLowerCase() == "custom" ||
+          metaData.any((m) =>
+          m.key == "is_custom_item" &&
+              (m.value == true || m.value == "true"));
+    } catch (_) {
+      return false;
+    }
+  }
+// ✅ SAFE PRODUCT IMAGE GETTER
+  String get productImage {
+    try {
+      if (images.isNotEmpty && images.first.src.isNotEmpty) {
+        return images.first.src;
+      }
+    } catch (_) {}
+
+    // fallback for custom items
+    return "assets/custom.png";
+  }
+
   factory ProductBySkuResponse.fromJson(Map<String, dynamic> json) {
     return ProductBySkuResponse(
       id: json['id'] ?? 0,

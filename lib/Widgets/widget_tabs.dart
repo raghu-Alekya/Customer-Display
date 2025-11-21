@@ -90,6 +90,13 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         .trim()
         .isEmpty;
   }
+  String normalizeSku(String s) {
+    return (s ?? "")
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\-]'), '');
+  }
+
 
   @override
   void initState() {
@@ -270,7 +277,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               // Hide divider if current tab (0) or next tab (1) is selected
               if (_selectedTabIndex != 0 && _selectedTabIndex != 1)
                 Divider(height: 1, thickness: 0.1, indent: 10, endIndent: 10),
-              _buildTab(1, SvgUtils.addCouponIcon, TextConstants.cashbackFee),
+              _buildTab(1, SvgUtils.addCouponIcon, TextConstants.cashback),
               const SizedBox(width: 10),
               // Hide divider if current tab (1) or next tab (2) is selected
               if (_selectedTabIndex != 1 && _selectedTabIndex != 2)
@@ -470,7 +477,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
             height: MediaQuery
                 .of(context)
                 .size
-                .height / 2.25,
+                .height / 2.85,
             child: CustomNumPad(
               onDigitPressed: (digit) {
                 setState(() {
@@ -1878,6 +1885,19 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       if (_isPercentageSelected) {
         discountAmount = (discountAmount / 100) * grossTotal;
       }
+      // 🚫 Prevent discount exceeding gross total
+      if (discountAmount > grossTotal) {
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+          const SnackBar(
+            content: Text("Discount cannot be greater than bill amount"),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        setState(() => _isDiscountLoading = false);
+        return;
+      }
+
 
       // Save discount
       order['merchantDiscount'] = discountAmount;
@@ -2295,12 +2315,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       // -------------------------------------------------------
       // ✔ UI feedback
       // -------------------------------------------------------
-      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        SnackBar(
-          content: Text("Cashback ₹${cashbackAmount.toStringAsFixed(2)} applied"),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+      //   SnackBar(
+      //     content: Text("Cashback ₹${cashbackAmount.toStringAsFixed(2)} applied"),
+      //     backgroundColor: Colors.green,
+      //   ),
+      // );
 
       setState(() {
         _cashbackAmount = "";
@@ -2333,10 +2353,21 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   // Preserved success toast, UI refresh, and field clearing logic.
   // Removed commented-out navigation code, as it’s marked as not working.
   Future<void> _handleAddCustomItem() async {
-    if (kDebugMode) print("#### DEBUG 55@99 _handleAddCustomItem");
+    if (kDebugMode) print("🟢 [STEP 0] ENTER _handleAddCustomItem()");
 
-    // 🔹 Validate name
+    // -----------------------------
+    // VALIDATION
+    // -----------------------------
+    if (kDebugMode) {
+      print("🟢 [STEP 1] VALIDATION INPUTS:");
+      print("     • Name:        '$_customItemName'");
+      print("     • Price:       '$_customItemPrice'");
+      print("     • Tax Slab:    '$_selectedTaxSlab'");
+      print("     • SKU:         '$_sku'");
+    }
+
     if (_customItemName.isEmpty) {
+      if (kDebugMode) print("❌ [STEP 1A] Name is empty");
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(
           content: Text(TextConstants.itemNameRequired),
@@ -2347,10 +2378,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       return;
     }
 
-    // 🔹 Validate price
     if (_customItemPrice.isEmpty ||
         double.tryParse(_customItemPrice) == null ||
         double.parse(_customItemPrice) == 0) {
+      if (kDebugMode) {
+        print("❌ [STEP 1B] Invalid price: '$_customItemPrice'");
+      }
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(
           content: Text(TextConstants.invalidPriceError),
@@ -2361,148 +2394,306 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       return;
     }
 
+    if (_selectedTaxSlab.isEmpty) {
+      if (kDebugMode) print("❌ [STEP 1C] Tax slab is empty");
+      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+        const SnackBar(
+          content: Text(TextConstants.taxSlabRequired),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    if (_sku.isEmpty) {
+      if (kDebugMode) print("❌ [STEP 1D] SKU is empty");
+      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+        const SnackBar(
+          content: Text(TextConstants.skuRequired),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    if (kDebugMode) print("✅ [STEP 1] VALIDATION PASSED");
+
     setState(() => _isCustomItemLoading = true);
 
     try {
+      // -----------------------------
+      // PREP ORDER
+      // -----------------------------
+      if (kDebugMode) print("🟡 [STEP 2] PREP ORDER");
+
       final orderHelper = OrderHelper();
-      final serverOrderId =
+      int serverOrderId =
           orderHelper.activeOrderId ?? DateTime.now().millisecondsSinceEpoch;
+
+      if (kDebugMode) {
+        print("   • Existing activeOrderId: ${orderHelper.activeOrderId}");
+        print("   • Using serverOrderId:    $serverOrderId");
+      }
+
       orderHelper.activeOrderId ??= serverOrderId;
 
       final box = Hive.box('offlineOrders');
+      final orderKey = serverOrderId.toString();
 
-      // ✅ Ensure order exists
-      if (!box.containsKey(serverOrderId.toString())) {
-        await box.put(serverOrderId.toString(), {
-          'order_id': serverOrderId,
-          'products': [],
-          'orderAgeRestricted': false,
+      if (!box.containsKey(orderKey)) {
+        if (kDebugMode) {
+          print("   • No existing offline order for $orderKey, creating new...");
+        }
+        await box.put(orderKey, {
+          "order_id": serverOrderId,
+          "created_at": DateTime.now().toIso8601String(),
+          "products": [],
+          "payouts": [],
+          "cashbacks": [],
+          "orderAgeRestricted": false,
         });
-      }
-
-      // ✅ TAX slab logic
-      final List<Tax> taxes = await _assetDBHelper.getTaxList();
-      String taxStatus = "";
-      String taxClass = "";
-      if (_selectedTaxSlab.isNotEmpty) {
-        final selectedTax = taxes.firstWhere(
-              (tax) => tax.name == _selectedTaxSlab,
-          orElse: () =>
-          taxes.isNotEmpty ? taxes.first : Tax(slug: 'none', name: _selectedTaxSlab),
-        );
-        if (selectedTax.slug.isNotEmpty) {
-          taxStatus = TextConstants.taxable;
-          taxClass = selectedTax.slug;
+      } else {
+        if (kDebugMode) {
+          print("   • Found existing offline order for $orderKey");
         }
       }
 
-      // ✅ Always normalize SKU consistently
-      _sku = _sku.trim().isEmpty
-          ? _customItemName.trim().toLowerCase().replaceAll(' ', '')
-          : _sku.trim().toLowerCase();
-      final normalizedSku = _sku;
-
-      // ✅ Load order safely
-      final rawOrder = box.get(serverOrderId.toString()) ?? {};
-      final orderData = Map<String, dynamic>.from(_convertToJsonSafe(rawOrder));
-      final products = (orderData['products'] as List? ?? [])
-          .map((p) => Map<String, dynamic>.from(_convertToJsonSafe(p)))
-          .toList();
-
-      // ✅ Match existing by SKU ONLY (no name match)
-      final existingIndex = products.indexWhere((p) {
-        final storedSku = (p['sku'] ?? '').toString().trim().toLowerCase();
-        return storedSku == normalizedSku;
-      });
-
-      if (existingIndex != -1) {
-        // 🔁 Increase quantity
-        final existingItem = products[existingIndex];
-        final currentQty = (existingItem['quantity'] ?? 1);
-        existingItem['quantity'] = currentQty + 1;
-        products[existingIndex] = existingItem;
-        if (kDebugMode) print("🔁 Increased quantity for SKU: $normalizedSku");
-      } else {
-        // 🆕 Add new
-        final customItem = {
-          'id': normalizedSku.hashCode,
-          'name': _customItemName,
-          'price': double.parse(_customItemPrice),
-          'sku': normalizedSku,
-          'taxStatus': taxStatus,
-          'taxClass': taxClass,
-          'tags': [TextConstants.customItem],
-          'quantity': 1,
-          // ✅ ADD THIS
-          AppDBConst.itemImage: 'assets/custom.png',
-          AppDBConst.itemType: TextConstants.customItemText,
-        };
-        products.add(customItem);
-        if (kDebugMode) print("🆕 Added new custom item SKU: $normalizedSku");
+      final rawOrder = box.get(orderKey);
+      if (kDebugMode) {
+        print("   • rawOrder from Hive: $rawOrder");
       }
 
-      // ✅ Save back
-      await box.put(serverOrderId.toString(), {...orderData, 'products': products});
+      final Map<String, dynamic> orderData =
+      Map<String, dynamic>.from(_convertToJsonSafe(rawOrder));
 
-      // ✅ Cache in Hive + memory
+      final List products = (orderData["products"] ?? [])
+          .map((e) => Map<String, dynamic>.from(_convertToJsonSafe(e)))
+          .toList();
+
+      if (kDebugMode) {
+        print("   • Current products count: ${products.length}");
+        for (var p in products) {
+          print("     - Product in order: sku=${p['sku']}, qty=${p['quantity']}");
+        }
+      }
+
+      // -----------------------------
+      // TAX SLAB
+      // -----------------------------
+      if (kDebugMode) print("🟡 [STEP 3] TAX SLAB LOOKUP");
+
+      final taxes = await _assetDBHelper.getTaxList();
+      if (kDebugMode) {
+        print("   • Available taxes (${taxes.length}): "
+            "${taxes.map((t) => '${t.name}(${t.slug})').join(', ')}");
+        print("   • Selected tax slab: $_selectedTaxSlab");
+      }
+
+      String taxStatus = "";
+      String taxClass = "";
+
+      if (_selectedTaxSlab.isNotEmpty) {
+        final selectedTax = taxes.firstWhere(
+              (t) => t.name == _selectedTaxSlab,
+          orElse: () => taxes.isNotEmpty
+              ? taxes.first
+              : Tax(slug: "none", name: _selectedTaxSlab),
+        );
+
+        taxStatus =
+        selectedTax.slug.isNotEmpty ? TextConstants.taxable : "";
+        taxClass = selectedTax.slug;
+
+        if (kDebugMode) {
+          print("   • Resolved tax → status: '$taxStatus', class: '$taxClass'");
+        }
+      }
+
+      // -----------------------------
+      // NORMALIZE SKU
+      // -----------------------------
+      if (kDebugMode) print("🟡 [STEP 4] NORMALIZE SKU");
+
+      final normalizedSku = normalizeSku(_sku);
+      if (kDebugMode) {
+        print("   • Original SKU:  '${_sku}'");
+        print("   • Normalized:    '$normalizedSku'");
+      }
+
+      // -----------------------------
+      // CHECK IN EXISTING ORDER
+      // -----------------------------
+      if (kDebugMode) print("🟡 [STEP 5] CHECK EXISTING PRODUCT IN ORDER");
+
+      final existingIndex = products.indexWhere((item) {
+        final raw = (item["sku"] ?? "").toString();
+        final stored = normalizeSku(raw);
+        return stored == normalizedSku ||
+            raw == normalizedSku ||
+            raw.toLowerCase() == normalizedSku ||
+            raw.trim() == normalizedSku ||
+            raw.replaceAll(" ", "") == normalizedSku;
+      });
+
+      if (kDebugMode) {
+        print("   • existingIndex: $existingIndex");
+      }
+
+      if (existingIndex != -1) {
+        final oldQty = (products[existingIndex]["quantity"] ?? 1);
+        products[existingIndex]["quantity"] = oldQty + 1;
+
+        if (kDebugMode) {
+          print(
+              "🔁 [STEP 5A] Increased quantity of '$normalizedSku' from $oldQty to ${products[existingIndex]["quantity"]}");
+        }
+      } else {
+        if (kDebugMode) print("🆕 [STEP 5B] Creating NEW custom item");
+
+        final customItem = {
+          "server_item_id": null,
+          "product_id": normalizedSku.hashCode,
+          "variation_id": -1,
+          "type": "custom",
+          "name": _customItemName.trim(),
+          "price": double.parse(_customItemPrice),
+          "sku": normalizedSku,
+          "taxStatus": taxStatus,
+          "taxClass": taxClass,
+          "tags": [TextConstants.customItem],
+          "quantity": 1,
+
+          /// 🔥 FIXED IMAGE KEYS → MUST MATCH YOUR ORDER PANEL UI
+          AppDBConst.itemImage: "assets/custom.png",
+          "item_image": "assets/custom.png",
+          "product_image": "assets/custom.png",
+
+          AppDBConst.itemType: TextConstants.customItemText,
+        };
+
+        products.add(customItem);
+
+        if (kDebugMode) {
+          print("   • Added new custom item:");
+          print("       name: ${customItem['name']}");
+          print("       price: ${customItem['price']}");
+          print("       sku: ${customItem['sku']}");
+        }
+      }
+
+      // -----------------------------
+      // SAVE ORDER BACK
+      // -----------------------------
+      if (kDebugMode) print("🟡 [STEP 6] SAVE ORDER BACK TO HIVE");
+
+      orderData["products"] = products;
+      await box.put(orderKey, orderData);
+
+      if (kDebugMode) {
+        final debugOrder = box.get(orderKey);
+        print("   • Saved order snapshot: $debugOrder");
+      }
+
+      // -----------------------------
+      // CACHE IN productCache
+      // -----------------------------
+      if (kDebugMode) print("🟡 [STEP 7] UPDATE productCache");
+
       final productBox = Hive.box('productCache');
       final cacheKey = "sku_$normalizedSku";
-      final customProductJson = {
+      final cacheItem = {
         "id": normalizedSku.hashCode,
-        "name": _customItemName,
+        "product_id": normalizedSku.hashCode,
+        "variation_id": -1,
+        "name": _customItemName.trim(),
         "type": "custom",
-        "price": _customItemPrice,
+        "is_custom_item": true,
+        "price": double.parse(_customItemPrice).toString(),
         "sku": normalizedSku,
         "taxStatus": taxStatus,
         "taxClass": taxClass,
-        'is_custom_item': true,
         "variations": [],
+
+        /// FIXED IMAGE KEYS
         "images": [
           {"src": "assets/custom.png"}
         ],
-        // ✅ ADD THIS IMAGE PATH
         AppDBConst.itemImage: "assets/custom.png",
-        AppDBConst.itemType: TextConstants.customItemText
+        "item_image": "assets/custom.png",
+        "product_image": "assets/custom.png",
 
+        AppDBConst.itemType: TextConstants.customItemText,
       };
-      print("🔥 Before saving Hive: $cacheKey");
-      await productBox.put(cacheKey, {"products": [customProductJson]});
-      print("🔥 After saving Hive");
-      print("🔥 Hive value: ${productBox.get(cacheKey)}");
 
-      OrderHelper.addToCache(normalizedSku, customProductJson);
+      await productBox.put(cacheKey, {"products": [cacheItem]});
 
       if (kDebugMode) {
-        print("💾 Custom item cached under key: $cacheKey");
-        print("⚡ In-memory cache ready for instant scan recognition");
+        print("   • productCache[$cacheKey] = ${productBox.get(cacheKey)}");
       }
 
-      // ✅ Reset UI
+      // -----------------------------
+      // UPDATE IN-MEMORY CACHE
+      // -----------------------------
+      // -----------------------------
+// UPDATE IN-MEMORY CACHE
+// -----------------------------
+      if (kDebugMode) print("🟡 [STEP 8] UPDATE IN-MEMORY CACHE");
+
+// Save custom item into memory cache
+      OrderHelper.addToCache(normalizedSku, cacheItem);
+
+// PRINT EXACT VALUE STORED IN MEMORY CACHE
+      if (kDebugMode) {
+        final mem = OrderHelper.getFromCache(normalizedSku);
+
+        print("🔥 In-memory cache updated for custom SKU: $normalizedSku");
+        print("🧠 [MEMORY] STORED VALUE → $mem");
+
+        try {
+          print("🧠 [MEMORY] STORED JSON → ${jsonEncode(mem)}");
+        } catch (_) {
+          print("⚠ [MEMORY] Could not encode to JSON");
+        }
+      }
+
+      // -----------------------------
+      // RESET UI
+      // -----------------------------
+      if (kDebugMode) print("🟡 [STEP 9] RESET UI & RELOAD ORDER");
+
       setState(() {
         _isCustomItemLoading = false;
         _customItemName = "";
         _customItemPrice = "";
         _sku = "";
-        _selectedTaxSlab = _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
         _customItemNameController.clear();
         _customItemPriceController.clear();
         _skuController.clear();
+        _selectedTaxSlab =
+        _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
       });
 
       await _orderHelper.loadData();
       await _loadOrderData();
       widget.refreshOrderList?.call();
 
+      if (kDebugMode) print("✅ [STEP 10] Custom item added successfully!");
+
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(
-          content: Text("✅ Custom item added/updated successfully!"),
+          content: Text("✅ Custom item added successfully!"),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 2),
         ),
       );
-    } catch (e) {
-      if (kDebugMode) print("❌ Exception in _handleAddCustomItem: $e");
+    } catch (e, st) {
+      print("❌ [ERROR] Exception in _handleAddCustomItem: $e");
+      print("🧵 StackTrace: $st");
+
       setState(() => _isCustomItemLoading = false);
+
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         SnackBar(
           content: Text("Error adding custom item: $e"),
@@ -2512,6 +2703,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       );
     }
   }
+
+
+
+
 
 
   /// ✅ Converts any deeply nested Map/List from Hive into JSON-safe Map<String, dynamic>

@@ -105,6 +105,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       _showFullSummary = !_showFullSummary;
     });
   }
+  String normalizeSku(String sku) {
+    return sku.trim().toLowerCase().replaceAll(" ", "");
+  }
+
 
   @override
   void initState() {
@@ -780,163 +784,17 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             final trimmedBarcode = barcode.trim();
             if (kDebugMode) print("🔹 Scanned → $trimmedBarcode");
 
-            if (!isOrderInForeground || trimmedBarcode.isEmpty || _isLoading || _isCustomItemLoading) return;
+            if (!isOrderInForeground ||
+                trimmedBarcode.isEmpty ||
+                _isLoading ||
+                _isCustomItemLoading) return;
 
             _isLoading = true;
             if (mounted) setState(() {});
 
-            final productBox = Hive.box('productCache');
-            final cacheKey = "sku_${trimmedBarcode.toLowerCase()}";
-
-            SKU.ProductBySkuResponse? product;
-            bool foundOffline = false;
-
-            // =====================================================================
-            // 1️⃣ IN MEMORY CACHE
-            // =====================================================================
-            try {
-              final memory = OrderHelper.getFromCache(trimmedBarcode);
-              if (memory != null) {
-                product = SKU.ProductBySkuResponse.fromJson(deepCast(memory));
-                foundOffline = true;
-
-                _isLoading = false;
-                if (mounted) setState(() {});
-                return;
-              }
-            } catch (e) {
-              if (kDebugMode) print("⚠ Memory cache parse error: $e");
-            }
-
-            // =====================================================================
-            // 2️⃣ HIVE PER-SKU CACHE  (FULLY FIXED)
-            // =====================================================================
-            try {
-              final cached = productBox.get(cacheKey);
-
-              if (cached != null) {
-                List<dynamic> items = [];
-
-                if (cached is Map && cached["products"] is List) {
-                  items = cached["products"];
-                } else if (cached is List) {
-                  items = cached;
-                } else if (cached is Map) {
-                  items = [cached];
-                }
-
-                if (items.isNotEmpty) {
-                  final parsedList = items.map((e) {
-                    return SKU.ProductBySkuResponse.fromJson(deepCast(e));
-                  }).toList();
-
-                  if (parsedList.isNotEmpty) {
-                    product = parsedList.first;
-                    foundOffline = true;
-
-                    if (kDebugMode)
-                      print("💾 Offline SKU match → ID: ${product?.id}, Name: ${product?.name}");
-
-                    // _isLoading = false;
-                    // if (mounted) setState(() {});
-                    // return;
-                  }
-                }
-              }
-            } catch (e) {
-              if (kDebugMode) print("⚠ Hive per-SKU parse error: $e");
-            }
-
-            // =====================================================================
-            // 3️⃣ FULL PRODUCT LIST CACHE (all_products_list)
-            // =====================================================================
-            try {
-              if (product == null) {
-                final cachedData = productBox.get("all_products_list");
-
-                if (cachedData != null && cachedData is List) {
-                  final allProducts = cachedData.map((e) {
-                    return SKU.ProductBySkuResponse.fromJson(deepCast(e));
-                  }).toList();
-
-                  final matches = allProducts.where((p) =>
-                  (p.sku ?? "").toLowerCase() == trimmedBarcode.toLowerCase());
-
-                  if (matches.isNotEmpty) {
-                    product = matches.first;
-                    foundOffline = true;
-
-                    if (kDebugMode)
-                      print("💾 Full list offline hit → ID: ${product?.id}, Name: ${product?.name}");
-
-                    _isLoading = false;
-                    if (mounted) setState(() {});
-                    return;
-                  }
-                }
-              }
-            } catch (e) {
-              if (kDebugMode) print("⚠ Hive full list parse error: $e");
-            }
-
-            // =====================================================================
-            // 4️⃣ API FETCH (Only if offline not found)
-            // =====================================================================
-            if (product == null) {
-              try {
-                final products = await ProductRepository().fetchProductBySku(trimmedBarcode);
-
-                if (products.isNotEmpty) {
-                  product = products.first;
-
-                  // Clean-safe JSON for caching
-                  final safeJsonList = products.map((p) {
-                    final j = deepCast(p.toJson());
-                    j["id"] = p.id ?? -1;
-                    j["sku"] = (j["sku"] ?? "").toString();
-                    return j;
-                  }).toList();
-
-                  await productBox.put(cacheKey, {
-                    "products": safeJsonList,
-                    "timestamp": DateTime.now().toIso8601String(),
-                  });
-
-                  if (kDebugMode)
-                    print("🌐 Online fetch → ID: ${product?.id}, Name: ${product?.name}");
-                }
-              } catch (e) {
-                if (kDebugMode) print("📴 API fetch error: $e");
-              }
-            }
-
-            // =====================================================================
-            // 5️⃣ No product → open custom item popup
-            // =====================================================================
-            if (product == null) {
-              _isLoading = false;
-              if (mounted) setState(() {});
-              await _openCustomItemDialog(context, trimmedBarcode);
-              return;
-            }
-
-            // =====================================================================
-            // 6️⃣ Basic product fields
-            // =====================================================================
-            final int productId = product.id ?? -1;
-            final String productName = product.name ?? "Unnamed Product";
-            final String productSku = product.sku ?? trimmedBarcode;
-            final double productPrice =
-                double.tryParse(product.price?.toString() ?? "0") ?? 0;
-
-            String image = "";
-            try {
-              if ((product.images ?? []).isNotEmpty) {
-                image = product.images!.first.src ?? "";
-              }
-            } catch (_) {}
-
+            final orderHelper = OrderHelper();
             final activeOrderId = orderHelper.activeOrderId;
+
             if (activeOrderId == null) {
               _isLoading = false;
               if (mounted) setState(() {});
@@ -949,15 +807,230 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               return;
             }
 
+            final productBox = Hive.box('productCache');
+            final cacheKey = "sku_${trimmedBarcode.toLowerCase()}";
 
-/* -----------------------------------------------------------
-   ⭐ NULL-SAFE AGE RESTRICTED PRODUCT DETECTION WITH DEBUG LOGS
-----------//------------------------------------------------- */
-// AGE VERIFICATION — ONLY ONCE PER ORDER
-//------------------------------------------------- */
-/* -----------------------------------------------------------
-   ⭐ AGE RESTRICTION CHECK — ONE TIME PER ORDER (FINAL FIX)
------------------------------------------------------------ */
+            SKU.ProductBySkuResponse? product;
+            bool foundOffline = false;
+
+            // ---------------------------------------------------------------------------
+            // 1️⃣ MEMORY CACHE
+            // ---------------------------------------------------------------------------
+// 1️⃣ MEMORY CACHE
+// ---------------------------------------------------------------------------
+            try {
+              final memoryData = OrderHelper.getFromCache(trimmedBarcode);
+
+              if (memoryData != null) {
+                if (kDebugMode) {
+                  print("💾 MEMORY CACHE HIT");
+                  print("💾 memoryData (raw) → $memoryData");
+                  try {
+                    print("💾 memoryData (json) → ${jsonEncode(memoryData)}");
+                  } catch (_) {
+                    print("💾 memoryData NOT JSON serializable");
+                  }
+                }
+
+                Map<String, dynamic> productMap;
+
+                // Case A → stored as {products:[{...}]}
+                if (memoryData is Map &&
+                    memoryData["products"] is List &&
+                    memoryData["products"].isNotEmpty) {
+                  productMap = Map<String, dynamic>.from(memoryData["products"][0]);
+                }
+                // Case B → stored as flat map
+                else {
+                  productMap = Map<String, dynamic>.from(memoryData);
+                }
+
+                if (kDebugMode) {
+                  print("💾 Extracted productMap from memory → $productMap");
+                  try {
+                    print("💾 productMap JSON → ${jsonEncode(productMap)}");
+                  } catch (_) {
+                    print("💾 productMap not JSON encodable");
+                  }
+                  // ⭐⭐⭐ ADD THESE THREE ⭐⭐⭐
+                  print("🖼 MEMORY productMap['images'] → ${productMap['images']}");
+
+                  if (productMap['images'] is List && productMap['images'].isNotEmpty) {
+                    print("🖼 MEMORY image src → ${productMap['images'][0]['src']}");
+                  } else {
+                    print("🖼 MEMORY image src → NONE");
+                  }
+                }
+
+                product = SKU.ProductBySkuResponse.fromJson(productMap);
+                foundOffline = true;
+
+                if (kDebugMode) {
+                  print("🧠 MEMORY → PRODUCT → name=${product?.name}, price=${product?.price}, sku=${product?.sku}");
+                }
+              }
+            } catch (e, s) {
+              print("❌ MEMORY CACHE ERROR → $e");
+              print("📌 STACKTRACE → $s");
+            }
+
+// ---------------------------------------------------------------------------
+// 2️⃣ PRODUCT CACHE (Custom Items + Normal SKU)
+// ---------------------------------------------------------------------------
+            try {
+              if (product == null) {
+                final cached = productBox.get(cacheKey);
+
+                if (cached != null) {
+                  if (kDebugMode) {
+                    print("💽 HIVE productCache[$cacheKey] RAW → $cached");
+                    try {
+                      print("💽 HIVE JSON → ${jsonEncode(cached)}");
+                    } catch (_) {
+                      print("💽 HIVE map not JSON encodable");
+                    }
+                  }
+
+                  List<dynamic> items = [];
+
+                  if (cached is Map && cached["products"] is List) {
+                    items = cached["products"];
+                  }
+
+                  if (items.isNotEmpty) {
+                    final productMap = Map<String, dynamic>.from(items[0]);
+
+                    if (kDebugMode) {
+                      print("💽 Extracted productMap from Hive → $productMap");
+                      try {
+                        print("💽 productMap JSON → ${jsonEncode(productMap)}");
+                      } catch (_) {
+                        print("💽 productMap not JSON encodable");
+                      }
+                    }
+
+                    product = SKU.ProductBySkuResponse.fromJson(productMap);
+                    foundOffline = true;
+
+                    if (kDebugMode) {
+                      print("🟢 productCache → PRODUCT → name=${product?.name}, price=${product?.price}");
+                    }
+                  }
+                }
+              }
+            } catch (e, s) {
+              print("❌ PRODUCT CACHE ERROR → $e");
+              print("📌 STACKTRACE → $s");
+            }
+
+            // ---------------------------------------------------------------------------
+            // 3️⃣ CUSTOM ITEM → Increment quantity if already in order
+            // ---------------------------------------------------------------------------
+            try {
+              final offlineBox = Hive.box('offlineOrders');
+              final raw = offlineBox.get(activeOrderId.toString());
+
+              if (raw != null) {
+                List<Map<String, dynamic>> orderProducts =
+                List<Map<String, dynamic>>.from(raw["products"] ?? []);
+
+                final existingIndex = orderProducts
+                    .indexWhere((p) => normalizeSku(p["sku"]) == trimmedBarcode);
+
+                if (existingIndex != -1) {
+                  if (kDebugMode) print("🔼 Custom item found → incrementing");
+
+                  orderProducts[existingIndex]["quantity"] =
+                      (orderProducts[existingIndex]["quantity"] ?? 1) + 1;
+
+                  await offlineBox.put(activeOrderId.toString(), {
+                    ...raw,
+                    "products": orderProducts,
+                  });
+
+                  await fetchOrderItems();
+
+                  _isLoading = false;
+                  if (mounted) setState(() {});
+                  return;
+                }
+              }
+            } catch (e) {
+              print("⚠ Offline custom increment error: $e");
+            }
+
+            // ---------------------------------------------------------------------------
+            // 4️⃣ FULL LIST CACHE
+            // ---------------------------------------------------------------------------
+            try {
+              if (product == null) {
+                final allData = productBox.get("all_products_list");
+
+                if (allData is List) {
+                  for (var item in allData) {
+                    final p =
+                    SKU.ProductBySkuResponse.fromJson({"products": [deepCast(item)]});
+                    if ((p.sku ?? "").toLowerCase() == trimmedBarcode.toLowerCase()) {
+                      product = p;
+                      foundOffline = true;
+                      break;
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              if (kDebugMode) print("⚠ full list error: $e");
+            }
+
+            // ---------------------------------------------------------------------------
+            // 5️⃣ ONLINE API FETCH
+            // ---------------------------------------------------------------------------
+            if (product == null) {
+              try {
+                final products =
+                await ProductRepository().fetchProductBySku(trimmedBarcode);
+
+                if (products.isNotEmpty) {
+                  product = products.first;
+
+                  await productBox.put(cacheKey, {
+                    "products": products.map((p) => deepCast(p.toJson())).toList(),
+                    "timestamp": DateTime.now().toIso8601String(),
+                  });
+
+                  if (kDebugMode) print("🌐 Online fetch → ${product?.name}");
+                }
+              } catch (e) {
+                print("📴 API error: $e");
+              }
+            }
+
+            // ---------------------------------------------------------------------------
+            // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
+            // ---------------------------------------------------------------------------
+            if (product == null) {
+              _isLoading = false;
+              if (mounted) setState(() {});
+              await _openCustomItemDialog(context, trimmedBarcode);
+              return;
+            }
+
+            // ---------------------------------------------------------------------------
+            // 7️⃣ EXTRACT PRODUCT DATA
+            // ---------------------------------------------------------------------------
+            final productId = product.id ?? -1;
+            final productName = product.name ?? "Unnamed Product";
+            final productSku = product.sku ?? trimmedBarcode;
+            final productPrice =
+                double.tryParse(product.price?.toString() ?? "0") ?? 0;
+
+            String image = "";
+            if ((product.images ?? []).isNotEmpty) {
+              image = product.images!.first.src ?? "";
+            }
+
+            // ⭐ AGE RESTRICTION CHECK — ONE TIME PER ORDER (FINAL FIX)
+            // ----------------------------------------------------------- */
 
             if (kDebugMode) {
               print("\n---------------- AGE CHECK START ----------------");
@@ -1075,7 +1148,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
             if (kDebugMode) print("---------------- AGE CHECK END ----------------\n");
 
-            // =====================================================================
+
+            // ---------------------------------------------------------------------------
             // 8️⃣ VARIATIONS FLOW
             // =====================================================================
             if ((product.variations ?? []).isNotEmpty) {
@@ -1126,9 +1200,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               }
             }
 
-            // =====================================================================
-            // 9️⃣ NORMAL PRODUCT ADD
-            // =====================================================================
+            // ---------------------------------------------------------------------------
+            // 9️⃣ ADD ITEM TO ORDER
+            // ---------------------------------------------------------------------------
             await orderHelper.addItemToOrder(
               productId,
               productName,
@@ -1140,44 +1214,20 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               type: ItemType.product.value,
               productId: productId,
               variationId: -1,
-              onItemAdded: () {
-                _scaffoldMessenger.showSnackBar(
-                  SnackBar(
-                    content: Text(foundOffline
-                        ? "✅ Added $productName (Offline)"
-                        : "✅ Added $productName"),
-                    backgroundColor: Colors.green,
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-
-              },
             );
-            await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
-
-            print("🟢 Customer Display Updated for Order → $activeOrderId");
-
-            final hive = Hive.box('offlineOrders');
-            print("📦 Hive Data After CD Update:");
-            print(const JsonEncoder.withIndent('  ').convert(hive.get(activeOrderId.toString())));
 
             await fetchOrderItems();
-
 
             _isLoading = false;
             if (mounted) setState(() {});
           } catch (e, s) {
-            if (kDebugMode) print("❌ Scan failed: $e\n$s");
+            print("❌ Scan failed: $e\n$s");
             _isLoading = false;
             if (mounted) setState(() {});
-            _scaffoldMessenger.showSnackBar(
-              SnackBar(
-                content: Text("❌ Scan error: $e"),
-                backgroundColor: Colors.red,
-              ),
-            );
           }
         },
+
+
         child: Stack(
           children: [
             // 🔹 Main Order Panel (Card + Tabs)
@@ -2392,22 +2442,33 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                             fit: BoxFit.cover,
                                             errorBuilder: (context, error,
                                                 stackTrace) {
-                                              return SvgPicture.asset(
-                                                'assets/svg/password_placeholder.svg',
+                                              return Image.asset(
+                                                'assets/custom.png',
                                                 height: MediaQuery.of(context).size.height * 0.08,
                                                 width: MediaQuery.of(context).size.height * 0.08,
                                                 fit: BoxFit.cover,
                                               );
+
                                             },
                                           ),
                                         )
                                             : orderItem[AppDBConst.itemImage].toString().startsWith('assets/')
-                                            ? SvgPicture.asset(
-                                          orderItem[AppDBConst.itemImage],
-                                          height: MediaQuery.of(context).size.height * 0.08,
-                                          width: MediaQuery.of(context).size.height * 0.075,
-                                          fit: BoxFit.cover,
+                                            ? (
+                                            orderItem[AppDBConst.itemImage].toString().endsWith('.svg')
+                                                ? SvgPicture.asset(
+                                              orderItem[AppDBConst.itemImage],
+                                              height: MediaQuery.of(context).size.height * 0.08,
+                                              width: MediaQuery.of(context).size.height * 0.075,
+                                              fit: BoxFit.cover,
+                                            )
+                                                : Image.asset(
+                                              orderItem[AppDBConst.itemImage],
+                                              height: MediaQuery.of(context).size.height * 0.08,
+                                              width: MediaQuery.of(context).size.height * 0.075,
+                                              fit: BoxFit.cover,
+                                            )
                                         )
+
                                             : Platform.isWindows
                                             ? Image.asset(
                                           'assets/default.png',
@@ -2421,12 +2482,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                           width: MediaQuery.of(context).size.height * 0.075,
                                           fit: BoxFit.cover,
                                           errorBuilder: (context, error, stackTrace) {
-                                            return SvgPicture.asset(
-                                              'assets/svg/password_placeholder.svg',
+                                            return Image.asset(
+                                              'assets/custom.png',
                                               height: MediaQuery.of(context).size.height * 0.08,
-                                              width: MediaQuery.of(context).size.height * 0.075,
+                                              width: MediaQuery.of(context).size.height * 0.08,
                                               fit: BoxFit.cover,
                                             );
+
                                           },
                                         ),
                                       ),
