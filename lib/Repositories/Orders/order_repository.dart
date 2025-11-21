@@ -146,23 +146,24 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       Map<String, dynamic> offlineOrder) async {
     try {
       final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
-      final int? existingWooOrderId = wooOrderIdRaw != null
-          ? int.tryParse(wooOrderIdRaw.toString())
-          : null;
+      final int? existingWooOrderId =
+      wooOrderIdRaw != null ? int.tryParse(wooOrderIdRaw.toString()) : null;
 
-      final bool isUpdate = existingWooOrderId != null && existingWooOrderId > 0;
+      final bool isUpdate =
+          existingWooOrderId != null && existingWooOrderId > 0;
+
       final String url = isUpdate
           ? "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$existingWooOrderId"
           : "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
 
       final productsRaw = (offlineOrder['products'] ?? []) as List;
 
-      // -----------------------------------------
-      // ✅ Separate Woo products & custom items
-      // -----------------------------------------
       final List<Map<String, dynamic>> lineItems = [];
-      final List<Map<String, dynamic>> customFeeLines = [];
+      final List<Map<String, dynamic>> feeLines = [];
 
+      // ---------------------------------------------------------
+      // ⭐ HANDLE PRODUCTS (Woo items + Custom items)
+      // ---------------------------------------------------------
       for (var raw in productsRaw) {
         final item = Map<String, dynamic>.from(raw);
 
@@ -172,105 +173,109 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
         final double lineTotal = price * qty;
 
-        // ✅ If no product_id → treat as custom item (fee)
-        if (item['product_id'] == null ||
-            item['product_id'].toString().isEmpty ||
-            item['product_id'] == 0) {
-          customFeeLines.add({
+        final dynamic pidRaw = item['product_id'];
+        final int? pid =
+        pidRaw == null ? null : int.tryParse(pidRaw.toString());
+
+        if (pid == null || pid == 0) {
+          // ---------------------------------------------------------
+          // ⭐ CUSTOM ITEM → MUST GO INTO line_items (not fee_lines)
+          // ---------------------------------------------------------
+          lineItems.add({
             "name": item['name'] ?? "Custom Item",
-            "tax_status": "none",
-            "total": lineTotal.toStringAsFixed(2),
+            "quantity": qty,
+            "sku": item["sku"] ?? item["generated_sku"] ?? "",
+            "price": price.toStringAsFixed(2),
+            "tax_status": "taxable",       // or from item model
+            "tax_class": "",               // keep empty
+            "type": "custom"
           });
           continue;
         }
 
-        // ✅ Normal WooCommerce product
+        // ---------------------------------------------------------
+        // ⭐ WooCommerce normal product
+        // ---------------------------------------------------------
         lineItems.add({
-          "product_id": item['product_id'],
-          "name": item['name'] ?? item['product_name'] ?? '',
+          "product_id": pid,
+          "name": item['name'] ?? "",
+          "quantity": qty,
           "subtotal": lineTotal.toStringAsFixed(2),
           "total": lineTotal.toStringAsFixed(2),
-          "quantity": qty,
         });
       }
 
-      // -----------------------------------------
-      // ✅ Add payout(s) as product line if ID exists
-      // -----------------------------------------
+      // ---------------------------------------------------------
+      // ⭐ HANDLE PAYOUTS
+      // ---------------------------------------------------------
       final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
       for (final p in payouts) {
         final double amount =
             double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0;
+
         final int? productId =
-        int.tryParse(p['payout_product_id']?.toString() ?? '');
+        int.tryParse(p['payout_product_id']?.toString() ?? "");
 
         if (productId != null && productId > 0) {
-          // ✅ Treat payout as product line (negative total)
           lineItems.add({
             "product_id": productId,
-            "name": p['product_name'] ?? 'Payout',
+            "name": p["product_name"] ?? "Payout",
+            "quantity": 1,
             "subtotal": amount.toStringAsFixed(2),
             "total": amount.toStringAsFixed(2),
-            "quantity": 1,
           });
         } else {
-          // ✅ Fallback to fee line if payout product missing
-          customFeeLines.add({
-            "name": p['product_name'] ?? "Payout",
+          feeLines.add({
+            "name": p["product_name"] ?? "Payout",
             "tax_status": "none",
             "total": amount.toStringAsFixed(2),
           });
         }
       }
 
+      // ---------------------------------------------------------
+      // ⭐ HANDLE CASHBACK
+      // ---------------------------------------------------------
       final cashbacks = (offlineOrder['cashbacks'] ?? []) as List? ?? [];
       for (final c in cashbacks) {
         final double amount =
             double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
+
         final int? productId =
-        int.tryParse(c['cashback_product_id']?.toString() ?? '');
+        int.tryParse(c['cashback_product_id']?.toString() ?? "");
 
         if (productId != null && productId > 0) {
-          // ✅ Treat cashback as product line (negative total)
           lineItems.add({
             "product_id": productId,
-            "name": c['product_name'] ?? 'Cashback',
+            "name": c["product_name"] ?? "Cashback",
+            "quantity": 1,
             "subtotal": amount.toStringAsFixed(2),
             "total": amount.toStringAsFixed(2),
-            "quantity": 1,
           });
         } else {
-          // ✅ Fallback to fee line if cashback product missing
-          customFeeLines.add({
-            "name": c['product_name'] ?? "Cashback",
+          feeLines.add({
+            "name": c["product_name"] ?? "Cashback",
             "tax_status": "none",
             "total": amount.toStringAsFixed(2),
           });
         }
       }
 
-
-      // -----------------------------------------
-      // ✅ Calculate total (excluding fees)
-      // -----------------------------------------
+      // ---------------------------------------------------------
+      // ⭐ FINAL TOTAL
+      // ---------------------------------------------------------
       final totalAmount = lineItems.fold<double>(
         0.0,
-            (sum, p) => sum + (double.tryParse(p['total'].toString()) ?? 0.0),
+            (sum, li) =>
+        sum + (double.tryParse(li['total'].toString()) ?? 0.0),
       );
 
-      // -----------------------------------------
-      // ✅ Combine fee lines (custom items only)
-      // -----------------------------------------
-      final allFeeLines = [...customFeeLines];
-
-      // -----------------------------------------
-      // ✅ Additional meta data
-      // -----------------------------------------
+      // ---------------------------------------------------------
+      // ⭐ Meta
+      // ---------------------------------------------------------
       final shiftId = await UserDbHelper().getUserShiftId();
-      if (shiftId == null) throw Exception("Cannot sync: shift not active");
-
       final userData = await UserDbHelper().getUserData();
-      final userId = userData?[AppDBConst.userId] ?? 'admin';
+      final userId = userData?[AppDBConst.userId] ?? "admin";
 
       final metaData = [
         {"key": "pos_device_id", "value": "b31b723b92047f4b"},
@@ -283,69 +288,71 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         metaData.add({"key": "pos_order_tag", "value": "updated_from_pos"});
       }
 
-      // -----------------------------------------
-      // ✅ Final WooCommerce payload
-      // -----------------------------------------
+      // ---------------------------------------------------------
+      // ⭐ FINAL PAYLOAD
+      // ---------------------------------------------------------
       final payload = {
         "payment_method": "cash",
         "payment_method_title": "POS-CASH",
         "set_paid": true,
         "status": "processing",
         "meta_data": metaData,
-        "fee_lines": allFeeLines,
+        "fee_lines": feeLines,
         "line_items": lineItems,
         "tax_lines": [],
       };
 
-      print("🟢 [SYNC] Payload → ${jsonEncode(payload)}");
+      debugPrint("🟢 [SYNC] Woo Payload → ${jsonEncode(payload)}");
 
       final response = isUpdate
           ? await _helper.put(url, payload, true)
           : await _helper.post(url, payload, true);
 
+      final decoded =
+      (response is String) ? jsonDecode(response) : response;
 
-      final decoded = (response is String) ? jsonDecode(response) : response;
-      // 🔵 PRINT THE RESPONSE
       debugPrint(
-        "🟦 [SYNC] Decoded API Response → ${jsonEncode(decoded)}",
+        "🟦 [SYNC] Woo Response → ${jsonEncode(decoded)}",
         wrapWidth: 1024,
       );
-      // 🔥 Extract Cashback Fee directly from Woo response
-      double cashbackFee = 0.0;
 
-      final feeLines = decoded["fee_lines"] as List? ?? [];
-      for (final fee in feeLines) {
+      // ---------------------------------------------------------
+      // ⭐ Extract Cashback Fee (if backend adds it)
+      // ---------------------------------------------------------
+      double cashbackFee = 0.0;
+      final wooFees = decoded["fee_lines"] as List? ?? [];
+      for (final fee in wooFees) {
         final name = fee["name"]?.toString().toLowerCase() ?? "";
         if (name.contains("cashback fee")) {
-          cashbackFee = double.tryParse(fee["total"]?.toString() ?? "0") ?? 0.0;
+          cashbackFee =
+              double.tryParse(fee["total"]?.toString() ?? "0") ?? 0.0;
         }
       }
 
-      print("🟧 Cashback Fee Found: $cashbackFee");
-
-
-
       if (decoded is Map<String, dynamic> && decoded['id'] != null) {
-        final int serverOrderId = int.tryParse(decoded['id'].toString()) ?? 0;
+        final int serverOrderId =
+            int.tryParse(decoded['id'].toString()) ?? 0;
         final double wooTax =
-            double.tryParse(decoded['total_tax']?.toString() ?? "0") ?? 0.0;
+            double.tryParse(decoded['total_tax']?.toString() ?? "0") ??
+                0.0;
         final double wooTotal =
             double.tryParse(decoded['total']?.toString() ?? "0") ?? 0.0;
 
         final box = Hive.box('offlineOrders');
+
         final localOrderId = offlineOrder['id']?.toString() ??
             offlineOrder['order_id']?.toString() ??
             serverOrderId.toString();
+
         offlineOrder['wooOrderId'] = serverOrderId;
         offlineOrder['wooTax'] = wooTax;
         offlineOrder['wooTotal'] = wooTotal;
 
         await box.put(localOrderId, offlineOrder);
-        await box.put(serverOrderId.toString(), {
-          "_map_to_local_": localOrderId,
-        });
-        final int localOrderIdInt = int.tryParse(localOrderId) ?? serverOrderId;
-        CustomerDisplayHelper.updateCustomerDisplay(localOrderIdInt);
+        await box.put(serverOrderId.toString(), {"map_to_local": localOrderId});
+
+        CustomerDisplayHelper.updateCustomerDisplay(
+            int.tryParse(localOrderId) ?? serverOrderId);
 
         return {
           "order_id": serverOrderId,
@@ -360,7 +367,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
     return null;
   }
-
   // 2. Update Order Products
   Future<OrderModel> updateOrderProducts({required int orderId, required UpdateOrderRequestModel request,}) async {
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
@@ -535,7 +541,32 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
   }
 
-  // ADD LOYALTY POINTS API
+  Future<dynamic> redeemLoyaltyPoints({
+    required int orderId,
+    required String contact,
+    required double redeemAmount,
+    required int redeemPoints,
+  }) async {
+
+
+    final String url =
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.loyaltyRedeem}";
+    final body = {
+      "redeem_points": redeemPoints,
+      "redeem_amount": redeemAmount,
+      "contact": contact,
+      "order_id": orderId
+    };
+    final response = await _helper.post(
+      url,
+      body,
+      true,
+      validateMarchentUrl: true,
+    );
+
+    return response;
+  }
+
   Future<dynamic> addLoyaltyPoints({
     required int orderId,
     required String contact,

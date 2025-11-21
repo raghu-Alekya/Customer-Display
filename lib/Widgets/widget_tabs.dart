@@ -277,7 +277,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               // Hide divider if current tab (0) or next tab (1) is selected
               if (_selectedTabIndex != 0 && _selectedTabIndex != 1)
                 Divider(height: 1, thickness: 0.1, indent: 10, endIndent: 10),
-              _buildTab(1, SvgUtils.addCouponIcon, TextConstants.cashback),
+              _buildTab(1, SvgUtils.cashbackIcon, TextConstants.cashback),
               const SizedBox(width: 10),
               // Hide divider if current tab (1) or next tab (2) is selected
               if (_selectedTabIndex != 1 && _selectedTabIndex != 2)
@@ -1783,13 +1783,14 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   // Ensured _isDiscountLoading is shown during API calls and cleared afterward.
   // Preserved success toast and UI refresh logic.
   void _handleAddDiscount() async {
-    if (kDebugMode) print("#### DEBUG: _handleAddDiscount called");
+    print("🟦 [DISCOUNT] START ---- _handleAddDiscount() ----");
 
-    final orderId = OrderHelper().activeOrderId;
-    if (orderId == null) {
+    if (_discountValue.isEmpty ||
+        _discountValue == "0" ||
+        double.tryParse(_discountValue.replaceAll('%', '')) == null) {
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(
-          content: Text(TextConstants.noActiveOrderError),
+          content: Text("Invalid discount amount"),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 2),
         ),
@@ -1800,13 +1801,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     setState(() => _isDiscountLoading = true);
 
     try {
-      final box = Hive.box('offlineOrders');
-      final orderKey = orderId.toString();
+      final offlineBox = Hive.box('offlineOrders');
+      final orderHelper = OrderHelper();
 
-      if (!box.containsKey(orderKey)) {
+      int? orderId = orderHelper.activeOrderId;
+
+      if (orderId == null) {
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
-            content: Text("Cannot apply discount to empty order"),
+            content: Text("No active order found"),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 2),
           ),
@@ -1815,141 +1818,126 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         return;
       }
 
-      final order = Map<String, dynamic>.from(box.get(orderKey));
+      final key = orderId.toString();
+      final existingOrder = Map<String, dynamic>.from(offlineBox.get(key));
 
-      // Prevent changing an existing discount
-      final existingDiscount = (order['merchantDiscount'] is num)
-          ? (order['merchantDiscount'] as num).toDouble()
-          : 0.0;
-      if (existingDiscount > 0) {
-        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-          const SnackBar(
-            content: Text(
-                "Discount already applied. Delete it first to modify."),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        setState(() => _isDiscountLoading = false);
-        return;
-      }
-
-      final productsRaw = order['products'] as List? ?? [];
-      if (productsRaw.isEmpty) {
-        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-          const SnackBar(
-            content: Text("Cannot apply discount to empty order"),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        setState(() => _isDiscountLoading = false);
-        return;
-      }
-
-      // Validate discount input
-      String discountValue = _discountValue
-          .replaceAll('%', '')
-          .replaceAll(TextConstants.currencySymbol, '');
-      if (discountValue.isEmpty ||
-          discountValue == "0" ||
-          double.tryParse(discountValue) == null) {
-        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-          const SnackBar(
-            content: Text(TextConstants.invalidDiscountError),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        setState(() => _isDiscountLoading = false);
-        return;
-      }
-
-      final products = productsRaw
-          .map((e) => Map<String, dynamic>.from(e as Map))
+      // Load existing discount list
+      final discounts = (existingOrder["discounts"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
-      // Calculate gross total
-      double grossTotal = products.fold(0.0, (sum, item) {
-        final price = (item['price'] is num)
-            ? (item['price'] as num).toDouble()
-            : double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-        final qty = (item['quantity'] is num)
-            ? (item['quantity'] as num).toDouble()
-            : double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
-        return sum + (price * qty);
-      });
-
-      // Calculate discount
-      double discountAmount = double.parse(discountValue);
-      if (_isPercentageSelected) {
-        discountAmount = (discountAmount / 100) * grossTotal;
-      }
-      // 🚫 Prevent discount exceeding gross total
-      if (discountAmount > grossTotal) {
+      if (discounts.isNotEmpty) {
+        setState(() => _isDiscountLoading = false);
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
-            content: Text("Discount cannot be greater than bill amount"),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
+            content: Text("A discount already exists for this order."),
+            backgroundColor: Colors.orange,
           ),
         );
-        setState(() => _isDiscountLoading = false);
         return;
       }
 
+      final products = (existingOrder["products"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
 
-      // Save discount
-      order['merchantDiscount'] = discountAmount;
-      order['merchantDiscountIsPercentage'] = _isPercentageSelected;
+      double grossTotal = 0.0;
+      for (var p in products) {
+        final price = (p["price"] is num)
+            ? (p["price"] as num).toDouble()
+            : double.tryParse(p["price"].toString()) ?? 0.0;
 
-      // Calculate totals
-      double orderTax = (order['orderTax'] is num)
-          ? (order['orderTax'] as num).toDouble()
-          : 0.0;
-      double netTotal = grossTotal - discountAmount;
-      double netPayable = netTotal + orderTax;
+        final qty = (p["quantity"] is num)
+            ? (p["quantity"] as num).toDouble()
+            : double.tryParse(p["quantity"].toString()) ?? 1.0;
 
-      order['grossTotal'] = grossTotal;
-      order['netTotal'] = netTotal;
-      order['netPayable'] = netPayable;
+        grossTotal += (price * qty);
+      }
 
-      await box.put(orderKey, order);
+      String parsedValue =
+      _discountValue.replaceAll('%', '').replaceAll("₹", "").trim();
 
-      // Reset UI
-      setState(() {
-        _discountValue = _isPercentageSelected ? "0.00%" : "0.00";
-        _isDiscountLoading = false;
-      });
+      double discountAmount = double.parse(parsedValue);
+      bool isPercentage = _isPercentageSelected;
 
-      await _orderHelper.loadData();
-      await _loadOrderData();
-      widget.refreshOrderList?.call();
+      if (isPercentage) {
+        discountAmount = (discountAmount / 100) * grossTotal;
+      }
+
+      if (discountAmount > grossTotal) {
+        setState(() => _isDiscountLoading = false);
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+          const SnackBar(
+            content: Text("Discount cannot exceed total amount"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final discountEntry = {
+        "order_id": orderId,
+        "discount_amount": -discountAmount, // negative for calculation
+        "display_amount": discountAmount, // positive for UI
+        "discount_type": isPercentage ? "percentage" : "fixed",
+        "original_input": _discountValue,
+        "timestamp": DateTime.now().toIso8601String(),
+      };
+
+      discounts.add(discountEntry);
+
+      double payoutsTotal = 0.0;
+      final payouts = (existingOrder["payouts"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+
+      for (var p in payouts) {
+        payoutsTotal += (p["amount"] ?? 0);
+      }
+
+      // Update totals
+      double finalTotal = grossTotal - discountAmount + payoutsTotal;
+
+      final updatedOrder = {
+        ...existingOrder,
+        "products": products,
+        "discounts": discounts,
+        "gross_total": grossTotal,
+        "net_total": grossTotal - discountAmount,
+        "net_payable": finalTotal,
+      };
+
+      await offlineBox.put(key, updatedOrder);
 
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         SnackBar(
           content: Text(
-              "Discount of ${TextConstants.currencySymbol}${discountAmount.toStringAsFixed(2)} applied"),
+              "Discount of ₹${discountAmount.toStringAsFixed(2)} applied"),
           backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
         ),
       );
 
-      if (kDebugMode) print(
-          "✅ Merchant discount applied locally: $discountAmount, NetPayable: $netPayable");
+      setState(() {
+        _discountValue = isPercentage ? "0%" : "0";
+        _isDiscountLoading = false;
+      });
 
-    } catch (e) {
-      if (kDebugMode) print("Error applying discount: $e");
+      await _loadOrderData();
+      widget.refreshOrderList?.call();
+
+      print("✅ [DISCOUNT] DONE ---- _handleAddDiscount() ----");
+    } catch (e, s) {
+      print("🟥 [DISCOUNT] ERROR: $e\n$s");
       setState(() => _isDiscountLoading = false);
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         SnackBar(
           content: Text("Error applying discount: $e"),
           backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
         ),
       );
     }
   }
+
 // Handle adding the coupon
 //   void _handleAddCoupon() async {
 //     if (_couponCode.isEmpty || _couponCode == "0") {
@@ -2554,14 +2542,14 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
         final customItem = {
           "server_item_id": null,
-          "product_id": normalizedSku.hashCode,
-          "variation_id": -1,
+          // "product_id": normalizedSku.hashCode,
+          // "variation_id": -1,
           "type": "custom",
           "name": _customItemName.trim(),
           "price": double.parse(_customItemPrice),
           "sku": normalizedSku,
-          "taxStatus": taxStatus,
-          "taxClass": taxClass,
+          "tax_Status": taxStatus,
+          "tax_Class": taxClass,
           "tags": [TextConstants.customItem],
           "quantity": 1,
 
@@ -2604,16 +2592,16 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       final productBox = Hive.box('productCache');
       final cacheKey = "sku_$normalizedSku";
       final cacheItem = {
-        "id": normalizedSku.hashCode,
-        "product_id": normalizedSku.hashCode,
-        "variation_id": -1,
+        // "id": normalizedSku.hashCode,
+        // "product_id": normalizedSku.hashCode,
+        // "variation_id": -1,
         "name": _customItemName.trim(),
         "type": "custom",
         "is_custom_item": true,
         "price": double.parse(_customItemPrice).toString(),
         "sku": normalizedSku,
-        "taxStatus": taxStatus,
-        "taxClass": taxClass,
+        "tax_Status": taxStatus,
+        "tax_Class": taxClass,
         "variations": [],
 
         /// FIXED IMAGE KEYS

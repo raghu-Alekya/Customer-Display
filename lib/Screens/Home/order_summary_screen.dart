@@ -119,6 +119,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   double cashbackFee =0.0;
   bool isPhoneValid = false;
   bool isEmailValid = false;
+  Map<String, dynamic>? loyaltyData;   // ⭐ store full API data globally
+
 
 
   double NetTotal=0.0;
@@ -1021,6 +1023,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           InkWell(
                             onTap: () async {
                               if (showCustomerInput) {
+                                if (redeemedValue > 0) {
+                                  return;
+                                }
                                 // USER PRESSED CANCEL → JUST RESET UI
                                 setState(() {
                                   mobileController.clear();
@@ -1046,16 +1051,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 );
 
                                 final result = jsonDecode(rawResponse);
-                                final rawPoints = result["data"]["available_points"];
-                                final newPoints = int.tryParse(rawPoints.toString()) ?? 0;
+                                final data = result["data"];
+
+                                // ⭐ Extract the needed values
+                                final int pts = int.tryParse(data["available_points"].toString()) ?? 0;
+
+                                // ⭐ Save to state exactly once
+                                setState(() {
+                                  loyaltyData = data;        // FULL API DATA stored here
+                                  availablePoints = pts;     // Update UI immediately
+                                  isRedeemActive = true;     // Enable redeem button
+                                  showCustomerInput = true;  // Switch button to Cancel
+                                });
 
                                 if (mounted) {
-                                  setState(() {
-                                    availablePoints = newPoints;
-                                    isRedeemActive = true;
-                                    showCustomerInput = true;
-                                  });
-
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
                                       content: Text("Loyalty Points Added Successfully!"),
@@ -1073,13 +1082,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               margin: const EdgeInsets.all(2),
                               padding: const EdgeInsets.fromLTRB(20, 8, 28, 8),
                               decoration: BoxDecoration(
-                                color: !(isPhoneValid || isEmailValid)
+                                color: (redeemedValue > 0)
+                                    ? Colors.grey.shade400
+                                    : !(isPhoneValid || isEmailValid)
                                     ? Colors.grey.shade400
                                     : showCustomerInput
                                     ? Colors.red
                                     : Theme.of(context).brightness == Brightness.dark
-                                    ? const Color(0xFF262D41) // Dark mode add button color
-                                    : const Color(0xFF3B4259), // Light mode add button color
+                                    ? const Color(0xFF262D41)
+                                    : const Color(0xFF3B4259),
+                                // Light mode add button color
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
@@ -1227,6 +1239,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
                                 isTotal: true),
 
+                            if (redeemedValue > 0)
+                              _buildOrderCalculation(
+                                "Redeemed Amount",
+                                '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
+                                isDiscount: true,
+                              ),
+
+
                             _buildOrderCalculation(
                                 TextConstants.payByCash,
                                 '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
@@ -1242,26 +1262,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             _buildOrderCalculation(
                                 TextConstants.change,
                                 '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
-
-                            if (redeemedValue > 0) ...[
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 4),
-                                child: Text(
-                                  'Rewards Redeemed',
-                                  style: TextStyle(
-                                    color: Color(0xFF2FC921),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-
-                              _buildOrderCalculation(
-                                "Rewards Redeemed",
-                                "-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}",
-                                isDiscount: true,
-                              ),
-                            ],
                           ],
                         ),
                       ),
@@ -1479,25 +1479,34 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         fit: BoxFit.contain,
       );
     } else if (isCustomItem) {
-      imageWidget = SvgPicture.asset(
-        'assets/svg/custom_item.svg', // 👈 custom item icon
-        fit: BoxFit.contain,
+      // Custom item MUST show PNG
+      imageWidget = Image.asset(
+        'assets/custom.png',
+        fit: BoxFit.cover,
       );
+
     } else if (itemImage.startsWith('http')) {
+      // HTTP product image
       imageWidget = Image.network(
         itemImage,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) =>
-            SvgPicture.asset('assets/svg/password_placeholder.svg'),
+            Image.asset('assets/custom.png'), // PNG fallback instead of SVG
       );
+
     } else if (itemImage.startsWith('assets/')) {
-      imageWidget = SvgPicture.asset(
+      // Local asset image (.png / .jpg)
+      imageWidget = Image.asset(
         itemImage,
         fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            Image.asset('assets/custom.png'), // fallback PNG
       );
+
     } else {
+      // Final fallback
       imageWidget = Image.asset(
-        'assets/default.png',
+        'assets/custom.png',
         fit: BoxFit.cover,
       );
     }
@@ -2196,46 +2205,66 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               _buildPaymentOptionButton(
                                 TextConstants.redeemPoints,
                                 "assets/redeem.png",
-                                isActive: isRedeemActive,
-                                onTap: () {
-                                  // If button is not active, block the tap
-                                  if (!isRedeemActive) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text("Enter valid 10-digit mobile number"),
-                                        duration: Duration(seconds: 2),
-                                      ),
-                                    );
-                                    return;
+                                isActive: isRedeemActive && redeemedValue == 0,
+                                onTap: () async {
+                                  if (!isRedeemActive || redeemedValue > 0) {
+                                    return; // ❌ Disable when points already redeemed
                                   }
 
-                                  // If active but mobile invalid → still block
                                   if (!isMobileValid && !isEmailValid) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text("Enter valid mobile number or email"),
-                                        duration: Duration(seconds: 2),
-                                      ),
+                                      const SnackBar(content: Text("Enter valid mobile number or email")),
                                     );
                                     return;
                                   }
 
-                                  // ✔ Redeem is active
-                                  // ✔ Mobile is valid
-                                  // → OPEN POPUP
-                                  showDialog(
+                                  final result = await showDialog(
                                     context: context,
                                     barrierDismissible: false,
-                                    builder: (_) {
-                                      return RedeemPointsDialog(
-                                        customerMobile: mobileController.text,
-                                        availablePoints: availablePoints,
-                                        orderTotal: orderTotalAmount,
-                                      );
-                                    },
+                                    builder: (_) => RedeemPointsDialog(apiData: loyaltyData!),
                                   );
+
+                                  if (result == null) return;
+                                  if (result["remove"] == true) {
+                                    setState(() {
+                                      redeemedValue = 0;
+                                      computedNetPayable = NetTotal;
+                                    });
+                                    return;
+                                  }
+
+                                  final redeemApi = jsonDecode(result["apiResponse"]);
+
+                                  if (redeemApi != null && redeemApi["success"] == true) {
+                                    final data = redeemApi["data"];
+
+                                    final double redeemedAmount =
+                                        double.tryParse(data["redeem_amount"].toString()) ?? 0.0;
+
+                                    final double updatedPayable =
+                                        double.tryParse(data["order_total"].toString()) ?? computedNetPayable;
+
+                                    setState(() {
+                                      redeemedValue = redeemedAmount;
+                                      balanceAmount = updatedPayable;
+
+                                      availablePoints =
+                                          int.tryParse(data["available_points"].toString()) ?? availablePoints;
+
+                                      // 🔥 Disable add & redeem after using points
+                                      isRedeemActive = false;
+                                    });
+
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text("Points redeemed successfully"),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  }
                                 },
                               ),
+
                               const SizedBox(height: 20),
 
                               _buildCouponButton(

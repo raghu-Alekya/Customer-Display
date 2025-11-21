@@ -17,4 +17,5 @@ class SvgUtils {
   static const String themeIcon = 'assets/svg/theme_icon.svg';
   static const String cashDrawerIcon = 'assets/svg/cash_drawer.svg';
   static const String changeModeIcon = 'assets/svg/change_mode.svg';
+  static const String cashbackIcon = 'assets/svg/cashbackicon.svg';
 }

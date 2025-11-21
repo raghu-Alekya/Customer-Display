@@ -969,119 +969,18 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                     children: [
                                       // Replace the ClipRRect widget with this:
                                       ClipRRect(
-                                        // Build #1.0.13 : updated images from db not static default images
                                         borderRadius: BorderRadius.circular(5),
-                                        child: orderItem[AppDBConst.itemImage]
-                                            .toString()
-                                            .startsWith('http')
-                                            ? SizedBox(
-                                          height: MediaQuery.of(context)
-                                              .size
-                                              .height *
-                                              0.08,
-                                          width: MediaQuery.of(context)
-                                              .size
-                                              .height *
-                                              0.075,
-                                          child: Image.network(
-                                            orderItem[
-                                            AppDBConst.itemImage],
-                                            height: MediaQuery.of(context)
-                                                .size
-                                                .height *
-                                                0.08,
-                                            width: MediaQuery.of(context)
-                                                .size
-                                                .height *
-                                                0.075,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (context, error,
-                                                stackTrace) {
-                                              return SvgPicture.asset(
-                                                'assets/svg/password_placeholder.svg',
-                                                height:
-                                                MediaQuery.of(context)
-                                                    .size
-                                                    .height *
-                                                    0.08,
-                                                width:
-                                                MediaQuery.of(context)
-                                                    .size
-                                                    .height *
-                                                    0.075,
-                                                fit: BoxFit.cover,
-                                              );
-                                            },
-                                          ),
-                                        )
-                                            : orderItem[AppDBConst.itemImage]
-                                            .toString()
-                                            .startsWith('assets/')
-                                            ? SvgPicture.asset(
-                                          orderItem[
-                                          AppDBConst.itemImage],
-                                          height:
-                                          MediaQuery.of(context)
-                                              .size
-                                              .height *
-                                              0.08,
-                                          width:
-                                          MediaQuery.of(context)
-                                              .size
-                                              .height *
-                                              0.075,
-                                          fit: BoxFit.cover,
-                                        )
-                                            : Platform.isWindows
-                                            ? Image.asset(
-                                          'assets/default.png',
-                                          height: MediaQuery.of(
-                                              context)
-                                              .size
-                                              .height *
-                                              0.08,
-                                          width: MediaQuery.of(
-                                              context)
-                                              .size
-                                              .height *
-                                              0.075,
-                                          fit: BoxFit.cover,
-                                        )
-                                            : Image.file(
-                                          File(orderItem[
-                                          AppDBConst
-                                              .itemImage]),
-                                          height: MediaQuery.of(
-                                              context)
-                                              .size
-                                              .height *
-                                              0.08,
-                                          width: MediaQuery.of(
-                                              context)
-                                              .size
-                                              .height *
-                                              0.075,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context,
-                                              error, stackTrace) {
-                                            return SvgPicture
-                                                .asset(
-                                              'assets/svg/password_placeholder.svg',
-                                              height: MediaQuery.of(
-                                                  context)
-                                                  .size
-                                                  .height *
-                                                  0.08,
-                                              width: MediaQuery.of(
-                                                  context)
-                                                  .size
-                                                  .height *
-                                                  0.075,
-                                              fit: BoxFit.cover,
-                                            );
-                                          },
+                                        child: buildProductImage(
+                                          orderItem[AppDBConst.itemImage]?.toString(),
+                                          height: MediaQuery.of(context).size.height * 0.08,
+                                          width: MediaQuery.of(context).size.height * 0.075,
                                         ),
                                       ),
+
+
+
+
+
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Column(
@@ -1866,6 +1765,55 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
             ),
           ),
       ],
+    );
+  }
+
+  Widget buildProductImage(String? imagePath,
+      {double height = 60, double width = 60}) {
+    const String fallback = 'assets/custom.png';
+
+    // No image at all → use fallback
+    if (imagePath == null || imagePath.isEmpty) {
+      return Image.asset(
+        fallback,
+        height: height,
+        width: width,
+        fit: BoxFit.cover,
+      );
+    }
+
+    // HTTP image
+    if (imagePath.startsWith('http')) {
+      return Image.network(
+        imagePath,
+        height: height,
+        width: width,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) {
+          return Image.asset(
+            fallback,
+            height: height,
+            width: width,
+            fit: BoxFit.cover,
+          );
+        },
+      );
+    }
+
+    // Local asset .png/.jpg
+    return Image.asset(
+      imagePath,
+      height: height,
+      width: width,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) {
+        return Image.asset(
+          fallback,
+          height: height,
+          width: width,
+          fit: BoxFit.cover,
+        );
+      },
     );
   }
 
