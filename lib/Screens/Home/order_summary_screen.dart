@@ -1304,16 +1304,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     top: _showFullSummary
                         ? ResponsiveLayout.getPadding(2)
                         : ResponsiveLayout.getPadding(8),
-                    right: ResponsiveLayout.getPadding(8),
-                    left: ResponsiveLayout.getPadding(8),
+                    right: ResponsiveLayout.getPadding(1),
+                    left: ResponsiveLayout.getPadding(1),
                     bottom: ResponsiveLayout.getPadding(8),
                   ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.only(
-                      bottomRight:
-                          Radius.circular(ResponsiveLayout.getRadius(10)),
-                      bottomLeft:
-                          Radius.circular(ResponsiveLayout.getRadius(10)),
+                      bottomRight: Radius.circular(ResponsiveLayout.getRadius(10)),
+                      bottomLeft: Radius.circular(ResponsiveLayout.getRadius(10)),
                       topLeft: _showFullSummary
                           ? Radius.zero
                           : Radius.circular(ResponsiveLayout.getRadius(10)),
@@ -1322,11 +1320,23 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           : Radius.circular(ResponsiveLayout.getRadius(10)),
                     ),
                     color: themeHelper.themeMode == ThemeMode.dark
-                        ? ThemeNotifier.orderPanelSummary
-                        : Colors.grey.shade300,
+                        ? Color(0xFF32343E)
+                        : const Color(0xFFEAEDFE),
+
+                    /// ⭐ ADD THIS SHADOW
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(
+                            themeHelper.themeMode == ThemeMode.dark ? 0.3 : 0.15),
+                        offset: const Offset(0, 3),
+                        blurRadius: 3,
+                        spreadRadius: 1,
+                      ),
+                    ],
                   ),
+
                   padding: EdgeInsets.symmetric(
-                    horizontal: ResponsiveLayout.getPadding(8),
+                    horizontal: ResponsiveLayout.getPadding(18),
                     vertical: ResponsiveLayout.getPadding(14),
                   ),
                   child: Row(
@@ -1685,8 +1695,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 // ---------------- SERVICE CHARGE ( #0A122D ) ----------------
     else if (label == TextConstants.servicecharges ||
         label.toLowerCase().contains("service")) {
-      labelColor = const Color(0xFF0A122D);
-      amountColor = const Color(0xFF0A122D);
+      labelColor = themeHelper.themeMode == ThemeMode.dark
+          ? const Color(0xFFFFFFFF)   // White for dark mode
+          : const Color(0xFF0A122D);  // Dark blue for light mode
+
+      amountColor = themeHelper.themeMode == ThemeMode.dark
+          ? const Color(0xFFFFFFFF)   // White in dark mode
+          : const Color(0xFF0A122D);  // Dark blue in light mode
+
       leadingIcon = SvgPicture.asset(
         'assets/cashicon.svg', // update asset name
         colorFilter: const ColorFilter.mode(Color(0xFF0A122D), BlendMode.srcIn),
@@ -1695,8 +1711,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     // ---------------- NET TOTAL ( #373535 ) ----------------
     else if (label == TextConstants.NetTotal ||
         label.toLowerCase().contains("net total")) {
-      labelColor = const Color(0xFF373535);
-      amountColor = const Color(0xFF373535);
+      labelColor = themeHelper.themeMode == ThemeMode.dark
+          ? const Color(0xFFFFFFFF)   // White in dark mode
+          : const Color(0xFF373535);  // Dark grey in light mode
+
+
+      amountColor = themeHelper.themeMode == ThemeMode.dark
+          ? const Color(0xFFFFFFFF)   // White in dark mode
+          : const Color(0xFF373535);  // Dark blue in light mode
 
       // Make NET TOTAL bold
       labelFontWeight = FontWeight.w900;
@@ -1974,17 +1996,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                     ? (themeHelper.themeMode ==
                                                             ThemeMode.dark
                                                         ? ThemeNotifier.textDark
-                                                        : Colors.grey[800])
+                                                        : Colors.grey[900])
                                                     : (themeHelper.themeMode ==
                                                             ThemeMode.dark
                                                         ? ThemeNotifier.textDark
-                                                        : Colors.grey[400]),
+                                                        : Colors.grey[900]),
                                                 fontSize: ResponsiveLayout
                                                     .getFontSize(20),
-                                                fontWeight: _isAmountEntered
-                                                    ? FontWeight.bold
-                                                    : FontWeight.normal,
-                                              ),
+                                                fontWeight: FontWeight.bold,                                              ),
                                             ),
                                           ),
                                           if (_amountErrorText != null)
@@ -2394,7 +2413,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return InkWell(
       onTap: isActive ? onTap : null, // 🔹 Disable tap
       child: Container(
-        height: 74,
+        height: 70,
         width: 168,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
@@ -2897,7 +2916,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return InkWell(
       onTap: onTap,
       child: Container(
-        height: 74,
+        height: 70,
         width: 168,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(

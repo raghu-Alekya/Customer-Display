@@ -2709,55 +2709,63 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                         }
 
                                         // Step 1: Show confirmation dialog
-                                        await CustomDialog.showRemoveSpecialOrderItemsConfirmation(context, confirm: () async {
-                                          setState(() => _isLoading = true);
+                                        await CustomDialog.showRemoveSpecialOrderItemsConfirmation(
+                                          context,
+                                          confirm: () async {
+                                            setState(() => _isLoading = true);
 
-                                          final offlineBox = Hive.box('offlineOrders');
-                                          final rawOrder = offlineBox.get(activeOrderId.toString());
+                                            final offlineBox = Hive.box('offlineOrders');
+                                            final rawOrder = offlineBox.get(activeOrderId.toString());
 
-                                          if (rawOrder == null) {
-                                            setState(() => _isLoading = false);
-                                            _scaffoldMessenger.showSnackBar(
-                                              const SnackBar(
-                                                content: Text("No offline order found"),
-                                                backgroundColor: Colors.red,
-                                                duration: Duration(seconds: 2),
-                                              ),
-                                            );
-                                            return;
-                                          }
+                                            if (rawOrder == null) {
+                                              setState(() => _isLoading = false);
+                                              _scaffoldMessenger.showSnackBar(
+                                                const SnackBar(
+                                                  content: Text("No offline order found"),
+                                                  backgroundColor: Colors.red,
+                                                  duration: Duration(seconds: 2),
+                                                ),
+                                              );
+                                              return;
+                                            }
 
-                                          // Convert to Map
-                                          final Map<String, dynamic> order = Map<String, dynamic>.from(rawOrder);
+                                            // Convert to Map
+                                            final Map<String, dynamic> order = Map<String, dynamic>.from(rawOrder);
 
-                                          // Remove merchant discount
-                                          if (order.containsKey('merchantDiscount') || order.containsKey('merchantDiscountIds')) {
-                                            order['merchantDiscount'] = 0; // or null
-                                            order['merchantDiscountIds'] = [];
-                                            await offlineBox.put(activeOrderId.toString(), order);
+                                            // Remove merchant discount completely
+                                            if (order.containsKey('merchantDiscount') || order.containsKey('merchantDiscountIds')) {
 
-                                            setState(() => _isLoading = false);
-                                            _scaffoldMessenger.showSnackBar(
-                                              const SnackBar(
-                                                content: Text("Merchant discount removed locally"),
-                                                backgroundColor: Colors.green,
-                                                duration: Duration(seconds: 2),
-                                              ),
-                                            );
+                                              order.remove('merchantDiscount');
+                                              order.remove('merchantDiscountIds');
+                                              order.remove('discounts');
 
-                                            widget.refreshOrderList?.call(); // Refresh UI
-                                          } else {
-                                            setState(() => _isLoading = false);
-                                            _scaffoldMessenger.showSnackBar(
-                                              const SnackBar(
-                                                content: Text("No merchant discount found on this order"),
-                                                backgroundColor: Colors.red,
-                                                duration: Duration(seconds: 2),
-                                              ),
-                                            );
-                                          }
-                                        });
+                                              await offlineBox.put(activeOrderId.toString(), order);
+
+                                              setState(() => _isLoading = false);
+                                              _scaffoldMessenger.showSnackBar(
+                                                const SnackBar(
+                                                  content: Text("Merchant discount removed locally"),
+                                                  backgroundColor: Colors.green,
+                                                  duration: Duration(seconds: 2),
+                                                ),
+                                              );
+
+                                              widget.refreshOrderList?.call();  // Refresh summary & order panel
+
+                                            } else {
+                                              setState(() => _isLoading = false);
+                                              _scaffoldMessenger.showSnackBar(
+                                                const SnackBar(
+                                                  content: Text("No merchant discount found on this order"),
+                                                  backgroundColor: Colors.red,
+                                                  duration: Duration(seconds: 2),
+                                                ),
+                                              );
+                                            }
+                                          },
+                                        );
                                       },
+
 
                                       child: SvgPicture.asset("assets/svg/delete.svg", height: 24, width: 24),
                                     ),

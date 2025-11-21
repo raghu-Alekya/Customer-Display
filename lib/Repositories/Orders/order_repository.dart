@@ -260,6 +260,25 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           });
         }
       }
+      // ---------------------------------------------------------
+// ⭐ HANDLE MERCHANT DISCOUNT (AS LINE ITEM)
+// ---------------------------------------------------------
+      final dynamic discountRaw = offlineOrder['merchantDiscount'];
+      double merchantDiscount =
+          double.tryParse(discountRaw?.toString() ?? "0") ?? 0.0;
+
+      if (merchantDiscount > 0) {
+        lineItems.add({
+          "name": "Merchant Discount",
+          "sku": "POS-DISCOUNT",
+          "quantity": 1,
+          "subtotal": (-merchantDiscount).toStringAsFixed(2),
+          "total": (-merchantDiscount).toStringAsFixed(2),
+          "tax_status": "none",
+          "type": "discount"
+        });
+      }
+
 
       // ---------------------------------------------------------
       // ⭐ FINAL TOTAL
@@ -328,6 +347,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
               double.tryParse(fee["total"]?.toString() ?? "0") ?? 0.0;
         }
       }
+
 
       if (decoded is Map<String, dynamic> && decoded['id'] != null) {
         final int serverOrderId =

@@ -1731,48 +1731,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   }
 
   // Build the discount value display
-  Widget _buildDiscountDisplay() {
-    // Build #1.0.53 : updated code
-    final themeHelper = Provider.of<ThemeNotifier>(context);
-    String displayValue = _isPercentageSelected
-        ? _discountValue
-        : "${TextConstants.currencySymbol}$_discountValue";
-    bool isPlaceholder = _discountValue == "0.00%" ||
-        _discountValue == "0.00" || _discountValue == "0%" ||
-        _discountValue == "0";
-
-    return Container(
-      width: MediaQuery
-          .of(context)
-          .size
-          .width / 2.75,
-      height: MediaQuery
-          .of(context)
-          .size
-          .height / 14,
-      padding: const EdgeInsets.symmetric(vertical: 2),
-
-      /// use this value for all inset paddings
-      decoration: BoxDecoration(
-        color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-            .paymentEntryContainerColor : Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-            color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                .secondaryBackground : Colors.grey.shade300),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        displayValue,
-        style: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: isPlaceholder ? Colors.grey : themeHelper.themeMode ==
-              ThemeMode.dark ? ThemeNotifier.textDark : const Color(0xFF1E2745),
-        ),
-      ),
-    );
-  }
 
   // Handle adding the discount
   //Build #1.0.78: Explanation!
@@ -1782,7 +1740,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   // Added alert dialog with retry option for API failures.
   // Ensured _isDiscountLoading is shown during API calls and cleared afterward.
   // Preserved success toast and UI refresh logic.
-  void _handleAddDiscount() async {
+  Future<void> _handleAddDiscount() async {
     print("🟦 [DISCOUNT] START ---- _handleAddDiscount() ----");
 
     if (_discountValue.isEmpty ||
@@ -1802,6 +1760,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
     try {
       final offlineBox = Hive.box('offlineOrders');
+      final productBox = Hive.box('productCache');
       final orderHelper = OrderHelper();
 
       int? orderId = orderHelper.activeOrderId;
@@ -1837,23 +1796,91 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         return;
       }
 
+      // ------------------------------
+      // 🔎 UNIVERSAL SEARCH FOR DISCOUNT PRODUCT
+      // Same logic as cashback
+      // ------------------------------
+      Map<String, dynamic>? discountProduct;
+
+      for (final k in productBox.keys) {
+        final data = productBox.get(k);
+        if (data == null) continue;
+
+        // Case A: Direct map
+        if (data is Map) {
+          final n = (data["fast_key_item_name"] ?? data["name"] ?? "")
+              .toString()
+              .toLowerCase();
+
+          if (n.contains("discount")) {
+            discountProduct = Map<String, dynamic>.from(data);
+            break;
+          }
+        }
+
+        // Case B: products list
+        if (data is Map && data.containsKey("products")) {
+          for (final item in data["products"]) {
+            final n = (item["fast_key_item_name"] ?? item["name"] ?? "")
+                .toString()
+                .toLowerCase();
+
+            if (n.contains("discount")) {
+              discountProduct = Map<String, dynamic>.from(item);
+              break;
+            }
+          }
+          if (discountProduct != null) break;
+        }
+
+        // Case C: data: JSON array
+        if (data is Map && data.containsKey("data")) {
+          final list = json.decode(data["data"]);
+          for (final item in list) {
+            final n = (item["fast_key_item_name"] ?? item["name"] ?? "")
+                .toString()
+                .toLowerCase();
+
+            if (n.contains("discount")) {
+              discountProduct = Map<String, dynamic>.from(item);
+              break;
+            }
+          }
+          if (discountProduct != null) break;
+        }
+      }
+
+      if (discountProduct == null) {
+        print("🟥 Discount Product Not Found in Cache!");
+        setState(() => _isDiscountLoading = false);
+
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+          const SnackBar(
+            content: Text("Discount product not found!"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      print("🟢 FOUND DISCOUNT PRODUCT → $discountProduct");
+
+      // ------------------------------
+      // Load products
+      // ------------------------------
       final products = (existingOrder["products"] as List? ?? [])
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
+      // Calculate gross total
       double grossTotal = 0.0;
       for (var p in products) {
-        final price = (p["price"] is num)
-            ? (p["price"] as num).toDouble()
-            : double.tryParse(p["price"].toString()) ?? 0.0;
-
-        final qty = (p["quantity"] is num)
-            ? (p["quantity"] as num).toDouble()
-            : double.tryParse(p["quantity"].toString()) ?? 1.0;
-
-        grossTotal += (price * qty);
+        grossTotal +=
+            (double.tryParse(p["price"].toString()) ?? 0.0) *
+                (double.tryParse(p["quantity"].toString()) ?? 1.0);
       }
 
+      // Parse discount amount
       String parsedValue =
       _discountValue.replaceAll('%', '').replaceAll("₹", "").trim();
 
@@ -1875,28 +1902,35 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         return;
       }
 
+      // ------------------------------
+      // 🧾 CREATE DISCOUNT ENTRY
+      // ------------------------------
       final discountEntry = {
         "order_id": orderId,
-        "discount_amount": -discountAmount, // negative for calculation
-        "display_amount": discountAmount, // positive for UI
+        "discount_product_id": discountProduct["fast_key_product_id"], // ⭐ SAME AS CASHBACK
+        "name": discountProduct["fast_key_item_name"] ?? "Discount",
+        "product_image": discountProduct["fast_key_item_image"] ?? "",
+
+        "discount_amount": -discountAmount,     // Negative for Woo
+        "display_amount": discountAmount,       // Shown positive in UI
+
         "discount_type": isPercentage ? "percentage" : "fixed",
         "original_input": _discountValue,
+
+        // Required for summary panel
+        AppDBConst.itemName: "Discount",
+        AppDBConst.itemType: "discount",
+        AppDBConst.itemPrice: discountAmount.abs(),
+        AppDBConst.itemSumPrice: discountAmount.abs(),
+        AppDBConst.itemCount: 1,
+
         "timestamp": DateTime.now().toIso8601String(),
       };
 
       discounts.add(discountEntry);
 
-      double payoutsTotal = 0.0;
-      final payouts = (existingOrder["payouts"] as List? ?? [])
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-
-      for (var p in payouts) {
-        payoutsTotal += (p["amount"] ?? 0);
-      }
-
-      // Update totals
-      double finalTotal = grossTotal - discountAmount + payoutsTotal;
+      // Recalculate totals
+      double finalTotal = grossTotal - discountAmount;
 
       final updatedOrder = {
         ...existingOrder,
@@ -1905,17 +1939,24 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         "gross_total": grossTotal,
         "net_total": grossTotal - discountAmount,
         "net_payable": finalTotal,
+
+        // ⭐ REQUIRED FOR SUMMARY PANEL ⭐
+        "merchantDiscount": discountAmount,
+        "merchantDiscountIds": [
+          discountProduct["fast_key_product_id"]
+        ],
       };
+
 
       await offlineBox.put(key, updatedOrder);
 
-      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        SnackBar(
-          content: Text(
-              "Discount of ₹${discountAmount.toStringAsFixed(2)} applied"),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+      //   SnackBar(
+      //     content:
+      //     Text("Discount of ₹${discountAmount.toStringAsFixed(2)} applied"),
+      //     backgroundColor: Colors.green,
+      //   ),
+      // );
 
       setState(() {
         _discountValue = isPercentage ? "0%" : "0";
@@ -1926,9 +1967,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       widget.refreshOrderList?.call();
 
       print("✅ [DISCOUNT] DONE ---- _handleAddDiscount() ----");
+
     } catch (e, s) {
       print("🟥 [DISCOUNT] ERROR: $e\n$s");
       setState(() => _isDiscountLoading = false);
+
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         SnackBar(
           content: Text("Error applying discount: $e"),
@@ -1937,6 +1980,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       );
     }
   }
+
+
 
 // Handle adding the coupon
 //   void _handleAddCoupon() async {
