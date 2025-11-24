@@ -42,6 +42,7 @@ import '../Database/order_panel_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/api_response.dart';
 import '../Helper/customerdisplayhelper.dart';
+import '../Models/Assets/asset_model.dart';
 import '../Preferences/pinaka_preferences.dart';
 import '../Screens/Auth/login_screen.dart';
 import '../Utilities/global_utility.dart';
@@ -1841,6 +1842,109 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     });
   }
 
+  double getCustomItemTax({
+    required String taxClass,
+    required double price,
+    required int qty,
+    required List<Tax> taxes,
+  }) {
+    try {
+      // Find tax rate from your local tax list
+      final selected = taxes.firstWhere(
+            (t) => t.slug == taxClass,
+        orElse: () => Tax(slug: "", name: ""),
+      );
+
+      if (selected.slug.isEmpty) {
+        print("⚠ No tax class match → tax = 0.0");
+        return 0.0;
+      }
+
+      // Example: "gst_18" → extract "18"
+      final rateString = selected.slug.replaceAll(RegExp(r'[^0-9]'), "");
+      final rate = double.tryParse(rateString) ?? 0.0;
+
+      final taxAmount = ((price * rate) / 100) * qty;
+
+      print("🔥 Custom Item Tax:");
+      print("   price: $price, qty: $qty, rate: $rate%, tax: $taxAmount");
+
+      return taxAmount;
+    } catch (e) {
+      print("❌ ERROR in getCustomItemTax → $e");
+      return 0.0;
+    }
+  }
+
+  double getProductTaxFromHive(int productId, double price, int qty) {
+    try {
+      final box = Hive.box('productCache');
+
+      print("--------------------------------------------------");
+      print("🔍 Searching TAX for Product ID: $productId");
+
+      for (var key in box.keys) {
+        if (!key.toString().startsWith("products_")) continue;
+
+        final cached = box.get(key);
+        if (cached == null) continue;
+
+        final List products = json.decode(cached['data']);
+
+        final product = products.firstWhere(
+              (p) => p['id'] == productId,
+          orElse: () => null,
+        );
+
+        if (product != null) {
+          print("✔ Product found in cache key: $key");
+          print("📦 Cached product JSON: $product");
+
+          // 1️⃣ WooCommerce tax structure
+          if (product['tax'] != null &&
+              product['tax']['tax_rates'] != null &&
+              product['tax']['tax_rates'] is List &&
+              product['tax']['tax_rates'].isNotEmpty) {
+
+            final rate = double.tryParse(
+                product['tax']['tax_rates'][0]['rate'].toString()
+            ) ?? 0.0;
+
+            final itemTax = ((price * rate) / 100) * qty;
+
+            print("🔥 TAX FOUND in tax_rates → rate: $rate%");
+            print("🔥 itemTax = price($price) × $rate% × qty($qty) = $itemTax");
+
+            return itemTax;
+          }
+
+          // 2️⃣ If taxes[] exists
+          if (product['taxes'] != null && product['taxes'] is List) {
+            final t = double.tryParse(product['taxes'][0]['subtotal'].toString()) ?? 0.0;
+            print("✔ TAX from taxes[]: $t × qty = ${t * qty}");
+            return t * qty;
+          }
+
+          // 3️⃣ subtotal_tax exists
+          if (product['subtotal_tax'] != null) {
+            final t = double.tryParse(product['subtotal_tax'].toString()) ?? 0.0;
+            print("✔ TAX from subtotal_tax: $t × qty = ${t * qty}");
+            return t * qty;
+          }
+
+          print("⚠ No tax field detected for product: $productId");
+          return 0.0;
+        }
+      }
+
+      print("❌ Product $productId NOT FOUND in productCache");
+    } catch (e) {
+      print("❌ ERROR while fetching tax → $e");
+    }
+
+    return 0.0;
+  }
+
 
 // Current Order UI
   Widget buildCurrentOrder() {
@@ -1923,46 +2027,92 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         // 🧾 Combine for UI
         orderItems = [
           // ---------------------- Products ----------------------
-          ...offlineProducts.map((item) => {
-            'item_name': item['name'] ?? item['product_name'] ?? '',
-            'item_price': double.tryParse(item['price']?.toString() ?? '0') ?? 0.0,
-            'items_count': int.tryParse(item['quantity']?.toString() ?? '1') ?? 1,
-            'item_sum_price':
-            (double.tryParse(item['price']?.toString() ?? '0') ?? 0.0) *
-                (int.tryParse(item['quantity']?.toString() ?? '1') ?? 1),
-            'item_image': item['image'] ?? '',
-            'item_type': 'product',
+          ...offlineProducts.map((item) {
+            final itemType = (item['item_type'] ?? item['type'] ?? '').toString().toLowerCase();
+
+            final isCustom     = itemType.contains("custom");
+            final isPayout     = itemType.contains("payout");
+            final isCashback   = itemType.contains("cashback");
+            final isCoupon     = itemType.contains("coupon");
+
+            // ❗ SKIP TAX FOR NON-PRODUCT ITEMS
+            if (isCustom || isPayout || isCashback || isCoupon) {
+              final name =
+                  item['name'] ??
+                      item['custom_item_name'] ??
+                      item['item_name'] ??
+                      "Item";
+
+              final price = double.tryParse(
+                  item['price']?.toString() ??
+                      item['amount']?.toString() ??
+                      item['custom_item_price']?.toString() ??
+                      "0"
+              ) ?? 0.0;
+
+              return {
+                'item_name': name,
+                'item_price': price,
+                'items_count': 1,
+                'item_sum_price': price,
+                'item_image': item['image'] ?? "",
+                'item_type': itemType,
+                'item_tax': 0.0,
+              };
+            }
+
+            // ---------------------- Valid Product Item ----------------------
+            final productId = item['product_id'] ?? item['id'];
+            final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+            final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+
+            // TAX FROM HIVE
+            final itemTax = getProductTaxFromHive(productId, price, qty);
+
+            orderTax += itemTax;
+
+            return {
+              'item_name': item['name'] ?? item['product_name'] ?? '',
+              'item_price': price,
+              'items_count': qty,
+              'item_sum_price': price * qty,
+              'item_image': item['image'] ?? '',
+              'item_type': 'product',
+              'item_tax': itemTax,
+            };
           }),
 
           // ---------------------- Payouts ----------------------
-          ...offlinePayouts.map((payout) => {
-            'item_name': 'Payout',
-            'item_price':
-            double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0,
-            'items_count': 1,
-            'item_sum_price':
-            double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0,
-            'item_image': 'assets/svg/payout.svg',
-            'item_type': 'payout',
+          ...offlinePayouts.map((payout) {
+            final price = double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0;
+
+            return {
+              'item_name': 'Payout',
+              'item_price': price,
+              'items_count': 1,
+              'item_sum_price': price,
+              'item_image': 'assets/svg/payout.svg',
+              'item_type': 'payout',
+              'item_tax': 0.0,
+            };
           }),
 
           // ---------------------- Cashback ----------------------
-          ...offlineCashback.map((cash) => {
-            'item_name': 'Cashback',
-            'item_price':
-            double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0,
-            'items_count': 1,
-            'item_sum_price':
-            double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0,
-            'item_image':
-            cash['product_image'] ??
-                cash['item_image'] ??
-                cash['image'] ??
-                "",
+          ...offlineCashback.map((cash) {
+            final price = double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0;
 
-
-            'item_type': 'cashback',
-
+            return {
+              'item_name': 'Cashback',
+              'item_price': price,
+              'items_count': 1,
+              'item_sum_price': price,
+              'item_image': cash['product_image'] ??
+                  cash['item_image'] ??
+                  cash['image'] ??
+                  "",
+              'item_type': 'cashback',
+              'item_tax': 0.0,
+            };
           }),
         ];
 
@@ -1996,13 +2146,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             : 0.0;
 
         final isPercentageDiscount = (offlineOrder['merchantDiscountIsPercentage'] as bool?) ?? false;
+        print("🔥 FINAL orderTax CALCULATED from Hive products = $orderTax");
 
-        // 🔹 Tax
-        orderTax = (offlineOrder['orderTax'] as double?) ?? 0.0;
-
-        // 🔹 Net totals including merchant discount
         netTotal = grossTotal - orderDiscount - merchantDiscount;
         netPayable = netTotal + orderTax;
+
 
         // 🔹 Format date/time
         if (offlineOrder['created_at'] != null) {

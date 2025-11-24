@@ -608,9 +608,19 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
     double orderDiscount =
         (order[AppDBConst.orderDiscount] as num?)?.toDouble() ?? 0.0;
+    double merchantDiscount = 0.0;
 
-    double merchantDiscount =
-        (order[AppDBConst.merchantDiscount] as num?)?.toDouble() ?? 0.0;
+    for (var item in orderItems) {
+      if (item['item_name'] != null &&
+          item['item_name'].toString().toLowerCase() == "merchant discount") {
+        double? discountValue =
+        double.tryParse(item['item_sum_price'].toString());
+        if (discountValue != null && discountValue < 0) {
+          merchantDiscount = discountValue.abs();
+          print("### Merchant Discount Found in Items: $merchantDiscount");
+    }
+    }
+    }
     num grossTotal = GlobalUtility.getGrossTotal(orderItems);
     double wooTax = (order['wooTax'] as num?)?.toDouble() ?? 0.0;
     double wooTotal = (order['wooTotal'] as num?)?.toDouble() ?? 0.0;
@@ -623,6 +633,20 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     if (netTotal < 0) netTotal = 0;
     double localNetPayable = netTotal.toDouble() + orderTax;
     double netPayable = wooTotal > 0 ? wooTotal : localNetPayable;
+
+    double cashbackFee = 0.0;
+
+    for (var item in orderItems) {
+      if (item['item_name'] != null &&
+          item['item_name'].toString().toLowerCase().contains("cashback")) {
+
+        double cashbackValue = double.tryParse(item['item_sum_price'].toString()) ?? 0.0;
+
+        // Cashback is always positive — directly assign
+        cashbackFee += cashbackValue;
+        print("### Cashback Found in Items: $cashbackFee");
+    }
+    }
 
     if (netPayable < 0) netPayable = 0;
     print("🟦 Summary Data:");
@@ -700,6 +724,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                     radius: const Radius.circular(8),
                     trackVisibility: true,
                     child: ReorderableListView.builder(
+                      buildDefaultDragHandles: false,
                       //Build #1.0.4: re-order for list
                       onReorder: (oldIndex, newIndex) {
                         if (kDebugMode) {
@@ -726,9 +751,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
                         final itemTypeRaw = orderItem[AppDBConst.itemType]
                             ?.toString()
-                            .toLowerCase() ??
-                            '';
+                            .toLowerCase() ?? '';
 
+                        final itemNameRaw = orderItem[AppDBConst.itemName]
+                            ?.toString()
+                            .toLowerCase() ?? '';
+
+                        /// Hide coupons
                         if (itemTypeRaw.contains(TextConstants.couponText.toLowerCase())) {
                           return Container(
                             key: ValueKey("coupon_$index"),
@@ -736,10 +765,26 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                           );
                         }
 
-                        if (kDebugMode) {
-                          print(
-                              "@@@@@@@@@@@@@@@@@ orderItem Data : $orderItem");
+                        /// Hide Merchant Discount item from list but keep in summary
+                        if (itemTypeRaw.contains("merchantdiscount") ||
+                            itemNameRaw.contains("merchant discount")) {
+                          return Container(
+                            key: ValueKey("merchant_discount_$index"),
+                            height: 0,
+                          );
                         }
+
+                        /// 🔥 Hide loyalty products (name-based + type-based)
+                        if (itemNameRaw.contains("loyalty") ||
+                            itemNameRaw.contains("reward") ||
+                            itemNameRaw.contains("points") ||
+                            itemTypeRaw.contains("loyalty")) {
+                          return Container(
+                            key: ValueKey("loyalty_$index"),
+                            height: 0,
+                          );
+                        }
+
 
                         ///Build #1.0.64:  added conditions
                         /// Compare item type
@@ -970,17 +1015,19 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                       // Replace the ClipRRect widget with this:
                                       ClipRRect(
                                         borderRadius: BorderRadius.circular(5),
-                                        child: buildProductImage(
+                                        child: isPayout
+                                            ? SvgPicture.asset(
+                                          "assets/svg/payout.svg",
+                                          height: MediaQuery.of(context).size.height * 0.08,
+                                          width: MediaQuery.of(context).size.height * 0.075,
+                                          fit: BoxFit.cover,
+                                        )
+                                            : buildProductImage(
                                           orderItem[AppDBConst.itemImage]?.toString(),
                                           height: MediaQuery.of(context).size.height * 0.08,
                                           width: MediaQuery.of(context).size.height * 0.075,
                                         ),
                                       ),
-
-
-
-
-
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Column(
@@ -1077,16 +1124,40 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                               ],
                                             ),
                                             // Modified: Show quantity * price only for non-Payout/Coupon items
-                                            if (!isPayoutOrCouponOrCustomItem)
-                                              Text(
-                                                "${TextConstants.currencySymbol} ${regularPrice.toStringAsFixed(2)} × ${orderItem[AppDBConst.itemCount]}",
-                                                style: TextStyle(
-                                                  color: themeHelper.themeMode == ThemeMode.dark
-                                                      ? ThemeNotifier.textDark
-                                                      : Colors.black54,
-                                                  fontSize: 10,
-                                                ),
+                                            if (!isPayoutOrCouponOrCustomItem) ...[
+                                              Builder(
+                                                builder: (context) {
+                                                  double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1;
+
+                                                  double unitPrice =
+                                                      (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ??
+                                                          (orderItem[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
+                                                          (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??
+                                                          0.0;
+
+                                                  // If still zero → derive price from sum price
+                                                  if (unitPrice == 0.0) {
+                                                    final double sumPrice =
+                                                        (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
+
+                                                    if (sumPrice > 0 && qty > 0) {
+                                                      unitPrice = sumPrice / qty;
+                                                    }
+                                                  }
+
+                                                  return Text(
+                                                    "${TextConstants.currencySymbol} ${unitPrice.toStringAsFixed(2)} × ${qty.toInt()}",
+                                                    style: TextStyle(
+                                                      color: themeHelper.themeMode == ThemeMode.dark
+                                                          ? ThemeNotifier.textDark
+                                                          : Colors.black54,
+                                                      fontSize: 10,
+                                                    ),
+                                                  );
+                                                },
                                               ),
+                                            ],
+
                                           ],
                                         ),
                                       ),
@@ -1128,21 +1199,18 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                 ? "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.abs().toStringAsFixed(2)}"
                                                 : isCashback
                                                 ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.toStringAsFixed(2)}"
-                                                : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount]! *
-                                                (isCoupon
-                                                    ? orderItem[AppDBConst.itemPrice]!.abs()
-                                                    : salesPrice)).toStringAsFixed(2)}",
+                                                : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.toStringAsFixed(2)}",
                                             style: TextStyle(
                                               fontSize: 14,
                                               fontWeight: FontWeight.bold,
                                               color: isPayout
-                                                  ? Colors.red                          // payout red
+                                                  ? Colors.red
                                                   : isCashback
                                                   ? (themeHelper.themeMode == ThemeMode.dark
-                                                  ? ThemeNotifier.textDark        // cashback black/dark mode
-                                                  : ThemeNotifier.textLight)      // cashback black/light mode
+                                                  ? ThemeNotifier.textDark
+                                                  : ThemeNotifier.textLight)
                                                   : (isCoupon
-                                                  ? Colors.red                    // coupon remains red
+                                                  ? Colors.red
                                                   : (themeHelper.themeMode == ThemeMode.dark
                                                   ? ThemeNotifier.textDark
                                                   : ThemeNotifier.textLight)),

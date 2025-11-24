@@ -591,8 +591,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     required int orderId,
     required String contact,
   }) async {
-
-    // Build base-url exactly like getOrder()
     final String url =
         "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.loyaltyCreateCustomer}";
 
@@ -620,6 +618,27 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     return response;
   }
 
+  Future<dynamic> removeLoyaltyPoints({
+    required int orderId,
+    required String contact,
+  }) async {
+    final String url =
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.loyaltyRemove}";
+
+    final body = {
+      "order_id": orderId,
+      "contact": contact,
+    };
+
+    final response = await _helper.post(
+      url,
+      body,
+      true,
+      validateMarchentUrl: true,
+    );
+
+    return response;
+  }
 
   // 3. Apply Coupon to Order
   Future<OrderModel> applyCouponToOrder({required int orderId, required ApplyCouponRequestModel request,}) async {

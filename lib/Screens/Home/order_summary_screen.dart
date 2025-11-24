@@ -1802,9 +1802,69 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 
   Future<void> _removeRedeemedAmount() async {
-    // if you call API or DB update, put here
-    print("Redeemed amount removed");
+    if (mobileController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Customer contact not found."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final String contact = mobileController.text.trim();
+    final int order = widget.orderId ?? orderId ?? 0;
+
+    setState(() => isSummaryLoading = true);
+
+    try {
+      final rawRes = await OrderRepository().removeLoyaltyPoints(
+        orderId: order,
+        contact: contact,
+      );
+
+      final result = jsonDecode(rawRes);
+
+      if (result["success"] == true) {
+        final data = result["data"];
+
+        setState(() {
+          redeemedValue = 0;
+
+          /// Update balance using order_total returned by API
+          balanceAmount = (data["order_total"] as num?)?.toDouble() ?? balanceAmount;
+
+          /// Keep remaining available points
+          availablePoints = loyaltyData?["available_points"] ?? availablePoints;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Redeemed points removed successfully."),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+      else {
+        throw Exception(result["message"] ?? "Unable to remove points");
+      }
+    } catch (e) {
+      print("❌ Remove Loyalty Points Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Failed to remove redeemed points. Try again."),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => isSummaryLoading = false);
+    }
   }
+
 
   Widget _buildPaymentSection() {
     final themeHelper = Provider.of<ThemeNotifier>(context);

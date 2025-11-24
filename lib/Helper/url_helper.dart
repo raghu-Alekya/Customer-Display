@@ -125,6 +125,7 @@ class UrlMethodConstants { // Build #1.0.13
   static const String totalOrders          = "total-orders"; // Build #1.0.118
   static const String loyaltyCreateCustomer = "loyalty/create-customer";
   static const String loyaltyRedeem = "loyalty/add-loyalty-points";
+  static const String loyaltyRemove = "loyalty/remove-loyalty-points";
 }
 
 class UrlParameterConstants { // Build #1.0.13
