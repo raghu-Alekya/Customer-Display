@@ -155,9 +155,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isMobileValid = false;
   double redeemedValue = 0.0;
 
+  Future<void> _fetchShiftId() async {
+    final data = await UserDbHelper().getUserData();
+    if (data != null && data["shift_id"] != null) {
+      setState(() {
+        shiftId = data["shift_id"];
+      });
+    }
+  }
+
+
   @override
   void initState() {
     super.initState();
+    _fetchShiftId();
     orderBloc = OrderBloc(OrderRepository()); // Build #1.0.49
     orderItems = widget.orderItems;
     grossTotal = widget.grossTotal;
@@ -1484,14 +1495,21 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   Widget _buildOrderItem(int index) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final orderItem = orderItems[index];
+    final itemType = orderItem['item_type']?.toString().toLowerCase() ?? '';
+
+    final bool isVariant =
+        (orderItem['is_variant'] == true) ||
+            (itemType == 'variant') ||
+            (orderItem['variation_name'] != null &&
+                orderItem['variation_name'].toString().trim().isNotEmpty) ||
+            (orderItem['variation_id'] != null &&
+                orderItem['variation_id'] != 0);
 
     final String itemName = orderItem['item_name']?.toString() ?? '';
     final double itemPrice = (orderItem['item_price'] ?? 0).toDouble();
     final int itemCount = (orderItem['items_count'] ?? 0).toInt();
     final double itemSumPrice = (orderItem['item_sum_price'] ?? 0).toDouble();
     final String itemImage = orderItem['item_image']?.toString() ?? '';
-    final String itemType =
-        orderItem['item_type']?.toString().toLowerCase() ?? '';
 
     final bool isPayout = itemType.contains(TextConstants.payoutText);
     final bool isCoupon = itemType.contains(TextConstants.couponText);
@@ -1574,28 +1592,51 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  Text(
-                    itemName,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.textDark
-                          : ThemeNotifier.textLight,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // 🔹 Item Name
+                        Text(
+                          itemName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: themeHelper.themeMode == ThemeMode.dark
+                                ? ThemeNotifier.textDark
+                                : ThemeNotifier.textLight,
+                          ),
+                        ),
+
+                        // 🔻 Variant Icon Below Name
+                        if (isVariant) ...[
+                          const SizedBox(height: 3),
+                          Icon(
+                            Icons.link,
+                            size: 12,
+                            color: Colors.red,
+                          ),
+                        ],
+
+                        const SizedBox(height: 2),
+
+                        // 🔹 Price × Qty (not for payouts/custom/coupon)
+                        if (!isPayoutOrCouponOrCustomItem)
+                          Text(
+                            "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: themeHelper.themeMode == ThemeMode.dark
+                                  ? ThemeNotifier.textDark
+                                  : Colors.black87,
+                            ),
+                          ),
+                      ],
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  if (!isPayoutOrCouponOrCustomItem)
-                    Text(
-                      "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
-                      style: TextStyle(
-                        color: themeHelper.themeMode == ThemeMode.dark
-                            ? ThemeNotifier.textDark
-                            : Colors.black87,
-                        fontSize: 13,
-                      ),
-                    ),
                 ],
               ),
             ),

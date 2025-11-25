@@ -1872,6 +1872,19 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
+      // / ⛔ ADD CHECK HERE
+      if (products.isEmpty) {
+        setState(() => _isDiscountLoading = false);
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+          const SnackBar(
+            content: Text("Cannot apply discount on an empty order"),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+
       // Calculate gross total
       double grossTotal = 0.0;
       for (var p in products) {

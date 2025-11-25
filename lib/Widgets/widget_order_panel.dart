@@ -2077,7 +2077,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               'items_count': qty,
               'item_sum_price': price * qty,
               'item_image': item['image'] ?? '',
-              'item_type': 'product',
+              'item_type': itemType,
               'item_tax': itemTax,
             };
           }),
@@ -2314,6 +2314,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         /// if it is payout change icon, name is empty, show amount in red colour
                         /// if it is coupon change icon, name is coupon code (show last 4 digits, prefix with 'X' for each character before last 4), show amount in red colour
                         final itemType = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
+
+                        final bool isVariant =
+                            (orderItem['is_variant'] == true) ||
+                                (itemType == 'variant');
+
                         /// Check if the item is a payout or a coupon
                         final isCashback = itemType.contains("cashback");
                         final isPayout = itemType.contains(TextConstants.payoutText);
@@ -2651,29 +2656,38 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               mainAxisAlignment: MainAxisAlignment.start,
                                               children: [
-                                                RichText(
-                                                  maxLines: 2,
-                                                  softWrap: true,
-                                                  text: TextSpan(
-                                                    children: [
-                                                      TextSpan(
-                                                        text: displayName,
-                                                        style: TextStyle(
-                                                            fontSize: 12,
-                                                            fontFamily: 'inter',
-                                                            fontWeight: FontWeight.bold,
-                                                            color: themeHelper.themeMode == ThemeMode.dark
-                                                                ? ThemeNotifier.textDark
-                                                                : ThemeNotifier.textLight
-                                                        ),
+                                                Row(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Expanded(
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          // 🔹 Product name
+                                                          Text(
+                                                            displayName,
+                                                            maxLines: 2,
+                                                            overflow: TextOverflow.ellipsis,
+                                                            style: TextStyle(
+                                                              fontSize: 12,
+                                                              fontWeight: FontWeight.bold,
+                                                              color: themeHelper.themeMode == ThemeMode.dark
+                                                                  ? ThemeNotifier.textDark
+                                                                  : ThemeNotifier.textLight,
+                                                            ),
+                                                          ),
+                                                          if (isVariant) ...[
+                                                            const SizedBox(height: 4),
+                                                            Icon(
+                                                              Icons.link,
+                                                              size: 15,
+                                                              color: Colors.red,
+                                                            ),
+                                                          ],
+                                                        ],
                                                       ),
-                                                      TextSpan(
-                                                        text:///Todo: use combo here
-                                                        combo == '' ? '' : " (Combo)",
-                                                        style: TextStyle(fontSize: 8, color: Colors.cyan),
-                                                      ),
-                                                    ],
-                                                  ),
+                                                    ),
+                                                  ],
                                                 ),
                                                 variationCount == 0 ? SizedBox(width: 0,) : Row(
                                                   children: [

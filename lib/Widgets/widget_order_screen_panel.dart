@@ -618,8 +618,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         if (discountValue != null && discountValue < 0) {
           merchantDiscount = discountValue.abs();
           print("### Merchant Discount Found in Items: $merchantDiscount");
-    }
-    }
+        }
+      }
     }
     num grossTotal = GlobalUtility.getGrossTotal(orderItems);
     double wooTax = (order['wooTax'] as num?)?.toDouble() ?? 0.0;
@@ -634,6 +634,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     double localNetPayable = netTotal.toDouble() + orderTax;
     double netPayable = wooTotal > 0 ? wooTotal : localNetPayable;
 
+
     double cashbackFee = 0.0;
 
     for (var item in orderItems) {
@@ -645,7 +646,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         // Cashback is always positive — directly assign
         cashbackFee += cashbackValue;
         print("### Cashback Found in Items: $cashbackFee");
-    }
+      }
     }
 
     if (netPayable < 0) netPayable = 0;
