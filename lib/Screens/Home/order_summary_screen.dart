@@ -122,6 +122,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   Map<String, dynamic>? loyaltyData;
   bool isAddLoading = false;
 // ⭐ store full API data globally
+  bool isPaymentDone = false;
+
 
   double NetTotal = 0.0;
   // AddED tax variable
@@ -274,51 +276,56 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
   }
 
-  //Build #1.0.99: Added new method to process payment list
+//Build #1.0.99: Added new method to process payment list
   void _processPaymentList(List<PaymentListModel> payments) {
     double cashTotal = 0.0;
     double otherTotal = 0.0;
 
     for (var payment in payments) {
       double amount = double.tryParse(payment.amount) ?? 0.0;
+
       if (payment.paymentMethod == TextConstants.cash &&
           payment.voidStatus == false) {
-        // Build #1.0.175: addition of all payment method cash & if it is not void
         cashTotal += amount;
       } else if (payment.paymentMethod != TextConstants.cash &&
           payment.voidStatus == false) {
-        // Build #1.0.175: addition of all payment method others & if it is not void
         otherTotal += amount;
       }
     }
 
     if (kDebugMode) {
-      print(
-          "###### _processPaymentList ->>> payByCash1: $cashTotal, payByOther1: $otherTotal");
-      print(
-          "###### _processPaymentList ->>> payByCash2: $payByCash, payByOther2: $payByOther, tenderAmount: $tenderAmount");
+      print("###### _processPaymentList ->>> payByCash1: $cashTotal, payByOther1: $otherTotal");
+      print("###### _processPaymentList ->>> payByCash2: $payByCash, payByOther2: $payByOther, tenderAmount: $tenderAmount");
     }
+
     setState(() {
       payByCash = cashTotal;
       payByOther = otherTotal;
-      // Build #1.0.151: Fixed - Partial Payment Not Reflected After Voiding in On-Hold Order
-      // Update balanceAmount / tenderAmount after getPaymentsByOrderId api call, because payByCash 'amount' avlue getting from this api only
-      balanceAmount = orderTotal - payByCash - payByOther;
+
+      /// ⭐ FIX: Deduct redeemed points while computing balance
+      double effectiveOrderTotal = orderTotal - redeemedValue;
+
+      balanceAmount = effectiveOrderTotal - payByCash - payByOther;
+
       var isBalanceZero = balanceAmount <= 0;
-      // Build  #1.0.177: -ve balanace will be shown as balance if order status is processing
+
+      // Build  #1.0.177: -ve balance will be shown as change if order status is not processing
       changeAmount = isBalanceZero && (orderStatus != TextConstants.processing)
           ? balanceAmount.abs()
           : changeAmount;
+
       balanceAmount = isBalanceZero && (orderStatus != TextConstants.processing)
           ? 0
           : balanceAmount;
+
       tenderAmount = payByCash + payByOther;
     });
+
     if (kDebugMode) {
-      print(
-          "###### _processPaymentList ->>> payByCash3: $payByCash, payByOther3: $payByOther, tenderAmount: $tenderAmount");
+      print("###### _processPaymentList ->>> payByCash3: $payByCash, payByOther3: $payByOther, tenderAmount: $tenderAmount");
     }
   }
+
 
   // void fetchOrderItems() async {
   //   // TODO: Implement actual data fetching from database
@@ -441,8 +448,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             }
 
             setState(() {
-              isLoading = false; // Hide loader on success
+              isLoading = false;
+              isPaymentDone = true;   // <--- ADD HERE
             });
+
+
             paidAmount = amount; // Current payment amount
 
             // Capture paymentId for wallet payments
@@ -1038,7 +1048,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                           // Add / Cancel button
                           InkWell(
-                            onTap: () async {
+                            onTap: isPaymentDone       // <--- FIX
+                                ? null                 // disable tap after any payment
+                                : () async {
                               if (showCustomerInput) {
                                 // CANCEL BUTTON → NO LOADING
                                 setState(() {
@@ -1111,16 +1123,18 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               margin: const EdgeInsets.all(2),
                               padding: const EdgeInsets.fromLTRB(20, 8, 28, 8),
                               decoration: BoxDecoration(
-                                color: (redeemedValue > 0)
+                                color: isPaymentDone
+                                    ? Colors.grey.shade400                 // <--- Disabled
+                                    : (redeemedValue > 0)
                                     ? Colors.grey.shade400
                                     : !(isPhoneValid || isEmailValid)
-                                        ? Colors.grey.shade400
-                                        : showCustomerInput
-                                            ? Colors.red
-                                            : Theme.of(context).brightness ==
-                                                    Brightness.dark
-                                                ? const Color(0xFF262D41)
-                                                : const Color(0xFF3B4259),
+                                    ? Colors.grey.shade400
+                                    : showCustomerInput
+                                    ? Colors.red
+                                    : Theme.of(context).brightness == Brightness.dark
+                                    ? const Color(0xFF262D41)
+                                    : const Color(0xFF3B4259),
+
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: isAddLoading
@@ -1806,23 +1820,27 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 ),
 
 // ---------------- DELETE ICON FOR REDEEMED AMOUNT ----------------
+              // ---------------- DELETE ICON FOR REDEEMED AMOUNT ----------------
               if (label == "Redeemed Amount" && redeemedValue > 0)
                 GestureDetector(
-                  onTap: () async {
+                  onTap: isPaymentDone        // <--- FIX
+                      ? null                  // disable delete
+                      : () async {
                     setState(() {
-                      redeemedValue = 0; // Reset to zero
+                      redeemedValue = 0;
                     });
-                    await _removeRedeemedAmount(); // Optional method
+                    await _removeRedeemedAmount();
                   },
                   child: Padding(
                     padding: const EdgeInsets.only(left: 5),
                     child: Icon(
                       Icons.delete_forever,
-                      color: Colors.red,
+                      color: isPaymentDone ? Colors.grey : Colors.red,   // <--- FIX (visual disabled)
                       size: 20,
                     ),
                   ),
-                ),
+                )
+
             ],
           ),
           Row(
@@ -2163,40 +2181,27 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                               amountController.text,
                                           balanceAmount: balanceAmount,
                                           onDigitPressed: (value) {
-                                            if (balanceAmount <= 0) return;
-
                                             if (_amountErrorText != null) {
                                               _amountErrorText = null;
                                             }
 
-                                            // Reset for next partial payment if previous one finished
-                                            if (_rawAmount >
-                                                balanceAmount * 100) {
-                                              _rawAmount =
-                                                  0; // <-- IMPORTANT FIX
-                                            }
-
                                             if (value == '00') {
-                                              _rawAmount = (_rawAmount * 100) %
-                                                  100000000;
+                                              _rawAmount = _rawAmount * 100;
                                             } else {
-                                              int digit =
-                                                  int.tryParse(value) ?? 0;
-                                              _rawAmount =
-                                                  (_rawAmount * 10 + digit) %
-                                                      100000000;
+                                              int digit = int.tryParse(value) ?? 0;
+                                              _rawAmount = _rawAmount * 10 + digit;
                                             }
 
-                                            double displayValue =
-                                                _rawAmount / 100.0;
+                                            double displayValue = _rawAmount / 100.0;
+
                                             amountController.text =
-                                                '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+                                            '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
                                             setState(() {
-                                              _isAmountEntered =
-                                                  _rawAmount != 0;
+                                              _isAmountEntered = _rawAmount != 0;
                                             });
                                           },
+
                                           onClearPressed: () {
                                             _rawAmount = 0;
                                             amountController.text =
@@ -3351,7 +3356,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         mode: PaymentMode.cash,
         amount: amount,
         changeAmount: showChange ? changeAmount : null,
-        onVoid: () => showVoidExitConfirmation(context, false),
+        onVoid: () => showVoidExitConfirmation(context, true),
         onNoReceipt: () async {
           if (kDebugMode) print(">>> NoReceipt pressed");
           await _updateCustomerDisplayWelcome(storeInfo);

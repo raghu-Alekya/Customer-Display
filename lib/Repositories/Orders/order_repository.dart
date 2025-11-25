@@ -263,20 +263,33 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       // ---------------------------------------------------------
 // ⭐ HANDLE MERCHANT DISCOUNT (AS LINE ITEM)
 // ---------------------------------------------------------
+      // ---------------------------------------------------------
+// ⭐ HANDLE MERCHANT DISCOUNT (AS LINE ITEM USING PRODUCT ID)
+// ---------------------------------------------------------
       final dynamic discountRaw = offlineOrder['merchantDiscount'];
       double merchantDiscount =
           double.tryParse(discountRaw?.toString() ?? "0") ?? 0.0;
 
-      if (merchantDiscount > 0) {
+      final discountProductIds =
+      (offlineOrder['merchantDiscountIds'] as List? ?? [])
+          .map((e) => int.tryParse(e.toString()) ?? 0)
+          .where((id) => id > 0)
+          .toList();
+
+      if (merchantDiscount > 0 && discountProductIds.isNotEmpty) {
+        final int discountPid = discountProductIds.first;   // ⭐ Woo Product ID (11827)
+
         lineItems.add({
-          "name": "Merchant Discount",
-          "sku": "POS-DISCOUNT",
+          "product_id": discountPid,
+          "name": "Discount",
           "quantity": 1,
           "subtotal": (-merchantDiscount).toStringAsFixed(2),
           "total": (-merchantDiscount).toStringAsFixed(2),
           "tax_status": "none",
           "type": "discount"
         });
+
+        print("🟢 Added Merchant Discount Product → $discountPid");
       }
 
 

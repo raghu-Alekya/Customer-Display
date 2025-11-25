@@ -629,25 +629,30 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     double sqliteTotal =
         (order[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0;
     double orderTax = wooTax > 0 ? wooTax : sqliteTax;
+    double cashbackFee = 0.0;
+
+
+    final wooOrderId =
+        order['wooOrderId']?.toString() ?? widget.activeOrderId?.toString() ?? "";
+
+
+// 2️⃣ Read cashbackFee from Hive
+    if (wooOrderId.isNotEmpty) {
+      final box = Hive.box('offlineOrders');
+      final cached = box.get(wooOrderId);
+
+      if (cached != null && cached["cashback_fee"] != null) {
+        cashbackFee = (cached["cashback_fee"] as num).toDouble();
+        print("💰 Cashback Fee loaded from Hive for WooID $wooOrderId → $cashbackFee");
+      } else {
+        print("⚠️ No cashback fee found in Hive for WooID = $wooOrderId");
+      }
+    }
+
     num netTotal = grossTotal - orderDiscount - merchantDiscount;
     if (netTotal < 0) netTotal = 0;
     double localNetPayable = netTotal.toDouble() + orderTax;
     double netPayable = wooTotal > 0 ? wooTotal : localNetPayable;
-
-
-    double cashbackFee = 0.0;
-
-    for (var item in orderItems) {
-      if (item['item_name'] != null &&
-          item['item_name'].toString().toLowerCase().contains("cashback")) {
-
-        double cashbackValue = double.tryParse(item['item_sum_price'].toString()) ?? 0.0;
-
-        // Cashback is always positive — directly assign
-        cashbackFee += cashbackValue;
-        print("### Cashback Found in Items: $cashbackFee");
-      }
-    }
 
     if (netPayable < 0) netPayable = 0;
     print("🟦 Summary Data:");

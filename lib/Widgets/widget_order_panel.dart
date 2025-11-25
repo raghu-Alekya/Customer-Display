@@ -3108,9 +3108,14 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                           try {
                             int? serverOrderId;
 
+
+                            // 🔥 Your Sync Logic + Hive Update
+
                             if (orderHelper.activeOrderId != null) {
-                              final box = Hive.box('offlineOrders');
-                              final rawOrder = box.get(orderHelper.activeOrderId.toString());
+                              final String orderId = orderHelper.activeOrderId.toString();
+
+                              // Fetch offline order
+                              final rawOrder = getOfflineOrder(orderId);
 
                               if (rawOrder != null) {
                                 if (kDebugMode) print("🌀 Syncing offline order to server...");
@@ -3120,36 +3125,47 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                                 if (syncResult != null) {
                                   serverOrderId = syncResult["order_id"];
+
                                   final syncedTax = syncResult["tax"] ?? 0.0;
+
                                   final syncedCashbackFee =
                                   (syncResult["cashback_fee"] ?? 0.0) is num
                                       ? (syncResult["cashback_fee"] as num).toDouble()
                                       : double.tryParse(syncResult["cashback_fee"]?.toString() ?? '0') ?? 0.0;
 
                                   if (kDebugMode) {
-                                    print("✅ Offline order sync completed → Server ID: $serverOrderId, Tax: $syncedTax");
+                                    print("✅ Offline order sync completed → Server ID: $serverOrderId, "
+                                        "Tax: $syncedTax, Cashback Fee: $syncedCashbackFee");
                                   }
 
-                                  // Update local tax
+                                  // 🔥 Update Hive with tax + cashback
+                                  if (serverOrderId != null) {
+                                    await updateOfflineOrderTaxAndCashback(
+                                      serverOrderId.toString(),   // 🔥 store using Woo ID
+                                      syncedTax,
+                                      syncedCashbackFee,
+                                    );
+                                  }
+                                  // Update local variables too
                                   orderTax = syncedTax;
                                   cashbackFee = syncedCashbackFee;
 
-
                                 } else {
-                                  if (kDebugMode) print("⚠️ Sync succeeded but no server data found");
+                                  if (kDebugMode) print("⚠ Sync succeeded but no server data found");
                                 }
 
                                 if (serverOrderId != null) {
                                   if (kDebugMode) print("✅ Offline order sync completed → Server ID: $serverOrderId");
                                 } else {
-                                  if (kDebugMode) print("⚠️ Sync succeeded but no server ID found");
+                                  if (kDebugMode) print("⚠ Sync completed but no server ID returned");
                                 }
+
                               } else {
-                                if (kDebugMode) print("⚠️ No offline order found for sync");
+                                if (kDebugMode) print("⚠ No offline order found for sync → ID: $orderId");
                               }
                             }
 
-                            // ✅ Print before navigating to summary
+// Debug before navigating
                             if (kDebugMode) {
                               print("🧾 Using order ID in OrderSummaryScreen → ${serverOrderId ?? orderHelper.activeOrderId}");
                             }
@@ -3228,6 +3244,47 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           ),
       ],
     );
+  }
+  /// //Build #1.0.2 : Added showNumPadDialog if user tap on order layout list item
+// ========================
+// HIVE HELPER FUNCTIONS
+// ========================
+
+  Map<String, dynamic>? getOfflineOrder(String orderId) {
+    final box = Hive.box('offlineOrders');
+    final data = box.get(orderId);
+
+    if (kDebugMode) {
+      print("📥 [Hive] Fetched offline order → ID: $orderId | Data: $data");
+    }
+
+    if (data == null) return null;
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<void> updateOfflineOrderTaxAndCashback(
+      String orderId, double tax, double cashback) async {
+    final box = Hive.box('offlineOrders');
+    final existing = box.get(orderId);
+
+    if (existing == null) {
+      if (kDebugMode) {
+        print("⚠ [Hive] Cannot update order → Not found for ID: $orderId");
+      }
+      return;
+    }
+
+    final updatedOrder = Map<String, dynamic>.from(existing);
+
+    updatedOrder["tax"] = tax;
+    updatedOrder["cashback_fee"] = cashback;
+
+    await box.put(orderId, updatedOrder);
+
+    if (kDebugMode) {
+      print("💾 [Hive] Updated offline order → ID: $orderId | tax: $tax | cashback_fee: $cashback");
+    }
   }
 /// //Build #1.0.2 : Added showNumPadDialog if user tap on order layout list item
 
