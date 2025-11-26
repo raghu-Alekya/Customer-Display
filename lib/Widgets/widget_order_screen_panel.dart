@@ -95,6 +95,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
   double changeAmount = 0.0;
   double cashbackFee = 0.0;
 
+  double hiveRedeemedValue = 0.0;
+  int hiveRedeemedPoints = 0;
+  int hiveAvailablePoints = 0;
+
+
   String orderStatus = TextConstants.processing;
   int? orderServerId; // Server order ID for API calls
   double total = 0.0;
@@ -632,8 +637,38 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     double cashbackFee = 0.0;
 
 
+
     final wooOrderId =
         order['wooOrderId']?.toString() ?? widget.activeOrderId?.toString() ?? "";
+    // 3️⃣ Read Redeem Points from Hive
+    if (wooOrderId.isNotEmpty) {
+      final box = Hive.box('offlineOrders');
+      final cached = box.get(wooOrderId);
+
+      if (cached != null) {
+        if (cached["redeemed_value"] != null) {
+          hiveRedeemedValue =
+              (cached["redeemed_value"] as num).toDouble();
+        }
+
+        if (cached["redeemed_points"] != null) {
+          hiveRedeemedPoints =
+              (cached["redeemed_points"] as num).toInt();
+        }
+
+        if (cached["available_points_after_redeem"] != null) {
+          hiveAvailablePoints =
+              (cached["available_points_after_redeem"] as num).toInt();
+        }
+
+        print(
+            "💠 Hive Redeem Loaded → Value: $hiveRedeemedValue | Points: $hiveRedeemedPoints | Left: $hiveAvailablePoints");
+      } else {
+        print("⚠️ No redeem data in Hive for WooID = $wooOrderId");
+      }
+    }
+
+
 
 
 // 2️⃣ Read cashbackFee from Hive
@@ -1425,14 +1460,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                           TextConstants.taxText,
                                           style: TextStyle(
                                               fontWeight: FontWeight.bold,
-                                              fontSize: 10,
+                                              fontSize: 12,
                                               color: Colors.grey),
                                         ),
                                         Text(
                                             "${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}",
                                             style: TextStyle(
                                                 fontWeight: FontWeight.bold,
-                                                fontSize: 10,
+                                                fontSize: 12,
                                                 color: themeHelper.themeMode ==
                                                     ThemeMode.dark
                                                     ? Colors.white54
@@ -1554,6 +1589,32 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                       ],
 
                                     ),
+                                    SizedBox(
+                                      height: 2,
+                                    ),
+                                    if (hiveRedeemedValue > 0)
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              "Redeemed Value",
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w400,
+                                                color: Colors.green,
+                                              ),
+                                            ),
+                                            Text(
+                                              "- ${TextConstants.currencySymbol}${hiveRedeemedValue.toStringAsFixed(2)}",
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w400,
+                                                color: Colors.green,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+
                                   ],
                                 ),
                               )))
@@ -1607,6 +1668,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             ),
                           ],
                         ),
+
+
                       ),
                     )
                   else

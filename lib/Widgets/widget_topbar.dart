@@ -375,41 +375,65 @@ class _TopBarState extends State<TopBar> {
                                       final activeOrderId = dbOrderId.toString();
                                       final Map<String, dynamic> rawOrder =
                                       Map<String, dynamic>.from(offlineBox.get(activeOrderId) ?? {});
+
+                                      print("CATEGORY FLOW ITEMS: ${rawOrder['products']}");
+                                      print("LINE ITEMS: ${rawOrder['line_items']}");
+
                                       List<dynamic> lineItems = List.from(rawOrder['line_items'] ?? []);
 
                                       // 🟨 Step 3: Check for age restriction
-                                      final ageVerificationProvider = AgeVerificationProvider();
-                                      final ageRestrictedTag = product.tags?.firstWhere(
-                                            (element) => element.name == TextConstants.age_restricted,
-                                        orElse: () => SKU.Tags(),
-                                      );
-                                      final hasAgeRestriction = ageRestrictedTag?.name?.contains(TextConstants.age_restricted) ?? false;
+                                      /// 🟨 Step 3: Check for age restriction
 
-                                      final String ageRestrictedValue = rawOrder[AppDBConst.orderAgeRestricted]?.toString() ?? 'false';
-                                      final bool isAgeRestricted =
-                                          ageRestrictedValue.toLowerCase() == 'true' || ageRestrictedValue == "1";
+// Safely get tags list
+                                      final tags = product.tags ?? [];
 
-                                      if (!isAgeRestricted && hasAgeRestriction) {
-                                        final minAge = int.tryParse(ageRestrictedTag?.slug ?? '0') ?? 0;
-                                        final isVerified = await ageVerificationProvider.verifyAge(context, minAge: minAge);
-                                        // final isVerified = await ageVerificationProvider.verifyAge(context, minAge: minAge);
+// Check if any tag is age_restricted
+                                      final bool hasAgeRestriction =
+                                      tags.any((t) => t.name == TextConstants.age_restricted);
 
-                                        if (!isVerified) {
-                                          if (kDebugMode) print("❌ Age verification failed or cancelled");
+// Only fetch the tag if it actually exists
+                                      SKU.Tags? ageRestrictedTag;
+                                      if (hasAgeRestriction) {
+                                        ageRestrictedTag =
+                                            tags.firstWhere((t) => t.name == TextConstants.age_restricted);
+                                      }
+
+// Read existing age flag from order
+                                      final dynamic hiveAge = rawOrder["age_verified"];
+
+                                      final bool alreadyVerified =
+                                          hiveAge == true ||
+                                              hiveAge == 1 ||
+                                              hiveAge?.toString().toLowerCase() == "true";
+
+                                      if (hasAgeRestriction && !alreadyVerified) {
+                                        final int minAge =
+                                            int.tryParse(ageRestrictedTag?.slug?.toString() ?? "0") ?? 0;
+
+                                        print("🔞 Showing Age Verification Popup (SEARCH)");
+
+                                        final prov = AgeVerificationProvider();
+                                        final ok = await prov.verifyAge(context, minAge: minAge);
+
+                                        if (!ok) {
+                                          print("❌ Age verification failed → Block product");
                                           return;
                                         }
 
-                                        /// 🟩 SAVE FLAG: Verified once → Never show again for this order
-                                        rawOrder[AppDBConst.orderAgeRestricted] = true;
+                                        // Save flag so this order never asks again
+                                        rawOrder["age_verified"] = true;
                                         await offlineBox.put(activeOrderId, rawOrder);
 
-                                        if (kDebugMode) print("🟢 Age Verified → Saved to order: No more popup this order.");
-
+                                        print("💾 Saved age_verified = true for search flow");
                                       }
 
                                       if (kDebugMode) {
-                                        print("TopBar - Age OK, proceeding → Product has variants: ${product.variations!.isNotEmpty}");
+                                        print(
+                                          "TopBar - Age OK, proceeding → Product has variants: "
+                                              "${product.variations != null && product.variations!.isNotEmpty}",
+                                        );
                                       }
+
 
                                       // 🟦 Step 4: Handle Variants (locally)
                                       if (product.variations != null && product.variations!.isNotEmpty) {
@@ -442,44 +466,55 @@ class _TopBarState extends State<TopBar> {
                                                     })
                                                         .toList(),
                                                     onAddVariant: (variant, quantity) async {
-                                                      Navigator.pop(context); // Close variant dialog
+                                                      Navigator.pop(context);
                                                       _showLoaderOverlay();
                                                       setState(() => isAddingItemLoading = true);
 
                                                       try {
-                                                        // Safe conversions
                                                         final int variantId = int.tryParse(variant["id"].toString()) ?? -1;
                                                         final int orderId = int.tryParse(activeOrderId.toString()) ?? -1;
                                                         final double variantPrice = double.tryParse(variant["price"].toString()) ?? 0.0;
 
                                                         if (orderId == -1) throw Exception("Invalid order ID");
 
-                                                        // ---------------------------------------------------------
-                                                        // 🔍 CHECK IF VARIANT ALREADY EXISTS IN ORDER
-                                                        // ---------------------------------------------------------
-                                                        List<dynamic> lineItems = List.from(rawOrder['line_items'] ?? []);
+                                                        // 🔥 Load products list (OrderPanel uses THIS)
+                                                        List<Map<String, dynamic>> products = (rawOrder["products"] ?? [])
+                                                            .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
+                                                            .toList();
 
-                                                        int existingIndex = lineItems.indexWhere((item) {
-                                                          return item["product_id"] == variantId &&
-                                                              item["variation_id"] == variantId;
-                                                        });
+                                                        // 🔍 Check if variant already exists
+                                                        int existingIndex = products.indexWhere((p) =>
+                                                        (p["product_id"] == product.id) &&
+                                                            (p["variation_id"] == variantId)
+                                                        );
 
                                                         if (existingIndex != -1) {
                                                           // ---------------------------------------------------------
-                                                          // 🔄 VARIANT FOUND — INCREASE QUANTITY
+                                                          // 🔄 VARIANT FOUND → INCREASE QUANTITY
                                                           // ---------------------------------------------------------
-                                                          var existingItem = lineItems[existingIndex];
+                                                          var existing = products[existingIndex];
 
-                                                          int oldQty = int.tryParse(existingItem["quantity"].toString()) ?? 1;
+                                                          int oldQty = int.tryParse(existing["quantity"].toString()) ?? 1;
                                                           int newQty = oldQty + quantity;
 
-                                                          existingItem["quantity"] = newQty;
-                                                          existingItem["total"] = variantPrice * newQty;
-                                                          existingItem["timestamp"] = DateTime.now().millisecondsSinceEpoch;
+                                                          // Match OrderHelper.addItemToOrder() field structure
+                                                          existing["quantity"] = newQty;
+                                                          existing["price"] = variantPrice;
+                                                          existing["unit_price"] = variantPrice;
+                                                          existing["sales_price"] = variantPrice;
+                                                          existing["regular_price"] = variantPrice;
+                                                          existing["timestamp"] = DateTime.now().millisecondsSinceEpoch;
 
-                                                          lineItems[existingIndex] = existingItem;
-                                                          rawOrder["line_items"] = lineItems;
-                                                          offlineBox.put(activeOrderId, rawOrder);
+                                                          products[existingIndex] = existing;
+
+                                                          // Save both lists
+                                                          rawOrder["products"] = products;
+                                                          rawOrder["line_items"] = products;
+
+                                                          await offlineBox.put(activeOrderId, rawOrder);
+
+                                                          // 🔥 Refresh OrderPanel data
+                                                          await orderHelper.loadData();
 
                                                           _removeOverlay();
                                                           _clearSearch();
@@ -502,21 +537,27 @@ class _TopBarState extends State<TopBar> {
                                                             ),
                                                           );
 
-                                                          return; // 🚀 STOP HERE (Do not add new item)
+                                                          return; // STOP HERE
                                                         }
 
                                                         // ---------------------------------------------------------
-                                                        // 🟩 VARIANT NOT FOUND — ADD AS NEW ITEM
+                                                        // 🆕 VARIANT NOT FOUND → ADD AS NEW ITEM
                                                         // ---------------------------------------------------------
                                                         await orderHelper.addItemToOrder(
-                                                          variantId, // serverItemId
+                                                          variantId,
                                                           variant["name"] ?? 'Unknown',
                                                           variant["image"] ?? '',
                                                           variantPrice,
                                                           quantity,
                                                           variant["sku"] ?? 'SKU',
                                                           orderId,
-                                                          onItemAdded: () {
+                                                          type: 'variant',
+                                                          productId: product.id,
+                                                          variationId: variantId,
+                                                          variationName: variant["name"],
+                                                          unitPrice: variantPrice,
+                                                          salesPrice: variantPrice,
+                                                          onItemAdded: () async {
                                                             _removeOverlay();
                                                             _clearSearch();
                                                             setState(() => isAddingItemLoading = false);
@@ -537,17 +578,12 @@ class _TopBarState extends State<TopBar> {
                                                                 backgroundColor: Colors.green,
                                                               ),
                                                             );
+
+                                                            await orderHelper.loadData();
                                                           },
-                                                          // Hive attributes
-                                                          type: 'variant',
-                                                          productId: variantId,
-                                                          variationId: variantId,
-                                                          variationName: variant["name"],
-                                                          unitPrice: variantPrice,
-                                                          salesPrice: variantPrice,
                                                         );
                                                       } catch (e, s) {
-                                                        if (kDebugMode) print("❌ Error adding variant: $e\n$s");
+                                                        print("❌ Error adding variant: $e\n$s");
                                                         _removeOverlay();
                                                         setState(() => isAddingItemLoading = false);
 
@@ -560,6 +596,7 @@ class _TopBarState extends State<TopBar> {
                                                       }
                                                     }
 
+
                                                 );
 
                                               }
@@ -570,121 +607,128 @@ class _TopBarState extends State<TopBar> {
                                         );
                                       }
                                       else {
-                                        // 🟩 Step 5: Handle simple product (no variants)
+                                        // 🟩 Step 5: Handle simple product (NO variants)
                                         _showLoaderOverlay();
                                         setState(() => isAddingItemLoading = true);
 
                                         try {
-                                          double price = double.tryParse(product.price ?? '0.0') ?? 0.0;
+                                          final pid = product.id!;
+                                          final psku = product.sku ?? '';
+                                          final pPrice = double.tryParse(product.price ?? '0.0') ?? 0.0;
 
-                                          // ---------------------------------------------------------
-                                          // 🟦 FIRST: CHECK IF PRODUCT ALREADY EXISTS
-                                          // ---------------------------------------------------------
-                                          int existingIndex = lineItems.indexWhere((item) {
-                                            return item["product_id"] == product.id &&
-                                                item["variation_id"] == 0; // simple item
-                                          });
+                                          // Convert to editable list
+                                          List<Map<String, dynamic>> products = (rawOrder["products"] ?? [])
+                                              .map<Map<String, dynamic>>((i) => Map<String, dynamic>.from(i))
+                                              .toList();
 
-                                          if (existingIndex != -1) {
-                                            // 🟦 PRODUCT ALREADY ADDED → UPDATE QTY
-                                            var existingItem = lineItems[existingIndex];
+                                          // ----------------------------------------------------------------------
+                                          // 🟦 Step A: Check if SIMPLE PRODUCT already exists
+                                          // RULE: simple product = variation_id == -1 (YOUR POS STANDARD)
+                                          // ----------------------------------------------------------------------
+                                          int index = products.indexWhere((item) =>
+                                          item["product_id"].toString() == pid.toString() &&
+                                              (item["variation_id"]?.toString() ?? "-1") == "-1");
 
-                                            int qty = int.tryParse(existingItem["quantity"].toString()) ?? 1;
-                                            qty += 1;
+                                          if (index != -1) {
+                                            // 🟩 PRODUCT FOUND → Increase Quantity
+                                            var existing = products[index];
 
-                                            existingItem["quantity"] = qty;
-                                            existingItem["total"] = price * qty;
-                                            existingItem["timestamp"] = DateTime.now().millisecondsSinceEpoch;
+                                            int oldQty = int.tryParse(existing["quantity"].toString()) ?? 1;
+                                            int newQty = oldQty + 1;
 
-                                            lineItems[existingIndex] = existingItem;
-                                            rawOrder["line_items"] = lineItems;
-                                            offlineBox.put(activeOrderId, rawOrder);
+                                            double unitPrice =
+                                                double.tryParse(existing["unit_price"]?.toString() ??
+                                                    existing["price"]?.toString() ??
+                                                    pPrice.toString()) ??
+                                                    pPrice;
+
+                                            // Update fields
+                                            existing["quantity"] = newQty;
+                                            existing["price"] = unitPrice;
+                                            existing["unit_price"] = unitPrice;
+                                            existing["sales_price"] = unitPrice;
+                                            existing["regular_price"] = unitPrice;
+                                            existing["variation_id"] = -1; // POS simple-product rule
+                                            existing["timestamp"] = DateTime.now().millisecondsSinceEpoch;
+
+                                            products[index] = existing;
+
+                                            // Save back
+                                            rawOrder["products"] = products;
+                                            rawOrder["line_items"] = products;
+
+                                            await offlineBox.put(activeOrderId, rawOrder);
+
+                                            // Reload UI data
+                                            await orderHelper.loadData();
 
                                             _removeOverlay();
                                             _clearSearch();
                                             setState(() => isAddingItemLoading = false);
 
-                                            ScaffoldMessenger.of(_context).showSnackBar(
-                                              SnackBar(
-                                                content: Text("Updated ${product.name} quantity to $qty"),
-                                                backgroundColor: Colors.green,
-                                              ),
-                                            );
-
                                             widget.onProductSelected?.call(product);
-                                            return; // 🚀 IMPORTANT
+                                            return; // STOP HERE — DO NOT ADD DUPLICATE
                                           }
 
-                                          // ---------------------------------------------------------
-                                          // 🟩 IF NOT EXISTS → ADD NEW ITEM
-                                          // ---------------------------------------------------------
+                                          // ----------------------------------------------------------------------
+                                          // 🟥 SIMPLE PRODUCT NOT FOUND → ADD NEW ITEM
+                                          // ----------------------------------------------------------------------
                                           final newItem = {
-                                            "product_id": product.id,
+                                            "product_id": pid,
                                             "name": product.name ?? "Unknown",
                                             "quantity": 1,
-                                            "price": price,
+                                            "price": pPrice,
+                                            "unit_price": pPrice,
+                                            "sales_price": pPrice,
+                                            "regular_price": pPrice,
                                             "image": product.images?.isNotEmpty == true ? product.images!.first : '',
-                                            "sku": product.sku ?? 'SKU${product.name}',
-                                            "total": price,
+                                            "sku": psku,
+                                            "total": pPrice,
                                             "type": "simple",
-                                            "variation_id": 0,
+                                            "variation_id": -1, // POS rule
                                             "timestamp": DateTime.now().millisecondsSinceEpoch,
                                           };
 
-                                          lineItems.add(newItem);
-                                          rawOrder['line_items'] = lineItems;
-                                          offlineBox.put(activeOrderId, rawOrder);
+                                          // products.add(newItem);
+                                          // rawOrder["products"] = products;
+                                          // rawOrder["line_items"] = products;
+                                          //
+                                          // await offlineBox.put(activeOrderId, rawOrder);
 
-                                          final intOrderId = int.tryParse(activeOrderId.toString()) ?? 0;
-
-                                          if (intOrderId == 0) throw Exception("Invalid orderId");
-
-                                          // 🔄 Update UI (OrderHelper)
-                                          orderHelper.addItemToOrder(
-                                            product.id ?? -1,
+                                          // Also update orderHelper (UI sync)
+                                          await orderHelper.addItemToOrder(
+                                            pid,
                                             product.name ?? 'Unknown',
                                             product.images?.isNotEmpty == true ? product.images!.first : '',
-                                            price,
+                                            pPrice,
                                             1,
-                                            product.sku ?? 'SKU${product.name}',
-                                            intOrderId,
+                                            psku,
+                                            int.tryParse(activeOrderId) ?? 0,
+                                            type: "simple",
+                                            productId: pid,
+                                            variationId: -1, // ✔ unified rule
+                                            variationName: null,
+                                            variationCount: 0,
+                                            combo: null,
+                                            salesPrice: pPrice,
+                                            regularPrice: pPrice,
+                                            unitPrice: pPrice,
                                             onItemAdded: () {
                                               _removeOverlay();
                                               _clearSearch();
                                               setState(() => isAddingItemLoading = false);
-
                                               widget.onProductSelected?.call(product);
-
-                                              ScaffoldMessenger.of(_context).showSnackBar(
-                                                SnackBar(
-                                                  content: Text("Added ${product.name} to order"),
-                                                  backgroundColor: Colors.green,
-                                                ),
-                                              );
                                             },
-                                            type: "simple",
-                                            productId: product.id ?? -1,
-                                            variationId: 0,
-                                            variationName: null,
-                                            variationCount: 0,
-                                            combo: null,
-                                            salesPrice: price,
-                                            regularPrice: price,
-                                            unitPrice: price,
                                           );
                                         } catch (e, s) {
-                                          if (kDebugMode) print("❌ Local add error: $e\n$s");
+                                          print("❌ Simple product add error: $e\n$s");
                                           _removeOverlay();
                                           setState(() => isAddingItemLoading = false);
-
-                                          ScaffoldMessenger.of(_context).showSnackBar(
-                                            const SnackBar(
-                                              content: Text("Error adding product"),
-                                              backgroundColor: Colors.red,
-                                            ),
-                                          );
                                         }
                                       }
+
+
+
 
 
 

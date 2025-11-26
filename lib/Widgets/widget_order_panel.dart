@@ -2054,7 +2054,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 'item_name': name,
                 'item_price': price,
                 'items_count': qty,
-                'item_sum_price': price * qty,         
+                'item_sum_price': price * qty,
                 'item_image': item['image'] ?? "",
                 'item_type': itemType,
                 'item_tax': 0.0,

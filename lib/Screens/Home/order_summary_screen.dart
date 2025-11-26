@@ -236,6 +236,49 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
   }
 
+  Future<void> updateOfflineOrderRedeem(
+      String orderId,
+      double redeemedValue,
+      int redeemedPoints,
+      int updatedAvailablePoints,
+      ) async {
+    final box = Hive.box('offlineOrders');
+    final existing = box.get(orderId);
+
+    if (existing == null) {
+      print("⚠ [Hive] Cannot update redeem → Order not found: $orderId");
+      return;
+    }
+
+    final updated = Map<String, dynamic>.from(existing);
+
+    updated["redeemed_value"] = redeemedValue;
+    updated["redeemed_points"] = redeemedPoints;
+    updated["available_points_after_redeem"] = updatedAvailablePoints;
+
+    await box.put(orderId, updated);
+
+    print("💾 [Hive] Saved redeem → ID: $orderId | value: $redeemedValue | points: $redeemedPoints | left: $updatedAvailablePoints");
+  }
+
+  Future<void> removeOfflineOrderRedeem(String orderId) async {
+    final box = Hive.box('offlineOrders');
+    final existing = box.get(orderId);
+
+    if (existing == null) return;
+
+    final updated = Map<String, dynamic>.from(existing);
+
+    updated.remove("redeemed_value");
+    updated.remove("redeemed_points");
+    updated.remove("available_points_after_redeem");
+
+    await box.put(orderId, updated);
+
+    print("🗑 [Hive] Redeemed points REMOVED → ID: $orderId");
+  }
+
+
   //Build #1.0.99: getPaymentsByOrderId API call for payment by cash and payment by other details
   void _fetchPaymentsByOrderId() {
     if (kDebugMode) {
@@ -2428,8 +2471,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 isActive:
                                     redeemedValue == 0 && availablePoints > 0,
                                 onTap: () async {
-                                  if (redeemedValue > 0 || availablePoints == 0)
-                                    return;
+                                  if (redeemedValue > 0 || availablePoints == 0) return;
 
                                   if (!isMobileValid && !isEmailValid) {
                                     ScaffoldMessenger.of(context).showSnackBar(
@@ -2444,44 +2486,77 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                   final result = await showDialog(
                                     context: context,
                                     barrierDismissible: false,
-                                    builder: (_) => RedeemPointsDialog(
-                                        apiData: loyaltyData!),
+                                    builder: (_) => RedeemPointsDialog(apiData: loyaltyData!),
                                   );
 
                                   if (result == null) return;
 
+                                  // User removed redeem
                                   if (result["remove"] == true) {
                                     setState(() {
                                       redeemedValue = 0;
                                       computedNetPayable = NetTotal;
                                     });
+
+                                    // 🔥 Remove from Hive also
+                                    final String orderKey =
+                                        widget.orderId?.toString() ??
+                                            widget.offlineOrderId?.toString() ??
+                                            "";
+
+                                    if (orderKey.isNotEmpty) {
+                                      await removeOfflineOrderRedeem(orderKey);
+                                    }
+
                                     return;
                                   }
 
-                                  final redeemApi =
-                                      jsonDecode(result["apiResponse"]);
+                                  final redeemApi = jsonDecode(result["apiResponse"]);
 
-                                  if (redeemApi != null &&
-                                      redeemApi["success"] == true) {
+                                  if (redeemApi != null && redeemApi["success"] == true) {
                                     final data = redeemApi["data"];
 
+                                    // Extract API values first
+                                    final double newRedeemValue =
+                                        double.tryParse(data["redeem_amount"].toString()) ?? 0.0;
+
+                                    final int usedPoints =
+                                        int.tryParse(data["redeem_points"].toString()) ?? 0;
+
+                                    final int newAvailablePoints =
+                                        int.tryParse(data["available_points"].toString()) ??
+                                            availablePoints;
+
+                                    final double newBalanceAmount =
+                                        double.tryParse(data["order_total"].toString()) ??
+                                            computedNetPayable;
+
+                                    // Update UI
                                     setState(() {
-                                      redeemedValue = double.tryParse(
-                                              data["redeem_amount"]
-                                                  .toString()) ??
-                                          0.0;
-
-                                      balanceAmount = double.tryParse(
-                                              data["order_total"].toString()) ??
-                                          computedNetPayable;
-
-                                      availablePoints = int.tryParse(
-                                              data["available_points"]
-                                                  .toString()) ??
-                                          availablePoints;
+                                      redeemedValue = newRedeemValue;
+                                      availablePoints = newAvailablePoints;
+                                      balanceAmount = newBalanceAmount;
                                     });
+
+                                    // 🔥 SAVE TO HIVE
+                                    final String orderKey =
+                                        widget.orderId?.toString() ??
+                                            widget.offlineOrderId?.toString() ??
+                                            "";
+
+                                    if (orderKey.isNotEmpty) {
+                                      await updateOfflineOrderRedeem(
+                                        orderKey,
+                                        newRedeemValue,
+                                        usedPoints,
+                                        newAvailablePoints,
+                                      );
+                                    }
+
+                                    print("💾 Redeem saved to Hive → Order:$orderKey | Value:$newRedeemValue");
                                   }
                                 },
+
                               ),
 
                               const SizedBox(height: 20),
@@ -2765,8 +2840,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         discount = appliedDiscount;
         tax = updatedTax;
         NetTotal = grossTotal - discount;
-        computedNetPayable = backendNet;
-        balanceAmount = backendNet;
+        computedNetPayable = NetTotal + tax- merchantDiscount + cashbackFee;
+        balanceAmount = computedNetPayable;
       });
 
       // SUCCESS SNACKBAR
@@ -3641,6 +3716,23 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     // -------------------------------
     final grossTotal = GlobalUtility.getGrossTotal(orderItems);
 
+    print("🟩 Totals Computed:");
+    print("Gross Total: $grossTotal");
+    print("Discount: $discount");
+    print("Merchant Disc: $merchantDiscount");
+    print("Tax: $tax");
+    print("Cashback Fee: $cashbackFee");
+    print("Service Charge: $servicecharges");
+    print("Redeemed Value: $redeemedValue");
+    print("Net Payable: $computedNetPayable");
+    print("Cash: $payByCash");
+    print("Other: $payByOther");
+    print("Tender: $tenderAmount");
+    print("Change: $changeAmount");
+
+    print("================================================");
+    print("🟩 _preparePrintTicket() COMPLETED SUCCESSFULLY");
+    print("================================================");
     bytes += ticket.feed(1);
     bytes += ticket.row([
       PosColumn(
@@ -3683,6 +3775,31 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           styles: PosStyles(align: PosAlign.right)),
     ]);
 
+    // Cashback Fee
+    if (cashbackFee > 0) {
+      bytes += ticket.row([
+        PosColumn(text: TextConstants.cashbackFee, width: 10),
+        PosColumn(
+          text: "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
+
+// Service Charges
+    if (servicecharges > 0) {
+      bytes += ticket.row([
+        PosColumn(text: TextConstants.servicecharges, width: 10),
+        PosColumn(
+          text: "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
+
+
     bytes += ticket.row([
       PosColumn(
           text: "-----------------------------------------------", width: 12),
@@ -3698,6 +3815,19 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           width: 2,
           styles: PosStyles(align: PosAlign.right)),
     ]);
+
+    // Redeemed Value
+    if (redeemedValue > 0) {
+      bytes += ticket.row([
+        PosColumn(text: "Redeemed Amount", width: 10),
+        PosColumn(
+          text: "-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
+
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByCash, width: 10),
