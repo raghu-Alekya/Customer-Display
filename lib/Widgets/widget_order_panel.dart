@@ -2034,27 +2034,27 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             final isPayout     = itemType.contains("payout");
             final isCashback   = itemType.contains("cashback");
             final isCoupon     = itemType.contains("coupon");
-
-            // ❗ SKIP TAX FOR NON-PRODUCT ITEMS
             if (isCustom || isPayout || isCashback || isCoupon) {
-              final name =
-                  item['name'] ??
-                      item['custom_item_name'] ??
-                      item['item_name'] ??
-                      "Item";
+              final name = item['name'] ??
+                  item['custom_item_name'] ??
+                  item['item_name'] ?? "Item";
 
               final price = double.tryParse(
                   item['price']?.toString() ??
                       item['amount']?.toString() ??
-                      item['custom_item_price']?.toString() ??
-                      "0"
+                      item['custom_item_price']?.toString() ?? "0"
               ) ?? 0.0;
+
+              final qty = int.tryParse(
+                  item['quantity']?.toString() ??
+                      item['items_count']?.toString() ?? "1"
+              ) ?? 1;
 
               return {
                 'item_name': name,
                 'item_price': price,
-                'items_count': 1,
-                'item_sum_price': price,
+                'items_count': qty,
+                'item_sum_price': price * qty,         
                 'item_image': item['image'] ?? "",
                 'item_type': itemType,
                 'item_tax': 0.0,
@@ -2444,126 +2444,175 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                             if (rawOfflineOrder == null) return;
 
                                             // Convert to editable map
-                                            final Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(rawOfflineOrder);
+                                            final Map<String, dynamic> offlineOrder =
+                                            Map<String, dynamic>.from(rawOfflineOrder);
+
+                                            // -------- NORMAL PRODUCTS ----------
                                             final List<Map<String, dynamic>> products =
                                                 (offlineOrder['products'] as List?)
                                                     ?.map((e) => Map<String, dynamic>.from(e))
-                                                    .toList() ?? [];
+                                                    .toList() ??
+                                                    [];
 
-                                            // 🔍 Locate and update the tapped product
+                                            // -------- CUSTOM ITEMS ----------
+                                            final List<Map<String, dynamic>> customItems =
+                                                (offlineOrder['custom_items'] as List?)
+                                                    ?.map((e) => Map<String, dynamic>.from(e))
+                                                    .toList() ??
+                                                    [];
+
+                                            final tappedItemName = (orderItem['item_name'] ?? '').toString();
+
+                                            // 🔍 UPDATE NORMAL PRODUCTS
                                             for (var product in products) {
-                                              final name1 = (product['name'] ??
+                                              final productName = (product['name'] ??
                                                   product['product_name'] ??
                                                   product['fast_key_item_name'] ??
                                                   '')
                                                   .toString();
-                                              final name2 = (orderItem['item_name'] ?? '').toString();
 
-                                              if (name1 == name2) {
-                                                final price = double.tryParse(product['price']?.toString() ?? '0') ?? 0.0;
+                                              if (productName == tappedItemName) {
+                                                final price =
+                                                    double.tryParse(product['price']?.toString() ?? '0') ?? 0.0;
+
                                                 product['quantity'] = newQuantity;
                                                 product['items_count'] = newQuantity;
                                                 product['subtotal'] = price * newQuantity;
 
                                                 if (kDebugMode) {
-                                                  print("🧾 Updated offline product → $name1 | Qty: $newQuantity | Subtotal: ${product['subtotal']}");
+                                                  print("🟢 Updated PRODUCT → $productName | Qty: $newQuantity");
                                                 }
                                                 break;
                                               }
                                             }
 
-                                            // Save updated order back to Hive
-                                            offlineOrder['products'] = products;
-                                            await offlineBox.put(orderKey, offlineOrder);
-                                            await CustomerDisplayHelper.updateCustomerDisplay(orderHelper.activeOrderId!);
+                                            // 🔍 UPDATE CUSTOM ITEMS
+                                            for (var custom in customItems) {
+                                              final customName =
+                                              (custom['custom_item_name'] ?? custom['item_name'] ?? '').toString();
 
-                                            if (kDebugMode) {
-                                              final offlineBox = Hive.box('offlineOrders');
-                                              final data = offlineBox.get(orderHelper.activeOrderId!.toString());
-                                              print("🖥️ Customer Display Updated for Order: ${orderHelper.activeOrderId}");
-                                              print("📦 Customer Display Data → ${jsonEncode(data)}");
+                                              if (customName == tappedItemName) {
+                                                final price = double.tryParse(
+                                                    custom['custom_item_price']?.toString() ??
+                                                        custom['amount']?.toString() ??
+                                                        '0') ??
+                                                    0.0;
+
+                                                custom['quantity'] = newQuantity;
+                                                custom['items_count'] = newQuantity;
+                                                custom['subtotal'] = price * newQuantity;
+
+                                                if (kDebugMode) {
+                                                  print("🟣 Updated CUSTOM ITEM → $customName | Qty: $newQuantity");
+                                                }
+                                                break;
+                                              }
                                             }
 
-                                            // 🔁 Rebuild Current Order UI instantly
+                                            // Save updated lists back to Hive
+                                            offlineOrder['products'] = products;
+                                            offlineOrder['custom_items'] = customItems;
+
+                                            await offlineBox.put(orderKey, offlineOrder);
+
+                                            // 🖥 Update customer display
+                                            await CustomerDisplayHelper.updateCustomerDisplay(orderHelper.activeOrderId!);
+
+                                            // 🔁 Refresh UI instantly
                                             if (mounted) {
                                               setState(() {
-                                                // Recalculate and reload from Hive directly
-                                                final updatedProducts = products
-                                                    .map((item) => {
-                                                  'item_name': item['name'] ??
-                                                      item['product_name'] ??
-                                                      '',
-                                                  'item_price': double.tryParse(
-                                                      item['price']?.toString() ?? '0') ??
-                                                      0.0,
-                                                  'items_count':
-                                                  double.tryParse(item['quantity']?.toString() ?? '1') ??
-                                                      1,
-                                                  'item_sum_price': (double.tryParse(
-                                                      item['price']?.toString() ?? '0') ??
-                                                      0.0) *
-                                                      (double.tryParse(
-                                                          item['quantity']?.toString() ?? '1') ??
-                                                          1),
-                                                  'item_type': 'Product',
-                                                  'item_image': item['image'] ?? '',
-                                                })
-                                                    .toList();
+                                                // Rebuild products
+                                                final updatedProducts = products.map((item) {
+                                                  final price =
+                                                      double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+                                                  final qty =
+                                                      int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
 
-                                                final updatedPayouts = ((offlineOrder['payouts'] ?? []) as List)
+                                                  return {
+                                                    'item_name':
+                                                    item['name'] ?? item['product_name'] ?? '',
+                                                    'item_price': price,
+                                                    'items_count': qty,
+                                                    'item_sum_price': price * qty,
+                                                    'item_type': 'product',
+                                                    'item_image': item['image'] ?? '',
+                                                  };
+                                                }).toList();
+
+                                                // Rebuild custom items
+                                                final updatedCustom = customItems.map((item) {
+                                                  final price = double.tryParse(
+                                                      item['custom_item_price']?.toString() ??
+                                                          item['amount']?.toString() ??
+                                                          '0') ??
+                                                      0.0;
+                                                  final qty =
+                                                      int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+
+                                                  return {
+                                                    'item_name': item['custom_item_name'] ?? item['item_name'] ?? "",
+                                                    'item_price': price,
+                                                    'items_count': qty,
+                                                    'item_sum_price': price * qty,
+                                                    'item_type': 'custom item',
+                                                    'item_image': '',
+                                                  };
+                                                }).toList();
+
+                                                // Payout & Cashback maps intact
+                                                final updatedPayouts =
+                                                ((offlineOrder['payouts'] ?? []) as List)
                                                     .map((e) => Map<String, dynamic>.from(e))
                                                     .toList();
-                                                final updatedCashbacks = ((offlineOrder['Cashback'] ?? []) as List)
+
+                                                final updatedCashbacks =
+                                                ((offlineOrder['cashbacks'] ?? []) as List)
                                                     .map((e) => Map<String, dynamic>.from(e))
                                                     .toList();
 
-                                                final updatedItems = [
+                                                // FINAL ORDER ITEMS
+                                                orderItems = [
                                                   ...updatedProducts,
-
-                                                  // ------------------ PAYOUTS ------------------
+                                                  ...updatedCustom,
                                                   ...updatedPayouts.map((payout) => {
                                                     'item_name': 'Payout',
                                                     'item_price': double.tryParse(
-                                                        payout['amount']?.toString() ?? '0') ?? 0.0,
+                                                        payout['amount']?.toString() ?? '0') ??
+                                                        0.0,
                                                     'items_count': 1,
                                                     'item_sum_price': double.tryParse(
-                                                        payout['amount']?.toString() ?? '0') ?? 0.0,
+                                                        payout['amount']?.toString() ?? '0') ??
+                                                        0.0,
                                                     'item_image': 'assets/svg/payout.svg',
                                                     'item_type': 'payout',
                                                   }),
-
-                                                  // ------------------ CASHBACK ------------------
                                                   ...updatedCashbacks.map((cb) => {
                                                     'item_name': 'Cashback',
                                                     'item_price': double.tryParse(
-                                                        cb['amount']?.toString() ?? '0') ?? 0.0,
+                                                        cb['amount']?.toString() ?? '0') ??
+                                                        0.0,
                                                     'items_count': 1,
                                                     'item_sum_price': double.tryParse(
-                                                        cb['amount']?.toString() ?? '0') ?? 0.0,
-                                                    'item_image':
-                                                    cb['product_image'] ??
+                                                        cb['amount']?.toString() ?? '0') ??
+                                                        0.0,
+                                                    'item_image': cb['product_image'] ??
                                                         cb['item_image'] ??
                                                         cb['image'] ??
                                                         "",
-
-                                                    // <-- use any icon you want
                                                     'item_type': 'cashback',
                                                   }),
                                                 ];
-
-                                                orderItems = updatedItems;
                                               });
                                             }
 
                                             if (kDebugMode) {
-                                              print("✅ Offline quantity updated and UI refreshed from Hive");
+                                              print("✅ Quantity updated for PRODUCT or CUSTOM ITEM");
                                             }
                                           } catch (e) {
-                                            if (kDebugMode) {
-                                              print("❌ Failed to update offline item quantity: $e");
-                                            }
+                                            if (kDebugMode) print("❌ Failed updating quantity: $e");
                                           }
                                         },
+
                                         isDialog: true,
                                       );
                                     },

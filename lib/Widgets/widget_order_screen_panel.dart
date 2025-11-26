@@ -1466,6 +1466,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                 color: Colors.blue, fontSize: 14)),
                                       ],
                                     ),
+                                    SizedBox(
+                                      height: 2,
+                                    ),
 
                                     if (cashbackFee > 0)
                                       Row(
@@ -1478,6 +1481,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                           ),
                                         ],
                                       ),
+                                    SizedBox(
+                                      height: 2,
+                                    ),
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [

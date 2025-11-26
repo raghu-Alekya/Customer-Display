@@ -1808,19 +1808,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 ),
               ),
               // ---------------- DELETE ICON FOR DISCOUNT ----------------
-              if ((label == TextConstants.discountText || isDiscount) &&
-                  discount > 0)
+              if ((label == TextConstants.discountText || isDiscount) && discount > 0)
                 GestureDetector(
-                  onTap: () async => await _removeAppliedCoupon(),
-                  child: const Padding(
-                    padding: EdgeInsets.only(left: 5),
-                    child:
-                        Icon(Icons.delete_forever, color: Colors.red, size: 20),
+                  onTap: isPaymentDone
+                      ? null      // <--- DISABLE WHEN PAYMENT DONE
+                      : () async => await _removeAppliedCoupon(),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 5),
+                    child: Icon(
+                      Icons.delete_forever,
+                      color: isPaymentDone ? Colors.grey : Colors.red,
+                      size: 20,
+                    ),
                   ),
                 ),
-
-// ---------------- DELETE ICON FOR REDEEMED AMOUNT ----------------
-              // ---------------- DELETE ICON FOR REDEEMED AMOUNT ----------------
               if (label == "Redeemed Amount" && redeemedValue > 0)
                 GestureDetector(
                   onTap: isPaymentDone        // <--- FIX
