@@ -1623,6 +1623,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                     : Colors.grey)),
                                       ],
                                     ),
+                                    if(merchantDiscount>0)
                                     Row(
                                       mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
@@ -1644,7 +1645,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
                                           ],
                                         ),
-                                        if(merchantDiscount>0)
                                         Text(
                                             "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
                                             style: TextStyle(

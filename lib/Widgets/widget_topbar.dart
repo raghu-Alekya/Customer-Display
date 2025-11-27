@@ -264,504 +264,518 @@ class _TopBarState extends State<TopBar> {
     _overlayEntry = OverlayEntry(
         builder: (context) {
           final themeHelper = Provider.of<ThemeNotifier>(context);
-          return Positioned(
-            width: searchFieldSize.width,
-            left: searchFieldOffset.dx,
-            top: searchFieldOffset.dy + searchFieldSize.height,
-            child: Material(
-              elevation: 4,
-              child: Container(
-                constraints: const BoxConstraints(maxHeight: 300),
-                decoration: BoxDecoration(
-                  color:themeHelper.themeMode == ThemeMode.dark
-                      ? ThemeNotifier.secondaryBackground
-                      : Colors.white,
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(8),
-                    bottomRight: Radius.circular(8),
+          return Stack(
+              children: [
+                // 🔥 FULL SCREEN CLICK DETECTOR
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: () {
+                      _removeOverlay(); // 👈 auto close
+                      _searchFocusNode.unfocus();
+                    },
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 4,
-                    ),
-                  ],
                 ),
-                child: StreamBuilder<APIResponse<List<ProductResponse>>>(
-                  stream: _productBloc.productStream,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData) {
-                      switch (snapshot.data!.status) {
-                        case Status.LOADING:
-                          if (kDebugMode) print("#### 2222 Status is LOADING");
-                      // return const Center( //
-                      //   child: Padding(
-                      //     padding: EdgeInsets.all(16),
-                      //     child: CircularProgressIndicator(),
-                      //   ),
-                      // );
-                        case Status.COMPLETED:
-                          final products = snapshot.data!.data;
-                          if (products == null || products.isEmpty) {
-                            if (kDebugMode) {
-                              print("TopBar - result found no product with search text COMPLETED $_overlayEntry");
-                            }
 
-                            return const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Text('No products found'),
-                            );
-                          }
-                          if (kDebugMode) {
-                            print("TopBar - result found product with search text COMPLETED ${products.length}");
-                          }
-                          return ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: products.length,
-                            itemBuilder: (context, index) {
-                              final product = products[index];
-                              return ListTile(
-                                  leading: product.images != null && product.images!.isNotEmpty
-                                      ? SizedBox(
-                                    width: 40,
-                                    height: 40,
-                                    child: Image.network(
-                                      product.images!.first,
-                                      width: 40,
-                                      height: 40,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) {
-                                        return const Icon(Icons.image, size: 40);
-                                      },
-                                      loadingBuilder: (context, child, loadingProgress) {
-                                        if (loadingProgress == null) return child;
-                                        return const Center(
-                                          child: CircularProgressIndicator(),
-                                        );
-                                      },
-                                    ),
-                                  )
-                                      : const Icon(Icons.image, size: 40,),
-                                  title: Text(product.name ?? ''),
-                                  subtitle: Text('${TextConstants.currencySymbol}${double.tryParse(product.price.toString())?.toStringAsFixed(2) ?? "0.00"}'),
-                                  onTap: () async {
-                                    try {
-                                      // 🟩 Step 1: Initial cleanup and validation
-                                      _searchFocusNode.unfocus();
-                                      _removeOverlay();
-
-                                      var screen = widget.screen;
-                                      if (screen != Screen.FASTKEY && screen != Screen.CATEGORY && screen != Screen.ADD) {
-                                        if (kDebugMode) print("TopBar - return from product selection (invalid screen)");
-                                        return;
-                                      }
-
-                                      final serverOrderId = orderHelper.activeOrderId;
-                                      final dbOrderId = orderHelper.activeOrderId;
-                                      final offlineBox = Hive.box('offlineOrders');
-
-                                      // 🟥 Step 2: Check order existence
-                                      if (dbOrderId == null) {
-                                        ScaffoldMessenger.of(_context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text("No active order selected"),
-                                            backgroundColor: Colors.red,
-                                            duration: Duration(seconds: 2),
-                                          ),
-                                        );
-                                        return;
-                                      }
-
-                                      final activeOrderId = dbOrderId.toString();
-                                      final Map<String, dynamic> rawOrder =
-                                      Map<String, dynamic>.from(offlineBox.get(activeOrderId) ?? {});
-
-                                      print("CATEGORY FLOW ITEMS: ${rawOrder['products']}");
-                                      print("LINE ITEMS: ${rawOrder['line_items']}");
-
-                                      List<dynamic> lineItems = List.from(rawOrder['line_items'] ?? []);
-
-                                      // 🟨 Step 3: Check for age restriction
-                                      /// 🟨 Step 3: Check for age restriction
-
-// Safely get tags list
-                                      final tags = product.tags ?? [];
-
-// Check if any tag is age_restricted
-                                      final bool hasAgeRestriction =
-                                      tags.any((t) => t.name == TextConstants.age_restricted);
-
-// Only fetch the tag if it actually exists
-                                      SKU.Tags? ageRestrictedTag;
-                                      if (hasAgeRestriction) {
-                                        ageRestrictedTag =
-                                            tags.firstWhere((t) => t.name == TextConstants.age_restricted);
-                                      }
-
-// Read existing age flag from order
-                                      final dynamic hiveAge = rawOrder["age_verified"];
-
-                                      final bool alreadyVerified =
-                                          hiveAge == true ||
-                                              hiveAge == 1 ||
-                                              hiveAge?.toString().toLowerCase() == "true";
-
-                                      if (hasAgeRestriction && !alreadyVerified) {
-                                        final int minAge =
-                                            int.tryParse(ageRestrictedTag?.slug?.toString() ?? "0") ?? 0;
-
-                                        print("🔞 Showing Age Verification Popup (SEARCH)");
-
-                                        final prov = AgeVerificationProvider();
-                                        final ok = await prov.verifyAge(context, minAge: minAge);
-
-                                        if (!ok) {
-                                          print("❌ Age verification failed → Block product");
-                                          return;
-                                        }
-
-                                        // Save flag so this order never asks again
-                                        rawOrder["age_verified"] = true;
-                                        await offlineBox.put(activeOrderId, rawOrder);
-
-                                        print("💾 Saved age_verified = true for search flow");
-                                      }
-
-                                      if (kDebugMode) {
-                                        print(
-                                          "TopBar - Age OK, proceeding → Product has variants: "
-                                              "${product.variations != null && product.variations!.isNotEmpty}",
-                                        );
-                                      }
-
-
-                                      // 🟦 Step 4: Handle Variants (locally)
-                                      if (product.variations != null && product.variations!.isNotEmpty) {
-                                        _clearSearch();
-                                        _productBloc.fetchProductVariations(product.id!);
-
-                                        await showDialog(
-                                          context: _context,
-                                          barrierDismissible: false,
-                                          builder: (context) => StreamBuilder<APIResponse<List<ProductVariation>>>(
-                                            stream: _productBloc.variationStream,
-                                            builder: (context, snapshot) {
-                                              if (!snapshot.hasData || snapshot.data!.status == Status.LOADING) {
-                                                return const Center(child: CircularProgressIndicator());
-                                              }
-
-                                              if (snapshot.data!.status == Status.COMPLETED) {
-                                                final variations = snapshot.data!.data!;
-                                                if (variations.isEmpty) return const SizedBox.shrink();
-
-                                                return VariantsDialog(
-                                                    title: product.name ?? '',
-                                                    variations: variations
-                                                        .map((v) => {
-                                                      "id": v.id,
-                                                      "name": v.name,
-                                                      "price": v.regularPrice,
-                                                      "image": v.image.src,
-                                                      "sku": v.sku ?? 'SKU${v.name}',
-                                                    })
-                                                        .toList(),
-                                                    onAddVariant: (variant, quantity) async {
-                                                      Navigator.pop(context);
-                                                      _showLoaderOverlay();
-                                                      setState(() => isAddingItemLoading = true);
-
-                                                      try {
-                                                        final int variantId = int.tryParse(variant["id"].toString()) ?? -1;
-                                                        final int orderId = int.tryParse(activeOrderId.toString()) ?? -1;
-                                                        final double variantPrice = double.tryParse(variant["price"].toString()) ?? 0.0;
-
-                                                        if (orderId == -1) throw Exception("Invalid order ID");
-
-                                                        // 🔥 Load products list (OrderPanel uses THIS)
-                                                        List<Map<String, dynamic>> products = (rawOrder["products"] ?? [])
-                                                            .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
-                                                            .toList();
-
-                                                        // 🔍 Check if variant already exists
-                                                        int existingIndex = products.indexWhere((p) =>
-                                                        (p["product_id"] == product.id) &&
-                                                            (p["variation_id"] == variantId)
-                                                        );
-
-                                                        if (existingIndex != -1) {
-                                                          // ---------------------------------------------------------
-                                                          // 🔄 VARIANT FOUND → INCREASE QUANTITY
-                                                          // ---------------------------------------------------------
-                                                          var existing = products[existingIndex];
-
-                                                          int oldQty = int.tryParse(existing["quantity"].toString()) ?? 1;
-                                                          int newQty = oldQty + quantity;
-
-                                                          // Match OrderHelper.addItemToOrder() field structure
-                                                          existing["quantity"] = newQty;
-                                                          existing["price"] = variantPrice;
-                                                          existing["unit_price"] = variantPrice;
-                                                          existing["sales_price"] = variantPrice;
-                                                          existing["regular_price"] = variantPrice;
-                                                          existing["timestamp"] = DateTime.now().millisecondsSinceEpoch;
-
-                                                          products[existingIndex] = existing;
-
-                                                          // Save both lists
-                                                          rawOrder["products"] = products;
-                                                          rawOrder["line_items"] = products;
-
-                                                          await offlineBox.put(activeOrderId, rawOrder);
-
-                                                          // 🔥 Refresh OrderPanel data
-                                                          await orderHelper.loadData();
-
-                                                          _removeOverlay();
-                                                          _clearSearch();
-                                                          setState(() => isAddingItemLoading = false);
-
-                                                          ScaffoldMessenger.of(_context).showSnackBar(
-                                                            SnackBar(
-                                                              content: Text("Updated '${variant["name"]}' quantity to $newQty"),
-                                                              backgroundColor: Colors.green,
-                                                            ),
-                                                          );
-
-                                                          widget.onProductSelected?.call(
-                                                            ProductResponse(
-                                                              id: variantId,
-                                                              name: variant["name"],
-                                                              price: variantPrice.toString(),
-                                                              images: [variant["image"]],
-                                                              sku: variant["sku"],
-                                                            ),
-                                                          );
-
-                                                          return; // STOP HERE
-                                                        }
-
-                                                        // ---------------------------------------------------------
-                                                        // 🆕 VARIANT NOT FOUND → ADD AS NEW ITEM
-                                                        // ---------------------------------------------------------
-                                                        await orderHelper.addItemToOrder(
-                                                          variantId,
-                                                          variant["name"] ?? 'Unknown',
-                                                          variant["image"] ?? '',
-                                                          variantPrice,
-                                                          quantity,
-                                                          variant["sku"] ?? 'SKU',
-                                                          orderId,
-                                                          type: 'variant',
-                                                          productId: product.id,
-                                                          variationId: variantId,
-                                                          variationName: variant["name"],
-                                                          unitPrice: variantPrice,
-                                                          salesPrice: variantPrice,
-                                                          onItemAdded: () async {
-                                                            _removeOverlay();
-                                                            _clearSearch();
-                                                            setState(() => isAddingItemLoading = false);
-
-                                                            widget.onProductSelected?.call(
-                                                              ProductResponse(
-                                                                id: variantId,
-                                                                name: variant["name"],
-                                                                price: variantPrice.toString(),
-                                                                images: [variant["image"]],
-                                                                sku: variant["sku"],
-                                                              ),
-                                                            );
-
-                                                            ScaffoldMessenger.of(_context).showSnackBar(
-                                                              SnackBar(
-                                                                content: Text("Variant '${variant["name"]}' added to order"),
-                                                                backgroundColor: Colors.green,
-                                                              ),
-                                                            );
-
-                                                            await orderHelper.loadData();
-                                                          },
-                                                        );
-                                                      } catch (e, s) {
-                                                        print("❌ Error adding variant: $e\n$s");
-                                                        _removeOverlay();
-                                                        setState(() => isAddingItemLoading = false);
-
-                                                        ScaffoldMessenger.of(_context).showSnackBar(
-                                                          SnackBar(
-                                                            content: Text("Error adding variant locally"),
-                                                            backgroundColor: Colors.red,
-                                                          ),
-                                                        );
-                                                      }
-                                                    }
-
-
-                                                );
-
-                                              }
-
-                                              return const SizedBox.shrink();
-                                            },
-                                          ),
-                                        );
-                                      }
-                                      else {
-                                        // 🟩 Step 5: Handle simple product (NO variants)
-                                        _showLoaderOverlay();
-                                        setState(() => isAddingItemLoading = true);
-
-                                        try {
-                                          final pid = product.id!;
-                                          final psku = product.sku ?? '';
-                                          final pPrice = double.tryParse(product.price ?? '0.0') ?? 0.0;
-
-                                          // Convert to editable list
-                                          List<Map<String, dynamic>> products = (rawOrder["products"] ?? [])
-                                              .map<Map<String, dynamic>>((i) => Map<String, dynamic>.from(i))
-                                              .toList();
-
-                                          // ----------------------------------------------------------------------
-                                          // 🟦 Step A: Check if SIMPLE PRODUCT already exists
-                                          // RULE: simple product = variation_id == -1 (YOUR POS STANDARD)
-                                          // ----------------------------------------------------------------------
-                                          int index = products.indexWhere((item) =>
-                                          item["product_id"].toString() == pid.toString() &&
-                                              (item["variation_id"]?.toString() ?? "-1") == "-1");
-
-                                          if (index != -1) {
-                                            // 🟩 PRODUCT FOUND → Increase Quantity
-                                            var existing = products[index];
-
-                                            int oldQty = int.tryParse(existing["quantity"].toString()) ?? 1;
-                                            int newQty = oldQty + 1;
-
-                                            double unitPrice =
-                                                double.tryParse(existing["unit_price"]?.toString() ??
-                                                    existing["price"]?.toString() ??
-                                                    pPrice.toString()) ??
-                                                    pPrice;
-
-                                            // Update fields
-                                            existing["quantity"] = newQty;
-                                            existing["price"] = unitPrice;
-                                            existing["unit_price"] = unitPrice;
-                                            existing["sales_price"] = unitPrice;
-                                            existing["regular_price"] = unitPrice;
-                                            existing["variation_id"] = -1; // POS simple-product rule
-                                            existing["timestamp"] = DateTime.now().millisecondsSinceEpoch;
-
-                                            products[index] = existing;
-
-                                            // Save back
-                                            rawOrder["products"] = products;
-                                            rawOrder["line_items"] = products;
-
-                                            await offlineBox.put(activeOrderId, rawOrder);
-
-                                            // Reload UI data
-                                            await orderHelper.loadData();
-
-                                            _removeOverlay();
-                                            _clearSearch();
-                                            setState(() => isAddingItemLoading = false);
-
-                                            widget.onProductSelected?.call(product);
-                                            return; // STOP HERE — DO NOT ADD DUPLICATE
-                                          }
-
-                                          // ----------------------------------------------------------------------
-                                          // 🟥 SIMPLE PRODUCT NOT FOUND → ADD NEW ITEM
-                                          // ----------------------------------------------------------------------
-                                          final newItem = {
-                                            "product_id": pid,
-                                            "name": product.name ?? "Unknown",
-                                            "quantity": 1,
-                                            "price": pPrice,
-                                            "unit_price": pPrice,
-                                            "sales_price": pPrice,
-                                            "regular_price": pPrice,
-                                            "image": product.images?.isNotEmpty == true ? product.images!.first : '',
-                                            "sku": psku,
-                                            "total": pPrice,
-                                            "type": "simple",
-                                            "variation_id": -1, // POS rule
-                                            "timestamp": DateTime.now().millisecondsSinceEpoch,
-                                          };
-
-                                          // products.add(newItem);
-                                          // rawOrder["products"] = products;
-                                          // rawOrder["line_items"] = products;
-                                          //
-                                          // await offlineBox.put(activeOrderId, rawOrder);
-
-                                          // Also update orderHelper (UI sync)
-                                          await orderHelper.addItemToOrder(
-                                            pid,
-                                            product.name ?? 'Unknown',
-                                            product.images?.isNotEmpty == true ? product.images!.first : '',
-                                            pPrice,
-                                            1,
-                                            psku,
-                                            int.tryParse(activeOrderId) ?? 0,
-                                            type: "simple",
-                                            productId: pid,
-                                            variationId: -1, // ✔ unified rule
-                                            variationName: null,
-                                            variationCount: 0,
-                                            combo: null,
-                                            salesPrice: pPrice,
-                                            regularPrice: pPrice,
-                                            unitPrice: pPrice,
-                                            onItemAdded: () {
-                                              _removeOverlay();
-                                              _clearSearch();
-                                              setState(() => isAddingItemLoading = false);
-                                              widget.onProductSelected?.call(product);
-                                            },
-                                          );
-                                        } catch (e, s) {
-                                          print("❌ Simple product add error: $e\n$s");
-                                          _removeOverlay();
-                                          setState(() => isAddingItemLoading = false);
-                                        }
-                                      }
-
-
-
-
-
-
-
-                                    } catch (e, s) {
-                                      if (kDebugMode) print("TopBar onTap Exception: $e\n$s");
-                                      _removeOverlay();
-                                      setState(() => isAddingItemLoading = false);
-                                    }
+                Positioned(
+                  width: searchFieldSize.width,
+                  left: searchFieldOffset.dx,
+                  top: searchFieldOffset.dy + searchFieldSize.height,
+                  child: Material(
+                    elevation: 4,
+                    child: Container(
+                      constraints: const BoxConstraints(maxHeight: 300),
+                      decoration: BoxDecoration(
+                        color:themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.secondaryBackground
+                            : Colors.white,
+                        borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(8),
+                          bottomRight: Radius.circular(8),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: StreamBuilder<APIResponse<List<ProductResponse>>>(
+                        stream: _productBloc.productStream,
+                        builder: (context, snapshot) {
+                          if (snapshot.hasData) {
+                            switch (snapshot.data!.status) {
+                              case Status.LOADING:
+                                if (kDebugMode) print("#### 2222 Status is LOADING");
+                            // return const Center( //
+                            //   child: Padding(
+                            //     padding: EdgeInsets.all(16),
+                            //     child: CircularProgressIndicator(),
+                            //   ),
+                            // );
+                              case Status.COMPLETED:
+                                final products = snapshot.data!.data;
+                                if (products == null || products.isEmpty) {
+                                  if (kDebugMode) {
+                                    print("TopBar - result found no product with search text COMPLETED $_overlayEntry");
                                   }
 
-                              );
-                            },
-                          );
-                        case Status.ERROR:
-                          return Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Text(snapshot.data!.message ?? 'Error loading products',
-                              style: TextStyle(
-                                color: themeHelper.themeMode == ThemeMode.dark
-                                    ? ThemeNotifier.textDark
-                                    : ThemeNotifier.textLight,
-                              ),
-                            ),
-                          );
-                      }
-                    }
-                    return const SizedBox.shrink();
-                  },
+                                  return const Padding(
+                                    padding: EdgeInsets.all(16),
+                                    child: Text('No products found'),
+                                  );
+                                }
+                                if (kDebugMode) {
+                                  print("TopBar - result found product with search text COMPLETED ${products.length}");
+                                }
+                                return ListView.builder(
+                                  shrinkWrap: true,
+                                  itemCount: products.length,
+                                  itemBuilder: (context, index) {
+                                    final product = products[index];
+                                    return ListTile(
+                                        leading: product.images != null && product.images!.isNotEmpty
+                                            ? SizedBox(
+                                          width: 40,
+                                          height: 40,
+                                          child: Image.network(
+                                            product.images!.first,
+                                            width: 40,
+                                            height: 40,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return const Icon(Icons.image, size: 40);
+                                            },
+                                            loadingBuilder: (context, child, loadingProgress) {
+                                              if (loadingProgress == null) return child;
+                                              return const Center(
+                                                child: CircularProgressIndicator(),
+                                              );
+                                            },
+                                          ),
+                                        )
+                                            : const Icon(Icons.image, size: 40,),
+                                        title: Text(product.name ?? ''),
+                                        subtitle: Text('${TextConstants.currencySymbol}${double.tryParse(product.price.toString())?.toStringAsFixed(2) ?? "0.00"}'),
+                                        onTap: () async {
+                                          try {
+                                            // 🟩 Step 1: Initial cleanup and validation
+                                            _searchFocusNode.unfocus();
+                                            _removeOverlay();
+
+                                            var screen = widget.screen;
+                                            if (screen != Screen.FASTKEY && screen != Screen.CATEGORY && screen != Screen.ADD) {
+                                              if (kDebugMode) print("TopBar - return from product selection (invalid screen)");
+                                              return;
+                                            }
+
+                                            final serverOrderId = orderHelper.activeOrderId;
+                                            final dbOrderId = orderHelper.activeOrderId;
+                                            final offlineBox = Hive.box('offlineOrders');
+
+                                            // 🟥 Step 2: Check order existence
+                                            if (dbOrderId == null) {
+                                              ScaffoldMessenger.of(_context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text("No active order selected"),
+                                                  backgroundColor: Colors.red,
+                                                  duration: Duration(seconds: 2),
+                                                ),
+                                              );
+                                              return;
+                                            }
+
+                                            final activeOrderId = dbOrderId.toString();
+                                            final Map<String, dynamic> rawOrder =
+                                            Map<String, dynamic>.from(offlineBox.get(activeOrderId) ?? {});
+
+                                            print("CATEGORY FLOW ITEMS: ${rawOrder['products']}");
+                                            print("LINE ITEMS: ${rawOrder['line_items']}");
+
+                                            List<dynamic> lineItems = List.from(rawOrder['line_items'] ?? []);
+
+                                            // 🟨 Step 3: Check for age restriction
+                                            /// 🟨 Step 3: Check for age restriction
+
+// Safely get tags list
+                                            final tags = product.tags ?? [];
+
+// Check if any tag is age_restricted
+                                            final bool hasAgeRestriction =
+                                            tags.any((t) => t.name == TextConstants.age_restricted);
+
+// Only fetch the tag if it actually exists
+                                            SKU.Tags? ageRestrictedTag;
+                                            if (hasAgeRestriction) {
+                                              ageRestrictedTag =
+                                                  tags.firstWhere((t) => t.name == TextConstants.age_restricted);
+                                            }
+
+// Read existing age flag from order
+                                            final dynamic hiveAge = rawOrder["age_verified"];
+
+                                            final bool alreadyVerified =
+                                                hiveAge == true ||
+                                                    hiveAge == 1 ||
+                                                    hiveAge?.toString().toLowerCase() == "true";
+
+                                            if (hasAgeRestriction && !alreadyVerified) {
+                                              final int minAge =
+                                                  int.tryParse(ageRestrictedTag?.slug?.toString() ?? "0") ?? 0;
+
+                                              print("🔞 Showing Age Verification Popup (SEARCH)");
+
+                                              final prov = AgeVerificationProvider();
+                                              final ok = await prov.verifyAge(context, minAge: minAge);
+
+                                              if (!ok) {
+                                                print("❌ Age verification failed → Block product");
+                                                return;
+                                              }
+
+                                              // Save flag so this order never asks again
+                                              rawOrder["age_verified"] = true;
+                                              await offlineBox.put(activeOrderId, rawOrder);
+
+                                              print("💾 Saved age_verified = true for search flow");
+                                            }
+
+                                            if (kDebugMode) {
+                                              print(
+                                                "TopBar - Age OK, proceeding → Product has variants: "
+                                                    "${product.variations != null && product.variations!.isNotEmpty}",
+                                              );
+                                            }
+
+
+                                            // 🟦 Step 4: Handle Variants (locally)
+                                            if (product.variations != null && product.variations!.isNotEmpty) {
+                                              _clearSearch();
+                                              _productBloc.fetchProductVariations(product.id!);
+
+                                              await showDialog(
+                                                context: _context,
+                                                barrierDismissible: false,
+                                                builder: (context) => StreamBuilder<APIResponse<List<ProductVariation>>>(
+                                                  stream: _productBloc.variationStream,
+                                                  builder: (context, snapshot) {
+                                                    if (!snapshot.hasData || snapshot.data!.status == Status.LOADING) {
+                                                      return const Center(child: CircularProgressIndicator());
+                                                    }
+
+                                                    if (snapshot.data!.status == Status.COMPLETED) {
+                                                      final variations = snapshot.data!.data!;
+                                                      if (variations.isEmpty) return const SizedBox.shrink();
+
+                                                      return VariantsDialog(
+                                                          title: product.name ?? '',
+                                                          variations: variations
+                                                              .map((v) => {
+                                                            "id": v.id,
+                                                            "name": v.name,
+                                                            "price": v.regularPrice,
+                                                            "image": v.image.src,
+                                                            "sku": v.sku ?? 'SKU${v.name}',
+                                                          })
+                                                              .toList(),
+                                                          onAddVariant: (variant, quantity) async {
+                                                            Navigator.pop(context);
+                                                            _showLoaderOverlay();
+                                                            setState(() => isAddingItemLoading = true);
+
+                                                            try {
+                                                              final int variantId = int.tryParse(variant["id"].toString()) ?? -1;
+                                                              final int orderId = int.tryParse(activeOrderId.toString()) ?? -1;
+                                                              final double variantPrice = double.tryParse(variant["price"].toString()) ?? 0.0;
+
+                                                              if (orderId == -1) throw Exception("Invalid order ID");
+
+                                                              // 🔥 Load products list (OrderPanel uses THIS)
+                                                              List<Map<String, dynamic>> products = (rawOrder["products"] ?? [])
+                                                                  .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
+                                                                  .toList();
+
+                                                              // 🔍 Check if variant already exists
+                                                              int existingIndex = products.indexWhere((p) =>
+                                                              (p["product_id"] == product.id) &&
+                                                                  (p["variation_id"] == variantId)
+                                                              );
+
+                                                              if (existingIndex != -1) {
+                                                                // ---------------------------------------------------------
+                                                                // 🔄 VARIANT FOUND → INCREASE QUANTITY
+                                                                // ---------------------------------------------------------
+                                                                var existing = products[existingIndex];
+
+                                                                int oldQty = int.tryParse(existing["quantity"].toString()) ?? 1;
+                                                                int newQty = oldQty + quantity;
+
+                                                                // Match OrderHelper.addItemToOrder() field structure
+                                                                existing["quantity"] = newQty;
+                                                                existing["price"] = variantPrice;
+                                                                existing["unit_price"] = variantPrice;
+                                                                existing["sales_price"] = variantPrice;
+                                                                existing["regular_price"] = variantPrice;
+                                                                existing["timestamp"] = DateTime.now().millisecondsSinceEpoch;
+
+                                                                products[existingIndex] = existing;
+
+                                                                // Save both lists
+                                                                rawOrder["products"] = products;
+                                                                rawOrder["line_items"] = products;
+
+                                                                await offlineBox.put(activeOrderId, rawOrder);
+
+                                                                // 🔥 Refresh OrderPanel data
+                                                                await orderHelper.loadData();
+
+                                                                _removeOverlay();
+                                                                _clearSearch();
+                                                                setState(() => isAddingItemLoading = false);
+
+                                                                ScaffoldMessenger.of(_context).showSnackBar(
+                                                                  SnackBar(
+                                                                    content: Text("Updated '${variant["name"]}' quantity to $newQty"),
+                                                                    backgroundColor: Colors.green,
+                                                                  ),
+                                                                );
+
+                                                                widget.onProductSelected?.call(
+                                                                  ProductResponse(
+                                                                    id: variantId,
+                                                                    name: variant["name"],
+                                                                    price: variantPrice.toString(),
+                                                                    images: [variant["image"]],
+                                                                    sku: variant["sku"],
+                                                                  ),
+                                                                );
+
+                                                                return; // STOP HERE
+                                                              }
+
+                                                              // ---------------------------------------------------------
+                                                              // 🆕 VARIANT NOT FOUND → ADD AS NEW ITEM
+                                                              // ---------------------------------------------------------
+                                                              await orderHelper.addItemToOrder(
+                                                                variantId,
+                                                                variant["name"] ?? 'Unknown',
+                                                                variant["image"] ?? '',
+                                                                variantPrice,
+                                                                quantity,
+                                                                variant["sku"] ?? 'SKU',
+                                                                orderId,
+                                                                type: 'variant',
+                                                                productId: product.id,
+                                                                variationId: variantId,
+                                                                variationName: variant["name"],
+                                                                unitPrice: variantPrice,
+                                                                salesPrice: variantPrice,
+                                                                onItemAdded: () async {
+                                                                  _removeOverlay();
+                                                                  _clearSearch();
+                                                                  setState(() => isAddingItemLoading = false);
+
+                                                                  widget.onProductSelected?.call(
+                                                                    ProductResponse(
+                                                                      id: variantId,
+                                                                      name: variant["name"],
+                                                                      price: variantPrice.toString(),
+                                                                      images: [variant["image"]],
+                                                                      sku: variant["sku"],
+                                                                    ),
+                                                                  );
+
+                                                                  ScaffoldMessenger.of(_context).showSnackBar(
+                                                                    SnackBar(
+                                                                      content: Text("Variant '${variant["name"]}' added to order"),
+                                                                      backgroundColor: Colors.green,
+                                                                    ),
+                                                                  );
+
+                                                                  await orderHelper.loadData();
+                                                                },
+                                                              );
+                                                            } catch (e, s) {
+                                                              print("❌ Error adding variant: $e\n$s");
+                                                              _removeOverlay();
+                                                              setState(() => isAddingItemLoading = false);
+
+                                                              ScaffoldMessenger.of(_context).showSnackBar(
+                                                                SnackBar(
+                                                                  content: Text("Error adding variant locally"),
+                                                                  backgroundColor: Colors.red,
+                                                                ),
+                                                              );
+                                                            }
+                                                          }
+
+
+                                                      );
+
+                                                    }
+
+                                                    return const SizedBox.shrink();
+                                                  },
+                                                ),
+                                              );
+                                            }
+                                            else {
+                                              // 🟩 Step 5: Handle simple product (NO variants)
+                                              _showLoaderOverlay();
+                                              setState(() => isAddingItemLoading = true);
+
+                                              try {
+                                                final pid = product.id!;
+                                                final psku = product.sku ?? '';
+                                                final pPrice = double.tryParse(product.price ?? '0.0') ?? 0.0;
+
+                                                // Convert to editable list
+                                                List<Map<String, dynamic>> products = (rawOrder["products"] ?? [])
+                                                    .map<Map<String, dynamic>>((i) => Map<String, dynamic>.from(i))
+                                                    .toList();
+
+                                                // ----------------------------------------------------------------------
+                                                // 🟦 Step A: Check if SIMPLE PRODUCT already exists
+                                                // RULE: simple product = variation_id == -1 (YOUR POS STANDARD)
+                                                // ----------------------------------------------------------------------
+                                                int index = products.indexWhere((item) =>
+                                                item["product_id"].toString() == pid.toString() &&
+                                                    (item["variation_id"]?.toString() ?? "-1") == "-1");
+
+                                                if (index != -1) {
+                                                  // 🟩 PRODUCT FOUND → Increase Quantity
+                                                  var existing = products[index];
+
+                                                  int oldQty = int.tryParse(existing["quantity"].toString()) ?? 1;
+                                                  int newQty = oldQty + 1;
+
+                                                  double unitPrice =
+                                                      double.tryParse(existing["unit_price"]?.toString() ??
+                                                          existing["price"]?.toString() ??
+                                                          pPrice.toString()) ??
+                                                          pPrice;
+
+                                                  // Update fields
+                                                  existing["quantity"] = newQty;
+                                                  existing["price"] = unitPrice;
+                                                  existing["unit_price"] = unitPrice;
+                                                  existing["sales_price"] = unitPrice;
+                                                  existing["regular_price"] = unitPrice;
+                                                  existing["variation_id"] = -1; // POS simple-product rule
+                                                  existing["timestamp"] = DateTime.now().millisecondsSinceEpoch;
+
+                                                  products[index] = existing;
+
+                                                  // Save back
+                                                  rawOrder["products"] = products;
+                                                  rawOrder["line_items"] = products;
+
+                                                  await offlineBox.put(activeOrderId, rawOrder);
+
+                                                  // Reload UI data
+                                                  await orderHelper.loadData();
+
+                                                  _removeOverlay();
+                                                  _clearSearch();
+                                                  setState(() => isAddingItemLoading = false);
+
+                                                  widget.onProductSelected?.call(product);
+                                                  return; // STOP HERE — DO NOT ADD DUPLICATE
+                                                }
+
+                                                // ----------------------------------------------------------------------
+                                                // 🟥 SIMPLE PRODUCT NOT FOUND → ADD NEW ITEM
+                                                // ----------------------------------------------------------------------
+                                                final newItem = {
+                                                  "product_id": pid,
+                                                  "name": product.name ?? "Unknown",
+                                                  "quantity": 1,
+                                                  "price": pPrice,
+                                                  "unit_price": pPrice,
+                                                  "sales_price": pPrice,
+                                                  "regular_price": pPrice,
+                                                  "image": product.images?.isNotEmpty == true ? product.images!.first : '',
+                                                  "sku": psku,
+                                                  "total": pPrice,
+                                                  "type": "simple",
+                                                  "variation_id": -1, // POS rule
+                                                  "timestamp": DateTime.now().millisecondsSinceEpoch,
+                                                };
+
+                                                // products.add(newItem);
+                                                // rawOrder["products"] = products;
+                                                // rawOrder["line_items"] = products;
+                                                //
+                                                // await offlineBox.put(activeOrderId, rawOrder);
+
+                                                // Also update orderHelper (UI sync)
+                                                await orderHelper.addItemToOrder(
+                                                  pid,
+                                                  product.name ?? 'Unknown',
+                                                  product.images?.isNotEmpty == true ? product.images!.first : '',
+                                                  pPrice,
+                                                  1,
+                                                  psku,
+                                                  int.tryParse(activeOrderId) ?? 0,
+                                                  type: "simple",
+                                                  productId: pid,
+                                                  variationId: -1, // ✔ unified rule
+                                                  variationName: null,
+                                                  variationCount: 0,
+                                                  combo: null,
+                                                  salesPrice: pPrice,
+                                                  regularPrice: pPrice,
+                                                  unitPrice: pPrice,
+                                                  onItemAdded: () {
+                                                    _removeOverlay();
+                                                    _clearSearch();
+                                                    setState(() => isAddingItemLoading = false);
+                                                    widget.onProductSelected?.call(product);
+                                                  },
+                                                );
+                                              } catch (e, s) {
+                                                print("❌ Simple product add error: $e\n$s");
+                                                _removeOverlay();
+                                                setState(() => isAddingItemLoading = false);
+                                              }
+                                            }
+
+
+
+
+
+
+
+                                          } catch (e, s) {
+                                            if (kDebugMode) print("TopBar onTap Exception: $e\n$s");
+                                            _removeOverlay();
+                                            setState(() => isAddingItemLoading = false);
+                                          }
+                                        }
+
+                                    );
+                                  },
+                                );
+                              case Status.ERROR:
+                                return Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Text(snapshot.data!.message ?? 'Error loading products',
+                                    style: TextStyle(
+                                      color: themeHelper.themeMode == ThemeMode.dark
+                                          ? ThemeNotifier.textDark
+                                          : ThemeNotifier.textLight,
+                                    ),
+                                  ),
+                                );
+                            }
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          );
+              ]);
         }
 
     );

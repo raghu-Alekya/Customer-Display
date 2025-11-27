@@ -1081,16 +1081,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 ? null                 // disable tap after any payment
                                 : () async {
                               if (showCustomerInput) {
-                                // CANCEL BUTTON → NO LOADING
                                 setState(() {
                                   mobileController.clear();
                                   showCustomerInput = false;
                                   isPhoneValid = false;
                                   isEmailValid = false;
-                                  isRedeemActive = availablePoints > 0;
+                                  isRedeemActive = false;   // <-- FIXED
                                 });
                                 return;
                               }
+
 
                               // ADD BUTTON → SHOW LOADING
                               if (!(isPhoneValid || isEmailValid) ||
@@ -1293,6 +1293,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             _buildOrderCalculation(
                                 TextConstants.taxText,
                                 '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
+                            if(merchantDiscount>0)
                             _buildOrderCalculation(
                                 TextConstants.merchantDiscount,
                                 '-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}'),
@@ -2450,9 +2451,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               _buildPaymentOptionButton(
                                 TextConstants.redeemPoints,
                                 "assets/redeem.png",
-                                isActive:
-                                redeemedValue == 0 && availablePoints > 0,
+                                isActive: redeemedValue == 0 && availablePoints > 0 && isRedeemActive,
                                 onTap: () async {
+                                  if (!isRedeemActive) return;   // safety
                                   print("======== 🟦 REDEEM BUTTON PRESSED 🟦 ========");
 
                                   print("🔍 Current State Before Action:");
