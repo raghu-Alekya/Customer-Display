@@ -39,7 +39,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       OrderMetaData(key: OrderMetaData.posDeviceId, value: deviceId),
       OrderMetaData(key: OrderMetaData.posPlacedBy, value: '$userId'),
       OrderMetaData(key: OrderMetaData.shiftId, value: shiftId.toString()),
+      OrderMetaData(key: 'user_name', value: (userData?[AppDBConst.username] ?? "")),
+      OrderMetaData(key: 'user_id', value: userId.toString()),
     ];
+
 
     final request = CreateOrderRequestModel(metaData: metaData);
 
@@ -57,8 +60,16 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       'created_at': DateTime.now().toIso8601String(),
       'synced': false,
       'products': [],
+      'user_id': userId,
+      'user_name': userData?[AppDBConst.username] ?? "",
+      'shift_id': shiftId,
+      'order_type': "offline Order",
+      'status': "pending_offline",
+      'created_via': "offline Order",
       'orderAgeRestricted': false,
+      'custom_items': [],       // add to maintain compatibility
     };
+
 
     await box.put(newOrderId.toString(), localOrder);
 
@@ -81,6 +92,46 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       feeLines: [],
       couponLines: [],
     );
+  }
+  Future<void> saveOfflineOrderTotals(int orderId) async {
+    final box = Hive.box('offlineOrders');
+    final raw = box.get(orderId.toString());
+
+    if (raw == null) return;
+
+    final order = Map<String, dynamic>.from(raw);
+
+    // ------------------ Products ------------------
+    final products = (order['products'] ?? []) as List;
+    num gross = 0;
+
+    for (final p in products) {
+      final price = double.tryParse(p['price'].toString()) ?? 0.0;
+      final qty = int.tryParse(p['quantity'].toString()) ?? 1;
+      gross += price * qty;
+    }
+
+    // ------------------ Discounts ------------------
+    num orderDiscount = (order['orderDiscount'] ?? 0.0) as num;
+    num merchantDiscount = (order['merchantDiscount'] ?? 0.0) as num;
+
+    // ------------------ Tax ------------------
+    num orderTax = (order['order_tax'] ?? 0.0) as num;
+
+    // ------------------ Totals ------------------
+    num netTotal = gross - orderDiscount - merchantDiscount;
+    num netPayable = netTotal + orderTax;
+
+    // Save
+    order['gross_total'] = gross;
+    order['orderDiscount'] = orderDiscount;
+    order['merchantDiscount'] = merchantDiscount;
+    order['order_tax'] = orderTax;
+    order['net_total'] = netTotal;
+    order['net_payable'] = netPayable;
+
+    await box.put(orderId.toString(), order);
+    print("💾 (Helper) Saved totals into Hive for order $orderId");
   }
 
   Future<void> addProductToOfflineOrder({

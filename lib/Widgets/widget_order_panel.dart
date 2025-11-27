@@ -39,6 +39,7 @@ import '../Constants/misc_features.dart';
 import '../Constants/text.dart';
 import '../Database/db_helper.dart';
 import '../Database/order_panel_db_helper.dart';
+import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/api_response.dart';
 import '../Helper/customerdisplayhelper.dart';
@@ -1680,6 +1681,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       // ============================================================
       if (isOfflineOrder) {
         print("\n🟡 OFFLINE ORDER DETECTED — Performing Offline Delete Flow");
+        await OrderRepository().saveOfflineOrderTotals(orderId);
 
         // ⭐ 1️⃣ READ ORDER DATA BEFORE DELETE
         print("\n🟡 OFFLINE ORDER DETECTED — Performing Offline Delete Flow");
@@ -1689,15 +1691,55 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         print("📤 Original Offline Order Data:\n$orderData");
 
 // ⭐ 2️⃣ BACKUP TO deletedOrders BOX
+        // ⭐ 2️⃣ BACKUP TO deletedOrders BOX WITH FULL DATA + TOTALS
         if (orderData != null) {
-          await deletedBox.put(orderId.toString(), orderData);
-          print("✅ Order backed up to deletedOrders under key $orderId");
+          final userData = await UserDbHelper().getUserData();
+          final currentUserId = userData?[AppDBConst.userId];
+          final currentUserName = userData?[AppDBConst.username] ?? "";
+          final currentShiftId = await UserDbHelper().getUserShiftId();
+
+          /// 🧮 These values must be available from UI
+          final enhancedDeletedOrder = {
+            ...orderData,
+
+            // ---- DELETE METADATA ----
+            "deleted_order_id": orderId,
+            "deleted_by_user_id": currentUserId,
+            "deleted_by_user_name": currentUserName,
+            "deleted_shift_id": currentShiftId,
+            "deleted_at": DateTime.now().toIso8601String(),
+
+            // ---- TOTALS FROM HIVE (NOT from UI variables) ----
+            "gross_total": orderData["gross_total"] ?? 0.0,
+            "order_discount": orderData["orderDiscount"] ?? 0.0,
+            "merchant_discount": orderData["merchantDiscount"] ?? 0.0,
+            "order_tax": orderData["order_tax"] ?? 0.0,
+            "net_total": orderData["net_total"] ?? 0.0,
+            "net_payable": orderData["net_payable"] ?? 0.0,
+          };
+
+
+          await deletedBox.put(orderId.toString(), enhancedDeletedOrder);
+
+
+          print("🟣 FULL DELETED ORDER DATA (Pretty Format):\n"
+              "${const JsonEncoder.withIndent('  ').convert(enhancedDeletedOrder)}");
+
         } else {
           print("⚠️ WARNING: orderData is NULL — not backed up!");
         }
 
+
 // ⭐ 3️⃣ PRINT COMPLETE DELETED ORDER DATA
         final deletedData = deletedBox.get(orderId.toString());
+        print("🔵 Deleted Totals → "
+            "gross=${deletedData['gross_total']}, "
+            "discount=${deletedData['order_discount']}, "
+            "merchantDiscount=${deletedData['merchant_discount']}, "
+            "tax=${deletedData['order_tax']}, "
+            "netTotal=${deletedData['net_total']}, "
+            "payable=${deletedData['net_payable']}");
+
         if (deletedData != null) {
           print("🟣 FULL DELETED ORDER DATA (Pretty Format):\n"
               "${const JsonEncoder.withIndent('  ').convert(deletedData)}");
@@ -2076,7 +2118,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     double orderDiscount = 0.0;
     double merchantDiscount = 0.0;
     double orderTax = 0.0;
-    num grossTotal = GlobalUtility.getGrossTotal(orderItems);  // Get Items Gross Total
+    num grossTotal = 0.0;
+    // Get Items Gross Total
     num netTotal = 0.0;
     num netPayable = 0.0;  //Build #1.0.67
 
@@ -2258,6 +2301,20 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
         netTotal = grossTotal - orderDiscount - merchantDiscount;
         netPayable = netTotal + orderTax;
+
+        if (orderHelper.activeOrderId != null) {
+          final updatedOrder = Map<String, dynamic>.from(rawOfflineOrder);
+          updatedOrder['gross_total'] = grossTotal;
+          updatedOrder['orderDiscount'] = orderDiscount;
+          updatedOrder['merchantDiscount'] = merchantDiscount;
+          updatedOrder['order_tax'] = orderTax;
+          updatedOrder['net_total'] = netTotal;
+          updatedOrder['net_payable'] = netPayable;
+
+          offlineBox.put(orderHelper.activeOrderId.toString(), updatedOrder);
+          print("💾 Saved latest totals into offlineOrders Hive");
+        }
+
 
 
         // 🔹 Format date/time

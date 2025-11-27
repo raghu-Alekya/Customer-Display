@@ -291,23 +291,27 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
         _order = {
           "id": map["order_id"],
-          "orderStatus": "cancelled",
-          "products": map["products"] ?? [],
-          "cashbacks": map["cashbacks"] ?? [],
-          "payouts": map["payouts"] ?? [],
-          "orderTotal": map["gross_total"] ?? 0,
-          "orderTax": 0,
-          "orderDate": map["created_at"] ?? DateTime.now().toString(),
+          AppDBConst.orderStatus: "cancelled",
           "offline": true,
-        };
 
+          // 🟦 FIXED FIELD NAMES (match deletedOrders box)
+          AppDBConst.orderTotal: (map["gross_total"] as num?)?.toDouble() ?? 0.0,
+          AppDBConst.orderDiscount: (map["order_discount"] as num?)?.toDouble() ?? 0.0,
+          "merchantDiscount": (map["merchant_discount"] as num?)?.toDouble() ?? 0.0,
+          AppDBConst.orderTax: (map["order_tax"] as num?)?.toDouble() ?? 0.0,
+
+          // 🟩 FIXED NET + PAYABLE
+          "netTotal": (map["net_total"] as num?)?.toDouble() ?? 0.0,
+          "payable": (map["net_payable"] as num?)?.toDouble() ?? 0.0,
+
+          AppDBConst.orderDate: map["created_at"] ?? DateTime.now().toString(),
+        };
 
         print("🔥 Loaded ORDER from Hive = $_order");
 
-        orderServerId = null; // no API call for offline deleted orders
+        orderServerId = null;
         return;
       }
-
 
       // 3️⃣ No order found at all
       _order = {AppDBConst.orderStatus: ''};
@@ -689,6 +693,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         }
       }
     }
+
+
     num grossTotal = GlobalUtility.getGrossTotal(orderItems);
     double wooTax = (order['wooTax'] as num?)?.toDouble() ?? 0.0;
     double wooTotal = (order['wooTotal'] as num?)?.toDouble() ?? 0.0;
@@ -752,7 +758,37 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     double localNetPayable = netTotal.toDouble() + orderTax;
     double netPayable = wooTotal > 0 ? wooTotal : localNetPayable;
 
+
     if (netPayable < 0) netPayable = 0;
+    // 🔥 OFFLINE ORDER OVERRIDE
+    if (order["offline"] == true) {
+      grossTotal =
+          (order[AppDBConst.orderTotal] as num?)?.toDouble() ?? grossTotal;
+
+      orderDiscount =
+          (order[AppDBConst.orderDiscount] as num?)?.toDouble() ?? orderDiscount;
+
+      merchantDiscount =
+          (order["merchantDiscount"] as num?)?.toDouble() ?? merchantDiscount;
+
+      orderTax =
+          (order[AppDBConst.orderTax] as num?)?.toDouble() ?? orderTax;
+
+      netTotal =
+          (order["netTotal"] as num?)?.toDouble() ?? netTotal;
+
+      netPayable =
+          (order["payable"] as num?)?.toDouble() ?? netPayable;
+
+      print("🔥 OFFLINE OVERRIDE APPLIED:");
+      print("grossTotal       = $grossTotal");
+      print("orderDiscount    = $orderDiscount");
+      print("merchantDiscount = $merchantDiscount");
+      print("orderTax         = $orderTax");
+      print("netTotal         = $netTotal");
+      print("netPayable       = $netPayable");
+    }
+
     print("🟦 Summary Data:");
     print("Gross Total         → $grossTotal");
     print("SQLite Discount     → $orderDiscount");

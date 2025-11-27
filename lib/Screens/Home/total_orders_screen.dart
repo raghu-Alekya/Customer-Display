@@ -87,7 +87,14 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   int _currentPage = 1;
   int _rowsPerPage = 10;
   final List<int> _rowsPerPageOptions = [10, 20, 50, 100];
-
+  dynamic _extractMeta(Map map, String key) {
+    if (map["request"]?["meta_data"] is List) {
+      for (var m in map["request"]["meta_data"]) {
+        if (m["key"] == key) return m["value"];
+      }
+    }
+    return null;
+  }
   @override
   void initState() {
     super.initState();
@@ -119,176 +126,200 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
     var filterOrderType = await AssetDBHelper.instance.getOrderTypeList();
     _filterOrderType.addAll(filterOrderType);
-  }
 
+    // ⭐ ADD OFFLINE ORDER TYPE MANUALLY
+    _filterOrderType.add(OrderType(slug: "offline Order", name: "offline Order"));
+  }
   //Build #1.0.54: added Fetch orders from API
   void _fetchOrders() {
     debugPrint("OrdersScreen: Initiating fetch orders");
     _fetchOrdersSubscription?.cancel();
     _fetchOrdersSubscription =
         _orderBloc.fetchTotalOrdersStream.listen((response) {
-      if (!mounted) return;
+          if (!mounted) return;
 
-      if (response.status == Status.COMPLETED) {
-        debugPrint(
-            "OrdersScreen: Successfully fetched ${response.data!.ordersData.length} orders, Total Count: ${response.data!.orderTotalCount}");
-        setState(() {
-          _orders = response.data!.ordersData; //Build #1.0.134
-          _totalOrdersCount = response.data!.orderTotalCount;
-          isLoading = false;
+          if (response.status == Status.COMPLETED) {
+            debugPrint(
+                "OrdersScreen: Successfully fetched ${response.data!.ordersData.length} orders, Total Count: ${response.data!.orderTotalCount}");
 
-          // ---------------------------------------------------------------------------
-// ⭐ Merge offline deleted orders (JSON from Hive) with online orders (OrderModel)
-// ---------------------------------------------------------------------------
-          // ---------------------------------------------------------------------------
-// ⭐ Merge offline deleted orders (JSON from Hive) with online orders (OrderModel)
-// ---------------------------------------------------------------------------
-          final deletedBox = Hive.box('deletedOrders');
+            setState(() {
+              _orders = response.data!.ordersData;
+              _totalOrdersCount = response.data!.orderTotalCount;
+              isLoading = false;
 
-          if (deletedBox.isNotEmpty) {
-            debugPrint("Merging ${deletedBox.length} deleted offline orders...");
+              // -------------------------------------------------------------
+              // ⭐ MERGE OFFLINE DELETED ORDERS (Hive) WITH USER FILTER LOGIC
+              // -------------------------------------------------------------
+              final deletedBox = Hive.box('deletedOrders');
 
-            final deletedOrderModels = deletedBox.values.map((json) {
-              final map = Map<String, dynamic>.from(json);
+              // Get selected user filter
+              final String selectedUserId = _filterUsers
+                  .firstWhere((e) => e.displayName == _selectedUserFilter)
+                  .iD ??
+                  "";
 
-              // ⭐ FIX 1: Convert order_id → id
-              map["id"] ??= map["order_id"];
+              if (deletedBox.isNotEmpty) {
+                debugPrint("Merging ${deletedBox.length} deleted offline orders...");
 
-              // ⭐ FIX 2: Convert created_at → date_created (remove milliseconds)
-              if (map["created_at"] != null) {
-                map["date_created"] = map["created_at"]
-                    .toString()
-                    .replaceAll("T", " ")
-                    .split(".")
-                    .first;
+                final deletedOrderModels = deletedBox.values.map((json) {
+                  final map = Map<String, dynamic>.from(json);
+
+                  // ⭐ FIX 1: Convert order_id → id
+                  map["id"] ??= map["order_id"];
+
+                  // ⭐ FIX 2: Convert created_at → date_created
+                  if (map["created_at"] != null) {
+                    map["date_created"] = map["created_at"]
+                        .toString()
+                        .replaceAll("T", " ")
+                        .split(".")
+                        .first;
+                  }
+
+                  // ⭐ FIX 3: Calculate total
+                  double total = 0.0;
+                  if (map["products"] != null && map["products"] is List) {
+                    for (var p in map["products"]) {
+                      final price = (p["price"] ?? 0).toDouble();
+                      final qty = (p["quantity"] ?? 1).toDouble();
+                      total += price * qty;
+                    }
+                  }
+                  map["total"] = total.toStringAsFixed(2);
+
+                  // ⭐ FIX 4: Force offline order meta
+                  map["status"] = "cancelled";
+                  map["order_type"] = "offline Order";
+                  map["created_via"] = "offline Order";
+                  map["createdVia"] = "offline Order";
+
+                  // ⭐ FIX 5: USER & SHIFT LOGIC
+                  final metaUserId =
+                      _extractMeta(map, "user_id") ?? _extractMeta(map, "pos_placed_by");
+                  map["user_id"] = metaUserId != null
+                      ? int.tryParse(metaUserId.toString())
+                      : -1;
+
+                  map["createdBy"] = map["user_id"];
+                  map["employee_name"] = map["employee_name"] ??
+                      _extractMeta(map, "user_name") ??
+                      "Offline User";
+                  map["shift_id"] ??= _extractMeta(map, "shift_id") ?? -1;
+
+                  // ⭐ USER FILTER APPLIED (MATCH ONLINE FILTER BEHAVIOR)
+                  if (selectedUserId.isNotEmpty && selectedUserId != "All") {
+                    if (map["user_id"].toString() != selectedUserId.toString()) {
+                      return null; // ❌ Skip unrelated deleted order
+                    }
+                  }
+
+                  try {
+                    return model.OrderModel.fromJson(map);
+                  } catch (e) {
+                    debugPrint("❌ Error converting deleted order: $e\nMAP: $map");
+                    return null;
+                  }
+                }).where((e) => e != null).cast<model.OrderModel>().toList();
+
+                // ⭐ Remove duplicates
+                final existingIds = _orders.map((o) => o.id ?? 0).toSet();
+                final uniqueDeleted = deletedOrderModels.where((order) {
+                  final deletedId = order.id ?? 0;
+                  return !existingIds.contains(deletedId);
+                }).toList();
+
+                debugPrint("Added deleted offline orders: ${uniqueDeleted.length}");
+
+                // ⭐ PREPEND offline deleted orders
+                _orders = [...uniqueDeleted, ..._orders];
+
+                // ⭐ SORT latest first
+                _orders.sort((a, b) {
+                  final da = DateTime.tryParse(a.dateCreated ?? "") ?? DateTime(1970);
+                  final db = DateTime.tryParse(b.dateCreated ?? "") ?? DateTime(1970);
+                  return db.compareTo(da);
+                });
+              }
+
+              // -------------------------------------------------------------
+
+              if (_orders.isEmpty) {
+                debugPrint("_orders empty:");
+                OrderHelper().selectedOrderId = null;
+                return;
+              }
+
+              if (OrderHelper().selectedOrderId == null ||
+                  !_orders.any((order) =>
+                  order.id == OrderHelper().selectedOrderId)) {
+                OrderHelper().selectedOrderId = _orders.first.id;
+                _onOrderRowSelected(OrderHelper().selectedOrderId!);
               } else {
-                map["date_created"] = DateTime.now().toString().split(".").first;
+                _onOrderRowSelected(OrderHelper().selectedOrderId!);
               }
-
-              // ⭐ FIX 3: Calculate total from product list
-              double total = 0.0;
-              if (map["products"] != null && map["products"] is List) {
-                for (var p in map["products"]) {
-                  final price = (p["price"] ?? 0).toDouble();
-                  final qty = (p["quantity"] ?? 1).toDouble();
-                  total += price * qty;
-                }
-              }
-              map["total"] = total.toStringAsFixed(2);
-
-              // ⭐ FIX 4: FORCE STATUS = cancelled ALWAYS
-              map["status"] = "cancelled";
-
-              // ⭐ FIX 5: FORCE ORDER TYPE = offline ALWAYS
-              map["order_type"] = "offline";
-
-              try {
-                return model.OrderModel.fromJson(map);
-              } catch (e) {
-                debugPrint("❌ Error converting deleted order: $e\nMAP: $map");
-                return null;
-              }
-            })
-                .where((e) => e != null)
-                .cast<model.OrderModel>()
-                .toList();
-
-            // ⭐ Remove duplicates
-            final existingIds = _orders.map((o) => o.id ?? 0).toSet();
-
-            final uniqueDeleted = deletedOrderModels.where((order) {
-              final deletedId = order.id ?? 0;
-              return !existingIds.contains(deletedId);
-            }).toList();
-
-            debugPrint("Added deleted offline orders: ${uniqueDeleted.length}");
-
-            // ⭐ Prepend offline deleted orders
-            _orders = [...uniqueDeleted, ..._orders];
+            });
           }
 
+          // ---------------- ERROR HANDLING ----------------
+          else if (response.status == Status.ERROR) {
+            if (response.message!.contains('Unauthorised')) {
+              Navigator.pushReplacement(context,
+                  MaterialPageRoute(builder: (context) => LoginScreen()));
 
-          if (_orders.isEmpty) {
-            debugPrint("_orders empty:");
-            OrderHelper().selectedOrderId = null; // Reset only if no orders
-            return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Unauthorised. Session is expired on this device."),
+                  backgroundColor: Colors.red,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            } else {
+              debugPrint("OrdersScreen: Error fetching orders - ${response.message}");
+              setState(() => isLoading = false);
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(TextConstants.failedToFetchOrders),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
           }
 
-          // Only set OrderHelper().selectedOrderId if it's null or not in the new _orders list
-          if (OrderHelper().selectedOrderId == null ||
-              !_orders
-                  .any((order) => order.id == OrderHelper().selectedOrderId)) {
-            debugPrint(
-                "TotalOrdersScreen: OrderHelper().selectedOrderId 1 -> ${OrderHelper().selectedOrderId}");
-            OrderHelper().selectedOrderId = _orders.first.id;
-            _onOrderRowSelected(OrderHelper().selectedOrderId!);
-          } else {
-            debugPrint(
-                "TotalOrdersScreen: OrderHelper().selectedOrderId 2 -> ${OrderHelper().selectedOrderId}");
-            // Build #1.0.248: If preserved selection exists in new orders, use it
-            _onOrderRowSelected(OrderHelper().selectedOrderId!);
+          // ---------------- LOADING STATE ----------------
+          else if (response.status == Status.LOADING) {
+            setState(() => isLoading = true);
           }
         });
-      } else if (response.status == Status.ERROR) {
-        if (response.message!.contains('Unauthorised')) {
-          if (kDebugMode) {
-            print("Unauthorised : response.message ${response.message!}");
-          }
-          Navigator.pushReplacement(
-              context, MaterialPageRoute(builder: (context) => LoginScreen()));
 
-          if (kDebugMode) {
-            print("message --- ${response.message}");
-          }
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Unauthorised. Session is expired on this device."),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        } else {
-          debugPrint(
-              "OrdersScreen: Error fetching orders - ${response.message}");
-          setState(() {
-            isLoading = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(TextConstants.failedToFetchOrders),
-              // Build #1.0.149 : added to constant & added background to red
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-      } else if (response.status == Status.LOADING) {
-        setState(() => isLoading = true);
-      }
-    });
-
+    // ---------------- API FILTER PARAMS ----------------
     var selectedStatus = _filterStatuses
         .firstWhere((element) => element.name == _selectedStatusFilter)
         .slug;
+
     var selectedUserId = _filterUsers
-            .firstWhere((element) => element.displayName == _selectedUserFilter)
-            .iD ??
-        "";
-    var selectedOrderType = _filterOrderType
-            .firstWhere((element) => element.name == _selectedOrderTypeFilter)
-            .slug ??
+        .firstWhere((element) =>
+    element.displayName == _selectedUserFilter)
+        .iD ??
         "";
 
-    //Build #1.0.134: Format dates without milliseconds
-    DateFormat format = DateFormat(
-        'yyyy-MM-dd'); // #Build 1.0.172 removed them (time - Thh:mm:ss), so that when applied date filter, data is fetching properly.
-    String? startDateFormatted = ''; //_startDate?.toString().split('.')[0];
-    String? endDateFormatted = ''; //_endDate?.toString().split('.')[0];
+    var selectedOrderType = _filterOrderType
+        .firstWhere((element) =>
+    element.name == _selectedOrderTypeFilter)
+        .slug ??
+        "";
+
+    DateFormat format = DateFormat('yyyy-MM-dd');
+    String? startDateFormatted = '';
+    String? endDateFormatted = '';
+
     if (_startDate != null) {
       startDateFormatted = format.format(_startDate!);
       endDateFormatted = format.format(_endDate!);
     }
 
+    // API CALL
     _orderBloc.fetchTotalOrdersCount(
       allStatuses: true,
       pageNumber: _currentPage,
@@ -296,10 +327,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
       status: selectedStatus,
       orderType: selectedOrderType,
       userId: selectedUserId,
-      startDate: startDateFormatted ??
-          '', //after=2025-07-22 01:08:35&  != 2025-07-1T17:28:09
-      endDate: endDateFormatted ??
-          '', //before=2025-07-20 01:08:35&  != 2025-07-22T17:28:09
+      startDate: startDateFormatted ?? '',
+      endDate: endDateFormatted ?? '',
     );
   }
 
@@ -723,68 +752,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                   });
                                 },
                               ),
-                              // // Order Type Filter
-                              // FilterChipWidget(
-                              //   label: "OrderType",
-                              //   options: _filterOrderType
-                              //       .map((e) => e.name)
-                              //       .toList(),
-                              //   selectedValue: _selectedOrderTypeFilter,
-                              //   onSelected: (value) {
-                              //     setState(() {
-                              //       _selectedOrderTypeFilter = value;
-                              //       _currentPage = 1;
-                              //       _fetchOrders();
-                              //       debugPrint(
-                              //           "OrdersScreen: Order type filter changed to $value");
-                              //     });
-                              //   },
-                              // ),
-                              // Range Filter
-                              // Container(
-                              //   height: MediaQuery.of(context).size.height * 0.06,
-                              //   margin: EdgeInsets.symmetric(vertical: 10),
-                              //   padding: const EdgeInsets.symmetric(horizontal: 4),
-                              //   child: ChoiceChip(
-                              //     shape: const RoundedRectangleBorder(
-                              //       side: BorderSide(color: Colors.black),
-                              //       borderRadius: BorderRadius.all(Radius.circular(10.0)),
-                              //     ),
-                              //     visualDensity: VisualDensity.compact,
-                              //     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              //     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-                              //     label: Row(
-                              //       mainAxisSize: MainAxisSize.min,
-                              //       children: [
-                              //         Text(
-                              //           "Select Range",
-                              //           style: TextStyle(
-                              //             color: isRangeFilterApplied
-                              //                 ? Colors.white
-                              //                 : Colors.black,
-                              //           ),
-                              //         ),
-                              //         const SizedBox(width: 4),
-                              //         Icon(
-                              //           Icons.filter_list,
-                              //           size: 18,
-                              //           color: isRangeFilterApplied
-                              //               ? Colors.white
-                              //               : Colors.black,
-                              //         ),
-                              //       ],
-                              //     ),
-                              //     showCheckmark: false,
-                              //     selected: isRangeFilterApplied,
-                              //     selectedColor: Colors.redAccent,
-                              //     backgroundColor: Colors.grey[200],
-                              //     onSelected: (selected) {
-                              //       _openRangeFilterDialog();
-                              //       _currentPage = 1;
-                              //     },
-                              //   ),
-                              // ),
-                              // Date Range Filter
                               Container(
                                 margin: EdgeInsets.symmetric(vertical: 10),
                                 child: GestureDetector(
@@ -1095,34 +1062,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                       //if (!isLoading && totalItems > 0)
                       if (!isLoading && _totalOrdersCount > _rowsPerPage)
                         _buildPaginationControls(totalItems, totalPages),
-                      // REUSABLE PAGINATION WIDGET
-                      // PaginationWidget(
-                      //   currentPage: _currentPage,
-                      //   totalItems: filteredData.length,
-                      //   rowsPerPage: _rowsPerPage,
-                      //   rowsPerPageOptions: _rowsPerPageOptions,
-                      //   onPageChanged: (page) {
-                      //     setState(() {
-                      //       _currentPage = page;
-                      //     });
-                      //     debugPrint("OrdersScreen: Page changed to $page");
-                      //   },
-                      //   onRowsPerPageChanged: (rowsPerPage) {
-                      //     setState(() {
-                      //       _rowsPerPage = rowsPerPage;
-                      //       _currentPage = 1; // Reset to first page
-                      //     });
-                      //     debugPrint("OrdersScreen: Rows per page changed to $rowsPerPage");
-                      //   },
-                      //   showFirstLastButtons: true,
-                      //   showPageNumbers: true,
-                      //   emptyMessage: "No orders found",
-                      //   // Optional customization
-                      //   backgroundColor: Colors.grey[50],
-                      //   textStyle: const TextStyle(fontSize: 14, color: Colors.black87),
-                      //   buttonColor: Colors.blue,
-                      //   disabledButtonColor: Colors.grey,
-                      // ),
                     ],
                   ),
                 ),
