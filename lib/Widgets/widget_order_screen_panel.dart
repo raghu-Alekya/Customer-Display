@@ -737,10 +737,24 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       }
     }
 
+    int totalItems = 0;
 
+    for (var item in orderItems) {
+      final name = item[AppDBConst.itemName]?.toString().toLowerCase() ?? "";
+      final type = item[AppDBConst.itemType]?.toString().toLowerCase() ?? "";
 
+      if (name.contains("discount") ||
+          type.contains("discount") ||
+          type.contains("payout") ||
+          type.contains("coupon") ||
+          name.contains("cashback") ||
+          type.contains("cashback")) {
+        continue; // skip these
+      }
+      final qty = (item[AppDBConst.itemCount] as num?)?.toInt() ?? 1;
 
-// 2️⃣ Read cashbackFee from Hive
+      totalItems += qty;
+    }
     if (wooOrderId.isNotEmpty) {
       final box = Hive.box('offlineOrders');
       final cached = box.get(wooOrderId);
@@ -757,6 +771,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     if (netTotal < 0) netTotal = 0;
     double localNetPayable = netTotal.toDouble() + orderTax;
     double netPayable = wooTotal > 0 ? wooTotal : localNetPayable;
+
 
 
     if (netPayable < 0) netPayable = 0;
@@ -779,6 +794,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
       netPayable =
           (order["payable"] as num?)?.toDouble() ?? netPayable;
+
 
       print("🔥 OFFLINE OVERRIDE APPLIED:");
       print("grossTotal       = $grossTotal");
@@ -1752,7 +1768,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text("${TextConstants.totalItemsText}: ${orderItems.length}",
+                            Text("${TextConstants.totalItemsText}: $totalItems",
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                             Row(
                               children: [
