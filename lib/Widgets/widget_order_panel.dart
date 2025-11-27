@@ -3052,21 +3052,22 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                Text(TextConstants.taxText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12,color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 : Colors.grey),),
+                                Text(TextConstants.taxText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14,color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 : Colors.grey),),
                                 Text("${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}", //Build #1.0.92: removed minus "-"
                                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 :Colors.grey)),
                               ],
                             ),
                             SizedBox(height: 2),
+                            if(merchantDiscount>0)
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Row(
                                   spacing: 5,
                                   children: [
-                                    SvgPicture.asset("assets/svg/discount_star.svg",
-                                      height: 12, width: 12,
-                                      colorFilter: ColorFilter.mode(Colors.blueAccent, BlendMode.srcIn),),
+                                    // SvgPicture.asset("assets/svg/discount_star.svg",
+                                    //   height: 12, width: 12,
+                                    //   colorFilter: ColorFilter.mode(Colors.blueAccent, BlendMode.srcIn),),
                                     Text(TextConstants.merchantDiscount, style: TextStyle(color: Color(0xFF007BFF), fontSize: 14)),
                                     merchantDiscount.toStringAsFixed(2) == '0.00' ? SizedBox() : GestureDetector(
                                       onTap: () async {

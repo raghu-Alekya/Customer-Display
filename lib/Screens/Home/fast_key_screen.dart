@@ -260,6 +260,8 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
   // SidebarPosition sidebarPosition = SidebarPosition.left;
   // OrderPanelPosition orderPanelPosition = OrderPanelPosition.right;
   bool isLoading = true;
+  bool isBulkAdding = false;
+
 
   final ValueNotifier<int?> fastKeyTabIdNotifier = ValueNotifier<int?>(null);
   final FastKeyDBHelper fastKeyDBHelper = FastKeyDBHelper();
@@ -821,7 +823,9 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
         }
         setState(() => isAddingItemLoading = false); // Build #1.0.204: Added missed loader on "Add"  button of search product dialouge after tap on add
         // Reload items using existing method
-        _refreshFastKeyTabItems();
+        if (!isBulkAdding) {
+          _refreshFastKeyTabItems();
+        }
         subscription?.cancel();
       } else if (response.status == Status.ERROR) {
         if (response.message!.contains('Unauthorised')) {
@@ -1323,249 +1327,263 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
   Future<void> _showAddItemDialog() async {
     var size = MediaQuery.of(context).size;
     searchController.clear();
-    selectedProduct = null;
     bool errorShown = false;
+    isBulkAdding = true;
+
     searchResults.clear();
     final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);
     final productBloc = ProductBloc(ProductRepository());
 
+    /// ⭐ NEW: Store multiple selections
+    List<Map<String, dynamic>> selectedProducts = [];
+
     return showDialog<void>(
-      context: context, // Use the current context
+      context: context,
       builder: (BuildContext dialogContext) {
-        return StatefulBuilder(builder: (context, setStateDialog) {
-          return AlertDialog(
-            titleTextStyle: TextStyle(fontSize: 18, color: Colors.black),
-            backgroundColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : null,
-            title: Text(TextConstants.searchAddItemText,style: TextStyle(color: themeHelper.themeMode == ThemeMode.dark
-                ? ThemeNotifier.textDark : Colors.black87),),
-            content: SingleChildScrollView(
-              child: SizedBox(
-                width: 700,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: searchController,
-                        decoration: const InputDecoration(
-                          labelText: TextConstants.searchItemText,
-                          hintText: TextConstants.typeSearchText,
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.secondaryBackground
+                  : null,
+              title: Text(
+                TextConstants.searchAddItemText,
+                style: TextStyle(
+                  fontSize: 18,
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.textDark
+                      : Colors.black87,
+                ),
+              ),
+              content: SingleChildScrollView(
+                child: SizedBox(
+                  width: 700,
+                  child: Row(
+                    children: [
+                      /// 🔍 SEARCH FIELD
+                      Expanded(
+                        child: TextField(
+                          controller: searchController,
+                          decoration: const InputDecoration(
+                            labelText: TextConstants.searchItemText,
+                            hintText: TextConstants.typeSearchText,
+                          ),
+                          onChanged: (value) {
+                            productBloc.fetchProducts(searchQuery: value);
+                          },
                         ),
-                        onChanged: (value) {
-                          productBloc.fetchProducts(searchQuery: value);
-                        },
                       ),
-                    ),
-                    SizedBox(
-                      width: 8,
-                    ),
-                    Expanded(
-                      child: StreamBuilder<APIResponse<List<ProductResponse>>>(
-                        stream: productBloc.productStream,
-                        builder: (context, snapshot) {
-                          if (snapshot.hasData) {
-                            switch (snapshot.data!.status) {
-                              case Status.LOADING:
-                                return const Center(child: CircularProgressIndicator());
-                              case Status.COMPLETED:
-                                final products = snapshot.data!.data;
-                                if (products == null || products.isEmpty) {
-                                  return const Center(child: Text("No products found"));
-                                }
-                                return Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(10),
-                                    color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : ThemeNotifier.lightBackground,
-                                  ),
-                                  height: size.height * 0.5,
-                                  child: Padding(
-                                    padding: EdgeInsets.only(left: 3, right:3),
+
+                      SizedBox(width: 8),
+
+                      /// 📦 PRODUCT LIST
+                      Expanded(
+                        child: StreamBuilder<APIResponse<List<ProductResponse>>>(
+                          stream: productBloc.productStream,
+                          builder: (context, snapshot) {
+                            if (snapshot.hasData) {
+                              switch (snapshot.data!.status) {
+                                case Status.LOADING:
+                                  return const Center(
+                                      child: CircularProgressIndicator());
+
+                                case Status.COMPLETED:
+                                  final products = snapshot.data!.data;
+                                  if (products == null || products.isEmpty) {
+                                    return const Center(
+                                        child: Text("No products found"));
+                                  }
+
+                                  return Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(10),
+                                      color: themeHelper.themeMode ==
+                                          ThemeMode.dark
+                                          ? ThemeNotifier.primaryBackground
+                                          : ThemeNotifier.lightBackground,
+                                    ),
+                                    height: size.height * 0.5,
                                     child: Scrollbar(
                                       controller: _scrollController,
-                                      scrollbarOrientation: ScrollbarOrientation.right,
                                       thumbVisibility: true,
-                                      thickness: 8.0,
-                                      interactive: false,
                                       radius: const Radius.circular(8),
-                                      trackVisibility: true,
                                       child: ListView.builder(
                                         controller: _scrollController,
-                                        shrinkWrap: true,
-                                        physics: const BouncingScrollPhysics(),
                                         itemCount: products.length,
                                         itemBuilder: (context, index) {
                                           final product = products[index];
+
+                                          final isSelected =
+                                          selectedProducts.any((p) =>
+                                          p['id'] == product.id);
+
                                           return ListTile(
-                                            leading: product.images != null && product.images!.isNotEmpty
+                                            selected: isSelected,
+                                            selectedTileColor:
+                                            Colors.grey.withOpacity(0.3),
+
+                                            leading: (product.images?.isNotEmpty ==
+                                                true)
                                                 ? Image.network(
                                               product.images!.first,
                                               width: 50,
                                               height: 50,
                                               fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image),
                                             )
                                                 : const Icon(Icons.image),
+
                                             title: Text(product.name ?? 'No Name'),
-                                            subtitle: Text('${TextConstants.currencySymbol}${double.tryParse(product.price.toString())?.toStringAsFixed(2) ?? "0.00"}'),
+                                            subtitle: Text(
+                                              '${TextConstants.currencySymbol}${double.tryParse(product.price.toString())?.toStringAsFixed(2) ?? "0.00"}',
+                                            ),
+
+                                            /// ⭐ MULTI-SELECT LOGIC
                                             onTap: () {
                                               setStateDialog(() {
-                                                var tag = product.tags?.firstWhere((element) => element.name == TextConstants.age_restricted, orElse: () => SKU.Tags());
-                                                if (kDebugMode) {
-                                                  print("FaskKey setStateDialog hasAgeRestriction tag = ${tag?.id}, ${tag?.name}, ${tag?.slug}");
-                                                  print("FaskKey setStateDialog ${product.name ?? 'Unknown'}");
+                                                if (isSelected) {
+                                                  selectedProducts.removeWhere(
+                                                          (p) =>
+                                                      p['id'] == product.id);
+                                                } else {
+                                                  selectedProducts.add({
+                                                    'title':
+                                                    product.name ?? 'Unknown',
+                                                    'image': product.images
+                                                        ?.isNotEmpty ==
+                                                        true
+                                                        ? product.images!.first
+                                                        : '',
+                                                    'price':
+                                                    product.regularPrice ??
+                                                        '0.00',
+                                                    'id': product.id,
+                                                    'sku': product.sku ?? 'N/A',
+                                                  });
                                                 }
-                                                selectedProduct = {
-                                                  'title': product.name ?? 'Unknown',
-                                                  'image': product.images?.isNotEmpty == true ? product.images!.first : '',
-                                                  'price': product.regularPrice ?? '0.00',
-                                                  'id': product.id,
-                                                  'sku': product.sku ?? 'N/A',
-                                                  'minAge': int.parse(tag?.slug ?? "0"),
-                                                };
                                               });
                                             },
-                                            selected: selectedProduct != null && selectedProduct!['id'] == product.id,
-                                            selectedTileColor: Colors.grey[300],
                                           );
                                         },
                                       ),
                                     ),
-                                  ),
-                                );
-                              case Status.ERROR:
-                                if (snapshot.data!.message!.contains('Unauthorised')) {
-                                  if (!errorShown) { // Set the flag to true IMMEDIATELY to prevent this block from running again
-                                    errorShown = true;
-                                    if (kDebugMode) {
-                                      print(
-                                          "Fast key 8 ---- Unauthorised : ${snapshot.data!.message!}");
-                                    }
-                                    WidgetsBinding.instance
-                                        .addPostFrameCallback((_) {
-                                      if (mounted) {
-                                        Navigator.pushReplacement(
+                                  );
+
+                                case Status.ERROR:
+                                  if (snapshot.data!.message!
+                                      .contains('Unauthorised')) {
+                                    if (!errorShown) {
+                                      errorShown = true;
+
+                                      WidgetsBinding.instance
+                                          .addPostFrameCallback((_) {
+                                        if (mounted) {
+                                          Navigator.pushReplacement(
                                             context,
                                             MaterialPageRoute(
-                                                builder: (context) =>
-                                                    LoginScreen()));
-
-                                        if (kDebugMode) {
-                                          print(
-                                              "message 2  --- ${snapshot.data!.message}");
+                                              builder: (context) => LoginScreen(),
+                                            ),
+                                          );
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                  "Unauthorised. Session expired."),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
                                         }
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                                "Unauthorised. Session is expired on this device."),
-                                            backgroundColor: Colors.red,
-                                            duration: Duration(seconds: 2),
-                                          ),
-                                        );
-                                      }
-                                    });
+                                      });
+                                    }
+                                  } else {
+                                    return Center(
+                                      child: Text(snapshot.data!.message ??
+                                          "Error loading products"),
+                                    );
                                   }
-                                } else {
-                                  return Center(
-                                    child: Text(snapshot.data!.message ??
-                                        "Error loading products"),
-                                  );
-                                }
+                              }
                             }
-                          }
-                          return const SizedBox.shrink();
-                        },
+                            return const SizedBox.shrink();
+                          },
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                  productBloc.dispose();
-                },
-                child: const Text(TextConstants.cancelText),
-              ),
-              TextButton( //Build #1.0.68 : updated code for exist item alert
-                onPressed: selectedProduct != null && !isAddingItemLoading // Add condition
-                    ? () async {
-                  setStateDialog(() => isAddingItemLoading = true); // Build #1.0.204: Added missed loader on "Add"  button of search product dialog after tap on add
 
-                  final existingItems = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
-                  if (kDebugMode) {
-                    print("#### existingItems: $existingItems");
-                    print("#### selectedProduct ID : ${selectedProduct!['id']}");
+              /// ------------------ ACTION BUTTONS ------------------
+              actions: [
+                /// ❌ CANCEL
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                    productBloc.dispose();
+                  },
+                  child: const Text(TextConstants.cancelText),
+                ),
+
+                /// ➕ ADD SELECTED PRODUCTS
+                /// ➕ ADD SELECTED PRODUCTS
+                TextButton(
+                  onPressed: selectedProducts.isNotEmpty
+                      ? () {
+                    final List<Map<String, dynamic>> selectedCopy =
+                    List<Map<String, dynamic>>.from(selectedProducts);
+
+                    Navigator.of(dialogContext).pop();
+
+                    Future.delayed(Duration(milliseconds: 100), () async {
+
+                      isBulkAdding = true;  // 🚀 prevent UI refresh spam
+
+                      final existingItems =
+                      await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
+
+                      final existingIds = existingItems
+                          .map((e) => e[AppDBConst.fastKeyProductId].toString())
+                          .toSet();
+
+                      for (var p in selectedCopy) {
+                        final pid = p['id'].toString();
+
+                        if (existingIds.contains(pid)) {
+                          continue;
+                        }
+
+                        selectedProduct = p;
+
+                        await _addFastKeyTabItem(
+                          p['title'],
+                          p['image'],
+                          p['price'],
+                        );
+                      }
+
+                      isBulkAdding = false;   // 🚀 allow refresh again
+
+                      // 🔥 Refresh only once after all items are added
+                      _refreshFastKeyTabItems();
+                      fastKeyTabIdNotifier.notifyListeners();
+
+                      if (mounted) setState(() {});
+                    });
                   }
-                  final selectedProductId = selectedProduct!['id'].toString();
-                  final existingItem = existingItems.firstWhere(
-                        (item) => item[AppDBConst.fastKeyProductId].toString() == selectedProductId,
-                    orElse: () => {},
-                  );
+                      : null,
+                  child: const Text("Add Selected"),
+                )
 
-                  if (existingItem.isNotEmpty) {
-                    if (kDebugMode) {
-                      print("#### Product EXIST");
-                    }
-                    // Navigator.of(dialogContext).pop(); // Close the add item dialog
-                    final tab = await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId!); // Build #1.0.87
-                    final tabName = tab.isNotEmpty ? tab.first[AppDBConst.fastKeyTabTitle] : 'Fast Key';
 
-                    setStateDialog(() => isAddingItemLoading = false); // Build #1.0.204: Added missed loader on "Add"  button of search product dialog after tap on add
-                    // Show custom item alert with dismissal using parent context
-                    await CustomDialog.showCustomItemAlert(
-                      context, // Use parent context
-                      title: TextConstants.alreadyExistTitle,
-                      description: '${TextConstants.alreadyExistSubTitle} $tabName',
-                      buttonText: TextConstants.okText,
-                      onButtonPressed: () {
-                        Navigator.of(context).pop(); // Dismiss the alert dialog
-                      },
-                    );
-                  } else {
-                    if (kDebugMode) {
-                      print("#### Product not EXIST");
-                    }
-                    await _addFastKeyTabItem(
-                      selectedProduct!['title'],
-                      selectedProduct!['image'],
-                      selectedProduct!['price'],
-                    );
-                    //  await fastKeyDBHelper.updateFastKeyTabCount(_fastKeyTabId!, fastKeyProductItems.length);
-                    // await _loadFastKeyTabItems();
-                    if (mounted) {
-                      setState(() {});
-                    }
-                    fastKeyTabIdNotifier.notifyListeners();
-                    Navigator.of(dialogContext).pop(); // Close the add item dialog
-                  }
-                  // Build #1.0.87: after exist dialog ok tap search not working because of bloc dispose , no need here to dispose , after dialog pop we are doing
-                  //    _productSearchController.text = "";
-                  //    Navigator.of(context).pop();
-                  //    productBloc.dispose();
-                }
-                    : null,
-                child: isAddingItemLoading
-                    ? SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2), // Build #1.0.204: Added missed loader on "Add"  button of search product dialog after tap on add
-                ) : Text(TextConstants.addText),
-              ),
-            ],
-          );
-        });
+
+              ],
+            );
+          },
+        );
       },
     ).then((_) {
-      if (kDebugMode) {
-        print("#### productBloc disposed");
-      }
       productBloc.dispose();
     });
   }
+
 
   void _showCategoryDialog({required BuildContext context, int? index}) {
     bool isEditing = index != null;

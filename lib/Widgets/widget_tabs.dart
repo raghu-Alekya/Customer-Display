@@ -271,51 +271,76 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
           child: Column(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildTab(0, SvgUtils.addDiscountIcon, TextConstants.discounts),
-              // Build #1.0.168: Updated - Changed the icons to figma svg icons
+              _buildTab(
+                0,
+                SvgUtils.addDiscountIcon,
+                "Merchant \nDiscounts",
+                Color(0xFF007BFF),      // icon color
+                Color(0xFF007BFF),    // text color
+              ),
+
               const SizedBox(width: 10),
-              // Hide divider if current tab (0) or next tab (1) is selected
+
               if (_selectedTabIndex != 0 && _selectedTabIndex != 1)
                 Divider(height: 1, thickness: 0.1, indent: 10, endIndent: 10),
-              _buildTab(1, SvgUtils.cashbackIcon, TextConstants.cashback),
+
+              _buildTab(
+                1,
+                SvgUtils.cashbackIcon,
+                "Cashback",
+                Color(0xFF55CBCD),    // icon color
+                Color(0xFF55CBCD),     // text color
+              ),
+
               const SizedBox(width: 10),
-              // Hide divider if current tab (1) or next tab (2) is selected
+
               if (_selectedTabIndex != 1 && _selectedTabIndex != 2)
                 Divider(height: 1, thickness: 0.1, indent: 10, endIndent: 10),
+
               _buildTab(
-                  2, SvgUtils.addCustomItemIcon, TextConstants.customItem),
+                2,
+                SvgUtils.addCustomItemIcon,
+                "Custom\nItem",
+                Color(0xFF55709A),    // icon color
+                Color(0xFF55709A),   // text color
+              ),
+
               const SizedBox(width: 10),
-              // Hide divider if current tab (2) or next tab (3) is selected
+
               if (_selectedTabIndex != 2 && _selectedTabIndex != 3)
                 Divider(height: 1, thickness: 0.1, indent: 10, endIndent: 10),
-              _buildTab(3, SvgUtils.addPayoutIcon, TextConstants.payoutsText),
+
+              _buildTab(
+                3,
+                SvgUtils.addPayoutIcon,
+                "Payouts",
+                Color(0xFFD93535),    // icon color
+                Color(0xFFD93535),   // text color
+              ),
             ],
           )
+
       ),
     );
   }
 
   // Build individual tab
-  Widget _buildTab(int index, String svgPath, String text) {
+  Widget _buildTab(
+      int index,
+      String svgPath,
+      String text,
+      Color iconColor,
+      Color textColor,
+      ) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
-    if (kDebugMode) {
-      print("Widget_tabs _buildTab index : $index");
-    }
-    // Use the state variable instead of widget property
     bool isSelected = _selectedTabIndex == index;
+
     return Expanded(
       child: GestureDetector(
         onTap: () {
-          if (kDebugMode) {
-            print("Widget_tabs _buildTab onTap index : $index");
-          }
           setState(() {
-            // Update the state variable instead of widget property
             _selectedTabIndex = index;
-            // Reset highlighting when switching away from custom item tab
-            if (index != 2) {
-              _isEnteringItemPrice = false;
-            }
+            if (index != 2) _isEnteringItemPrice = false;
           });
         },
         child: Container(
@@ -326,44 +351,35 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                 : Colors.white)
                 : (themeHelper.themeMode == ThemeMode.dark
                 ? ThemeNotifier.tabsBackground
-                : ThemeNotifier.tabsLightBackground), //Color(0xFF1E2745))
+                : ThemeNotifier.tabsLightBackground),
             borderRadius: BorderRadius.circular(16.0),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              SvgPicture
-                  .asset( // Build #1.0.168: Updated - Changed the icons to figma svg icons
+              SvgPicture.asset(
                 svgPath,
-                height: 32,
-                width: 32,
+                height: 30,
+                width: 30,
                 colorFilter: ColorFilter.mode(
-                  isSelected
-                      ? (themeHelper.themeMode == ThemeMode.dark
-                      ? Colors.white
-                      : Colors.black)
-                      : (themeHelper.themeMode == ThemeMode.dark
-                      ? Colors.white70
-                      : Colors.grey),
+                  isSelected ? iconColor : iconColor.withOpacity(0.8),
                   BlendMode.srcIn,
                 ),
               ),
-              const SizedBox(width: 10),
-              Padding(padding: EdgeInsets.only(right: 5), child:
-              Text(
-                text,
-                style: TextStyle(
-                  color: isSelected
-                      ? (themeHelper.themeMode == ThemeMode.dark
-                      ? Colors.white
-                      : Colors.black)
-                      : (themeHelper.themeMode == ThemeMode.dark
-                      ? Colors.white70
-                      : Colors.grey.shade700),
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              const SizedBox(width: 5),
+              Padding(
+                padding: const EdgeInsets.only(right: 5, top: 3),
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    color: isSelected
+                        ? textColor
+                        : textColor.withOpacity(0.8),
+                    fontWeight:
+                    isSelected ? FontWeight.bold : FontWeight.w100,
+                  ),
                 ),
-              ),),
-
+              ),
             ],
           ),
         ),

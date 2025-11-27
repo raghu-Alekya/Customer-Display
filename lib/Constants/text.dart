@@ -118,7 +118,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
 
   static const String ebtText               = "EBT";
   static const String payoutsText           = "Payouts";
-  static const String subTotalText          = "Sub total";
+  static const String subTotalText          = "Sub Total";
   static const String grossTotal            = "Gross Total";
   static const String taxText               = "Tax";
   static const String netTotalText          = "Net Total"; //Build #1.0.67
@@ -221,7 +221,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String invalidDiscount       = "Invalid Discount";
   static const String invalidDiscountDescription = "The discount entered is not valid. Please review the discount details.";
   static const String customItemCouldNotBeAdded = "Custom item could not be added";
-  static const String discounts             = "Discounts";
+  static const String discounts             = "Merchant\nDiscount";
   static const String coupons               = "Coupons";
   static const String customItem            = "Custom Item";
   static const String customItemCouldNotBeAddedDescription = "Please check the items and try again. Contact your manager if the issue continues.";
@@ -284,7 +284,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String discountText          = "Discount/Coupon";
   static const String discountCoupon          = "Discount/Coupon";
   static const String none                  = "none";
- // static const String customProductText     = "CustomProduct"; // Build #1.0.64
+  // static const String customProductText     = "CustomProduct"; // Build #1.0.64
   static const String couponText            = "coupon"; //Build #1.0.68
   static const String payoutText            = "payout";
   static const String productText           = "Product";
@@ -340,7 +340,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String allStatus             = "pending, processing, on-hold, completed, cancelled, refunded, failed";
   static const String processing            = "processing";
   static const String orderScreenStatus     = "pending, on-hold, completed, cancelled, refunded, failed";
- // Build #1.0.144: Added TextConstants from static snackBar string error's to here
+  // Build #1.0.144: Added TextConstants from static snackBar string error's to here
   static const String failedToCreateFastKey = 'Failed to create fast key';
   static const String failedToAddItemToFastKey = 'Failed to add item to fast key';
   static const String failedToDeleteProductFromFastKey = 'Failed to delete product from fast key';

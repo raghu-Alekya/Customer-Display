@@ -198,17 +198,51 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       payByOther = otherTotal;
       tenderAmount = payByCash + payByOther;
 
-      // Update balanceAmount based on order total and payments
-      double orderTotal = (_order[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0;
-      balanceAmount = orderTotal - payByCash - payByOther;
+      // -------------------------------
+      // ⭐ READ ALL NECESSARY TOTAL FIELDS
+      // -------------------------------
+      double grossTotal = (_order["grossTotal"] as num?)?.toDouble() ?? 0.0;
+      double merchantDiscount = (_order["merchantDiscount"] as num?)?.toDouble() ?? 0.0;
+      double cashbackFee = (_order["cashbackFee"] as num?)?.toDouble() ?? 0.0;
+      double couponDiscount = (_order["couponDiscount"] as num?)?.toDouble() ?? 0.0;
+      double redeemedValue = (_order["redeemedValue"] as num?)?.toDouble() ?? 0.0;
 
-      // Calculate change amount
-      var isBalanceZero = balanceAmount <= 0;
-      changeAmount = isBalanceZero && (orderStatus != TextConstants.processing) ? balanceAmount.abs() : 0.0;
-      balanceAmount = isBalanceZero && (orderStatus != TextConstants.processing) ? 0 : balanceAmount;
+      // If grossTotal missing → fallback to old orderTotal (net)
+      if (grossTotal <= 0) {
+        grossTotal = (_order[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0;
+      }
+
+      // -------------------------------
+      // ⭐ EFFECTIVE ORDER TOTAL (REAL NET TOTAL)
+      // -------------------------------
+      double effectiveOrderTotal = grossTotal;
+
+
+      // -------------------------------
+      // ⭐ REMAINING BALANCE
+      // -------------------------------
+      balanceAmount = effectiveOrderTotal - tenderAmount;
+
+      // -------------------------------
+      // ⭐ CHANGE CALCULATION
+      // -------------------------------
+      if (balanceAmount <= 0) {
+        if (orderStatus != TextConstants.processing) {
+          changeAmount = balanceAmount.abs();
+          balanceAmount = 0;
+        } else {
+          changeAmount = 0;
+        }
+      } else {
+        changeAmount = 0;
+      }
     });
 
+
+
     if (kDebugMode) {
+      print("##### AFTER API REFRESH — remainingBalance = $balanceAmount");
+
       print("###### Updated values - PayByCash: $payByCash, PayByOther: $payByOther");
       print("###### TenderAmount: $tenderAmount, ChangeAmount: $changeAmount, BalanceAmount: $balanceAmount");
     }
@@ -1480,11 +1514,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                         Row(
                                           spacing: 5,
                                           children: [
-                                            SvgPicture.asset(
-                                              "assets/svg/discount_star.svg",
-                                              height: 12,
-                                              width: 12,
-                                            ),
+                                            // SvgPicture.asset(
+                                            //   "assets/svg/discount_star.svg",
+                                            //   height: 12,
+                                            //   width: 12,
+                                            // ),
                                             Text(TextConstants.discountText,
                                                 style: TextStyle(
                                                     color: Colors.green,
@@ -1575,7 +1609,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                           TextConstants.taxText,
                                           style: TextStyle(
                                               fontWeight: FontWeight.bold,
-                                              fontSize: 12,
+                                              fontSize: 14,
                                               color: Colors.grey),
                                         ),
                                         Text(
@@ -1596,12 +1630,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                         Row(
                                           spacing: 5,
                                           children: [
-                                            SvgPicture.asset(
-                                              "assets/svg/discount_star.svg",
-                                              height: 12,
-                                              width: 12,
-                                              color: Colors.blue, // 👈 apply blue color
-                                            ),
+                                            // SvgPicture.asset(
+                                            //   "assets/svg/discount_star.svg",
+                                            //   height: 12,
+                                            //   width: 12,
+                                            //   color: Colors.blue, // 👈 apply blue color
+                                            // ),
                                             Text(TextConstants.merchantDiscount,
                                                 style: TextStyle(
                                                     color: Colors.blue,
@@ -1610,6 +1644,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
                                           ],
                                         ),
+                                        if(merchantDiscount>0)
                                         Text(
                                             "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
                                             style: TextStyle(

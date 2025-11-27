@@ -27,6 +27,8 @@ class CustomNumPad extends StatelessWidget {
   final bool isDarkTheme;
   final bool showAddInsteadOfPay;
   final EdgeInsetsGeometry? gridPadding;
+  final double ?orderTotal;
+  final double ?redeemedValue;
 
   const CustomNumPad({
     super.key,
@@ -46,6 +48,8 @@ class CustomNumPad extends StatelessWidget {
     this.isDarkTheme = false,
     this.showAddInsteadOfPay = false,
     this.gridPadding,
+    this.orderTotal,
+    this.redeemedValue,
   });
 
   @override

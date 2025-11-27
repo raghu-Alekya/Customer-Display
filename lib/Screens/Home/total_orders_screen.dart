@@ -175,7 +175,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                         .split(".")
                         .first;
                   }
-                  
+
                   final payable = (map["net_payable"] as num?)?.toDouble() ?? 0.0;
 
 // ⭐ FINAL TOTAL (SHOW IN LIST)

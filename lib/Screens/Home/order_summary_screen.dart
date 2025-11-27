@@ -63,6 +63,8 @@ class OrderSummaryScreen extends StatefulWidget {
   final bool isOfflineSynced;
   final int? offlineOrderId;
   final double cashbackFee;
+  final double ?balanceamount;
+
 
   const OrderSummaryScreen({
     required this.formattedDate,
@@ -78,6 +80,7 @@ class OrderSummaryScreen extends StatefulWidget {
     this.isOfflineSynced = false,
     this.offlineOrderId,
     super.key,
+    this.balanceamount,
   });
 
   @override
@@ -123,6 +126,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isAddLoading = false;
 // ⭐ store full API data globally
   bool isPaymentDone = false;
+  Map<String, dynamic> _order = {};
+
 
 
   double NetTotal = 0.0;
@@ -184,8 +189,32 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     NetTotal = grossTotal - discount;
     computedNetPayable =
         grossTotal + tax - discount - merchantDiscount + cashbackFee;
-    balanceAmount = computedNetPayable;
+    // balanceAmount = computedNetPayable;
+    // orderTotal = computedNetPayable;
+    // ✅ Correct: Only calculate fresh orderTotal
     orderTotal = computedNetPayable;
+
+
+    // ⭐ RESTORE PARTIAL PAYMENT VALUES IF ORDER IS PENDING
+    final offlineBox = Hive.box('offlineOrders');
+    final orderIdKey = (orderId ?? 0).toString();
+
+    if (offlineBox.containsKey(orderIdKey)) {
+      final Map<String, dynamic> offlineOrder =
+      Map<String, dynamic>.from(offlineBox.get(orderIdKey));
+
+      if (offlineOrder['tenderAmount'] != null &&
+          offlineOrder['balanceAmount'] != null) {
+        tenderAmount = (offlineOrder['tenderAmount'] as num).toDouble();
+        balanceAmount = (offlineOrder['balanceAmount'] as num).toDouble();
+
+        print("🟩 Restored Pending Payment → tender=$tenderAmount, balance=$balanceAmount");
+      } else {
+        // fallback – calculate fresh
+        balanceAmount = computedNetPayable;
+      }
+    }
+
     //redeeem points
     mobileController.addListener(() {
       setState(() {
@@ -299,8 +328,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               }
               if (response.data!.isNotEmpty) {
                 // Build #1.0.175: check empty or not
-                orderStatus =
-                    response.data?.first.orderStatus ?? TextConstants.processing;
+                orderStatus = response.data!.last.orderStatus ?? TextConstants.processing;
+
               }
               _processPaymentList(response.data!);
             } else if (response.status == Status.ERROR) {
@@ -327,48 +356,49 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     for (var payment in payments) {
       double amount = double.tryParse(payment.amount) ?? 0.0;
 
-      if (payment.paymentMethod == TextConstants.cash &&
-          payment.voidStatus == false) {
-        cashTotal += amount;
-      } else if (payment.paymentMethod != TextConstants.cash &&
-          payment.voidStatus == false) {
-        otherTotal += amount;
+      if (!payment.voidStatus) {
+        if (payment.paymentMethod == TextConstants.cash) {
+          cashTotal += amount;
+        } else {
+          otherTotal += amount;
+        }
       }
     }
 
     if (kDebugMode) {
       print("###### _processPaymentList ->>> payByCash1: $cashTotal, payByOther1: $otherTotal");
-      print("###### _processPaymentList ->>> payByCash2: $payByCash, payByOther2: $payByOther, tenderAmount: $tenderAmount");
     }
 
     setState(() {
       payByCash = cashTotal;
       payByOther = otherTotal;
 
-      /// ⭐ FIX: Deduct redeemed points while computing balance
-      double effectiveOrderTotal = computedNetPayable - redeemedValue;
+      // ⭐ REAL FIX: use the actual order total
+      double effectiveOrderTotal = orderTotal - redeemedValue;
 
+      balanceAmount = effectiveOrderTotal - (payByCash + payByOther);
 
-      balanceAmount = effectiveOrderTotal - payByCash - payByOther;
+      bool isBalanceZero = balanceAmount <= 0;
 
-      var isBalanceZero = balanceAmount <= 0;
+      // Change only when OVERPAID and NOT processing
+      if (isBalanceZero && orderStatus != TextConstants.processing) {
+        changeAmount = balanceAmount.abs();
+        balanceAmount = 0;
+      } else {
+        changeAmount = 0;
+      }
 
-      // Build  #1.0.177: -ve balance will be shown as change if order status is not processing
-      changeAmount = isBalanceZero && (orderStatus != TextConstants.processing)
-          ? balanceAmount.abs()
-          : changeAmount;
-
-      balanceAmount = isBalanceZero && (orderStatus != TextConstants.processing)
-          ? 0
-          : balanceAmount;
-
+      // Update tender
       tenderAmount = payByCash + payByOther;
     });
 
     if (kDebugMode) {
-      print("###### _processPaymentList ->>> payByCash3: $payByCash, payByOther3: $payByOther, tenderAmount: $tenderAmount");
+      print("UPDATED BALANCE : $balanceAmount");
+      print("UPDATED CHANGE  : $changeAmount");
+      print("UPDATED TENDER  : $tenderAmount");
     }
   }
+
 
 
   // void fetchOrderItems() async {
@@ -391,44 +421,37 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     });
   }
 
-  void _callCreatePaymentAPI({double amount = 0.0}) {
-    // Build #1.0.29
+  void _callCreatePaymentAPI() {
     if (kDebugMode) {
-      print(
-          "###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount");
+      print("###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount");
     }
-    if (balanceAmount > 0) {
-      if (amountController.text.isEmpty) {
-        //Build #1.0.34: updated code
-        if (kDebugMode) {
-          print("Error: Amount TextField is empty");
-        }
-        return;
-      }
+
+    if (balanceAmount > 0 && amountController.text.isEmpty) {
+      if (kDebugMode) print("Error: Amount field is empty");
+      return;
     }
 
     String cleanAmount = amountController.text
         .replaceAll(TextConstants.currencySymbol, '')
         .trim();
+
     final double amount = double.tryParse(cleanAmount) ?? 0.0;
-    if (amount < 0.0) {
-      if (kDebugMode) {
-        print("Error: Invalid amount: $cleanAmount");
-      }
+    if (amount <= 0.0) {
+      if (kDebugMode) print("Error: Invalid amount: $cleanAmount");
       return;
     }
+
+    double remainingBalance = balanceAmount;
+
     if (kDebugMode) {
-      print(
-          "_callCreatePaymentAPI cleanAmount: $cleanAmount, balanceAmount: $balanceAmount");
+      print("_callCreatePaymentAPI cleanAmount: $cleanAmount, remainingBalance(before) = $remainingBalance");
     }
 
-    setState(() {
-      isLoading = true; //Build 1.1.36: Show loader on PAY tap
-    });
+    setState(() => isLoading = true);
 
-    // Prepare payment request
     final String datetime =
     DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
     final paymentRequest = PaymentRequestModel(
       title: selectedPaymentMethod,
       orderId: orderId ?? 0,
@@ -442,178 +465,136 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       notes: '',
     );
 
-    if (kDebugMode) {
-      print("Creating payment with request: $paymentRequest");
-    }
+    if (kDebugMode) print("Creating payment with request: $paymentRequest");
 
-    //Build #1.0.34: updated code for API response and listen to stream then show popup
     paymentBloc.createPayment(paymentRequest);
+
     StreamSubscription? subscription;
-    subscription =
-        paymentBloc.createPaymentStream.listen((paymentResponse) async {
-          if (kDebugMode) {
-            print("Payment stream response: $paymentResponse ++++ end of message");
+    subscription = paymentBloc.createPaymentStream.listen((paymentResponse) async {
+      if (kDebugMode) {
+        print("Payment stream response: $paymentResponse ++++ end");
+      }
+
+      if (paymentResponse.status == Status.ERROR) {
+        setState(() => isLoading = false);
+        if (kDebugMode) print("Payment API Error: ${paymentResponse.message}");
+        subscription?.cancel();
+        return;
+      }
+
+      if (paymentResponse.status == Status.COMPLETED &&
+          paymentResponse.data != null) {
+        final paymentData = paymentResponse.data!;
+
+        if (paymentData.message == "Payment Created Successfully") {
+
+          // OFFLINE DELETE
+          if (widget.isOfflineSynced && widget.offlineOrderId != null) {
+            try {
+              final offlineId = widget.offlineOrderId!;
+              final box = Hive.box('offlineOrders');
+
+              if (box.containsKey(offlineId.toString())) {
+                await box.delete(offlineId.toString());
+                print("✔ Deleted offline order $offlineId from Hive");
+              }
+
+              await orderHelper.deleteOrder(offlineId);
+            } catch (e) {
+              print("⚠ Failed deleting offline order: $e");
+            }
           }
-          if (paymentResponse.data != null) {
-            if (paymentResponse.status == Status.ERROR) {
-              if (kDebugMode) {
-                print("Payment API Error: ${paymentResponse.message}");
-              }
-              setState(() {
-                isLoading = false; // Hide loader on error
-              });
-              subscription?.cancel();
-            } else if (paymentResponse.status == Status.COMPLETED) {
-              final paymentData = paymentResponse.data!;
-              if (paymentData.message == "Payment Created Successfully") {
-                // // Build #1.0.99: Call fetch payment details by order id API call
-                // _fetchPaymentsByOrderId(); // Refresh payments after successful payment
 
-                if (widget.isOfflineSynced && widget.offlineOrderId != null) {
-                  try {
-                    final offlineId = widget.offlineOrderId!;
-                    final offlineBox = Hive.box('offlineOrders');
+          setState(() {
+            isLoading = false;
+            isPaymentDone = true;
+          });
 
-                    if (offlineBox.containsKey(offlineId.toString())) {
-                      await offlineBox.delete(offlineId.toString());
-                      if (kDebugMode)
-                        print(
-                            "✅ Deleted offline order $offlineId from Hive after payment");
-                    }
+          paidAmount = amount;
+          paymentId = paymentData.paymentId.toString();
+          orderStatus = paymentData.orderStatus ?? TextConstants.processing;
 
-                    await orderHelper.deleteOrder(offlineId);
-                    if (kDebugMode)
-                      print(
-                          "✅ Deleted offline order $offlineId from SQLite after payment");
-                  } catch (e) {
-                    if (kDebugMode)
-                      print("⚠️ Failed to delete offline order after payment: $e");
-                  }
-                }
+          final bool isExactPayment = (amount == remainingBalance);
+          final bool isOverPayment = (amount > remainingBalance);
+          final bool isPartialPayment = (amount < remainingBalance);
 
-                setState(() {
-                  isLoading = false;
-                  isPaymentDone = true;   // <--- ADD HERE
-                });
+          tenderAmount += amount;
 
+          if (isOverPayment) {
+            changeAmount = amount - remainingBalance;
+            balanceAmount = 0.0;
+          } else if (isExactPayment) {
+            changeAmount = 0.0;
+            balanceAmount = 0.0;
+          } else if (isPartialPayment) {
+            balanceAmount = remainingBalance - amount;
+            changeAmount = 0.0;
+          }
 
-                paidAmount = amount; // Current payment amount
+          print("##### AFTER PAYMENT — updatedBalance = $balanceAmount   change = $changeAmount");
 
-                // Capture paymentId for wallet payments
-                /// Build #1.0.175: Commented below code, because its only checking wallet payments
-                /// We need to save paymentId always
-                /// if required un-comment below line & change selectedPaymentMethod to wallet/cash
-                //  if (selectedPaymentMethod == TextConstants.wallet) {
-                //  paymentId = paymentData.paymentId; // Assuming the API response includes paymentId
-                // paymentId = "TXT_123456789"; // For testing purpose added here
-                paymentId = paymentData.paymentId.toString(); // paymentId
-                orderStatus = paymentData.orderStatus ?? TextConstants.processing;
-                if (kDebugMode) {
-                  print("Wallet payment successful. Transaction ID: $paymentId");
-                }
-                //  }
+          amountController.clear();
+          balanceAmount = double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
 
-                // Determine payment type
-                final bool isExactPayment = (amount == balanceAmount);
-                final bool isOverPayment = (amount > balanceAmount);
-                final bool isPartialPayment = (amount < balanceAmount);
+          // ------------------------------------------------------
+          // ⭐ SAVE BALANCE + PAID AMOUNT EVERYWHERE (FINAL FIX)
+          // ------------------------------------------------------
 
-                if (kDebugMode) {
-                  // Build #1.0.168: Debug prints
-                  print("#### DEBUG 101 : $amount");
-                  print("#### DEBUG 102 : $balanceAmount");
-                }
+          // 1️⃣ In-memory
+          _order["balanceAmount"] = balanceAmount;
+          _order["paidAmount"] = tenderAmount;
+          _order["tenderAmount"] = tenderAmount;
 
-                if (isOverPayment) {
-                  if (kDebugMode) {
-                    print("#### isOverPayment");
-                  }
-                  changeAmount = amount -
-                      balanceAmount; // Build #1.0.168: Updated - Set changeAmount directly
-                  balanceAmount = 0.0; // Balance fully paid
-                  tenderAmount += amount;
-                } else if (isExactPayment) {
-                  if (kDebugMode) {
-                    print("#### isExactPayment");
-                  }
-                  tenderAmount += amount;
-                  changeAmount = 0.0; // No change for exact payment
-                  balanceAmount = 0.0; // Balance fully paid
-                } else if (isPartialPayment) {
-                  if (kDebugMode) {
-                    print("#### isPartialPayment");
-                  }
-                  tenderAmount += amount;
-                  balanceAmount -= amount; // Reduce balance for partial payment
-                  changeAmount = 0.0; // No change for partial payment
-                } else if (balanceAmount == 0 && amount > 0) {
-                  if (kDebugMode) {
-                    print("#### balanceAmount is 0");
-                  }
-                  // Case where balance is already 0, return the entire amount as change
-                  changeAmount =
-                      amount; // Build #1.0.168: Updated - Set change to the full amount
-                  tenderAmount += amount; // Reset tender to current payment
-                }
+          // 2️⃣ Hive save
+          try {
+            final offlineBox = Hive.box('offlineOrders');
+            final key = (orderId ?? 0).toString();
 
-                amountController.clear(); // Clear input textField
-                setState(() {}); // Update UI
+            if (offlineBox.containsKey(key)) {
+              final updated = Map<String, dynamic>.from(offlineBox.get(key));
+              updated["balanceAmount"] = balanceAmount;
+              updated["paidAmount"] = tenderAmount;
+              updated["tenderAmount"] = tenderAmount;
 
-                balanceAmount =
-                    double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.00;
-                if (kDebugMode) {
-                  print(
-                      "Payment successful - Paid: $paidAmount, Balance: $balanceAmount, Change: $changeAmount, Tender: $tenderAmount");
-                }
-
-                // Show appropriate dialog based on payment amount
-                if (isPartialPayment && (balanceAmount != 0)) {
-                  if (kDebugMode) {
-                    print(
-                        "Showing partial payment dialog: Paid=$paidAmount, Remaining Balance=$balanceAmount");
-                  }
-                  _showPartialPaymentDialog(context, amount);
-                } else if (isExactPayment ||
-                    isOverPayment ||
-                    (balanceAmount == 0 && amount > 0)) {
-                  if (kDebugMode) {
-                    print(
-                        "Showing payment dialog: Paid=$paidAmount, Change=$changeAmount");
-                  }
-                  _fetchPaymentsByOrderId(); // Refresh payments after successful payment
-                  _showPaymentDialog(
-                    context,
-                    amount,
-                    changeAmount: changeAmount,
-                    showChange: changeAmount > 0,
-                  );
-                }
-              }
-              subscription?.cancel(); // Cancel subscription after handling
+              offlineBox.put(key, updated);
+              print("✔ Hive updated → balance=$balanceAmount paid=$tenderAmount");
             }
-          } else if (paymentResponse.status == Status.ERROR) {
-            if (kDebugMode) {
-              print(
-                  "Unauthorised : response.message ${paymentResponse.message!} ++ end");
-            }
-            setState(() {
-              isLoading = false; // Build #1.0.248: Hide loader on ERROR
-            });
-            //Build #1.0.180
-            if (paymentResponse.message!.contains('Unauthorised')) {
-              Navigator.pushReplacement(
-                  context, MaterialPageRoute(builder: (context) => LoginScreen()));
-            }
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Unauthorised. Session is expired on this device."),
-                backgroundColor: Colors.red,
-                duration: Duration(seconds: 2),
-              ),
+          } catch (e) {
+            print("⚠ Hive update error: $e");
+          }
+
+          // 3️⃣ SQLite save
+          // try {
+          //   await orderHelper.updateRemainingBalance(orderId!, balanceAmount);
+          //   await orderHelper.updatePaidAmount(orderId!, tenderAmount);
+          //   print("✔ SQLite updated → balance=$balanceAmount paid=$tenderAmount");
+          // } catch (e) {
+          //   print("⚠ SQLite update error: $e");
+          // }
+
+          // 4️⃣ Instant UI refresh for Order Summary or Order List
+          if (mounted) setState(() {});
+
+          print("Payment successful - Paid: $paidAmount, Balance: $balanceAmount, Change: $changeAmount, Tender: $tenderAmount");
+
+          if (isPartialPayment && balanceAmount > 0) {
+            _showPartialPaymentDialog(context, amount);
+          } else {
+            _fetchPaymentsByOrderId();
+            _showPaymentDialog(
+              context,
+              amount,
+              changeAmount: changeAmount,
+              showChange: changeAmount > 0,
             );
           }
-        });
+        }
+
+        subscription?.cancel();
+      }
+    });
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -800,8 +781,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         height: ResponsiveLayout.getHeight(52),
         width: ResponsiveLayout.getWidth(640),
         margin: EdgeInsets.only(
-          left: ResponsiveLayout.getPadding(20),
-          right: ResponsiveLayout.getPadding(20),
+          left: ResponsiveLayout.getPadding(10),
+          right: ResponsiveLayout.getPadding(10),
           top: ResponsiveLayout.getPadding(20),
           bottom: ResponsiveLayout.getPadding(15),
         ),
@@ -878,7 +859,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 ),
               ),
             ),
-            SizedBox(width: ResponsiveLayout.getWidth(6)),
+            SizedBox(width: ResponsiveLayout.getWidth(2)),
 
             // Date and Time Container
             Row(
@@ -894,14 +875,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     fontSize: ResponsiveLayout.getFontSize(14),
                   ),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 20),
 
                 // Date
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.center,   // centers horizontally
+                  crossAxisAlignment: CrossAxisAlignment.center, // centers vertically
                   children: [
                     Icon(
                       Icons.calendar_month_rounded,
-                      size: ResponsiveLayout.getIconSize(14),
+                      size: ResponsiveLayout.getIconSize(12),
                       color: Theme.of(context).brightness == Brightness.dark
                           ? Colors.white70
                           : Colors.black87,
@@ -922,10 +905,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                 // Time
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.center,   // centers horizontally
+                  crossAxisAlignment: CrossAxisAlignment.center, // centers vertically
                   children: [
                     Icon(
                       Icons.access_time,
-                      size: ResponsiveLayout.getIconSize(14),
+                      size: ResponsiveLayout.getIconSize(12),
                       color: Theme.of(context).brightness == Brightness.dark
                           ? Colors.white70
                           : Colors.black87,
@@ -965,8 +950,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       alignment: Alignment.centerLeft,
       child: Container(
         margin: EdgeInsets.only(
-            left: ResponsiveLayout.getPadding(20),
-            right: ResponsiveLayout.getPadding(20),
+            left: ResponsiveLayout.getPadding(10),
+            right: ResponsiveLayout.getPadding(10),
             bottom: ResponsiveLayout.getPadding(20)),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(10)),
@@ -1371,11 +1356,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 child: Container(
                   margin: EdgeInsets.only(
                     top: _showFullSummary
-                        ? ResponsiveLayout.getPadding(2)
-                        : ResponsiveLayout.getPadding(8),
+                        ? ResponsiveLayout.getPadding(0)
+                        : ResponsiveLayout.getPadding(0),
                     right: ResponsiveLayout.getPadding(1),
                     left: ResponsiveLayout.getPadding(1),
-                    bottom: ResponsiveLayout.getPadding(8),
+                    bottom: ResponsiveLayout.getPadding(3),
                   ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.only(
@@ -1623,15 +1608,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+      padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 12),
       child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.085,
+        height: MediaQuery.of(context).size.height * 0.075,
         child: Row(
           children: [
             // 🖼️ Image Section
             Container(
-              width: 50,
-              height: 50,
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
                 color: Colors.transparent,
@@ -1763,22 +1748,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     } else if (label == TextConstants.discountText || isDiscount) {
       labelColor = Colors.green[600]!;
       amountColor = Colors.green[600]!;
-      leadingIcon = SvgPicture.asset(
-        'assets/svg/discount_star.svg',
-        // width: ResponsiveLayout.getIconSize(16),
-        // height: ResponsiveLayout.getIconSize(16),
-        // color: Colors.green[600],
-      );
+      // leadingIcon = SvgPicture.asset(
+      //   'assets/svg/discount_star.svg',
+      //   // width: ResponsiveLayout.getIconSize(16),
+      //   // height: ResponsiveLayout.getIconSize(16),
+      //   // color: Colors.green[600],
+      // );
     } else if (label == TextConstants.merchantDiscount) {
       labelColor = Colors.blue[600]!;
       amountColor = Colors.blue[600]!;
-      leadingIcon = SvgPicture.asset(
-        'assets/svg/discount_star.svg',
-        colorFilter: ColorFilter.mode(Colors.blueAccent, BlendMode.srcIn),
-        // width: ResponsiveLayout.getIconSize(16),
-        // height: ResponsiveLayout.getIconSize(16),
-        // color: Colors.blue[600],
-      );
+      // leadingIcon = SvgPicture.asset(
+      //   'assets/svg/discount_star.svg',
+      //   colorFilter: ColorFilter.mode(Colors.blueAccent, BlendMode.srcIn),
+      //   // width: ResponsiveLayout.getIconSize(16),
+      //   // height: ResponsiveLayout.getIconSize(16),
+      //   // color: Colors.blue[600],
+      // );
     }
     // ---------------- CASHBACK ( #55CBCD ) ----------------
     else if (label == TextConstants.cashbackFee ||
@@ -2271,35 +2256,31 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                             });
                                           },
                                           onPayPressed: () {
-                                            String cleanAmount =
-                                            amountController.text
-                                                .replaceAll(
-                                                TextConstants
-                                                    .currencySymbol,
-                                                '')
+                                            String cleanAmount = amountController.text
+                                                .replaceAll(TextConstants.currencySymbol, '')
                                                 .trim();
 
-                                            double amount =
-                                                double.tryParse(cleanAmount) ??
-                                                    0.0;
+                                            double amount = double.tryParse(cleanAmount) ?? 0.0;
 
                                             if (amount == 0.0) {
                                               setState(() {
-                                                _amountErrorText = TextConstants
-                                                    .amountValidation;
+                                                _amountErrorText = TextConstants.amountValidation;
                                               });
                                               return;
                                             }
 
                                             _amountErrorText = null;
-                                            _callCreatePaymentAPI();
 
-                                            // Reset after successful payment
+                                            // NO BALANCE CALCULATION HERE ❌❌❌❌❌
+
+                                            _callCreatePaymentAPI(); // API will handle balance
+
                                             _rawAmount = 0;
-                                            amountController.text =
-                                            '${TextConstants.currencySymbol}0.00';
+                                            amountController.text = '${TextConstants.currencySymbol}0.00';
                                             _isAmountEntered = false;
                                           },
+
+
                                           isLoading: isLoading,
                                         ),
                                       ),
@@ -2650,9 +2631,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       child: Container(
         height: 70,
         width: 168,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? Colors.blue : Colors.grey, // 🔹 Grey if disabled
+          color: isActive ? Color(0xFF27AE60) : Colors.grey, // 🔹 Grey if disabled
           borderRadius: BorderRadius.circular(6),
         ),
         child: Row(
@@ -2660,14 +2641,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             ColorFiltered(
               colorFilter:
               const ColorFilter.mode(Colors.white, BlendMode.srcIn),
-              child: Image.asset(iconPath, width: 20, height: 20),
+              child: Image.asset(iconPath, width: 25, height: 25),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 2),
             Text(
               title,
               style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
                 color: Colors.white,
               ),
             ),
@@ -2676,7 +2657,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
-
   Future<void> _removeAppliedCoupon() async {
     if (widget.orderId == null || widget.orderId == 0) return;
 
@@ -3089,10 +3069,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       {bool isSelected = false, VoidCallback? onTap}) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return Container(
-      width: ResponsiveLayout.getWidth(128),
-      height: ResponsiveLayout.getHeight(54),
+      width: ResponsiveLayout.getWidth(168),
+      height: ResponsiveLayout.getHeight(64),
       padding: ResponsiveLayout.getResponsivePadding(vertical: 10),
-      margin: EdgeInsets.symmetric(vertical: 5),
+      margin: EdgeInsets.symmetric(vertical: 0.5),
       decoration: BoxDecoration(
           color: isSelected
               ? Colors.red.shade100
@@ -3101,7 +3081,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               : Colors.white,
           borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(5)),
           border: isSelected
-              ? Border.all(color: Colors.red.shade300)
+              ? Border.all(color: Colors.red.shade300,)
               : Border.all(
               color: themeHelper.themeMode == ThemeMode.dark
                   ? ThemeNotifier.borderColor
@@ -3122,9 +3102,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             color: isSelected
                 ? Colors.red
                 : themeHelper.themeMode == ThemeMode.dark
-                ? Color(0xFFE1E1E1)
+                ? Colors.grey
                 : Colors.grey,
-            size: ResponsiveLayout.getIconSize(25),
+            size: ResponsiveLayout.getIconSize(32),
           ),
           SizedBox(width: ResponsiveLayout.getWidth(8)),
           Text(
@@ -3133,17 +3113,21 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               color: isSelected
                   ? Colors.red
                   : themeHelper.themeMode == ThemeMode.dark
-                  ? ThemeNotifier.textDark
+                  ? Colors.grey
                   : Colors.grey,
-              fontWeight: FontWeight.w500,
-              fontSize: ResponsiveLayout.getFontSize(14),
+              // fontWeight: isSelected ? FontWeight.bold : FontWeight.w900,
+              fontFamily: 'Montserrat',
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500, // Regular
+
+              fontSize: isSelected
+                  ? ResponsiveLayout.getFontSize(18)   // selected size
+                  : ResponsiveLayout.getFontSize(16),  // unselected size
             ),
           ),
         ],
       ),
     );
   }
-
   Widget _buildPaymentOptionButton(
       String title,
       String iconPath, {
@@ -3155,9 +3139,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       child: Container(
         height: 70,
         width: 168,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF27AE60) : Colors.grey.shade200,
+          color: isActive ?  Colors.orange : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(6),
         ),
         child: Row(
@@ -3165,16 +3149,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             ColorFiltered(
               colorFilter: (title == TextConstants.redeemPoints && isActive)
                   ? const ColorFilter.mode(Colors.white, BlendMode.srcIn)
-                  : const ColorFilter.mode(Colors.black87, BlendMode.srcIn),
-              child: Image.asset(iconPath, width: 20, height: 20),
+                  : const ColorFilter.mode(Colors.grey, BlendMode.srcIn),
+              child: Image.asset(iconPath, width: 24, height: 24),
             ),
             const SizedBox(width: 8),
             Text(
               title,
               style: TextStyle(
                 fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isActive ? Colors.white : Colors.black87,
+                fontWeight: FontWeight.w900,
+                color: isActive ? Colors.white : Colors.grey,
               ),
             ),
           ],
@@ -3182,7 +3166,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
-
   // Build #1.0.49: Added _handleVoidPayment for void payment api call code
   // Build #1.0.175: Modified _handleVoidPayment for partial void with API call
   void _handleVoidPayment(BuildContext context, {required bool isPartial}) {
