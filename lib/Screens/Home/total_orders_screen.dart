@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import 'package:pinaka_pos/Database/db_helper.dart';
 import 'package:pinaka_pos/Models/Assets/asset_model.dart';
@@ -135,6 +136,77 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
           _orders = response.data!.ordersData; //Build #1.0.134
           _totalOrdersCount = response.data!.orderTotalCount;
           isLoading = false;
+
+          // ---------------------------------------------------------------------------
+// ⭐ Merge offline deleted orders (JSON from Hive) with online orders (OrderModel)
+// ---------------------------------------------------------------------------
+          // ---------------------------------------------------------------------------
+// ⭐ Merge offline deleted orders (JSON from Hive) with online orders (OrderModel)
+// ---------------------------------------------------------------------------
+          final deletedBox = Hive.box('deletedOrders');
+
+          if (deletedBox.isNotEmpty) {
+            debugPrint("Merging ${deletedBox.length} deleted offline orders...");
+
+            final deletedOrderModels = deletedBox.values.map((json) {
+              final map = Map<String, dynamic>.from(json);
+
+              // ⭐ FIX 1: Convert order_id → id
+              map["id"] ??= map["order_id"];
+
+              // ⭐ FIX 2: Convert created_at → date_created (remove milliseconds)
+              if (map["created_at"] != null) {
+                map["date_created"] = map["created_at"]
+                    .toString()
+                    .replaceAll("T", " ")
+                    .split(".")
+                    .first;
+              } else {
+                map["date_created"] = DateTime.now().toString().split(".").first;
+              }
+
+              // ⭐ FIX 3: Calculate total from product list
+              double total = 0.0;
+              if (map["products"] != null && map["products"] is List) {
+                for (var p in map["products"]) {
+                  final price = (p["price"] ?? 0).toDouble();
+                  final qty = (p["quantity"] ?? 1).toDouble();
+                  total += price * qty;
+                }
+              }
+              map["total"] = total.toStringAsFixed(2);
+
+              // ⭐ FIX 4: FORCE STATUS = cancelled ALWAYS
+              map["status"] = "cancelled";
+
+              // ⭐ FIX 5: FORCE ORDER TYPE = offline ALWAYS
+              map["order_type"] = "offline";
+
+              try {
+                return model.OrderModel.fromJson(map);
+              } catch (e) {
+                debugPrint("❌ Error converting deleted order: $e\nMAP: $map");
+                return null;
+              }
+            })
+                .where((e) => e != null)
+                .cast<model.OrderModel>()
+                .toList();
+
+            // ⭐ Remove duplicates
+            final existingIds = _orders.map((o) => o.id ?? 0).toSet();
+
+            final uniqueDeleted = deletedOrderModels.where((order) {
+              final deletedId = order.id ?? 0;
+              return !existingIds.contains(deletedId);
+            }).toList();
+
+            debugPrint("Added deleted offline orders: ${uniqueDeleted.length}");
+
+            // ⭐ Prepend offline deleted orders
+            _orders = [...uniqueDeleted, ..._orders];
+          }
+
 
           if (_orders.isEmpty) {
             debugPrint("_orders empty:");

@@ -1641,51 +1641,140 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     );
   }
   Future<void> removeTab(int index) async {
-    if (tabs.isEmpty) return;
+    if (tabs.isEmpty) {
+      print("❌ removeTab called but tabs is empty");
+      return;
+    }
 
     final int orderId = tabs[index]["orderId"] as int;
     final bool isRemovedTabActive = orderId == orderHelper.activeOrderId;
+
+    print("\n================= 🗑 REMOVE TAB START =================");
+    print("👉 Removing Tab Index: $index");
+    print("👉 Removing Order ID: $orderId");
+    print("👉 Is Active Order Being Removed? $isRemovedTabActive");
+    print("======================================================\n");
 
     setState(() => _isLoading = true);
 
     try {
       final offlineBox = Hive.box('offlineOrders');
+      Box deletedBox;
+      if (Hive.isBoxOpen('deletedOrders')) {
+        deletedBox = Hive.box('deletedOrders');
+        print("📦 deletedOrders box already open");
+      } else {
+        print("📦 deletedOrders was NOT open — opening now...");
+        deletedBox = await Hive.openBox('deletedOrders');
+        print("📦 deletedOrders box opened successfully");
+      }
+
+
+      print("📦 Offline Orders Box Contains ID? ${offlineBox.containsKey(orderId.toString())}");
+      print("📦 Deleted Orders Box Ready: ${deletedBox != null}");
+
       final bool isOfflineOrder = offlineBox.containsKey(orderId.toString());
+
+      // ============================================================
+      // ===============  OFFLINE ORDER DELETE LOGIC  ===============
+      // ============================================================
       if (isOfflineOrder) {
+        print("\n🟡 OFFLINE ORDER DETECTED — Performing Offline Delete Flow");
+
+        // ⭐ 1️⃣ READ ORDER DATA BEFORE DELETE
+        print("\n🟡 OFFLINE ORDER DETECTED — Performing Offline Delete Flow");
+
+// ⭐ 1️⃣ READ ORDER DATA BEFORE DELETE
+        final orderData = offlineBox.get(orderId.toString());
+        print("📤 Original Offline Order Data:\n$orderData");
+
+// ⭐ 2️⃣ BACKUP TO deletedOrders BOX
+        if (orderData != null) {
+          await deletedBox.put(orderId.toString(), orderData);
+          print("✅ Order backed up to deletedOrders under key $orderId");
+        } else {
+          print("⚠️ WARNING: orderData is NULL — not backed up!");
+        }
+
+// ⭐ 3️⃣ PRINT COMPLETE DELETED ORDER DATA
+        final deletedData = deletedBox.get(orderId.toString());
+        if (deletedData != null) {
+          print("🟣 FULL DELETED ORDER DATA (Pretty Format):\n"
+              "${const JsonEncoder.withIndent('  ').convert(deletedData)}");
+        } else {
+          print("⚠️ No deleted data found for order $orderId");
+        }
+
+
+        // ⭐ 3️⃣ DELETE ORIGINAL ORDER
+        print("🗑 Deleting orderId $orderId from offlineOrders…");
         await offlineBox.delete(orderId.toString());
+
+        print("🧹 Removing order from orderHelper DB…");
         await orderHelper.deleteOrder(orderId);
 
+        // ⭐ 4️⃣ CLEANUP LOCAL STATE
+        print("🧹 Cleaning orderHelper.orders and orderIds…");
         orderHelper.orders.removeWhere((o) =>
         o[AppDBConst.orderServerId] == orderId ||
             o[AppDBConst.orderId] == orderId);
         orderHelper.orderIds.remove(orderId);
+
+        // ⭐ 5️⃣ REMOVE TAB FROM UI
+        print("🗂 Removing tab from UI…");
         setState(() {
           tabs.removeAt(index);
           for (int i = 0; i < tabs.length; i++) {
             tabs[i]["subtitle"] = "Tab ${i + 1}";
           }
         });
+
+        print("📝 Remaining Tabs: ${tabs.length}");
+
+        // ⭐ NO TABS LEFT
         if (tabs.isEmpty) {
+          print("❗ No tabs left. Clearing active order…");
           orderHelper.activeOrderId = null;
           orderItems = [];
           await _initializeTabController();
           setState(() => _isLoading = false);
+
+          print("================= 🗑 REMOVE TAB END (EMPTY) ================");
           return;
         }
+
+        // ⭐ 7️⃣ NEW ACTIVE TAB
         final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
         final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
 
+        print("🔄 Switching active tab to index $newIndex with orderId $newActiveOrderId");
+
         if (isRemovedTabActive) {
+          print("🔄 Saving new active order ID because we removed active tab");
           await orderHelper.setActiveOrder(newActiveOrderId);
           await orderHelper.saveLastActiveOrderId(newActiveOrderId);
         }
 
+        print("🔧 Reinitializing tab controller…");
         await _initializeTabController();
-        _tabController!.index = newIndex;
+
+        print("📥 Fetching order items for new active order…");
         await fetchOrderItems();
+
+        _tabController!.index = newIndex;
+
         setState(() => _isLoading = false);
+
+        print("================= 🗑 REMOVE TAB END (OFFLINE) ================\n");
         return;
       }
+
+      // ============================================================
+      // ===============  ONLINE ORDER DELETE AREA  ================
+      // ============================================================
+
+      print("\n🔵 ONLINE ORDER DETECTED — Calling API to cancel order…");
+
       final int serverOrderId = orderId;
 
       _updateOrderSubscription?.cancel();
@@ -1693,49 +1782,68 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           orderBloc.changeOrderStatusStream.listen((response) async {
             if (!mounted) return;
 
+            print("🌐 Server Cancel Status: ${response.status}");
+
             if (response.status == Status.COMPLETED) {
+              print("✅ Server confirmed order cancellation");
+
               await orderHelper.deleteOrder(orderId);
               orderHelper.cancelledOrderId = serverOrderId;
 
+              print("🧹 Removing order tab from UI…");
               setState(() {
                 tabs.removeAt(index);
                 for (int i = 0; i < tabs.length; i++) {
                   tabs[i]["subtitle"] = "Tab ${i + 1}";
                 }
               });
+
               if (tabs.isEmpty) {
+                print("❗ All tabs closed after delete");
                 orderHelper.activeOrderId = null;
                 orderItems = [];
                 await _initializeTabController();
                 setState(() => _isLoading = false);
                 return;
               }
+
               final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
               final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
 
+              print("🔄 New active tab index: $newIndex, OrderId: $newActiveOrderId");
+
               if (isRemovedTabActive) {
+                print("🔄 Updating active order due to removal");
                 await orderHelper.setActiveOrder(newActiveOrderId);
                 await orderHelper.saveLastActiveOrderId(newActiveOrderId);
               }
 
+              print("🔧 Reinitializing tab controller…");
               await _initializeTabController();
 
               if (offlineBox.containsKey(newActiveOrderId.toString())) {
+                print("📥 Loading offline items for new order");
                 await fetchOrderItems();
               } else {
+                print("⚠️ No offline items found for this order");
                 setState(() => orderItems = []);
               }
 
               _tabController!.index = newIndex;
+
+              print("================= 🗑 REMOVE TAB END (ONLINE) ================\n");
+
               setState(() => _isLoading = false);
             }
           });
 
+      print("🌐 Sending cancel order request to server…");
       await orderBloc.changeOrderStatus(
         orderId: serverOrderId,
         status: TextConstants.cancelled,
       );
     } catch (e) {
+      print("❌ ERROR in removeTab(): $e");
       setState(() => _isLoading = false);
     }
   }

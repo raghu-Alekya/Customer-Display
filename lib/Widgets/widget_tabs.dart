@@ -1920,7 +1920,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       // ------------------------------
       final discountEntry = {
         "order_id": orderId,
-        "discount_product_id": discountProduct["fast_key_product_id"], // ⭐ SAME AS CASHBACK
+        "discount_product_id":
+        discountProduct["product_id"] ??
+            discountProduct["id"] ??
+            discountProduct["fast_key_product_id"],
+        // ⭐ SAME AS CASHBACK
         "name": discountProduct["fast_key_item_name"] ?? "Discount",
         "product_image": discountProduct["fast_key_item_image"] ?? "",
 
@@ -1953,12 +1957,16 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         "net_total": grossTotal - discountAmount,
         "net_payable": finalTotal,
 
-        // ⭐ REQUIRED FOR SUMMARY PANEL ⭐
-        "merchantDiscount": discountAmount,
+        // ⭐ REQUIRED FIELDS FOR SUMMARY PANEL ⭐
+        "merchantDiscount": discountAmount,              // <--- You MISSED THIS
+        "merchantDiscountIsPercentage": isPercentage,    // <--- You MISSED THIS
         "merchantDiscountIds": [
-          discountProduct["fast_key_product_id"]
+          discountProduct["product_id"] ??
+              discountProduct["id"] ??
+              discountProduct["fast_key_product_id"]
         ],
       };
+
 
 
       await offlineBox.put(key, updatedOrder);

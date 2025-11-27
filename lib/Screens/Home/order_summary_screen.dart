@@ -89,7 +89,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   String selectedPaymentMethod = TextConstants.cash;
   TextEditingController amountController = TextEditingController();
   final PaymentBloc paymentBloc =
-      PaymentBloc(PaymentRepository()); // Added PaymentBloc
+  PaymentBloc(PaymentRepository()); // Added PaymentBloc
   final ScrollController _scrollController = ScrollController();
   int? userId; // Build #1.0.29: To store user ID
   String? userDisplayName; // Build #1.0.29: To store user ID
@@ -293,25 +293,25 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       _paymentListSubscription?.cancel(); // Cancel any existing subscription
       _paymentListSubscription =
           paymentBloc.paymentsListStream.listen((response) {
-        if (response.status == Status.COMPLETED) {
-          if (kDebugMode) {
-            print("###### _fetchPaymentsByOrderId Api call COMPLETED");
-          }
-          if (response.data!.isNotEmpty) {
-            // Build #1.0.175: check empty or not
-            orderStatus =
-                response.data?.first.orderStatus ?? TextConstants.processing;
-          }
-          _processPaymentList(response.data!);
-        } else if (response.status == Status.ERROR) {
-          if (kDebugMode) {
-            print("Error fetching payments: ${response.message}");
-          }
-        }
-        setState(() {
-          isSummaryLoading = false; // Hide loader
-        });
-      });
+            if (response.status == Status.COMPLETED) {
+              if (kDebugMode) {
+                print("###### _fetchPaymentsByOrderId Api call COMPLETED");
+              }
+              if (response.data!.isNotEmpty) {
+                // Build #1.0.175: check empty or not
+                orderStatus =
+                    response.data?.first.orderStatus ?? TextConstants.processing;
+              }
+              _processPaymentList(response.data!);
+            } else if (response.status == Status.ERROR) {
+              if (kDebugMode) {
+                print("Error fetching payments: ${response.message}");
+              }
+            }
+            setState(() {
+              isSummaryLoading = false; // Hide loader
+            });
+          });
     } else {
       if (kDebugMode) {
         print("###### orderId is null");
@@ -346,7 +346,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       payByOther = otherTotal;
 
       /// ⭐ FIX: Deduct redeemed points while computing balance
-      double effectiveOrderTotal = orderTotal - redeemedValue;
+      double effectiveOrderTotal = computedNetPayable - redeemedValue;
+
 
       balanceAmount = effectiveOrderTotal - payByCash - payByOther;
 
@@ -427,7 +428,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     // Prepare payment request
     final String datetime =
-        DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
     final paymentRequest = PaymentRequestModel(
       title: selectedPaymentMethod,
       orderId: orderId ?? 0,
@@ -450,168 +451,168 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     StreamSubscription? subscription;
     subscription =
         paymentBloc.createPaymentStream.listen((paymentResponse) async {
-      if (kDebugMode) {
-        print("Payment stream response: $paymentResponse ++++ end of message");
-      }
-      if (paymentResponse.data != null) {
-        if (paymentResponse.status == Status.ERROR) {
           if (kDebugMode) {
-            print("Payment API Error: ${paymentResponse.message}");
+            print("Payment stream response: $paymentResponse ++++ end of message");
           }
-          setState(() {
-            isLoading = false; // Hide loader on error
-          });
-          subscription?.cancel();
-        } else if (paymentResponse.status == Status.COMPLETED) {
-          final paymentData = paymentResponse.data!;
-          if (paymentData.message == "Payment Created Successfully") {
-            // // Build #1.0.99: Call fetch payment details by order id API call
-            // _fetchPaymentsByOrderId(); // Refresh payments after successful payment
+          if (paymentResponse.data != null) {
+            if (paymentResponse.status == Status.ERROR) {
+              if (kDebugMode) {
+                print("Payment API Error: ${paymentResponse.message}");
+              }
+              setState(() {
+                isLoading = false; // Hide loader on error
+              });
+              subscription?.cancel();
+            } else if (paymentResponse.status == Status.COMPLETED) {
+              final paymentData = paymentResponse.data!;
+              if (paymentData.message == "Payment Created Successfully") {
+                // // Build #1.0.99: Call fetch payment details by order id API call
+                // _fetchPaymentsByOrderId(); // Refresh payments after successful payment
 
-            if (widget.isOfflineSynced && widget.offlineOrderId != null) {
-              try {
-                final offlineId = widget.offlineOrderId!;
-                final offlineBox = Hive.box('offlineOrders');
+                if (widget.isOfflineSynced && widget.offlineOrderId != null) {
+                  try {
+                    final offlineId = widget.offlineOrderId!;
+                    final offlineBox = Hive.box('offlineOrders');
 
-                if (offlineBox.containsKey(offlineId.toString())) {
-                  await offlineBox.delete(offlineId.toString());
-                  if (kDebugMode)
-                    print(
-                        "✅ Deleted offline order $offlineId from Hive after payment");
+                    if (offlineBox.containsKey(offlineId.toString())) {
+                      await offlineBox.delete(offlineId.toString());
+                      if (kDebugMode)
+                        print(
+                            "✅ Deleted offline order $offlineId from Hive after payment");
+                    }
+
+                    await orderHelper.deleteOrder(offlineId);
+                    if (kDebugMode)
+                      print(
+                          "✅ Deleted offline order $offlineId from SQLite after payment");
+                  } catch (e) {
+                    if (kDebugMode)
+                      print("⚠️ Failed to delete offline order after payment: $e");
+                  }
                 }
 
-                await orderHelper.deleteOrder(offlineId);
-                if (kDebugMode)
+                setState(() {
+                  isLoading = false;
+                  isPaymentDone = true;   // <--- ADD HERE
+                });
+
+
+                paidAmount = amount; // Current payment amount
+
+                // Capture paymentId for wallet payments
+                /// Build #1.0.175: Commented below code, because its only checking wallet payments
+                /// We need to save paymentId always
+                /// if required un-comment below line & change selectedPaymentMethod to wallet/cash
+                //  if (selectedPaymentMethod == TextConstants.wallet) {
+                //  paymentId = paymentData.paymentId; // Assuming the API response includes paymentId
+                // paymentId = "TXT_123456789"; // For testing purpose added here
+                paymentId = paymentData.paymentId.toString(); // paymentId
+                orderStatus = paymentData.orderStatus ?? TextConstants.processing;
+                if (kDebugMode) {
+                  print("Wallet payment successful. Transaction ID: $paymentId");
+                }
+                //  }
+
+                // Determine payment type
+                final bool isExactPayment = (amount == balanceAmount);
+                final bool isOverPayment = (amount > balanceAmount);
+                final bool isPartialPayment = (amount < balanceAmount);
+
+                if (kDebugMode) {
+                  // Build #1.0.168: Debug prints
+                  print("#### DEBUG 101 : $amount");
+                  print("#### DEBUG 102 : $balanceAmount");
+                }
+
+                if (isOverPayment) {
+                  if (kDebugMode) {
+                    print("#### isOverPayment");
+                  }
+                  changeAmount = amount -
+                      balanceAmount; // Build #1.0.168: Updated - Set changeAmount directly
+                  balanceAmount = 0.0; // Balance fully paid
+                  tenderAmount += amount;
+                } else if (isExactPayment) {
+                  if (kDebugMode) {
+                    print("#### isExactPayment");
+                  }
+                  tenderAmount += amount;
+                  changeAmount = 0.0; // No change for exact payment
+                  balanceAmount = 0.0; // Balance fully paid
+                } else if (isPartialPayment) {
+                  if (kDebugMode) {
+                    print("#### isPartialPayment");
+                  }
+                  tenderAmount += amount;
+                  balanceAmount -= amount; // Reduce balance for partial payment
+                  changeAmount = 0.0; // No change for partial payment
+                } else if (balanceAmount == 0 && amount > 0) {
+                  if (kDebugMode) {
+                    print("#### balanceAmount is 0");
+                  }
+                  // Case where balance is already 0, return the entire amount as change
+                  changeAmount =
+                      amount; // Build #1.0.168: Updated - Set change to the full amount
+                  tenderAmount += amount; // Reset tender to current payment
+                }
+
+                amountController.clear(); // Clear input textField
+                setState(() {}); // Update UI
+
+                balanceAmount =
+                    double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.00;
+                if (kDebugMode) {
                   print(
-                      "✅ Deleted offline order $offlineId from SQLite after payment");
-              } catch (e) {
-                if (kDebugMode)
-                  print("⚠️ Failed to delete offline order after payment: $e");
+                      "Payment successful - Paid: $paidAmount, Balance: $balanceAmount, Change: $changeAmount, Tender: $tenderAmount");
+                }
+
+                // Show appropriate dialog based on payment amount
+                if (isPartialPayment && (balanceAmount != 0)) {
+                  if (kDebugMode) {
+                    print(
+                        "Showing partial payment dialog: Paid=$paidAmount, Remaining Balance=$balanceAmount");
+                  }
+                  _showPartialPaymentDialog(context, amount);
+                } else if (isExactPayment ||
+                    isOverPayment ||
+                    (balanceAmount == 0 && amount > 0)) {
+                  if (kDebugMode) {
+                    print(
+                        "Showing payment dialog: Paid=$paidAmount, Change=$changeAmount");
+                  }
+                  _fetchPaymentsByOrderId(); // Refresh payments after successful payment
+                  _showPaymentDialog(
+                    context,
+                    amount,
+                    changeAmount: changeAmount,
+                    showChange: changeAmount > 0,
+                  );
+                }
               }
+              subscription?.cancel(); // Cancel subscription after handling
             }
-
-            setState(() {
-              isLoading = false;
-              isPaymentDone = true;   // <--- ADD HERE
-            });
-
-
-            paidAmount = amount; // Current payment amount
-
-            // Capture paymentId for wallet payments
-            /// Build #1.0.175: Commented below code, because its only checking wallet payments
-            /// We need to save paymentId always
-            /// if required un-comment below line & change selectedPaymentMethod to wallet/cash
-            //  if (selectedPaymentMethod == TextConstants.wallet) {
-            //  paymentId = paymentData.paymentId; // Assuming the API response includes paymentId
-            // paymentId = "TXT_123456789"; // For testing purpose added here
-            paymentId = paymentData.paymentId.toString(); // paymentId
-            orderStatus = paymentData.orderStatus ?? TextConstants.processing;
-            if (kDebugMode) {
-              print("Wallet payment successful. Transaction ID: $paymentId");
-            }
-            //  }
-
-            // Determine payment type
-            final bool isExactPayment = (amount == balanceAmount);
-            final bool isOverPayment = (amount > balanceAmount);
-            final bool isPartialPayment = (amount < balanceAmount);
-
-            if (kDebugMode) {
-              // Build #1.0.168: Debug prints
-              print("#### DEBUG 101 : $amount");
-              print("#### DEBUG 102 : $balanceAmount");
-            }
-
-            if (isOverPayment) {
-              if (kDebugMode) {
-                print("#### isOverPayment");
-              }
-              changeAmount = amount -
-                  balanceAmount; // Build #1.0.168: Updated - Set changeAmount directly
-              balanceAmount = 0.0; // Balance fully paid
-              tenderAmount += amount;
-            } else if (isExactPayment) {
-              if (kDebugMode) {
-                print("#### isExactPayment");
-              }
-              tenderAmount += amount;
-              changeAmount = 0.0; // No change for exact payment
-              balanceAmount = 0.0; // Balance fully paid
-            } else if (isPartialPayment) {
-              if (kDebugMode) {
-                print("#### isPartialPayment");
-              }
-              tenderAmount += amount;
-              balanceAmount -= amount; // Reduce balance for partial payment
-              changeAmount = 0.0; // No change for partial payment
-            } else if (balanceAmount == 0 && amount > 0) {
-              if (kDebugMode) {
-                print("#### balanceAmount is 0");
-              }
-              // Case where balance is already 0, return the entire amount as change
-              changeAmount =
-                  amount; // Build #1.0.168: Updated - Set change to the full amount
-              tenderAmount += amount; // Reset tender to current payment
-            }
-
-            amountController.clear(); // Clear input textField
-            setState(() {}); // Update UI
-
-            balanceAmount =
-                double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.00;
+          } else if (paymentResponse.status == Status.ERROR) {
             if (kDebugMode) {
               print(
-                  "Payment successful - Paid: $paidAmount, Balance: $balanceAmount, Change: $changeAmount, Tender: $tenderAmount");
+                  "Unauthorised : response.message ${paymentResponse.message!} ++ end");
             }
-
-            // Show appropriate dialog based on payment amount
-            if (isPartialPayment && (balanceAmount != 0)) {
-              if (kDebugMode) {
-                print(
-                    "Showing partial payment dialog: Paid=$paidAmount, Remaining Balance=$balanceAmount");
-              }
-              _showPartialPaymentDialog(context, amount);
-            } else if (isExactPayment ||
-                isOverPayment ||
-                (balanceAmount == 0 && amount > 0)) {
-              if (kDebugMode) {
-                print(
-                    "Showing payment dialog: Paid=$paidAmount, Change=$changeAmount");
-              }
-              _fetchPaymentsByOrderId(); // Refresh payments after successful payment
-              _showPaymentDialog(
-                context,
-                amount,
-                changeAmount: changeAmount,
-                showChange: changeAmount > 0,
-              );
+            setState(() {
+              isLoading = false; // Build #1.0.248: Hide loader on ERROR
+            });
+            //Build #1.0.180
+            if (paymentResponse.message!.contains('Unauthorised')) {
+              Navigator.pushReplacement(
+                  context, MaterialPageRoute(builder: (context) => LoginScreen()));
             }
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Unauthorised. Session is expired on this device."),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 2),
+              ),
+            );
           }
-          subscription?.cancel(); // Cancel subscription after handling
-        }
-      } else if (paymentResponse.status == Status.ERROR) {
-        if (kDebugMode) {
-          print(
-              "Unauthorised : response.message ${paymentResponse.message!} ++ end");
-        }
-        setState(() {
-          isLoading = false; // Build #1.0.248: Hide loader on ERROR
         });
-        //Build #1.0.180
-        if (paymentResponse.message!.contains('Unauthorised')) {
-          Navigator.pushReplacement(
-              context, MaterialPageRoute(builder: (context) => LoginScreen()));
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Unauthorised. Session is expired on this device."),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    });
   }
 
   @override
@@ -698,7 +699,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
                   borderRadius:
-                      BorderRadius.circular(ResponsiveLayout.getRadius(15)),
+                  BorderRadius.circular(ResponsiveLayout.getRadius(15)),
                 ),
                 child: Row(
                   children: [
@@ -771,15 +772,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     final order = orderHelper.activeOrderId != null
         ? orderHelper.orders.firstWhere(
-            (o) => o[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-            orElse: () => {},
-          )
+          (o) => o[AppDBConst.orderServerId] == orderHelper.activeOrderId,
+      orElse: () => {},
+    )
         : {};
 
     if (order.isNotEmpty && order[AppDBConst.orderDate] != null) {
       try {
         final DateTime createdDateTime =
-            DateTime.parse(order[AppDBConst.orderDate].toString());
+        DateTime.parse(order[AppDBConst.orderDate].toString());
         _displayDate =
             DateFormat(TextConstants.dateFormat).format(createdDateTime);
         _displayTime =
@@ -819,7 +820,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             // Back button
             InkWell(
               borderRadius:
-                  BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+              BorderRadius.circular(ResponsiveLayout.getRadius(8)),
               onTap: () {
                 _showExitPaymentConfirmation(context);
               },
@@ -831,7 +832,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
                   borderRadius:
-                      BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                  BorderRadius.circular(ResponsiveLayout.getRadius(8)),
                   boxShadow: [
                     BoxShadow(
                         color: Colors.black.withValues(alpha: 0.05),
@@ -871,7 +872,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     Text(
                       TextConstants.back,
                       style:
-                          TextStyle(fontSize: ResponsiveLayout.getFontSize(15)),
+                      TextStyle(fontSize: ResponsiveLayout.getFontSize(15)),
                     ),
                   ],
                 ),
@@ -1036,7 +1037,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                   keyboardType: TextInputType
                                       .emailAddress, // supports email + numbers
                                   maxLength:
-                                      50, // allow longer input for emails
+                                  50, // allow longer input for emails
 
                                   textAlign: TextAlign.start,
                                   textAlignVertical: TextAlignVertical.center,
@@ -1050,7 +1051,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                                       // Check if valid email
                                       isEmailValid = RegExp(
-                                              r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+                                          r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
                                           .hasMatch(value);
                                     });
                                   },
@@ -1060,7 +1061,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                     fontWeight: FontWeight.w700,
                                     fontFamily: 'Inter',
                                     color: Theme.of(context).brightness ==
-                                            Brightness.dark
+                                        Brightness.dark
                                         ? Colors.white
                                         : Colors.black87,
                                   ),
@@ -1070,7 +1071,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                     hintText: "Add Mobile No or Email",
                                     hintStyle: TextStyle(
                                       color: Theme.of(context).brightness ==
-                                              Brightness.dark
+                                          Brightness.dark
                                           ? Colors.grey.shade500
                                           : const Color(0xFFCCCCCC),
                                       fontSize: 12,
@@ -1117,7 +1118,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                               try {
                                 final rawResponse =
-                                    await orderBloc.addLoyaltyPoints(
+                                await orderBloc.addLoyaltyPoints(
                                   orderId: orderId,
                                   contact: contact,
                                 );
@@ -1126,7 +1127,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 final data = result["data"];
 
                                 final int pts = int.tryParse(
-                                        data["available_points"].toString()) ??
+                                    data["available_points"].toString()) ??
                                     0;
 
                                 setState(() {
@@ -1182,21 +1183,21 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               ),
                               child: isAddLoading
                                   ? const SizedBox(
-                                      height: 16,
-                                      width: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
+                                height: 16,
+                                width: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
                                   : Text(
-                                      showCustomerInput ? "× Cancel" : "+ Add",
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
+                                showCustomerInput ? "× Cancel" : "+ Add",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -1211,7 +1212,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius:
-                        BorderRadius.circular(ResponsiveLayout.getRadius(10)),
+                    BorderRadius.circular(ResponsiveLayout.getRadius(10)),
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? ThemeNotifier.secondaryBackground
                         : Colors.white,
@@ -1244,7 +1245,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               Container(
                 decoration: BoxDecoration(
                   borderRadius:
-                      BorderRadius.circular(ResponsiveLayout.getRadius(10)),
+                  BorderRadius.circular(ResponsiveLayout.getRadius(10)),
                   color: themeHelper.themeMode == ThemeMode.dark
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
@@ -1255,113 +1256,113 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   curve: Curves.easeInOut,
                   child: _showFullSummary
                       ? Container(
-                          height: ResponsiveLayout.getHeight(205),
-                          margin:
-                              EdgeInsets.all(ResponsiveLayout.getPadding(8)),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(
-                                ResponsiveLayout.getRadius(10)),
-                            color: themeHelper.themeMode == ThemeMode.dark
-                                ? ThemeNotifier.primaryBackground
-                                : Colors.white,
-                            border: Border.all(
-                              color: themeHelper.themeMode == ThemeMode.dark
-                                  ? ThemeNotifier.borderColor
-                                  : Colors.grey.shade200,
+                    height: ResponsiveLayout.getHeight(205),
+                    margin:
+                    EdgeInsets.all(ResponsiveLayout.getPadding(8)),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(
+                          ResponsiveLayout.getRadius(10)),
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.primaryBackground
+                          : Colors.white,
+                      border: Border.all(
+                        color: themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.borderColor
+                            : Colors.grey.shade200,
+                      ),
+                    ),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: ResponsiveLayout.getPadding(8),
+                    ),
+                    child: isSummaryLoading
+                        ? Center(child: CircularProgressIndicator())
+                        : Scrollbar(
+                      thumbVisibility: true,
+                      radius: Radius.circular(10),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            _buildOrderCalculation(
+                                TextConstants.grossTotal,
+                                '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
+                                isTotal: true),
+                            _buildOrderCalculation(
+                                TextConstants.discountText,
+                                '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}',
+                                isDiscount: true),
+
+                            DottedLine(
+                              dashColor: themeHelper.themeMode ==
+                                  ThemeMode.dark
+                                  ? Colors.grey
+                                  : Colors.black54,
+                              lineThickness: 1.5,
+                              dashGapLength: 4,
                             ),
-                          ),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: ResponsiveLayout.getPadding(8),
-                          ),
-                          child: isSummaryLoading
-                              ? Center(child: CircularProgressIndicator())
-                              : Scrollbar(
-                                  thumbVisibility: true,
-                                  radius: Radius.circular(10),
-                                  child: SingleChildScrollView(
-                                    child: Column(
-                                      children: [
-                                        _buildOrderCalculation(
-                                            TextConstants.grossTotal,
-                                            '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
-                                            isTotal: true),
-                                        _buildOrderCalculation(
-                                            TextConstants.discountText,
-                                            '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}',
-                                            isDiscount: true),
 
-                                        DottedLine(
-                                          dashColor: themeHelper.themeMode ==
-                                                  ThemeMode.dark
-                                              ? Colors.grey
-                                              : Colors.black54,
-                                          lineThickness: 1.5,
-                                          dashGapLength: 4,
-                                        ),
+                            _buildOrderCalculation(
+                              TextConstants.NetTotal,
+                              '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
+                            ),
 
-                                        _buildOrderCalculation(
-                                          TextConstants.NetTotal,
-                                          '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
-                                        ),
+                            _buildOrderCalculation(
+                                TextConstants.taxText,
+                                '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
+                            _buildOrderCalculation(
+                                TextConstants.merchantDiscount,
+                                '-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}'),
 
-                                        _buildOrderCalculation(
-                                            TextConstants.taxText,
-                                            '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
-                                        _buildOrderCalculation(
-                                            TextConstants.merchantDiscount,
-                                            '-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}'),
+                            if (cashbackFee > 0)
+                              _buildOrderCalculation(
+                                TextConstants.cashbackFee,
+                                '${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}',
+                              ),
 
-                                        if (cashbackFee > 0)
-                                          _buildOrderCalculation(
-                                            TextConstants.cashbackFee,
-                                            '${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}',
-                                          ),
+                            /// Service Charges
+                            _buildOrderCalculation(
+                                TextConstants.servicecharges,
+                                '${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}'),
 
-                                        /// Service Charges
-                                        _buildOrderCalculation(
-                                            TextConstants.servicecharges,
-                                            '${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}'),
+                            DottedLine(
+                              dashColor: themeHelper.themeMode ==
+                                  ThemeMode.dark
+                                  ? Colors.grey
+                                  : Colors.black54,
+                              lineThickness: 1.5,
+                              dashGapLength: 4,
+                            ),
 
-                                        DottedLine(
-                                          dashColor: themeHelper.themeMode ==
-                                                  ThemeMode.dark
-                                              ? Colors.grey
-                                              : Colors.black54,
-                                          lineThickness: 1.5,
-                                          dashGapLength: 4,
-                                        ),
+                            _buildOrderCalculation(
+                                TextConstants.netPayable,
+                                '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                                isTotal: true),
 
-                                        _buildOrderCalculation(
-                                            TextConstants.netPayable,
-                                            '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
-                                            isTotal: true),
+                            if (redeemedValue > 0)
+                              _buildOrderCalculation(
+                                "Redeemed Amount",
+                                '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
+                              ),
 
-                                        if (redeemedValue > 0)
-                                          _buildOrderCalculation(
-                                            "Redeemed Amount",
-                                            '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
-                                          ),
+                            _buildOrderCalculation(
+                                TextConstants.payByCash,
+                                '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
 
-                                        _buildOrderCalculation(
-                                            TextConstants.payByCash,
-                                            '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
+                            _buildOrderCalculation(
+                                TextConstants.payByOther,
+                                '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
 
-                                        _buildOrderCalculation(
-                                            TextConstants.payByOther,
-                                            '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
+                            _buildOrderCalculation(
+                                TextConstants.tenderAmount,
+                                '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'),
 
-                                        _buildOrderCalculation(
-                                            TextConstants.tenderAmount,
-                                            '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'),
-
-                                        _buildOrderCalculation(
-                                            TextConstants.change,
-                                            '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                        )
+                            _buildOrderCalculation(
+                                TextConstants.change,
+                                '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
                       : SizedBox.shrink(),
                 ),
               ),
@@ -1453,13 +1454,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 
   final OrderHelper orderHelper =
-      OrderHelper(); // Helper instance to manage orders
+  OrderHelper(); // Helper instance to manage orders
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
     if (orderHelper.activeOrderId != null) {
       var orderData =
-          await orderHelper.getOrderById(orderHelper.activeOrderId!);
+      await orderHelper.getOrderById(orderHelper.activeOrderId!);
       List<Map<String, dynamic>> items = await orderHelper
           .getOrderItems(orderData.first[AppDBConst.orderServerId]);
 
@@ -1480,13 +1481,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         setState(() {
           orderId = orderData.first[AppDBConst.orderServerId] as int? ?? 0;
           orderDateTime =
-              "${orderData.first[AppDBConst.orderDate]} ${orderData.first[AppDBConst.orderTime]}";
+          "${orderData.first[AppDBConst.orderDate]} ${orderData.first[AppDBConst.orderTime]}";
           discount =
               (orderData.first[AppDBConst.orderDiscount] as num?)?.toDouble() ??
                   0.0; // Fetch discount
           merchantDiscount =
               (orderData.first[AppDBConst.merchantDiscount] as num?)
-                      ?.toDouble() ??
+                  ?.toDouble() ??
                   0.0; // Build #1.0.80
           tax =
               (orderData.first[AppDBConst.orderTax] as num?)?.toDouble() ?? 0.0;
@@ -1494,7 +1495,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               (orderData.first[AppDBConst.orderTotal] as num?)?.toDouble() ??
                   0.0; // Build #1.0.80
           cashbackFee = (orderData.first[AppDBConst.orderCashbackFee] as num?)
-                  ?.toDouble() ??
+              ?.toDouble() ??
               0.0;
           orderStatus = (orderData.first[AppDBConst.orderStatus] as String?) ??
               TextConstants.processing; // Build  #1.0.177
@@ -1573,8 +1574,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final bool isCustomItem = itemType.contains(TextConstants.customItemText);
     final bool isCashback = itemType.contains("cashback");
 
-    final bool isPayoutOrCouponOrCustomItem =
-        isPayout || isCoupon || isCustomItem || isCashback;
+    final bool isPayoutOrCoupon =
+        isPayout || isCoupon || isCashback;
     if (kDebugMode) {
       print("🧩 Building Order Item #$index → $itemName | $itemType");
     }
@@ -1681,7 +1682,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         const SizedBox(height: 2),
 
                         // 🔹 Price × Qty (not for payouts/custom/coupon)
-                        if (!isPayoutOrCouponOrCustomItem)
+                        if (!isPayoutOrCoupon)
                           Text(
                             "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
                             style: TextStyle(
@@ -1709,8 +1710,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 color: isCoupon || isPayout
                     ? Colors.red
                     : themeHelper.themeMode == ThemeMode.dark
-                        ? ThemeNotifier.textDark
-                        : ThemeNotifier.textLight,
+                    ? ThemeNotifier.textDark
+                    : ThemeNotifier.textLight,
               ),
             ),
           ],
@@ -1728,22 +1729,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     if (label == TextConstants.tenderAmount) {
       amount =
-          '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}';
     } else if (label == TextConstants.change) {
       amount =
-          '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}';
     } else if (label == TextConstants.total) {
       amount =
-          '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
+      '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
     } else if (label == TextConstants.payByCash) {
       amount =
-          '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'; //Build #1.0.99: updated from api
+      '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'; //Build #1.0.99: updated from api
     } else if (label == TextConstants.payByOther) {
       amount =
-          '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
     } else if (label == TextConstants.discountText) {
       amount =
-          '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}'; // Display discount from DB
+      '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}'; // Display discount from DB
     }
 
     // Determine colors and icons based on label
@@ -1851,11 +1852,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 ),
               ),
               // ---------------- DELETE ICON FOR DISCOUNT ----------------
-              if ((label == TextConstants.discountText || isDiscount) && discount > 0)
+              if ((label == TextConstants.discountText || isDiscount)
+                  && discount > 0
+                  && redeemedValue == 0)   // <--- ADD THIS
                 GestureDetector(
-                  onTap: isPaymentDone
-                      ? null      // <--- DISABLE WHEN PAYMENT DONE
-                      : () async => await _removeAppliedCoupon(),
+                  onTap: isPaymentDone ? null : () async => await _removeAppliedCoupon(),
                   child: Padding(
                     padding: const EdgeInsets.only(left: 5),
                     child: Icon(
@@ -1994,7 +1995,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment:
-              CrossAxisAlignment.start, // Changed to start for better alignment
+          CrossAxisAlignment.start, // Changed to start for better alignment
           children: [
             Expanded(
               flex: 3,
@@ -2002,7 +2003,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 // Remove SingleChildScrollView to avoid height issues
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment:
-                    MainAxisAlignment.start, // Changed from spaceEvenly
+                MainAxisAlignment.start, // Changed from spaceEvenly
                 children: [
                   // Payment amount display row
                   Row(
@@ -2061,15 +2062,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                   ),
                                   decoration: BoxDecoration(
                                     color:
-                                        themeHelper.themeMode == ThemeMode.dark
-                                            ? ThemeNotifier.secondaryBackground
-                                            : Colors.white,
+                                    themeHelper.themeMode == ThemeMode.dark
+                                        ? ThemeNotifier.secondaryBackground
+                                        : Colors.white,
                                     borderRadius: BorderRadius.circular(
                                         ResponsiveLayout.getRadius(8)),
                                   ),
                                   child: Column(
                                     crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                    CrossAxisAlignment.start,
                                     children: [
                                       // Label container
                                       Container(
@@ -2078,10 +2079,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                         padding: EdgeInsets.only(
                                             top: ResponsiveLayout.getPadding(7),
                                             left:
-                                                ResponsiveLayout.getPadding(7)),
+                                            ResponsiveLayout.getPadding(7)),
                                         decoration: BoxDecoration(
                                           color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
+                                              ThemeMode.dark
                                               ? ThemeNotifier.tabsBackground
                                               : Colors.red[50],
                                           borderRadius: BorderRadius.circular(
@@ -2093,42 +2094,42 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                             color: Colors.red,
                                             fontWeight: FontWeight.w500,
                                             fontSize:
-                                                ResponsiveLayout.getFontSize(
-                                                    12),
+                                            ResponsiveLayout.getFontSize(
+                                                12),
                                           ),
                                         ),
                                       ),
                                       SizedBox(
                                           height:
-                                              ResponsiveLayout.getHeight(8)),
+                                          ResponsiveLayout.getHeight(8)),
 
                                       // Amount TextField
                                       // Amount TextField
                                       Column(
                                         crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                         children: [
                                           Container(
                                             height:
-                                                ResponsiveLayout.getHeight(43),
+                                            ResponsiveLayout.getHeight(43),
                                             decoration: BoxDecoration(
                                               color: themeHelper.themeMode ==
-                                                      ThemeMode.dark
+                                                  ThemeMode.dark
                                                   ? ThemeNotifier
-                                                      .paymentEntryContainerColor
+                                                  .paymentEntryContainerColor
                                                   : Colors.white,
                                               borderRadius:
-                                                  BorderRadius.circular(
-                                                      ResponsiveLayout
-                                                          .getRadius(6)),
+                                              BorderRadius.circular(
+                                                  ResponsiveLayout
+                                                      .getRadius(6)),
                                               border: Border.all(
                                                 color: _amountErrorText != null
                                                     ? Colors.red
                                                     : themeHelper.themeMode ==
-                                                            ThemeMode.dark
-                                                        ? ThemeNotifier
-                                                            .borderColor
-                                                        : Colors.grey.shade300,
+                                                    ThemeMode.dark
+                                                    ? ThemeNotifier
+                                                    .borderColor
+                                                    : Colors.grey.shade300,
                                               ),
                                             ),
                                             child: TextField(
@@ -2142,11 +2143,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                     right: ResponsiveLayout
                                                         .getPadding(16)),
                                                 hintText:
-                                                    '${TextConstants.currencySymbol}0.00',
+                                                '${TextConstants.currencySymbol}0.00',
                                                 hintStyle: TextStyle(
                                                   color: themeHelper
-                                                              .themeMode ==
-                                                          ThemeMode.dark
+                                                      .themeMode ==
+                                                      ThemeMode.dark
                                                       ? ThemeNotifier.textDark
                                                       : Colors.grey[400],
                                                   fontSize: ResponsiveLayout
@@ -2157,13 +2158,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                               style: TextStyle(
                                                 color: _isAmountEntered
                                                     ? (themeHelper.themeMode ==
-                                                            ThemeMode.dark
-                                                        ? ThemeNotifier.textDark
-                                                        : Colors.grey[900])
+                                                    ThemeMode.dark
+                                                    ? ThemeNotifier.textDark
+                                                    : Colors.grey[900])
                                                     : (themeHelper.themeMode ==
-                                                            ThemeMode.dark
-                                                        ? ThemeNotifier.textDark
-                                                        : Colors.grey[900]),
+                                                    ThemeMode.dark
+                                                    ? ThemeNotifier.textDark
+                                                    : Colors.grey[900]),
                                                 fontSize: ResponsiveLayout
                                                     .getFontSize(20),
                                                 fontWeight: FontWeight.bold,                                              ),
@@ -2183,37 +2184,37 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                                       SizedBox(
                                           height:
-                                              ResponsiveLayout.getHeight(8)),
+                                          ResponsiveLayout.getHeight(8)),
 
 // QUICK AMOUNT BUTTONS - FIXED
                                       if (balanceAmount > 0)
                                         Row(
                                           mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
+                                          MainAxisAlignment.spaceBetween,
                                           children: _generateQuickAmounts(
-                                                  balanceAmount)
+                                              balanceAmount)
                                               .map(
                                                 (amount) => GestureDetector(
-                                                  onTap: () {
-                                                    setState(() {
-                                                      _rawAmount = (amount *
-                                                              100)
-                                                          .toInt(); // <-- FIX: Overwrite
-                                                      amountController.text =
-                                                          '${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}';
-                                                      _isAmountEntered = true;
-                                                    });
-                                                  },
-                                                  child: _buildQuickAmountButton(
-                                                      '${TextConstants.currencySymbol} ${amount.toStringAsFixed(2)}'),
-                                                ),
-                                              )
+                                              onTap: () {
+                                                setState(() {
+                                                  _rawAmount = (amount *
+                                                      100)
+                                                      .toInt(); // <-- FIX: Overwrite
+                                                  amountController.text =
+                                                  '${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}';
+                                                  _isAmountEntered = true;
+                                                });
+                                              },
+                                              child: _buildQuickAmountButton(
+                                                  '${TextConstants.currencySymbol} ${amount.toStringAsFixed(2)}'),
+                                            ),
+                                          )
                                               .toList(),
                                         ),
 
                                       SizedBox(
                                           height:
-                                              ResponsiveLayout.getHeight(12)),
+                                          ResponsiveLayout.getHeight(12)),
 
 // NUM PAD - FIXED LOGIC
                                       Expanded(
@@ -2222,7 +2223,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           isDarkTheme: themeHelper.themeMode ==
                                               ThemeMode.dark,
                                           getPaidAmount: () =>
-                                              amountController.text,
+                                          amountController.text,
                                           balanceAmount: balanceAmount,
                                           onDigitPressed: (value) {
                                             if (_amountErrorText != null) {
@@ -2249,7 +2250,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           onClearPressed: () {
                                             _rawAmount = 0;
                                             amountController.text =
-                                                '${TextConstants.currencySymbol}0.00';
+                                            '${TextConstants.currencySymbol}0.00';
                                             _amountErrorText = null;
 
                                             setState(() {
@@ -2262,7 +2263,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                             double displayValue =
                                                 _rawAmount / 100.0;
                                             amountController.text =
-                                                '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+                                            '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
                                             setState(() {
                                               _isAmountEntered =
@@ -2271,12 +2272,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           },
                                           onPayPressed: () {
                                             String cleanAmount =
-                                                amountController.text
-                                                    .replaceAll(
-                                                        TextConstants
-                                                            .currencySymbol,
-                                                        '')
-                                                    .trim();
+                                            amountController.text
+                                                .replaceAll(
+                                                TextConstants
+                                                    .currencySymbol,
+                                                '')
+                                                .trim();
 
                                             double amount =
                                                 double.tryParse(cleanAmount) ??
@@ -2296,7 +2297,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                             // Reset after successful payment
                                             _rawAmount = 0;
                                             amountController.text =
-                                                '${TextConstants.currencySymbol}0.00';
+                                            '${TextConstants.currencySymbol}0.00';
                                             _isAmountEntered = false;
                                           },
                                           isLoading: isLoading,
@@ -2426,10 +2427,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
                           _buildPaymentModeButton(TextConstants.wallet,
                               Icons.account_balance_wallet, onTap: () {
-                            setState(() {
-                              selectedPaymentMethod = TextConstants.wallet;
-                            });
-                          }),
+                                setState(() {
+                                  selectedPaymentMethod = TextConstants.wallet;
+                                });
+                              }),
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
                           _buildPaymentModeButton(
                               TextConstants.ebtText, Icons.payment, onTap: () {
@@ -2450,7 +2451,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     child: Container(
                       width: double.infinity,
                       padding:
-                          EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                      EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                       decoration: BoxDecoration(
                         color: themeHelper.themeMode == ThemeMode.dark
                             ? ThemeNotifier.secondaryBackground
@@ -2469,11 +2470,28 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 TextConstants.redeemPoints,
                                 "assets/redeem.png",
                                 isActive:
-                                    redeemedValue == 0 && availablePoints > 0,
+                                redeemedValue == 0 && availablePoints > 0,
                                 onTap: () async {
-                                  if (redeemedValue > 0 || availablePoints == 0) return;
+                                  print("======== 🟦 REDEEM BUTTON PRESSED 🟦 ========");
+
+                                  print("🔍 Current State Before Action:");
+                                  print("➡ redeemedValue: $redeemedValue");
+                                  print("➡ availablePoints: $availablePoints");
+                                  print("➡ isMobileValid: $isMobileValid");
+                                  print("➡ isEmailValid: $isEmailValid");
+
+                                  if (redeemedValue > 0) {
+                                    print("⛔ Redeem blocked: Already redeemedValue > 0");
+                                    return;
+                                  }
+
+                                  if (availablePoints == 0) {
+                                    print("⛔ Redeem blocked: No availablePoints");
+                                    return;
+                                  }
 
                                   if (!isMobileValid && !isEmailValid) {
+                                    print("⛔ Invalid Contact: Neither mobile nor email valid");
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
                                         content: Text("Enter valid mobile number or email"),
@@ -2483,78 +2501,113 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                     return;
                                   }
 
+                                  print("📨 Opening RedeemPointsDialog...");
                                   final result = await showDialog(
                                     context: context,
                                     barrierDismissible: false,
                                     builder: (_) => RedeemPointsDialog(apiData: loyaltyData!),
                                   );
 
-                                  if (result == null) return;
+                                  print("📨 Dialog Result: $result");
+
+                                  if (result == null) {
+                                    print("⛔ Dialog closed manually (null result)");
+                                    return;
+                                  }
 
                                   // User removed redeem
                                   if (result["remove"] == true) {
+                                    print("🗑 REMOVE REDEEM SELECTED");
                                     setState(() {
                                       redeemedValue = 0;
                                       computedNetPayable = NetTotal;
                                     });
 
-                                    // 🔥 Remove from Hive also
                                     final String orderKey =
                                         widget.orderId?.toString() ??
                                             widget.offlineOrderId?.toString() ??
                                             "";
+
+                                    print("🗑 Removing redeem from Hive → OrderKey: $orderKey");
 
                                     if (orderKey.isNotEmpty) {
                                       await removeOfflineOrderRedeem(orderKey);
                                     }
 
+                                    print("🧹 Redeem removed successfully.");
                                     return;
                                   }
 
+                                  print("🟦 Processing API response...");
+
                                   final redeemApi = jsonDecode(result["apiResponse"]);
+                                  print("📦 API Raw Response: $redeemApi");
 
-                                  if (redeemApi != null && redeemApi["success"] == true) {
-                                    final data = redeemApi["data"];
-
-                                    // Extract API values first
-                                    final double newRedeemValue =
-                                        double.tryParse(data["redeem_amount"].toString()) ?? 0.0;
-
-                                    final int usedPoints =
-                                        int.tryParse(data["redeem_points"].toString()) ?? 0;
-
-                                    final int newAvailablePoints =
-                                        int.tryParse(data["available_points"].toString()) ??
-                                            availablePoints;
-
-                                    final double newBalanceAmount =
-                                        double.tryParse(data["order_total"].toString()) ??
-                                            computedNetPayable;
-
-                                    // Update UI
-                                    setState(() {
-                                      redeemedValue = newRedeemValue;
-                                      availablePoints = newAvailablePoints;
-                                      balanceAmount = newBalanceAmount;
-                                    });
-
-                                    // 🔥 SAVE TO HIVE
-                                    final String orderKey =
-                                        widget.orderId?.toString() ??
-                                            widget.offlineOrderId?.toString() ??
-                                            "";
-
-                                    if (orderKey.isNotEmpty) {
-                                      await updateOfflineOrderRedeem(
-                                        orderKey,
-                                        newRedeemValue,
-                                        usedPoints,
-                                        newAvailablePoints,
-                                      );
-                                    }
-
-                                    print("💾 Redeem saved to Hive → Order:$orderKey | Value:$newRedeemValue");
+                                  if (redeemApi == null) {
+                                    print("❌ ERROR: Redeem API is null");
+                                    return;
                                   }
+
+                                  if (redeemApi["success"] != true) {
+                                    print("❌ API reported failure: ${redeemApi["message"]}");
+                                    return;
+                                  }
+
+                                  final data = redeemApi["data"];
+                                  print("📦 Parsed Data: $data");
+
+                                  // Extract values
+                                  final double newRedeemValue =
+                                      double.tryParse(data["redeem_amount"].toString()) ?? 0.0;
+
+                                  final int usedPoints =
+                                      int.tryParse(data["redeem_points"].toString()) ?? 0;
+
+                                  final int newAvailablePoints =
+                                      int.tryParse(data["available_points"].toString()) ??
+                                          availablePoints;
+
+                                  final double newBalanceAmount =
+                                      double.tryParse(data["order_total"].toString()) ??
+                                          computedNetPayable;
+
+                                  print("🔢 Extracted API Values:");
+                                  print("➡ newRedeemValue: $newRedeemValue");
+                                  print("➡ usedPoints: $usedPoints");
+                                  print("➡ newAvailablePoints: $newAvailablePoints");
+                                  print("➡ newBalanceAmount: $newBalanceAmount");
+
+                                  // Update UI
+                                  setState(() {
+                                    redeemedValue = newRedeemValue;
+                                    availablePoints = newAvailablePoints;
+                                    balanceAmount = newBalanceAmount;
+                                  });
+
+                                  print("🟩 UI Updated:");
+                                  print("➡ redeemedValue: $redeemedValue");
+                                  print("➡ availablePoints: $availablePoints");
+                                  print("➡ balanceAmount: $balanceAmount");
+
+                                  // Save to Hive
+                                  final String orderKey =
+                                      widget.orderId?.toString() ??
+                                          widget.offlineOrderId?.toString() ??
+                                          "";
+
+                                  print("💾 Saving redeem to Hive → OrderKey: $orderKey");
+
+                                  if (orderKey.isNotEmpty) {
+                                    await updateOfflineOrderRedeem(
+                                      orderKey,
+                                      newRedeemValue,
+                                      usedPoints,
+                                      newAvailablePoints,
+                                    );
+                                  }
+
+                                  print("💾 Redeem successfully saved to Hive");
+                                  print("======== 🟩 REDEEM PROCESS COMPLETED 🟩 ========");
                                 },
 
                               ),
@@ -2587,11 +2640,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 
   Widget _buildCouponButton(
-    String title,
-    String iconPath, {
-    required VoidCallback onTap,
-    bool isActive = true, // 🔹 NEW
-  }) {
+      String title,
+      String iconPath, {
+        required VoidCallback onTap,
+        bool isActive = true, // 🔹 NEW
+      }) {
     return InkWell(
       onTap: isActive ? onTap : null, // 🔹 Disable tap
       child: Container(
@@ -2606,7 +2659,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           children: [
             ColorFiltered(
               colorFilter:
-                  const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+              const ColorFilter.mode(Colors.white, BlendMode.srcIn),
               child: Image.asset(iconPath, width: 20, height: 20),
             ),
             const SizedBox(width: 8),
@@ -2668,7 +2721,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     // THEME COLORS
     final Color dialogBg = isDark ? const Color(0xFF252837) : Colors.white;
     final Color borderColor =
-        isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade300;
+    isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade300;
     final Color textPrimary = isDark ? Colors.white : Colors.black87;
     final Color textSecondary = isDark ? Colors.white70 : Colors.black54;
     final Color hintColor = isDark ? Colors.white38 : Colors.grey;
@@ -2841,8 +2894,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         tax = updatedTax;
         NetTotal = grossTotal - discount;
         computedNetPayable = NetTotal + tax- merchantDiscount + cashbackFee;
+        orderTotal = computedNetPayable;
         balanceAmount = computedNetPayable;
       });
+
 
       // SUCCESS SNACKBAR
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2867,10 +2922,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 
   Widget _buildAmountDisplay(
-    String label,
-    String amount, {
-    Color? amountColor = Colors.black,
-  }) {
+      String label,
+      String amount, {
+        Color? amountColor = Colors.black,
+      }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     var size = MediaQuery.of(context).size;
     return Column(
@@ -2938,10 +2993,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       onTap: () {
         // Remove '$' and ensure the value is numeric
         String cleanAmount =
-            amount.replaceAll(TextConstants.currencySymbol, '');
+        amount.replaceAll(TextConstants.currencySymbol, '');
         double numericValue = double.parse(cleanAmount);
         amountController.text =
-            '${TextConstants.currencySymbol} ${numericValue.toStringAsFixed(2)}';
+        '${TextConstants.currencySymbol} ${numericValue.toStringAsFixed(2)}';
         setState(() {});
       },
       child: Container(
@@ -3042,15 +3097,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           color: isSelected
               ? Colors.red.shade100
               : themeHelper.themeMode == ThemeMode.dark
-                  ? ThemeNotifier.primaryBackground
-                  : Colors.white,
+              ? ThemeNotifier.primaryBackground
+              : Colors.white,
           borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(5)),
           border: isSelected
               ? Border.all(color: Colors.red.shade300)
               : Border.all(
-                  color: themeHelper.themeMode == ThemeMode.dark
-                      ? ThemeNotifier.borderColor
-                      : Colors.grey.shade200),
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.borderColor
+                  : Colors.grey.shade200),
           boxShadow: [
             BoxShadow(
               color: Colors.grey.withOpacity(0.1),
@@ -3067,8 +3122,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             color: isSelected
                 ? Colors.red
                 : themeHelper.themeMode == ThemeMode.dark
-                    ? Color(0xFFE1E1E1)
-                    : Colors.grey,
+                ? Color(0xFFE1E1E1)
+                : Colors.grey,
             size: ResponsiveLayout.getIconSize(25),
           ),
           SizedBox(width: ResponsiveLayout.getWidth(8)),
@@ -3078,8 +3133,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               color: isSelected
                   ? Colors.red
                   : themeHelper.themeMode == ThemeMode.dark
-                      ? ThemeNotifier.textDark
-                      : Colors.grey,
+                  ? ThemeNotifier.textDark
+                  : Colors.grey,
               fontWeight: FontWeight.w500,
               fontSize: ResponsiveLayout.getFontSize(14),
             ),
@@ -3090,11 +3145,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 
   Widget _buildPaymentOptionButton(
-    String title,
-    String iconPath, {
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
+      String title,
+      String iconPath, {
+        required bool isActive,
+        required VoidCallback onTap,
+      }) {
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -3382,11 +3437,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 
   void _showPaymentDialog(
-    BuildContext context,
-    double amount, {
-    double? changeAmount,
-    required bool showChange,
-  }) async {
+      BuildContext context,
+      double amount, {
+        double? changeAmount,
+        required bool showChange,
+      }) async {
     if (kDebugMode) {
       print(
           "Showing Payment Dialog: amount=$amount, showChange=$showChange, changeAmount=$changeAmount");
@@ -3460,13 +3515,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             StreamSubscription? subscription;
             subscription =
                 paymentBloc.sendOrderDetailsStream.listen((response) async {
-              subscription?.cancel();
-              if (kDebugMode)
-                print(">>> Email sent, updating customer display");
-              await _updateCustomerDisplayWelcome(storeInfo);
-              changeStatusToCompletedAndExit(true,
-                  selectedOption: selectedOption);
-            });
+                  subscription?.cancel();
+                  if (kDebugMode)
+                    print(">>> Email sent, updating customer display");
+                  await _updateCustomerDisplayWelcome(storeInfo);
+                  changeStatusToCompletedAndExit(true,
+                      selectedOption: selectedOption);
+                });
             return;
           }
           if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
@@ -3522,7 +3577,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       final decodedImage = img.decodeImage(imageBytes)!;
       img.Image thumbnail = img.copyResize(decodedImage, height: 280);
       img.Image originalImg =
-          img.copyResize(decodedImage, width: 470, height: 280);
+      img.copyResize(decodedImage, width: 470, height: 280);
       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
       var padding = (originalImg.width - thumbnail.width) / 2;
       drawImage(originalImg, thumbnail, dstX: padding.toInt());
@@ -3699,7 +3754,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             text: "$qty", width: 1, styles: PosStyles(align: PosAlign.center)),
         PosColumn(
             text:
-                "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)}",
+            "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)}",
             width: 2,
             styles: PosStyles(align: PosAlign.right)),
         PosColumn(
@@ -3714,7 +3769,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     // -------------------------------
     // TOTALS
     // -------------------------------
-    final grossTotal = GlobalUtility.getGrossTotal(orderItems);
+    final double grossTotal = this.grossTotal;
 
     print("🟩 Totals Computed:");
     print("Gross Total: $grossTotal");
@@ -3744,7 +3799,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       PosColumn(text: TextConstants.grossTotal, width: 10),
       PosColumn(
           text:
-              "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}",
+          "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}",
           width: 2,
           styles: PosStyles(align: PosAlign.right)),
     ]);
@@ -3753,7 +3808,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       PosColumn(text: TextConstants.discountText, width: 10),
       PosColumn(
           text:
-              "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}",
+          "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}",
           width: 2,
           styles: PosStyles(align: PosAlign.right)),
     ]);
@@ -3762,7 +3817,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       PosColumn(text: TextConstants.merchantDiscount, width: 10),
       PosColumn(
           text:
-              "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
+          "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
           width: 2,
           styles: PosStyles(align: PosAlign.right)),
     ]);
@@ -3811,7 +3866,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       PosColumn(text: TextConstants.netPayable, width: 10),
       PosColumn(
           text:
-              "${TextConstants.currencySymbol}${orderTotal.toStringAsFixed(2)}",
+          "${TextConstants.currencySymbol}${orderTotal.toStringAsFixed(2)}",
           width: 2,
           styles: PosStyles(align: PosAlign.right)),
     ]);
@@ -3833,7 +3888,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       PosColumn(text: TextConstants.payByCash, width: 10),
       PosColumn(
           text:
-              "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}",
+          "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}",
           width: 2,
           styles: PosStyles(align: PosAlign.right)),
     ]);
@@ -3842,7 +3897,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       PosColumn(text: TextConstants.payByOther, width: 10),
       PosColumn(
           text:
-              "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}",
+          "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}",
           width: 2,
           styles: PosStyles(align: PosAlign.right)),
     ]);
@@ -3851,7 +3906,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       PosColumn(text: TextConstants.tenderAmount, width: 10),
       PosColumn(
           text:
-              "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
+          "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
           width: 2,
           styles: PosStyles(align: PosAlign.right)),
     ]);
@@ -3860,7 +3915,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       PosColumn(text: TextConstants.change, width: 10),
       PosColumn(
           text:
-              "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}",
+          "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}",
           width: 2,
           styles: PosStyles(align: PosAlign.right)),
     ]);
@@ -4021,7 +4076,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
     switch (result) {
       case Ok<BluetoothPrinter>():
-        // BluetoothPrinter printer = result.value;
+      // BluetoothPrinter printer = result.value;
         break;
       case Error<BluetoothPrinter>():
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -4120,37 +4175,37 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             StreamSubscription? subscription;
             subscription =
                 paymentBloc.sendOrderDetailsStream.listen((response) {
-              if (response.status == Status.COMPLETED) {
-                if (kDebugMode) {
-                  print("Email sent successfully: ${response.data!.message}");
-                }
-                if (Misc.showDebugSnackBar) {
-                  // Build #1.0.254
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(response.data!.message),
-                      backgroundColor: Colors.green,
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
-                }
-              } else if (response.status == Status.ERROR) {
-                if (kDebugMode) {
-                  print("Failed to send email: ${response.message}");
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(TextConstants.failedSendEmail),
-                    backgroundColor: Colors.red,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
-              }
-              subscription?.cancel();
-              // Proceed to complete the order after email API response
-              changeStatusToCompletedAndExit(true,
-                  selectedOption: selectedOption);
-            });
+                  if (response.status == Status.COMPLETED) {
+                    if (kDebugMode) {
+                      print("Email sent successfully: ${response.data!.message}");
+                    }
+                    if (Misc.showDebugSnackBar) {
+                      // Build #1.0.254
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(response.data!.message),
+                          backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  } else if (response.status == Status.ERROR) {
+                    if (kDebugMode) {
+                      print("Failed to send email: ${response.message}");
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(TextConstants.failedSendEmail),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                  subscription?.cancel();
+                  // Proceed to complete the order after email API response
+                  changeStatusToCompletedAndExit(true,
+                      selectedOption: selectedOption);
+                });
           } else {
             // For non-email options, proceed directly to complete the order
             changeStatusToCompletedAndExit(true,

@@ -259,92 +259,155 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
   var _order;
   // Build #1.0.118: Update fetchOrder to use widget.activeOrderId
   Future<void> fetchOrder() async {
-    if (widget.activeOrderId != null) {
+    if (widget.activeOrderId == null) {
+      _order = {AppDBConst.orderStatus: ''};
+      orderServerId = null;
+      return;
+    }
 
-      // SQLite order
-      List<Map<String, dynamic>> ordersData =
-      await orderHelper.getOrderById(widget.activeOrderId!);
+    // 1️⃣ Try normal SQLite order
+    List<Map<String, dynamic>> ordersData =
+    await orderHelper.getOrderById(widget.activeOrderId!);
 
-      _order = ordersData.isNotEmpty
-          ? ordersData.first
-          : {AppDBConst.orderStatus: ''};
-
+    if (ordersData.isNotEmpty) {
+      _order = ordersData.first;
       orderServerId = _order[AppDBConst.orderServerId] as int?;
+    } else {
+      // 2️⃣ FALLBACK → CHECK HIVE DELETED ORDERS
+      final deletedBox = Hive.box('deletedOrders');
 
-      // 🔥 Fetch WooCommerce synced data from Hive
-      if (orderServerId != null) {
-        final box = Hive.box('offlineOrders');
-        final hiveData = box.get(orderServerId.toString());
+      dynamic deleted = deletedBox.get(widget.activeOrderId);
 
-        if (hiveData != null) {
-          _order['wooTotal'] = hiveData['wooTotal'];
-          _order['wooTax'] = hiveData['wooTax'];
-          _order['wooOrderId'] = hiveData['wooOrderId'];
-        }
-
-        print("🔥 Loaded Woo data from Hive: $_order");
+// 🔥 FIX: If not found by int → try string key
+      if (deleted == null) {
+        deleted = deletedBox.get(widget.activeOrderId.toString());
       }
 
-      if (orderServerId != null) _fetchPaymentsByOrderId();
+      if (deleted != null) {
+        print("🔥 Deleted order FOUND in Hive for ID ${widget.activeOrderId}");
+        print("🔥 Deleted full data: $deleted");
 
-    } else {
+        final map = Map<String, dynamic>.from(deleted);
+
+        _order = {
+          "id": map["order_id"],
+          "orderStatus": "cancelled",
+          "products": map["products"] ?? [],
+          "cashbacks": map["cashbacks"] ?? [],
+          "payouts": map["payouts"] ?? [],
+          "orderTotal": map["gross_total"] ?? 0,
+          "orderTax": 0,
+          "orderDate": map["created_at"] ?? DateTime.now().toString(),
+          "offline": true,
+        };
+
+
+        print("🔥 Loaded ORDER from Hive = $_order");
+
+        orderServerId = null; // no API call for offline deleted orders
+        return;
+      }
+
+
+      // 3️⃣ No order found at all
       _order = {AppDBConst.orderStatus: ''};
       orderServerId = null;
     }
+
+    // Fetch payments only for online orders
+    if (orderServerId != null) {
+      _fetchPaymentsByOrderId();
+    }
   }
+
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
-    // Build #1.0.226: Updated -> using widget.activeOrderId rather than orderHelper.activeOrderId
-    // some times while building widgets orderHelper.activeOrderId  can be null
-    // widget.activeOrderId value comes from total orders screen with orderHelper.activeOrderId value only along with default value selectedOrder.
-    if (widget.activeOrderId != null) {
-      if (kDebugMode) {
-        print("##### DEBUG: Order screen panel  fetchOrderItems - Fetching items for activeOrderId: ${widget.activeOrderId}");
-      }
-      try {
-        List<Map<String, dynamic>> items = await orderHelper.getOrderItems(widget.activeOrderId!);
+    if (widget.activeOrderId == null) {
+      orderItems.clear();
+      return;
+    }
 
-        if (kDebugMode) {
-          print("##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
-        }
+    // 1️⃣ Try SQLite items
+    try {
+      List<Map<String, dynamic>> items =
+      await orderHelper.getOrderItems(widget.activeOrderId!);
 
-        // total = 0.0;
-        // for (var item in items) {
-        //   double price = (item[AppDBConst.itemPrice] as num).toDouble();
-        //   int count = item[AppDBConst.itemCount] as int;
-        //   total += price * count;
-        // }
+      if (items.isNotEmpty) {
+        print("🟦 SQLite Order Items Loaded: $items");
 
-        if (mounted) {
-          setState(() {
-            orderItems = items; // Update the order items list
-          });
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print("##### ERROR: fetchOrderItems failed - $e");
-        }
-        if (mounted) {
-          setState(() {
-            orderItems.clear(); // Clear items on error
-          });
-        }
+        setState(() => orderItems = items);
+        return;
       }
-    } else {
-      if (kDebugMode) {
-        print("##### DEBUG: fetchOrderItems - No active order, clearing items");
-      }
-      if (mounted) {
-        setState(() {
-          orderItems.clear(); // Clear items if no active order
+    } catch (_) {}
+
+    // 2️⃣ FALLBACK → Load deleted offline order items
+    final deletedBox = Hive.box('deletedOrders');
+
+    dynamic deleted = deletedBox.get(widget.activeOrderId);
+
+    if (deleted == null) {
+      deleted = deletedBox.get(widget.activeOrderId.toString());
+    }
+
+    if (deleted != null) {
+      print("🔥 Loading DELETED ORDER ITEMS for ID = ${widget.activeOrderId}");
+      _order[AppDBConst.orderStatus] = "cancelled";
+
+      final List productList = deleted["products"] ?? [];
+      final List cashbackList = deleted["cashbacks"] ?? [];
+      final List payoutList = deleted["payouts"] ?? [];
+
+      List<Map<String, dynamic>> mergedItems = [];
+
+      // 🔵 PRODUCTS
+      for (var p in productList) {
+        mergedItems.add({
+          AppDBConst.itemName: p["name"],
+          AppDBConst.itemPrice: p["price"],
+          AppDBConst.itemCount: p["quantity"],
+          AppDBConst.itemSumPrice: (p["price"] ?? 0) * (p["quantity"] ?? 1),
+          AppDBConst.itemImage: p["image"] ?? "",
+          AppDBConst.itemType: "product",
         });
       }
+
+      // 🟢 CASHBACKS
+      for (var c in cashbackList) {
+        mergedItems.add({
+          AppDBConst.itemName: c["item_name"] ?? "Cashback",
+          AppDBConst.itemPrice: c["item_price"] ?? c["amount"],
+          AppDBConst.itemCount: c["items_count"] ?? 1,
+          AppDBConst.itemSumPrice: c["item_sum_price"] ?? c["amount"],
+          AppDBConst.itemImage: c["product_image"] ?? "",
+          AppDBConst.itemType: "cashback",
+        });
+      }
+
+      // 🔴 PAYOUTS
+      for (var p in payoutList) {
+        mergedItems.add({
+          AppDBConst.itemName: p["product_name"] ?? "Payout",
+          AppDBConst.itemPrice: p["amount"],
+          AppDBConst.itemCount: 1,
+          AppDBConst.itemSumPrice: p["amount"],
+          AppDBConst.itemImage: p["product_image"] ?? "",
+          AppDBConst.itemType: "payout",
+        });
+      }
+
+      orderItems = mergedItems;
+
+      print("🔥 Final Loaded Deleted OrderItems = $orderItems");
+
+      setState(() {});
+      return;
     }
-    if (mounted) {
-      setState(() => _isLoading = false); // Build #1.0.104: hide loader
-    }
+
+    // 3️⃣ Nothing found
+    orderItems.clear();
   }
+
 
   @override
   void didChangeDependencies() {
@@ -617,7 +680,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
     for (var item in orderItems) {
       if (item['item_name'] != null &&
-          item['item_name'].toString().toLowerCase() == "merchant discount") {
+          item['item_name'].toString().toLowerCase() == "discount") {
         double? discountValue =
         double.tryParse(item['item_sum_price'].toString());
         if (discountValue != null && discountValue < 0) {
@@ -807,8 +870,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                         }
 
                         /// Hide Merchant Discount item from list but keep in summary
-                        if (itemTypeRaw.contains("merchantdiscount") ||
-                            itemNameRaw.contains("merchant discount")) {
+                        if (itemTypeRaw.contains("discount") ||
+                            itemNameRaw.contains("discount")) {
                           return Container(
                             key: ValueKey("merchant_discount_$index"),
                             height: 0,
@@ -1593,27 +1656,27 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                       height: 2,
                                     ),
                                     if (hiveRedeemedValue > 0)
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              "Redeemed Value",
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w400,
-                                                color: Colors.green,
-                                              ),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            "Redeemed Value",
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w400,
+                                              color: Colors.green,
                                             ),
-                                            Text(
-                                              "- ${TextConstants.currencySymbol}${hiveRedeemedValue.toStringAsFixed(2)}",
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w400,
-                                                color: Colors.green,
-                                              ),
+                                          ),
+                                          Text(
+                                            "- ${TextConstants.currencySymbol}${hiveRedeemedValue.toStringAsFixed(2)}",
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w400,
+                                              color: Colors.green,
                                             ),
-                                          ],
-                                        ),
+                                          ),
+                                        ],
+                                      ),
 
                                   ],
                                 ),

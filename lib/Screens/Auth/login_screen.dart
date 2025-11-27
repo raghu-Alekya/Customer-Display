@@ -428,7 +428,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                                               SnackBar(
                                                                 content: Text(response.message ?? TextConstants.successfullyLogout),
                                                                 backgroundColor: Colors.green,
-                                                                duration: const Duration(seconds: 2),
+                                                                duration: const Duration(seconds: 1),
                                                               ),
                                                             );
                                                             // }
@@ -445,7 +445,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                                               SnackBar(
                                                                 content: Text(response.message ?? TextConstants.failedToLogout),
                                                                 backgroundColor: Colors.red,
-                                                                duration: const Duration(seconds: 2),
+                                                                duration: const Duration(seconds: 1),
                                                               ),
                                                             );
                                                             // Update loading state
