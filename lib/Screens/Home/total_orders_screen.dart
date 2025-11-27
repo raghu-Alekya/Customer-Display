@@ -175,17 +175,12 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                         .split(".")
                         .first;
                   }
+                  
+                  final payable = (map["net_payable"] as num?)?.toDouble() ?? 0.0;
 
-                  // ⭐ FIX 3: Calculate total
-                  double total = 0.0;
-                  if (map["products"] != null && map["products"] is List) {
-                    for (var p in map["products"]) {
-                      final price = (p["price"] ?? 0).toDouble();
-                      final qty = (p["quantity"] ?? 1).toDouble();
-                      total += price * qty;
-                    }
-                  }
-                  map["total"] = total.toStringAsFixed(2);
+// ⭐ FINAL TOTAL (SHOW IN LIST)
+                  map["total"] = payable.toStringAsFixed(2);
+
 
                   // ⭐ FIX 4: Force offline order meta
                   map["status"] = "cancelled";
