@@ -868,7 +868,7 @@ class NestedGridWidget extends StatelessWidget {
 
     return Expanded(
       child: Container(
-        margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
+        margin: EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 10),
         height: MediaQuery.of(context).size.height / 2,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),

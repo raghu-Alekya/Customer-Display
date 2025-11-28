@@ -6,7 +6,9 @@ import 'package:pinaka_pos/services/CustomerDisplayService.dart';
 import 'package:provider/provider.dart';
 import 'Constants/misc_features.dart';
 import 'Database/db_helper.dart';
+import 'Database/user_db_helper.dart';
 import 'Helper/Extentions/theme_notifier.dart';
+import 'Helper/cashbackhelper.dart';
 import 'Helper/customerdisplayhelper.dart';
 import 'Helper/url_helper.dart';
 import 'Preferences/pinaka_preferences.dart';
@@ -23,8 +25,23 @@ void main() async {
   await Hive.openBox('offlineOrders');
   await Hive.openBox('fastKeysBox');
   await Hive.openBox('deletedOrders');
-  await PinakaPreferences.prepareSharedPref(); //Build #1.0.7: Initialize SharedPref
+  await Hive.openBox('cashbackConfig');
 
+  // 1️⃣ First → initialize base URL
+  await UrlHelper.initializeBaseUrl();
+
+  // 2️⃣ Then prepare shared preferences
+  await PinakaPreferences.prepareSharedPref();
+
+  // 3️⃣ Then load cashback config
+  final userData = await UserDbHelper().getUserData();
+  final token = userData?[AppDBConst.userToken];
+
+  if (token != null && token.toString().isNotEmpty) {
+    await CashbackHelper.loadCashbackOnStartup(token);
+  } else {
+    print("⚠ No user token found — skipping cashback API");
+  }
   /// Build #1.0.187: Required -> Disable device back button completely
   /// This block locks the app to hides system overlays (e.g., status bar, navigation bar) if enableHardwareBackButton is false
   if (!Misc.enableHardwareBackButton) {

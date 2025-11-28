@@ -1234,13 +1234,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           children: [
             // 🔹 Main Order Panel (Card + Tabs)
             Container(
-              width: MediaQuery.of(context).size.width * 0.30,
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+              width: MediaQuery.of(context).size.width * 0.31,
+              padding: const EdgeInsets.fromLTRB(2, 0, 10, 10),
               child: Card(
                 elevation: 4,
                 margin: const EdgeInsets.only(top: 10),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
@@ -2162,6 +2162,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
 
+        cashbackFee = (offlineOrder['cashbackFee'] is num)
+            ? (offlineOrder['cashbackFee'] as num).toDouble()
+            : 0.0;
+
         // final productBox = Hive.box('productCache');
         // final cashbackProduct = productBox.values.firstWhere(
         //       (p) =>
@@ -2300,13 +2304,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         print("🔥 FINAL orderTax CALCULATED from Hive products = $orderTax");
 
         netTotal = grossTotal - orderDiscount - merchantDiscount;
-        netPayable = netTotal + orderTax;
+        netPayable = netTotal + orderTax + cashbackFee;
 
         if (orderHelper.activeOrderId != null) {
           final updatedOrder = Map<String, dynamic>.from(rawOfflineOrder);
           updatedOrder['gross_total'] = grossTotal;
           updatedOrder['orderDiscount'] = orderDiscount;
           updatedOrder['merchantDiscount'] = merchantDiscount;
+          updatedOrder['cashbackFee'] = cashbackFee;
+          // updatedOrder['orderCashbackFee'] = cashbackFee;
+
           updatedOrder['order_tax'] = orderTax;
           updatedOrder['net_total'] = netTotal;
           updatedOrder['net_payable'] = netPayable;
@@ -2396,7 +2403,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 : Colors.black,
                           ),
                         ),
-                        const SizedBox(width: 112),
+                        const SizedBox(width: 200),
                         SvgPicture.asset(
                           'assets/svg/clock.svg',
                           width: 20,
@@ -3059,100 +3066,135 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             ),
                             SizedBox(height: 2),
                             if(merchantDiscount>0)
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  spacing: 5,
-                                  children: [
-                                    // SvgPicture.asset("assets/svg/discount_star.svg",
-                                    //   height: 12, width: 12,
-                                    //   colorFilter: ColorFilter.mode(Colors.blueAccent, BlendMode.srcIn),),
-                                    Text(TextConstants.merchantDiscount, style: TextStyle(color: Color(0xFF007BFF), fontSize: 14)),
-                                    merchantDiscount.toStringAsFixed(2) == '0.00' ? SizedBox() : GestureDetector(
-                                      onTap: () async {
-                                        if (kDebugMode) print("####################### Remove Merchant Discount locally");
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    spacing: 5,
+                                    children: [
+                                      // SvgPicture.asset("assets/svg/discount_star.svg",
+                                      //   height: 12, width: 12,
+                                      //   colorFilter: ColorFilter.mode(Colors.blueAccent, BlendMode.srcIn),),
+                                      Text(TextConstants.merchantDiscount, style: TextStyle(color: Color(0xFF007BFF), fontSize: 14)),
+                                      merchantDiscount.toStringAsFixed(2) == '0.00' ? SizedBox() : GestureDetector(
+                                        onTap: () async {
+                                          if (kDebugMode) print("####################### Remove Merchant Discount locally");
 
-                                        final activeOrderId = orderHelper.activeOrderId;
-                                        if (activeOrderId == null) {
-                                          _scaffoldMessenger.showSnackBar(
-                                            const SnackBar(
-                                              content: Text("No active order found"),
-                                              backgroundColor: Colors.red,
-                                              duration: Duration(seconds: 2),
-                                            ),
+                                          final activeOrderId = orderHelper.activeOrderId;
+                                          if (activeOrderId == null) {
+                                            _scaffoldMessenger.showSnackBar(
+                                              const SnackBar(
+                                                content: Text("No active order found"),
+                                                backgroundColor: Colors.red,
+                                                duration: Duration(seconds: 2),
+                                              ),
+                                            );
+                                            return;
+                                          }
+
+                                          // Step 1: Show confirmation dialog
+                                          await CustomDialog.showRemoveSpecialOrderItemsConfirmation(
+                                            context,
+                                            confirm: () async {
+                                              setState(() => _isLoading = true);
+
+                                              final offlineBox = Hive.box('offlineOrders');
+                                              final rawOrder = offlineBox.get(activeOrderId.toString());
+
+                                              if (rawOrder == null) {
+                                                setState(() => _isLoading = false);
+                                                _scaffoldMessenger.showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text("No offline order found"),
+                                                    backgroundColor: Colors.red,
+                                                    duration: Duration(seconds: 2),
+                                                  ),
+                                                );
+                                                return;
+                                              }
+
+                                              // Convert to Map
+                                              final Map<String, dynamic> order = Map<String, dynamic>.from(rawOrder);
+
+                                              // Remove merchant discount completely
+                                              if (order.containsKey('merchantDiscount') || order.containsKey('merchantDiscountIds')) {
+
+                                                order.remove('merchantDiscount');
+                                                order.remove('merchantDiscountIds');
+                                                order.remove('discounts');
+
+                                                await offlineBox.put(activeOrderId.toString(), order);
+
+                                                setState(() => _isLoading = false);
+                                                _scaffoldMessenger.showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text("Merchant discount removed locally"),
+                                                    backgroundColor: Colors.green,
+                                                    duration: Duration(seconds: 2),
+                                                  ),
+                                                );
+
+                                                widget.refreshOrderList?.call();  // Refresh summary & order panel
+
+                                              } else {
+                                                setState(() => _isLoading = false);
+                                                _scaffoldMessenger.showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text("No merchant discount found on this order"),
+                                                    backgroundColor: Colors.red,
+                                                    duration: Duration(seconds: 2),
+                                                  ),
+                                                );
+                                              }
+                                            },
                                           );
-                                          return;
-                                        }
-
-                                        // Step 1: Show confirmation dialog
-                                        await CustomDialog.showRemoveSpecialOrderItemsConfirmation(
-                                          context,
-                                          confirm: () async {
-                                            setState(() => _isLoading = true);
-
-                                            final offlineBox = Hive.box('offlineOrders');
-                                            final rawOrder = offlineBox.get(activeOrderId.toString());
-
-                                            if (rawOrder == null) {
-                                              setState(() => _isLoading = false);
-                                              _scaffoldMessenger.showSnackBar(
-                                                const SnackBar(
-                                                  content: Text("No offline order found"),
-                                                  backgroundColor: Colors.red,
-                                                  duration: Duration(seconds: 2),
-                                                ),
-                                              );
-                                              return;
-                                            }
-
-                                            // Convert to Map
-                                            final Map<String, dynamic> order = Map<String, dynamic>.from(rawOrder);
-
-                                            // Remove merchant discount completely
-                                            if (order.containsKey('merchantDiscount') || order.containsKey('merchantDiscountIds')) {
-
-                                              order.remove('merchantDiscount');
-                                              order.remove('merchantDiscountIds');
-                                              order.remove('discounts');
-
-                                              await offlineBox.put(activeOrderId.toString(), order);
-
-                                              setState(() => _isLoading = false);
-                                              _scaffoldMessenger.showSnackBar(
-                                                const SnackBar(
-                                                  content: Text("Merchant discount removed locally"),
-                                                  backgroundColor: Colors.green,
-                                                  duration: Duration(seconds: 2),
-                                                ),
-                                              );
-
-                                              widget.refreshOrderList?.call();  // Refresh summary & order panel
-
-                                            } else {
-                                              setState(() => _isLoading = false);
-                                              _scaffoldMessenger.showSnackBar(
-                                                const SnackBar(
-                                                  content: Text("No merchant discount found on this order"),
-                                                  backgroundColor: Colors.red,
-                                                  duration: Duration(seconds: 2),
-                                                ),
-                                              );
-                                            }
-                                          },
-                                        );
-                                      },
+                                        },
 
 
-                                      child: SvgPicture.asset("assets/svg/delete.svg", height: 24, width: 24),
-                                    ),
-                                  ],
-                                ),
-                                Text("-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
-                                    style: TextStyle(color: Colors.blue, fontSize: 12)),
-                              ],
-                            ),
+                                        child: SvgPicture.asset("assets/svg/delete.svg", height: 24, width: 24),
+                                      ),
+                                    ],
+                                  ),
+                                  Text("-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
+                                      style: TextStyle(color: Colors.blue, fontSize: 12)),
+                                ],
+                              ),
                             SizedBox(height: 2),
+                            Builder(
+                              builder: (_) {
+                                print("🔥 SUMMARY → cashbackFee = $cashbackFee");
+                                return SizedBox.shrink();
+                              },
+                            ),
+                            if (cashbackFee > 0)
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    spacing: 5,
+                                    children: [
+                                      Icon(Icons.wallet_giftcard,
+                                          size: 14,
+                                          color: Colors.greenAccent),
+                                      Text(
+                                        TextConstants.cashbackFee,
+                                        style: TextStyle(
+                                          color: Colors.greenAccent,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    "+${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
+                                    style: TextStyle(
+                                      color: Colors.greenAccent,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             // ShaderMask(
                             //   shaderCallback: (Rect bounds) {
                             //     return LinearGradient(

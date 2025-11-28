@@ -18,6 +18,7 @@ import '../Database/db_helper.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/api_response.dart';
+import '../Helper/cashbackhelper.dart';
 import '../Models/Assets/asset_model.dart';
 import '../Models/Orders/orders_model.dart';
 import '../Models/Search/product_custom_item_model.dart' as model;
@@ -215,7 +216,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       //backgroundColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.white,
       // const Color(0xFFF1F5F9),
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        padding: const EdgeInsets.fromLTRB(4, 10, 2, 10),
         child: Container(
           decoration: BoxDecoration(
             color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
@@ -265,7 +266,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               .width * 0.12,
           decoration: BoxDecoration(
             color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                .tabsBackground : ThemeNotifier.tabsLightBackground,
+                .tabsBackground :Color(0xFFEAEDFF),
             borderRadius: BorderRadius.circular(16.0),
           ),
           child: Column(
@@ -282,7 +283,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               const SizedBox(width: 10),
 
               if (_selectedTabIndex != 0 && _selectedTabIndex != 1)
-                Divider(height: 1, thickness: 0.1, indent: 10, endIndent: 10),
+                Divider(height: 1, thickness: 1, indent: 10, endIndent: 10,
+                    color: themeHelper.themeMode == ThemeMode.dark
+                        ? Colors.black
+                        : Color(0xFFB6BFF9)),
 
               _buildTab(
                 1,
@@ -295,7 +299,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               const SizedBox(width: 10),
 
               if (_selectedTabIndex != 1 && _selectedTabIndex != 2)
-                Divider(height: 1, thickness: 0.1, indent: 10, endIndent: 10),
+                Divider(height: 1, thickness: 1, indent: 10, endIndent: 10,
+                    color: themeHelper.themeMode == ThemeMode.dark
+                        ? Colors.black
+                        : Color(0xFFB6BFF9)),
 
               _buildTab(
                 2,
@@ -308,7 +315,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               const SizedBox(width: 10),
 
               if (_selectedTabIndex != 2 && _selectedTabIndex != 3)
-                Divider(height: 1, thickness: 0.1, indent: 10, endIndent: 10),
+                Divider(height: 1, thickness: 1, indent: 10, endIndent: 10,   color: themeHelper.themeMode == ThemeMode.dark
+                    ? Colors.black
+                    : Color(0xFFB6BFF9)),
 
               _buildTab(
                 3,
@@ -359,8 +368,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
             children: [
               SvgPicture.asset(
                 svgPath,
-                height: 30,
-                width: 30,
+                height: 32,
+                width: 32,
                 colorFilter: ColorFilter.mode(
                   isSelected ? iconColor : iconColor.withOpacity(0.8),
                   BlendMode.srcIn,
@@ -375,8 +384,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                     color: isSelected
                         ? textColor
                         : textColor.withOpacity(0.8),
+                    fontSize: isSelected ? 18 : 16,
                     fontWeight:
-                    isSelected ? FontWeight.bold : FontWeight.w100,
+                    isSelected ? FontWeight.bold : FontWeight.bold,
                   ),
                 ),
               ),
@@ -2366,16 +2376,22 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       }
 
       // Cashback reduces total
+      // 1️⃣ Calculate cashback fee from Hive config
+      final double fee = CashbackHelper.getCashbackFee(cashbackAmount);
+
+      print("💰 CashbackAmount = $cashbackAmount → Fee = $fee");
+
       final updatedOrder = {
         ...existingOrder,
         "products": products,
         "cashbacks": cashbacks,
 
-        // Cashback reduces total
-        "gross_total": productsTotal - cashbackAmount,
+        // 2️⃣ Cashback reduces total, fee increases total
+        "gross_total": productsTotal + cashbackAmount ,
 
-        // ⭐ NEW: Store cashback fee
-        AppDBConst.orderCashbackFee: cashbackAmount,
+        // 3️⃣ Store cashback fee (NOT cashbackAmount)
+        "cashbackFee": fee,
+        AppDBConst.orderCashbackFee: fee,
       };
 
 
@@ -2909,12 +2925,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       await offlineBox.put(key, updatedOrder);
 
-      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        SnackBar(
-          content: Text("Payout of ₹${payoutAmount.toStringAsFixed(2)} added successfully"),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+      //   SnackBar(
+      //     content: Text("Payout of ₹${payoutAmount.toStringAsFixed(2)} added successfully"),
+      //     backgroundColor: Colors.green,
+      //   ),
+      // );
 
       setState(() {
         _payoutAmount = "";

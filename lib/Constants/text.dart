@@ -215,7 +215,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String customItemAlert       = "Custom Item Alert";
   static const String customItemAlertDescription = "You're about to add a custom item. Make sure the item details are accurate before proceeding.";
   static const String addCustomItem         = "Add Custom Item";
-  static const String addCashbackAmount      = "Add Cash Back Amount";
+  static const String addCashbackAmount      = "Add CashBack Amount";
   static const String couponNotApplied      = "Coupon Not Applied";
   static const String couponNotAppliedDescription = "The coupon couldn’t be applied. Please double-check the eligibility criteria or try a different code.";
   static const String invalidDiscount       = "Invalid Discount";
@@ -225,7 +225,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String coupons               = "Coupons";
   static const String customItem            = "Custom Item";
   static const String customItemCouldNotBeAddedDescription = "Please check the items and try again. Contact your manager if the issue continues.";
-  static const String applyDiscountToSale   = "Apply Discount to Sale";
+  static const String applyDiscountToSale   = "Apply Merchant Discount to Sale";
   static const String enterCouponCode       = "Enter Coupon Code";
   static const String customItemName        = "Custom item name";
   static const String itemPrice             = "Item Price";

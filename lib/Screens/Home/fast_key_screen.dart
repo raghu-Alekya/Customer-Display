@@ -2363,6 +2363,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
               }
             },
           ),
+          // the gap between fast key and top bar
           const Divider(
             color: Colors.grey,
             thickness: 0.4,

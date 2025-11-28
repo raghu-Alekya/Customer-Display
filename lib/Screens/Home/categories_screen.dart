@@ -1004,9 +1004,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
                       // ),
                         Expanded(
                           child: Padding(
-                            padding: const EdgeInsets.all(
-                                8.0), // spacing around the frame
+                            padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
                             child: Container(
+                              margin: EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 10),
                               decoration: BoxDecoration(
                                 color: Theme.of(context).brightness ==
                                     Brightness.dark

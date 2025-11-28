@@ -650,7 +650,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       height: ResponsiveLayout.getHeight(60),
       color: themeHelper.themeMode == ThemeMode.dark
           ? ThemeNotifier.primaryBackground
-          : Colors.grey[100],
+          : Color(0xFFE4E4E4),
       padding: ResponsiveLayout.getResponsivePadding(
         horizontal: 16,
         vertical: 0,
@@ -783,14 +783,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         margin: EdgeInsets.only(
           left: ResponsiveLayout.getPadding(10),
           right: ResponsiveLayout.getPadding(10),
-          top: ResponsiveLayout.getPadding(20),
-          bottom: ResponsiveLayout.getPadding(15),
+          top: ResponsiveLayout.getPadding(10),
+          bottom: ResponsiveLayout.getPadding(10),
         ),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(10)),
           color: themeHelper.themeMode == ThemeMode.dark
               ? ThemeNotifier.appBarBackground
-              : Colors.grey[100],
+              : Color(0xFFE4E4E4),
         ),
         padding: EdgeInsets.symmetric(
             horizontal: ResponsiveLayout.getPadding(6),
@@ -952,12 +952,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         margin: EdgeInsets.only(
             left: ResponsiveLayout.getPadding(10),
             right: ResponsiveLayout.getPadding(10),
-            bottom: ResponsiveLayout.getPadding(20)),
+            bottom: ResponsiveLayout.getPadding(10)),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(10)),
           color: themeHelper.themeMode == ThemeMode.dark
               ? ThemeNotifier.primaryBackground
-              : Colors.grey[100],
+              : Color(0xFFE4E4E4),
           boxShadow: [
             BoxShadow(
               color: Colors.grey.withOpacity(0.1),
@@ -969,8 +969,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         ),
         child: Padding(
           padding: EdgeInsets.only(
-              left: ResponsiveLayout.getPadding(15),
-              right: ResponsiveLayout.getPadding(15),
+              left: ResponsiveLayout.getPadding(12),
+              right: ResponsiveLayout.getPadding(10),
               bottom: ResponsiveLayout.getPadding(15),
               top: ResponsiveLayout.getPadding(10)),
           child: Column(
@@ -1219,7 +1219,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       padding: EdgeInsets.zero,
                       itemCount: orderItems.length,
                       separatorBuilder: (context, index) =>
-                          Divider(height: 1, color: Colors.grey.shade200),
+                          Divider(height: 1, color: themeHelper.themeMode == ThemeMode.dark
+                              ? Colors.black26
+                              : Colors.grey.shade300,
+                          ),
                       itemBuilder: (context, index) {
                         return _buildOrderItem(index);
                       },
@@ -1230,7 +1233,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               Container(
                 decoration: BoxDecoration(
                   borderRadius:
-                  BorderRadius.circular(ResponsiveLayout.getRadius(10)),
+                  BorderRadius.circular(ResponsiveLayout.getRadius(6)),
                   color: themeHelper.themeMode == ThemeMode.dark
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
@@ -1294,9 +1297,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 TextConstants.taxText,
                                 '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
                             if(merchantDiscount>0)
-                            _buildOrderCalculation(
-                                TextConstants.merchantDiscount,
-                                '-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}'),
+                              _buildOrderCalculation(
+                                  TextConstants.merchantDiscount,
+                                  '-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}'),
 
                             if (cashbackFee > 0)
                               _buildOrderCalculation(
@@ -1355,6 +1358,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               GestureDetector(
                 onTap: _toggleSummary,
                 child: Container(
+                  height: 32,
                   margin: EdgeInsets.only(
                     top: _showFullSummary
                         ? ResponsiveLayout.getPadding(0)
@@ -1365,14 +1369,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.only(
-                      bottomRight: Radius.circular(ResponsiveLayout.getRadius(10)),
-                      bottomLeft: Radius.circular(ResponsiveLayout.getRadius(10)),
+                      bottomRight: Radius.circular(ResponsiveLayout.getRadius(6)),
+                      bottomLeft: Radius.circular(ResponsiveLayout.getRadius(6)),
                       topLeft: _showFullSummary
                           ? Radius.zero
-                          : Radius.circular(ResponsiveLayout.getRadius(10)),
+                          : Radius.circular(ResponsiveLayout.getRadius(6)),
                       topRight: _showFullSummary
                           ? Radius.zero
-                          : Radius.circular(ResponsiveLayout.getRadius(10)),
+                          : Radius.circular(ResponsiveLayout.getRadius(6)),
                     ),
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? Color(0xFF32343E)
@@ -1392,7 +1396,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                   padding: EdgeInsets.symmetric(
                     horizontal: ResponsiveLayout.getPadding(18),
-                    vertical: ResponsiveLayout.getPadding(14),
+                    vertical: ResponsiveLayout.getPadding(0),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1961,15 +1965,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return Container(
       // Remove the fixed height constraint to let it match the left container
       margin: EdgeInsets.only(
-        bottom: ResponsiveLayout.getPadding(20),
-        right: ResponsiveLayout.getPadding(20),
-        top: ResponsiveLayout.getPadding(20),
+        bottom: ResponsiveLayout.getPadding(10),
+        right: ResponsiveLayout.getPadding(10),
+        top: ResponsiveLayout.getPadding(10),
       ),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(10)),
         color: themeHelper.themeMode == ThemeMode.dark
             ? ThemeNotifier.primaryBackground
-            : Colors.grey[100],
+            :  Color(0xFFE4E4E4),
       ),
       child: Padding(
         padding: EdgeInsets.only(
@@ -2367,14 +2371,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: [
+                  SizedBox(height: ResponsiveLayout.getHeight(3)),
                   Text(
                     TextConstants.selectPaymentMode,
                     style: TextStyle(
-                      fontSize: ResponsiveLayout.getFontSize(16),
+                      fontSize: ResponsiveLayout.getFontSize(14),
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  SizedBox(height: ResponsiveLayout.getHeight(1)),
+                  SizedBox(height: ResponsiveLayout.getHeight(3)),
 
                   // Payment mode buttons - make flexible
                   Expanded(
@@ -2881,12 +2886,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
 
       // SUCCESS SNACKBAR
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Coupon applied successfully"),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   const SnackBar(
+      //     content: Text("Coupon applied successfully"),
+      //     backgroundColor: Colors.green,
+      //   ),
+      // );
     } catch (e) {
       print("❌ ERROR applying coupon: $e");
 
@@ -3073,7 +3078,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       width: ResponsiveLayout.getWidth(168),
       height: ResponsiveLayout.getHeight(64),
       padding: ResponsiveLayout.getResponsivePadding(vertical: 10),
-      margin: EdgeInsets.symmetric(vertical: 0.5),
+      margin: EdgeInsets.symmetric(vertical: 2),
       decoration: BoxDecoration(
           color: isSelected
               ? Colors.red.shade100
@@ -3142,7 +3147,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         width: 168,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ?  Colors.orange : Colors.grey.shade200,
+          color: isActive ?  Colors.blue.shade900
+              : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(6),
         ),
         child: Row(

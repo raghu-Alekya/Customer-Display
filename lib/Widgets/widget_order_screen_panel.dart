@@ -921,7 +921,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             ? Colors.white
                             : Colors.black,),
                         Text(displayDate,  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.secondaryHeaderColor)),
-                        const SizedBox(width: 114),
+                        const SizedBox(width: 180),
                         SvgPicture.asset('assets/svg/clock.svg',width: 22,height: 22,color: Theme.of(context).brightness == Brightness.dark
                             ? Colors.white
                             : Colors.black,),
@@ -1709,7 +1709,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                           Text(TextConstants.cashbackFee),
                                           Text(
                                             "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
-                                            style: const TextStyle(color: Colors.green, fontSize: 14),
+                                            style: const TextStyle(color: Colors.grey, fontSize: 14),
                                           ),
                                         ],
                                       ),
@@ -1722,7 +1722,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                         Text(TextConstants.servicecharges),
                                         Text(
                                           "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}",
-                                          style: const TextStyle(color: Colors.green, fontSize: 14),
+                                          style: const TextStyle(color: Colors.grey, fontSize: 14),
                                         ),
                                       ],
                                     ),
