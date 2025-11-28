@@ -98,6 +98,15 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
   double hiveRedeemedValue = 0.0;
   int hiveRedeemedPoints = 0;
   int hiveAvailablePoints = 0;
+  double uiGrossTotal = 0.0;
+  double uiOrderDiscount = 0.0;
+  double uiMerchantDiscount = 0.0;
+  double uiOrderTax = 0.0;
+  double uiNetPayable = 0.0;
+  double uiCashbackFee = 0.0;
+  int uiTotalItems = 0;
+  double uiRedeemedValue = 0.0;
+
 
 
   String orderStatus = TextConstants.processing;
@@ -690,7 +699,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       }
     }
   }
-
   Widget buildCurrentOrder() {
     final theme = Theme.of(context);
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -712,10 +720,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         displayDate = order[AppDBConst.orderDate].toString().split(' ').first;
       }
     }
+
     double orderDiscount =
         (order[AppDBConst.orderDiscount] as num?)?.toDouble() ?? 0.0;
     double merchantDiscount = 0.0;
 
+    // MERCHANT DISCOUNT FROM ITEMS
     for (var item in orderItems) {
       if (item['item_name'] != null &&
           item['item_name'].toString().toLowerCase() == "discount") {
@@ -728,35 +738,56 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       }
     }
 
+    double grossTotal = 0.0;
 
-    num grossTotal = GlobalUtility.getGrossTotal(orderItems);
+    for (var item in orderItems) {
+      final qty = int.tryParse(
+          item["items_count"]?.toString() ??
+              item["itemCount"]?.toString() ??
+              "1"
+      ) ?? 1;
+
+      // Priority: item_sum_price → amount → item_price → price
+      double unitPrice =
+          double.tryParse(item["item_sum_price"]?.toString() ?? "") ??
+              double.tryParse(item["amount"]?.toString() ?? "") ??
+              double.tryParse(item["item_price"]?.toString() ?? "") ??
+              double.tryParse(item["price"]?.toString() ?? "") ??
+              0.0;
+
+      grossTotal += unitPrice;
+    }
+
+
+    print("### Gross Total Calculated: $grossTotal");
+
     double wooTax = (order['wooTax'] as num?)?.toDouble() ?? 0.0;
     double wooTotal = (order['wooTotal'] as num?)?.toDouble() ?? 0.0;
-    double sqliteTax =
-        (order[AppDBConst.orderTax] as num?)?.toDouble() ?? 0.0;
+
+    double sqliteTax = (order[AppDBConst.orderTax] as num?)?.toDouble() ?? 0.0;
     double sqliteTotal =
         (order[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0;
+
+    // TAX: Woo overrides SQLite
     double orderTax = wooTax > 0 ? wooTax : sqliteTax;
+
     double cashbackFee = 0.0;
-
-
 
     final wooOrderId =
         order['wooOrderId']?.toString() ?? widget.activeOrderId?.toString() ?? "";
-    // 3️⃣ Read Redeem Points from Hive
+
+    // Load Hive Redeem Data
     if (wooOrderId.isNotEmpty) {
       final box = Hive.box('offlineOrders');
       final cached = box.get(wooOrderId);
 
       if (cached != null) {
         if (cached["redeemed_value"] != null) {
-          hiveRedeemedValue =
-              (cached["redeemed_value"] as num).toDouble();
+          hiveRedeemedValue = (cached["redeemed_value"] as num).toDouble();
         }
 
         if (cached["redeemed_points"] != null) {
-          hiveRedeemedPoints =
-              (cached["redeemed_points"] as num).toInt();
+          hiveRedeemedPoints = (cached["redeemed_points"] as num).toInt();
         }
 
         if (cached["available_points_after_redeem"] != null) {
@@ -764,8 +795,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
               (cached["available_points_after_redeem"] as num).toInt();
         }
 
-        print(
-            "💠 Hive Redeem Loaded → Value: $hiveRedeemedValue | Points: $hiveRedeemedPoints | Left: $hiveAvailablePoints");
+        print("💠 Hive Redeem Loaded → Value: $hiveRedeemedValue | Points: $hiveRedeemedPoints | Left: $hiveAvailablePoints");
       } else {
         print("⚠️ No redeem data in Hive for WooID = $wooOrderId");
       }
@@ -777,18 +807,27 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       final name = item[AppDBConst.itemName]?.toString().toLowerCase() ?? "";
       final type = item[AppDBConst.itemType]?.toString().toLowerCase() ?? "";
 
+// FILTER OUT ALL DISCOUNT/PAYOUT/COUPON ITEMS
       if (name.contains("discount") ||
           type.contains("discount") ||
+          name.contains("merchant discount") ||
+          type.contains("merchant discount") ||
           type.contains("payout") ||
           type.contains("coupon") ||
-          name.contains("cashback") ||
-          type.contains("cashback")) {
-        continue; // skip these
+          type.contains("cashback") ||
+          name.contains("payout") ||
+          name.contains("coupon") ||
+          name.contains("cashback")) {
+        continue;
       }
-      final qty = (item[AppDBConst.itemCount] as num?)?.toInt() ?? 1;
 
+
+      final qty = (item[AppDBConst.itemCount] as num?)?.toInt() ?? 1;
       totalItems += qty;
     }
+
+
+    // Load Cashback Fee from Hive (online)
     if (wooOrderId.isNotEmpty) {
       final box = Hive.box('offlineOrders');
       final cached = box.get(wooOrderId);
@@ -796,36 +835,45 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       if (cached != null && cached["cashback_fee"] != null) {
         cashbackFee = (cached["cashback_fee"] as num).toDouble();
         print("💰 Cashback Fee loaded from Hive for WooID $wooOrderId → $cashbackFee");
-      } else {
-        print("⚠️ No cashback fee found in Hive for WooID = $wooOrderId");
       }
     }
 
-    num netTotal = grossTotal - orderDiscount - merchantDiscount;
+    // ----------- ONLINE TOTAL COMPUTATION -----------
+    // NET TOTAL (no tax)
+    num netTotal = grossTotal - orderDiscount;
     if (netTotal < 0) netTotal = 0;
-    double localNetPayable = netTotal.toDouble() + orderTax;
-    double netPayable = wooTotal > 0 ? wooTotal : localNetPayable;
+
+    // NET PAYABLE WITH TAX + CASHBACK
+    double computedNetPayable =
+        grossTotal + orderTax - orderDiscount - merchantDiscount + cashbackFee;
+
+    if (computedNetPayable < 0) computedNetPayable = 0;
+
+    // Woo total overrides only if > 0
+    double netPayable =
+    wooTotal > 0 ? wooTotal : computedNetPayable;
+    uiGrossTotal = grossTotal;
+    uiOrderDiscount = orderDiscount;
+    uiMerchantDiscount = merchantDiscount;
+    uiOrderTax = orderTax;
+    uiNetPayable = netPayable;
+    uiCashbackFee = cashbackFee;
+    uiTotalItems = totalItems;
+    uiRedeemedValue = hiveRedeemedValue;
 
 
-
-    if (netPayable < 0) netPayable = 0;
-    // 🔥 OFFLINE ORDER OVERRIDE
+    // ---------- DO NOT TOUCH OFFLINE OVERRIDE ----------
     if (order["offline"] == true) {
       grossTotal =
           (order[AppDBConst.orderTotal] as num?)?.toDouble() ?? grossTotal;
-
       orderDiscount =
           (order[AppDBConst.orderDiscount] as num?)?.toDouble() ?? orderDiscount;
-
       merchantDiscount =
           (order["merchantDiscount"] as num?)?.toDouble() ?? merchantDiscount;
-
       orderTax =
           (order[AppDBConst.orderTax] as num?)?.toDouble() ?? orderTax;
-
       netTotal =
           (order["netTotal"] as num?)?.toDouble() ?? netTotal;
-
       netPayable =
           (order["payable"] as num?)?.toDouble() ?? netPayable;
 
@@ -839,6 +887,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       print("netPayable       = $netPayable");
     }
 
+    // ---------- SUMMARY LOGS ----------
     print("🟦 Summary Data:");
     print("Gross Total         → $grossTotal");
     print("SQLite Discount     → $orderDiscount");
@@ -849,8 +898,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     print("SQLite Total        → $sqliteTotal");
     print("Final TAX Used      → $orderTax");
     print("Net Local Total     → $netTotal");
-    print("Local Payable       → $localNetPayable");
     print("Final Payable       → $netPayable");
+
 
     return Stack(
       children: [
@@ -991,9 +1040,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                         final isCoupon =
                         itemType.contains(TextConstants.couponText);
                         final isCashback =
-                            itemType.contains('cashback') ||
-                                (orderItem[AppDBConst.itemName]?.toString().toLowerCase() == 'cashback');
-
+                        itemType.contains(TextConstants.cashback);
                         final isCustomItem =
                         itemType.contains(TextConstants.customItemText);
                         final isPayoutOrCouponOrCustomItem =
@@ -2126,10 +2173,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         var orderId = _order[AppDBConst.orderServerId] as int? ?? 0;
         var orderDateTime = "${_order[AppDBConst.orderDate]} ${_order[AppDBConst.orderTime]}" ;
         balanceAmount = (_order[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0; // Fetch total
-        discount = (_order[AppDBConst.orderDiscount] as num?)?.toDouble() ?? 0.0; // Fetch discount
-        merchantDiscount = (_order[AppDBConst.merchantDiscount] as num?)?.toDouble() ?? 0.0;
-        tax = (_order[AppDBConst.orderTax] as num?)?.toDouble() ?? 0.0;
-        var balanceAmt = total - discount - merchantDiscount + tax;
+        final discount = uiOrderDiscount;
+        final merchantDiscount = uiMerchantDiscount;
+        final tax = uiOrderTax;
+        final cashbackFee = uiCashbackFee;
+        var balanceAmt = total - discount - merchantDiscount + tax -cashbackFee;
         if (kDebugMode) {
           print("Fetched orderServerId: $orderId, Discount: $discount for activeOrderId: ${widget.activeOrderId}, Time: $orderDateTime");
           print("Balance amount calculated is $balanceAmt and balance from API is $balanceAmount");
@@ -2143,61 +2191,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
     bytes = [];
     final ticket =  await _printerSettings.getTicket();
-
-    ///Header
-    ///   Pinaka Logo
-    ///Tax Summary
-    ///   Item
-    ///   tax breakdown
-    ///   gross total
-    ///Footer
-    ///   Thank You, Visit Again
-
-    //Pinaka Logo
-    final ByteData data;
-    if(logo != "") {
-      data = await GlobalUtility.fileToByteData(File(logo)) ?? await rootBundle.load('assets/iBubbas_logo.png');
-    } else {
-      data = await rootBundle.load('assets/Bubbas_logo.png');
-    }
-    if (kDebugMode) {
-      print("OrderSummaryScreen _preparePrintTicket data.lengthInBytes : ${data.lengthInBytes}");
-    }
-    if (data.lengthInBytes > 0) {
-      final Uint8List imageBytes = data.buffer.asUint8List();
-      // decode the bytes into an image
-      final decodedImage = img.decodeImage(imageBytes)!;
-      // Create a black bottom layer
-      // Resize the image to a 130x? thumbnail (maintaining the aspect ratio).
-      img.Image thumbnail = img.copyResize(decodedImage, height: 280);
-      // creates a copy of the original image with set dimensions
-      img.Image originalImg = img.copyResize(decodedImage, width: 470, height: 280);
-      // fills the original image with a white background
-      img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
-      var padding = (originalImg.width - thumbnail.width) / 2;
-
-      //insert the image inside the frame and center it
-      drawImage(originalImg, thumbnail, dstX: padding.toInt());
-
-      // convert image to grayscale
-      var grayscaleImage = img.grayscale(originalImg);
-      // bytes += generator.imageRaster(img.decodeImage(imageBytes)!, align: PosAlign.center);
-      //bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
-    }
-
-    //Header
-    ///New changes in Header on 2-Sep-2025
-    ///Date and Time
-    ///Store Id
-    ///Address
-    //         "Store name": "Kumar Swa D", => < increase font to 5 and bold >
-    //         "address": "Q No: D 1847, Shirkey Colony",=>  first line will be <address>
-    //         "city": "Mancherial", => second line will be <city>,<state>-<zip_code>
-    //         "state": "Telangana",
-    //         "country": "", => no need to show
-    //         "zip_code": "504302",
-    //         "phone_number": false => third line will be <phone_number>
-
 
     var dateToPrint = "";
     var timeToPrint = "";
@@ -2230,6 +2223,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     var cashierName = "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
     var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
 
+    final grossTotal = uiGrossTotal;
+    final discount = uiOrderDiscount;
+    final merchantDiscount = uiMerchantDiscount;
+    final tax = uiOrderTax;
+    final cashbackFee = uiCashbackFee;
+    final hiveRedeemedValue = uiRedeemedValue;
+
+
     if (kDebugMode) {
       print(" >>>>> PrintOrder  dateToPrint $dateToPrint ");
       print(" >>>>> PrintOrder  timeToPrint $timeToPrint ");
@@ -2242,6 +2243,54 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       print(" >>>>> PrintOrder  cashierName $cashierName ");
       print(" >>>>> PrintOrder  cashierRole $cashierRole ");
     }
+
+    if (kDebugMode) {
+      print("=============== 🧾 PRINT TICKET DEBUG INFO ===============");
+
+      print("HEADER TEXT        : $header");
+      print("FOOTER TEXT        : $footer");
+      print("LOGO PATH          : $logo");
+
+      print("\n------------------- ORDER DETAILS ------------------------");
+      print("Order Server ID    : ${_order[AppDBConst.orderServerId]}");
+      print("Order Local ID     : ${widget.activeOrderId}");
+      print("Order Date         : ${_order[AppDBConst.orderDate]}");
+      print("Order Time         : ${_order[AppDBConst.orderTime]}");
+
+      print("Parsed Date        : $dateToPrint");
+      print("Parsed Time        : $timeToPrint");
+
+      print("\n------------------- STORE DETAILS ------------------------");
+      print("Store ID           : $storeId");
+      print("Store Name         : $storeName");
+      print("Address            : $address");
+      print("City/State/Zip     : $cityStateZip");
+      print("Store Phone        : $storePhone");
+
+      print("\n------------------- CASHIER DETAILS ----------------------");
+      print("Cashier Name       : $cashierName");
+      print("Cashier Role       : $cashierRole");
+
+      print("\n------------------- ORDER AMOUNTS ------------------------");
+      print("Gross Total        : ${grossTotal.toStringAsFixed(2)}");
+      print("Discount           : ${discount.toStringAsFixed(2)}");
+      print("Merchant Discount  : ${merchantDiscount.toStringAsFixed(2)}");
+      print("Tax                : ${tax.toStringAsFixed(2)}");
+      print("Cashback Fee       : ${cashbackFee.toStringAsFixed(2)}");
+      print("Service Charges    : ${servicecharges.toStringAsFixed(2)}");
+
+      print("Balance (NetPay)   : ${balanceAmount.toStringAsFixed(2)}");
+
+      print("\n------------------- PAYMENT DETAILS ----------------------");
+      print("Redeemed Points    : ${hiveRedeemedValue.toStringAsFixed(2)}");
+      print("Pay By Cash        : ${payByCash.toStringAsFixed(2)}");
+      print("Pay By Other       : ${payByOther.toStringAsFixed(2)}");
+      print("Tender Amount      : ${tenderAmount.toStringAsFixed(2)}");
+      print("Change Amount      : ${changeAmount.toStringAsFixed(2)}");
+
+      print("=============== END DEBUG PRINT ==========================\n\n");
+    }
+
 
     if(header != "") {
       bytes += ticket.row([
@@ -2380,8 +2429,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       bytes += ticket.emptyLines(1);///check if we can add spaces after product line to look spacious
     }
 
-    final grossTotal = GlobalUtility.getGrossTotal(orderItems);
-
     //bytes += ticket.feed(1);
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
@@ -2399,13 +2446,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
     }
 
-
-    //Breakdown
-    //         balanceAmount = total - discount - merchantDiscount + tax;
-    //         tenderAmount = 0.0; // Reset for new order
-    //         changeAmount = 0.0; // Reset for new order
-    //         paidAmount = 0.0; // Reset for new order
-
     bytes += ticket.row([
       PosColumn(text: TextConstants.grossTotal, width: 10),
       PosColumn(text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
@@ -2415,23 +2455,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       PosColumn(text: TextConstants.discountText, width: 10), // Build #1.0.148: deleted duplicate discount string from constants , already we have discountText using !
       PosColumn(text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    // bytes += ticket.feed(1);
-    // bytes += ticket.row([
-    //   PosColumn(text: TextConstants.merchantDiscount, width: 10),
-    //   PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
-    // ]);
-    // bytes += ticket.feed(1);
-    // bytes += ticket.row([
-    //   PosColumn(text: TextConstants.taxText, width: 10),
-    //   PosColumn(text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
-    // ]);
-    // bytes += ticket.row([
-    //   PosColumn(text: TextConstants.merchantDiscount, width: 10),
-    //   PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
-    // ]);
-
-    // bytes += ticket.feed(1);
-    //line
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
@@ -2443,24 +2466,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       PosColumn(text: TextConstants.merchantDiscount, width: 10),
       PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    // bytes += ticket.row([
-    //   PosColumn(text: TextConstants.cashback, width: 10),
-    //   PosColumn(
-    //     text: "-${TextConstants.currencySymbol}${cashback.toStringAsFixed(2)}",
-    //     width: 2,
-    //     styles: PosStyles(align: PosAlign.right),
-    //   ),
-    // ]);
-    // bytes += ticket.row([
-    //   PosColumn(text: TextConstants.servicecharges, width: 10),
-    //   PosColumn(
-    //     text: "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}",
-    //     width: 2,
-    //     styles: PosStyles(align: PosAlign.right),
-    //   ),
-    // ]);
-    //
 
+    bytes += ticket.row([
+      PosColumn(text: TextConstants.cashbackFee, width: 10),
+      PosColumn(text: "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+    ]);
+
+    bytes += ticket.row([
+      PosColumn(text: TextConstants.servicecharges, width: 10),
+      PosColumn(text: "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+    ]);
 
 
     bytes += ticket.row([
@@ -2473,6 +2488,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       PosColumn(text: TextConstants.netPayable, width: 10),
       PosColumn(text: "${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
     ]);
+
+    bytes += ticket.row([
+      PosColumn(text: TextConstants.redeemPoints, width: 10),
+      PosColumn(text: "${TextConstants.currencySymbol}${hiveRedeemedValue.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+    ]);
+
+
     ///Todo: get pay by cash amount
     // bytes += ticket.feed(1);
     bytes += ticket.row([
