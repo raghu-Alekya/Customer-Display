@@ -26,6 +26,7 @@ void main() async {
   await Hive.openBox('fastKeysBox');
   await Hive.openBox('deletedOrders');
   await Hive.openBox('cashbackConfig');
+  await Hive.openBox('user');
 
   // 1️⃣ First → initialize base URL
   await UrlHelper.initializeBaseUrl();
@@ -38,7 +39,7 @@ void main() async {
   final token = userData?[AppDBConst.userToken];
 
   if (token != null && token.toString().isNotEmpty) {
-    await CashbackHelper.loadCashbackOnStartup(token);
+    await CashbackHelper.loadCashbackOnStartup();
   } else {
     print("⚠ No user token found — skipping cashback API");
   }

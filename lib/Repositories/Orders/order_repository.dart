@@ -224,7 +224,15 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
         final double lineTotal = price * qty;
 
-        final dynamic pidRaw = item['product_id'];
+        final dynamic pidRaw =
+            item['product_id'] ??
+                item['id'] ??
+                item['productId'] ??
+                item['productID'] ??
+                item['product-id'] ??
+                item['meta']?['product_id'] ??
+                item['data']?['id'];
+
         final int? pid =
         pidRaw == null ? null : int.tryParse(pidRaw.toString());
 
@@ -287,13 +295,24 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       // ---------------------------------------------------------
       // ⭐ HANDLE CASHBACK
       // ---------------------------------------------------------
+      // ---------------------------------------------------------
+// ⭐ HANDLE CASHBACK
+// ---------------------------------------------------------
       final cashbacks = (offlineOrder['cashbacks'] ?? []) as List? ?? [];
       for (final c in cashbacks) {
         final double amount =
             double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
 
-        final int? productId =
-        int.tryParse(c['cashback_product_id']?.toString() ?? "");
+        // Try multiple key names to be safe
+        final dynamic cashbackPidRaw =
+            c['cashback_product_id'] ??
+                c['product_id'] ??
+                c['id'] ??
+                c['cashbackProductId'];
+
+        final int? productId = cashbackPidRaw == null
+            ? null
+            : int.tryParse(cashbackPidRaw.toString());
 
         if (productId != null && productId > 0) {
           lineItems.add({
@@ -303,14 +322,17 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             "subtotal": amount.toStringAsFixed(2),
             "total": amount.toStringAsFixed(2),
           });
+          debugPrint("🟢 Added Cashback as product line → $productId");
         } else {
           feeLines.add({
             "name": c["product_name"] ?? "Cashback",
             "tax_status": "none",
             "total": amount.toStringAsFixed(2),
           });
+          debugPrint("🟡 Cashback product_id missing → sending as fee line");
         }
       }
+
       // ---------------------------------------------------------
 // ⭐ HANDLE MERCHANT DISCOUNT (AS LINE ITEM)
 // ---------------------------------------------------------

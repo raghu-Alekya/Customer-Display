@@ -3,306 +3,425 @@
     android:id="@+id/customer_display_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5"
-    android:orientation="horizontal"
-    android:padding="12dp">
+    android:orientation="vertical"
+    android:background="#E9EEF6"
+    android:padding="8dp">
 
-    <!-- Left Panel: Slideshow -->
-    <FrameLayout
-        android:id="@+id/left_slideshow_panel"
-        android:layout_width="0dp"
-        android:layout_height="match_parent"
-        android:layout_weight="2"
-        android:background="#3D506E">
+    <!-- ========================================================= -->
+    <!-- TOP HEADER BAR -->
+    <!-- ========================================================= -->
+    <LinearLayout
+        android:id="@+id/header_container"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:background="#1F3A68"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp">
+
+        <!-- LEFT: LOGO (INCREASED SIZE) -->
+
+        <!-- CENTER: STORE NAME -->
 
         <ImageView
-            android:id="@+id/slideshow_image"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:scaleType="centerCrop"
-            android:contentDescription="Slideshow" />
-    </FrameLayout>
+            android:id="@+id/store_logo"
+            android:layout_width="143dp"
+            android:layout_height="120dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/pinaka_logo" />
 
-    <!-- Right Panel: Header + Date/Time + Items + Summary -->
-    <LinearLayout
-        android:id="@+id/right_panel"
-        android:layout_width="0dp"
-        android:layout_height="match_parent"
-        android:layout_weight="2"
-        android:orientation="vertical"
-        android:padding="8dp">
-
-        <!-- Header Row -->
-        <LinearLayout
-            android:id="@+id/header_container"
-            android:layout_width="match_parent"
+        <TextView
+            android:id="@+id/store_info_text"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:background="#3D506E"
-            android:gravity="center_vertical"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="BUBBA STORE"
+            android:textColor="#FFFFFF"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <!-- DATE + SEPARATOR -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:padding="8dp">
+            android:gravity="center_vertical">
 
-            <!-- Store Logo -->
+            <!-- CALENDAR ICON -->
             <ImageView
-                android:id="@+id/store_logo"
-                android:layout_width="55dp"
-                android:layout_height="50dp"
-                android:adjustViewBounds="true"
-                android:contentDescription="Store Logo"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:scaleType="fitCenter"
-                android:src="@drawable/pinaka_logo" />
+                android:tint="@null" />
 
-            <!-- Store Name -->
-            <TextView
-                android:id="@+id/store_info_text"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:text="PINAKA"
-                android:textColor="#FFFFFF"
-                android:textSize="20sp"
-                android:textStyle="bold" />
 
-            <!-- Order ID -->
+
+            <!-- DATE TEXT (BIGGER FONT) -->
             <TextView
-                android:id="@+id/customer_order_id"
+                android:id="@+id/payment_date"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Order ID #--"
+                android:paddingStart="6dp"
+                android:text="18 November, 2025"
                 android:textColor="#FFFFFF"
                 android:textSize="16sp"
                 android:textStyle="bold" />
+
+            <!-- SMALLER GAP + VERTICAL LINE -->
+            <View
+                android:layout_width="2dp"
+                android:layout_height="18dp"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="10dp"
+                android:background="#FFFFFF"
+                android:paddingStart="60dp" />
         </LinearLayout>
-        <!-- Date + Time Row -->
+
+        <!-- TIME SECTION (LESS SPACE, BIGGER FONT) -->
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="@drawable/card_bg"
-            android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:padding="4dp"
-            android:layout_marginTop="0dp"
-            android:layout_marginBottom="0dp">
-
-            <ImageView
-                android:layout_width="20dp"
-                android:layout_height="20dp"
-                android:src="@android:drawable/ic_menu_my_calendar"
-                android:tint="#616161" />
-
-            <TextView
-                android:id="@+id/payment_date"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:paddingStart="4dp"
-                android:text="16 March 2025"
-                android:textColor="#212121"
-                android:textSize="14sp" />
-
-            <ImageView
-                android:layout_width="20dp"
-                android:layout_height="20dp"
-                android:src="@android:drawable/ic_menu_recent_history"
-                android:tint="#616161" />
+            android:orientation="horizontal">
 
             <TextView
                 android:id="@+id/payment_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:paddingStart="3dp"
-                android:text="11.41 A.M"
-                android:textColor="#212121"
-                android:textSize="14sp" />
+                android:text="12:00 PM"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
-        <ScrollView
-            android:id="@+id/items_scroll"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:fillViewport="true"
-            android:scrollbars="none"
-            android:layout_marginTop="0dp"
-            android:layout_marginBottom="0dp"
-            android:padding="0dp"
-            android:clipToPadding="false"
-            android:background="#E8E8E8">
+    </LinearLayout>
 
-            <LinearLayout
-                android:id="@+id/customer_items_container"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="0dp"
-                android:divider="@null"
-                android:showDividers="none" />
-        </ScrollView>
+    <!-- ========================================================= -->
+    <!-- MAIN CONTENT (LEFT) + SLIDESHOW (RIGHT) -->
+    <!-- ========================================================= -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal"
+        android:layout_marginTop="10dp">   <!-- GAP ADDED -->
+
+
+        <!-- ================= RIGHT PANEL (ITEMS + SUMMARY) ================= -->
+
         <LinearLayout
-            android:id="@+id/summary_container"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/card_bg"
+            android:id="@+id/right_panel"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="2"
             android:orientation="vertical"
-            android:padding="8dp">
-
-            <!-- Gross Total -->
+            android:layout_marginEnd="10dp"
+            android:padding="0dp">
+            <!-- ================= CUSTOMER INFO (ADDED HERE) ================= -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="6dp">
+                android:background="#FFFFFF"
+                android:padding="12dp"
+                android:orientation="vertical"
+                android:elevation="2dp"
+                android:layout_marginBottom="10dp">
 
-                <TextView
-                    android:id="@+id/label_gross_total"
-                    android:layout_width="0dp"
+                <!-- FIRST ROW: Mobile Number (left) + Order ID (right) -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Gross Total"
-                    android:textColor="#212121"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+                    android:orientation="horizontal"
+                    android:layout_marginTop="8dp">
 
-                <TextView
-                    android:id="@+id/value_gross_total"
-                    android:layout_width="wrap_content"
+                    <!-- Email Section (Label + Value) -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_weight="1">
+
+                        <TextView
+                            android:id="@+id/email_label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Customer-Info:"
+                            android:textColor="#003A82"
+                            android:textSize="20sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/email_value"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:text="- "
+                            android:textColor="#353535"
+                            android:textSize="20sp" />
+                    </LinearLayout>
+
+                    <!-- Order ID (Right Side) -->
+                    <TextView
+                        android:id="@+id/order_id_label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Order ID:"
+                        android:textColor="#E20000"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/customer_order_id"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:text=" -"
+                        android:textColor="#353535"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- SECOND ROW: Email -->
+
+
+            </LinearLayout>
+            <!-- =============================================================== -->
+
+
+
+            <!-- SCROLLING ITEMS LIST -->
+            <ScrollView
+                android:id="@+id/items_scroll"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:fillViewport="true"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/customer_items_container"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="$0.00"
-                    android:textColor="#212121"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+                    android:orientation="vertical" />
+            </ScrollView>
+            <!-- ================= EMPTY STATE BOX ================= -->
+            <LinearLayout
+                android:id="@+id/empty_state_box"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="20dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:padding="24dp"
+                    android:background="@drawable/empty_box_bg">
+
+                    <ImageView
+                        android:layout_width="140dp"
+                        android:layout_height="140dp"
+                        android:src="@drawable/empty_cart"
+                        android:layout_marginBottom="16dp"
+                        android:scaleType="centerInside" />
+
+                    <TextView
+                        android:id="@+id/empty_message"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="No items in the Order panel"
+                        android:textSize="22sp"
+                        android:textColor="#000000"
+                        android:gravity="center" />
+
+                </LinearLayout>
+
             </LinearLayout>
 
-            <!-- Discount -->
+
+            <!-- ================= SUMMARY PANEL ================= -->
             <LinearLayout
+                android:id="@+id/summary_container"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                android:background="@drawable/card_bg"
+                android:orientation="vertical"
+                android:padding="8dp">
 
-                <TextView
-                    android:id="@+id/label_discount"
-                    android:layout_width="0dp"
+                <!-- Gross Total -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Discount"
-                    android:textColor="#388E3C"
-                    android:textSize="14sp" />
+                    android:orientation="horizontal">
 
-                <TextView
-                    android:id="@+id/value_discount"
-                    android:layout_width="wrap_content"
+                    <TextView
+                        android:id="@+id/label_gross_total"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Gross Total"
+                        android:textColor="#212121"
+                        android:textSize="24sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/value_gross_total"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="$0.00"
+                        android:textColor="#212121"
+                        android:textSize="24sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Discount -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="-$0.00"
-                    android:textColor="#388E3C"
-                    android:textSize="14sp" />
-            </LinearLayout>
+                    android:orientation="horizontal">
 
-            <!-- Merchant Discount -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="3dp">
+                    <TextView
+                        android:id="@+id/label_discount"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Discount"
+                        android:textColor="#388E3C"
+                        android:textSize="20sp" />
 
-                <TextView
+                    <TextView
+                        android:id="@+id/value_discount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="-$0.00"
+                        android:textColor="#388E3C"
+                        android:textSize="20sp" />
+                </LinearLayout>
+                <!-- Merchant Discount -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="3dp"> <TextView
                     android:id="@+id/label_merchant_discount"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="Merchant Discount"
                     android:textColor="#1976D2"
-                    android:textSize="14sp" />
-
-                <TextView
-                    android:id="@+id/value_merchant_discount"
-                    android:layout_width="wrap_content"
+                    android:textSize="20sp" />
+                    <TextView
+                        android:id="@+id/value_merchant_discount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="-$0.00"
+                        android:textColor="#1976D2"
+                        android:textSize="20sp" />
+                </LinearLayout>
+                <!-- Net Total -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="-$0.00"
-                    android:textColor="#1976D2"
-                    android:textSize="14sp" />
-            </LinearLayout>
-
-            <!-- Net Total -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="3dp">
-
-                <TextView
+                    android:orientation="horizontal"
+                    android:layout_marginTop="3dp"> <TextView
                     android:id="@+id/label_net_total"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="Net Total"
                     android:textColor="#212121"
-                    android:textSize="16sp"
+                    android:textSize="22sp"
                     android:textStyle="bold" />
 
-                <TextView
-                    android:id="@+id/value_net_total"
-                    android:layout_width="wrap_content"
+                    <TextView
+                        android:id="@+id/value_net_total"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="$0.00"
+                        android:textColor="#212121"
+                        android:textSize="22sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+                <!-- Tax -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="$0.00"
-                    android:textColor="#212121"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <!-- Tax -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="3dp">
-
-                <TextView
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="3dp"> <TextView
                     android:id="@+id/label_tax"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="Tax"
                     android:textColor="#212121"
-                    android:textSize="14sp" />
-
-                <TextView
+                    android:textSize="18sp" /> <TextView
                     android:id="@+id/value_tax"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="$0.00"
                     android:textColor="#212121"
-                    android:textSize="14sp" />
+                    android:textSize="18sp" />
+                </LinearLayout>
+
+                <!-- Total Items & Net Payable -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="#FFEBEE"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:padding="6dp">
+
+                    <TextView
+                        android:id="@+id/label_total_items"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Total Items : 0"
+                        android:textColor="#212121"
+                        android:textSize="26sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/value_net_payable"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Total : $0.00"
+                        android:textColor="#000000"
+                        android:textSize="26sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
             </LinearLayout>
 
-            <!-- Bottom Highlight: Total Items & Net Payable -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="#FFEBEE"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:padding="6dp">
-
-                <TextView
-                    android:id="@+id/label_total_items"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Total Items : 0"
-                    android:textColor="#212121"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/value_net_payable"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Total : $0.00"
-                    android:textColor="#D32F2F"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
         </LinearLayout>
+
+        <!-- ================= LEFT PANEL (SLIDESHOW) ================= -->
+        <!-- Left Panel: Slideshow -->
+        <!-- Left Panel: Slideshow -->
+        <FrameLayout
+            android:id="@+id/left_slideshow_panel"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="2"
+            android:background="#3D506E">
+
+            <ImageView
+                android:id="@+id/slideshow_image"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:contentDescription="Slideshow" />
+        </FrameLayout>
+
+
+
     </LinearLayout>
+
 </LinearLayout>

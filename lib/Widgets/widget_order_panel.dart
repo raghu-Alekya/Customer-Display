@@ -3175,11 +3175,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                     children: [
                                       Icon(Icons.wallet_giftcard,
                                           size: 14,
-                                          color: Colors.greenAccent),
+                                          color: Color(0XFF55CBCD)),
                                       Text(
                                         TextConstants.cashbackFee,
                                         style: TextStyle(
-                                          color: Colors.greenAccent,
+                                          color: Color(0XFF55CBCD),
                                           fontSize: 14,
                                         ),
                                       ),
@@ -3188,7 +3188,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   Text(
                                     "+${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
                                     style: TextStyle(
-                                      color: Colors.greenAccent,
+                                      color: Color(0XFF55CBCD),
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
                                     ),

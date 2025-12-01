@@ -22,6 +22,8 @@ import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import org.json.JSONArray
+import java.text.NumberFormat
+import java.util.Locale
 import kotlin.math.absoluteValue
 
 class MainActivity : FlutterActivity() {
@@ -467,11 +469,13 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        private fun formatCurrency(value: Double): String {
+        fun formatCurrency(value: Double): String {
+            val formatter = NumberFormat.getCurrencyInstance(Locale.US)
+
             return if (value < 0) {
-                "- $${"%.2f".format(value.absoluteValue)}"
+                "-" + formatter.format(kotlin.math.abs(value))
             } else {
-                "$${"%.2f".format(value)}"
+                formatter.format(value)
             }
         }
 
@@ -621,7 +625,7 @@ class MainActivity : FlutterActivity() {
             // -----------------------------------------------------
             // Items exist → Show list
             // -----------------------------------------------------
-            orderIdView.text = "Order #$orderId"
+            orderIdView.text = "#$orderId"
             itemsContainer.removeAllViews()
             var totalItemCount = 0
 

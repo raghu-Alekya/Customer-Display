@@ -51,9 +51,16 @@ class CashbackHelper {
   // ---------------------------------------------------------
   // FETCH API → SAVE CLEAN JSON INTO HIVE
   // ---------------------------------------------------------
-  static Future<Map<String, dynamic>?> fetchCashbackConfig(String token) async {
-    final box = Hive.box('cashbackConfig');
+  static Future<Map<String, dynamic>?> fetchCashbackConfig() async {
+    final userBox = Hive.box('user');
+    final token = userBox.get('token');
 
+    if (token == null || token.isEmpty) {
+      print("❌ No token found");
+      return getCashbackConfig();
+    }
+
+    final box = Hive.box('cashbackConfig');
     final url =
         "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.cashbackservices}";
 
@@ -67,30 +74,33 @@ class CashbackHelper {
       print("🌐 Cashback API Body   → ${response.body}");
 
       if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-
-        // convert entire JSON to Map<String,dynamic>
-        final safeJson = deepConvert(decoded);
-
+        final safeJson = deepConvert(jsonDecode(response.body));
         await box.put("config", safeJson);
-
-        print("🟩 Saved cashback config into Hive");
         return Map<String, dynamic>.from(safeJson);
       }
 
-      print("❌ API error: ${response.statusCode}");
       return getCashbackConfig();
-
     } catch (e) {
-      print("⚠ Offline → using cached config");
       return getCashbackConfig();
     }
   }
 
+
   // ---------------------------------------------------------
   // STARTUP LOADER
   // ---------------------------------------------------------
-  static Future<void> loadCashbackOnStartup(String token) async {
+  static Future<void> loadCashbackOnStartup() async {
+    // ⭐ Always read the fresh token from Hive
+    final userBox = Hive.box('user');
+    final token = userBox.get('token');
+
+    if (token == null || token.isEmpty) {
+      print("❌ No valid token found — skipping cashback API");
+      return;
+    }
+
+    print("🔐 Using token for Cashback Startup → $token");
+
     final box = Hive.box('cashbackConfig');
     final lastFetch = box.get("lastFetchTime");
     final cached = box.get("config");
@@ -99,22 +109,31 @@ class CashbackHelper {
     print("🕒 Cashback lastFetch = $lastFetch");
     print("📦 Cached config = $cached");
 
+    // --------------------------
+    // 1️⃣ No cached config → Fetch new
+    // --------------------------
     if (cached == null) {
-      print("🟡 No config → fetching new");
-      await fetchCashbackConfig(token);
+      print("🟡 No Cashback config found → fetching new...");
+      await fetchCashbackConfig(); // ⭐ token auto-loaded inside
       await box.put("lastFetchTime", now.toIso8601String());
       return;
     }
 
+    // --------------------------
+    // 2️⃣ Refresh if > 24 hours old
+    // --------------------------
     if (lastFetch == null ||
         now.difference(DateTime.parse(lastFetch)).inHours >= 24) {
-      print("🔄 Refreshing cashback config");
-      await fetchCashbackConfig(token);
+      print("🔄 24 hours passed → refreshing cashback config...");
+      await fetchCashbackConfig(); // ⭐ token auto-loaded inside
       await box.put("lastFetchTime", now.toIso8601String());
       return;
     }
 
-    print("🟩 Using fresh cached cashback config");
+    // --------------------------
+    // 3️⃣ Use existing cache
+    // --------------------------
+    print("🟩 Using cached cashback config");
   }
 
   // ---------------------------------------------------------

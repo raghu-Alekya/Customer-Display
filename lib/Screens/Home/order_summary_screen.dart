@@ -421,37 +421,37 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     });
   }
 
-  void _callCreatePaymentAPI() {
+  void _callCreatePaymentAPI({double amount = 0.0}) { // Build #1.0.29
     if (kDebugMode) {
       print("###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount");
     }
-
-    if (balanceAmount > 0 && amountController.text.isEmpty) {
-      if (kDebugMode) print("Error: Amount field is empty");
-      return;
+    if (balanceAmount > 0) {
+      if (amountController.text.isEmpty) { //Build #1.0.34: updated code
+        if (kDebugMode) {
+          print("Error: Amount TextField is empty");
+        }
+        return;
+      }
     }
 
-    String cleanAmount = amountController.text
-        .replaceAll(TextConstants.currencySymbol, '')
-        .trim();
-
+    String cleanAmount = amountController.text.replaceAll(TextConstants.currencySymbol, '').trim();
     final double amount = double.tryParse(cleanAmount) ?? 0.0;
-    if (amount <= 0.0) {
-      if (kDebugMode) print("Error: Invalid amount: $cleanAmount");
+    if (amount < 0.0) {
+      if (kDebugMode) {
+        print("Error: Invalid amount: $cleanAmount");
+      }
       return;
     }
-
-    double remainingBalance = balanceAmount;
-
     if (kDebugMode) {
-      print("_callCreatePaymentAPI cleanAmount: $cleanAmount, remainingBalance(before) = $remainingBalance");
+      print("_callCreatePaymentAPI cleanAmount: $cleanAmount, balanceAmount: $balanceAmount");
     }
 
-    setState(() => isLoading = true);
+    setState(() {
+      isLoading = true; //Build 1.1.36: Show loader on PAY tap
+    });
 
-    final String datetime =
-    DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-
+    // Prepare payment request
+    final String datetime = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
     final paymentRequest = PaymentRequestModel(
       title: selectedPaymentMethod,
       orderId: orderId ?? 0,
@@ -465,136 +465,141 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       notes: '',
     );
 
-    if (kDebugMode) print("Creating payment with request: $paymentRequest");
+    if (kDebugMode) {
+      print("Creating payment with request: $paymentRequest");
+    }
 
+    //Build #1.0.34: updated code for API response and listen to stream then show popup
     paymentBloc.createPayment(paymentRequest);
-
     StreamSubscription? subscription;
-    subscription = paymentBloc.createPaymentStream.listen((paymentResponse) async {
+    subscription = paymentBloc.createPaymentStream.listen((paymentResponse) {
       if (kDebugMode) {
-        print("Payment stream response: $paymentResponse ++++ end");
+        print("Payment stream response: $paymentResponse ++++ end of message");
       }
-
-      if (paymentResponse.status == Status.ERROR) {
-        setState(() => isLoading = false);
-        if (kDebugMode) print("Payment API Error: ${paymentResponse.message}");
-        subscription?.cancel();
-        return;
-      }
-
-      if (paymentResponse.status == Status.COMPLETED &&
-          paymentResponse.data != null) {
-        final paymentData = paymentResponse.data!;
-
-        if (paymentData.message == "Payment Created Successfully") {
-
-          // OFFLINE DELETE
-          if (widget.isOfflineSynced && widget.offlineOrderId != null) {
-            try {
-              final offlineId = widget.offlineOrderId!;
-              final box = Hive.box('offlineOrders');
-
-              if (box.containsKey(offlineId.toString())) {
-                await box.delete(offlineId.toString());
-                print("✔ Deleted offline order $offlineId from Hive");
-              }
-
-              await orderHelper.deleteOrder(offlineId);
-            } catch (e) {
-              print("⚠ Failed deleting offline order: $e");
-            }
+      if (paymentResponse.data != null) {
+        if (paymentResponse.status == Status.ERROR) {
+          if (kDebugMode) {
+            print("Payment API Error: ${paymentResponse.message}");
           }
-
           setState(() {
-            isLoading = false;
-            isPaymentDone = true;
+            isLoading = false; // Hide loader on error
           });
+          subscription?.cancel();
+        } else if (paymentResponse.status == Status.COMPLETED) {
+          final paymentData = paymentResponse.data!;
+          if (paymentData.message == "Payment Created Successfully") {
+            // // Build #1.0.99: Call fetch payment details by order id API call
+            // _fetchPaymentsByOrderId(); // Refresh payments after successful payment
 
-          paidAmount = amount;
-          paymentId = paymentData.paymentId.toString();
-          orderStatus = paymentData.orderStatus ?? TextConstants.processing;
+            setState(() {
+              isLoading = false; // Hide loader on success
+            });
+            paidAmount = amount; // Current payment amount
 
-          final bool isExactPayment = (amount == remainingBalance);
-          final bool isOverPayment = (amount > remainingBalance);
-          final bool isPartialPayment = (amount < remainingBalance);
-
-          tenderAmount += amount;
-
-          if (isOverPayment) {
-            changeAmount = amount - remainingBalance;
-            balanceAmount = 0.0;
-          } else if (isExactPayment) {
-            changeAmount = 0.0;
-            balanceAmount = 0.0;
-          } else if (isPartialPayment) {
-            balanceAmount = remainingBalance - amount;
-            changeAmount = 0.0;
-          }
-
-          print("##### AFTER PAYMENT — updatedBalance = $balanceAmount   change = $changeAmount");
-
-          amountController.clear();
-          balanceAmount = double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
-
-          // ------------------------------------------------------
-          // ⭐ SAVE BALANCE + PAID AMOUNT EVERYWHERE (FINAL FIX)
-          // ------------------------------------------------------
-
-          // 1️⃣ In-memory
-          _order["balanceAmount"] = balanceAmount;
-          _order["paidAmount"] = tenderAmount;
-          _order["tenderAmount"] = tenderAmount;
-
-          // 2️⃣ Hive save
-          try {
-            final offlineBox = Hive.box('offlineOrders');
-            final key = (orderId ?? 0).toString();
-
-            if (offlineBox.containsKey(key)) {
-              final updated = Map<String, dynamic>.from(offlineBox.get(key));
-              updated["balanceAmount"] = balanceAmount;
-              updated["paidAmount"] = tenderAmount;
-              updated["tenderAmount"] = tenderAmount;
-
-              offlineBox.put(key, updated);
-              print("✔ Hive updated → balance=$balanceAmount paid=$tenderAmount");
+            // Capture paymentId for wallet payments
+            /// Build #1.0.175: Commented below code, because its only checking wallet payments
+            /// We need to save paymentId always
+            /// if required un-comment below line & change selectedPaymentMethod to wallet/cash
+            //  if (selectedPaymentMethod == TextConstants.wallet) {
+            //  paymentId = paymentData.paymentId; // Assuming the API response includes paymentId
+            // paymentId = "TXT_123456789"; // For testing purpose added here
+            paymentId = paymentData.paymentId.toString(); // paymentId
+            orderStatus = paymentData.orderStatus ?? TextConstants.processing;
+            if (kDebugMode) {
+              print("Wallet payment successful. Transaction ID: $paymentId");
             }
-          } catch (e) {
-            print("⚠ Hive update error: $e");
+            //  }
+
+            // Determine payment type
+            final bool isExactPayment = (amount == balanceAmount);
+            final bool isOverPayment = (amount > balanceAmount);
+            final bool isPartialPayment = (amount < balanceAmount);
+
+            if (kDebugMode) { // Build #1.0.168: Debug prints
+              print("#### DEBUG 101 : $amount");
+              print("#### DEBUG 102 : $balanceAmount");
+            }
+
+            if (isOverPayment) {
+              if (kDebugMode) {
+                print("#### isOverPayment");
+              }
+              changeAmount = amount - balanceAmount; // Build #1.0.168: Updated - Set changeAmount directly
+              balanceAmount = 0.0; // Balance fully paid
+              tenderAmount += amount;
+            } else if (isExactPayment) {
+              if (kDebugMode) {
+                print("#### isExactPayment");
+              }
+              tenderAmount += amount;
+              changeAmount = 0.0; // No change for exact payment
+              balanceAmount = 0.0; // Balance fully paid
+            } else if (isPartialPayment) {
+              if (kDebugMode) {
+                print("#### isPartialPayment");
+              }
+              tenderAmount += amount;
+              balanceAmount -= amount; // Reduce balance for partial payment
+              changeAmount = 0.0; // No change for partial payment
+            } else if (balanceAmount == 0 && amount > 0) {
+              if (kDebugMode) {
+                print("#### balanceAmount is 0");
+              }
+              // Case where balance is already 0, return the entire amount as change
+              changeAmount = amount; // Build #1.0.168: Updated - Set change to the full amount
+              tenderAmount += amount; // Reset tender to current payment
+            }
+
+            amountController.clear(); // Clear input textField
+            setState(() {}); // Update UI
+
+            balanceAmount = double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.00;
+            if (kDebugMode) {
+              print("Payment successful - Paid: $paidAmount, Balance: $balanceAmount, Change: $changeAmount, Tender: $tenderAmount");
+            }
+
+            // Show appropriate dialog based on payment amount
+            if (isPartialPayment && (balanceAmount != 0)) {
+              if (kDebugMode) {
+                print("Showing partial payment dialog: Paid=$paidAmount, Remaining Balance=$balanceAmount");
+              }
+              _showPartialPaymentDialog(context, amount);
+            } else if (isExactPayment || isOverPayment || (balanceAmount == 0 && amount > 0)) {
+              if (kDebugMode) {
+                print("Showing payment dialog: Paid=$paidAmount, Change=$changeAmount");
+              }
+              _fetchPaymentsByOrderId(); // Refresh payments after successful payment
+              _showPaymentDialog(
+                context,
+                amount,
+                changeAmount: changeAmount,
+                showChange: changeAmount > 0,
+              );
+            }
           }
-
-          // 3️⃣ SQLite save
-          // try {
-          //   await orderHelper.updateRemainingBalance(orderId!, balanceAmount);
-          //   await orderHelper.updatePaidAmount(orderId!, tenderAmount);
-          //   print("✔ SQLite updated → balance=$balanceAmount paid=$tenderAmount");
-          // } catch (e) {
-          //   print("⚠ SQLite update error: $e");
-          // }
-
-          // 4️⃣ Instant UI refresh for Order Summary or Order List
-          if (mounted) setState(() {});
-
-          print("Payment successful - Paid: $paidAmount, Balance: $balanceAmount, Change: $changeAmount, Tender: $tenderAmount");
-
-          if (isPartialPayment && balanceAmount > 0) {
-            _showPartialPaymentDialog(context, amount);
-          } else {
-            _fetchPaymentsByOrderId();
-            _showPaymentDialog(
-              context,
-              amount,
-              changeAmount: changeAmount,
-              showChange: changeAmount > 0,
-            );
-          }
+          subscription?.cancel(); // Cancel subscription after handling
         }
-
-        subscription?.cancel();
+      } else if (paymentResponse.status == Status.ERROR) {
+        if (kDebugMode) {
+          print("Unauthorised : response.message ${paymentResponse.message!} ++ end");
+        }
+        setState(() {
+          isLoading = false; // Build #1.0.248: Hide loader on ERROR
+        });
+        //Build #1.0.180
+        if (paymentResponse.message!.contains('Unauthorised')) {
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LoginScreen()));
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Unauthorised. Session is expired on this device."),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
       }
     });
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -2125,7 +2130,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                             child: TextField(
                                               controller: amountController,
                                               readOnly: true,
-                                              enabled: true,
+                                              enabled: balanceAmount >= 0,
                                               textAlign: TextAlign.right,
                                               decoration: InputDecoration(
                                                 border: InputBorder.none,
@@ -2216,6 +2221,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           amountController.text,
                                           balanceAmount: balanceAmount,
                                           onDigitPressed: (value) {
+                                            if (balanceAmount < 0) return;
                                             if (_amountErrorText != null) {
                                               _amountErrorText = null;
                                             }
@@ -2261,6 +2267,21 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                             });
                                           },
                                           onPayPressed: () {
+                                            // CASE 1: Negative payout → Allow direct pay with amount = 0
+                                            if (balanceAmount < 0) {
+                                              setState(() {
+                                                _amountErrorText = null;
+                                              });
+
+                                              _callCreatePaymentAPI(amount: 0.0);
+
+                                              _rawAmount = 0;
+                                              amountController.text = '${TextConstants.currencySymbol}0.00';
+                                              _isAmountEntered = false;
+                                              return;
+                                            }
+
+                                            // CASE 2: Normal payment flow (balance > 0)
                                             String cleanAmount = amountController.text
                                                 .replaceAll(TextConstants.currencySymbol, '')
                                                 .trim();
@@ -2274,17 +2295,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                               return;
                                             }
 
+                                            // Valid amount → proceed
                                             _amountErrorText = null;
-
-                                            // NO BALANCE CALCULATION HERE ❌❌❌❌❌
-
-                                            _callCreatePaymentAPI(); // API will handle balance
+                                            _callCreatePaymentAPI();
 
                                             _rawAmount = 0;
                                             amountController.text = '${TextConstants.currencySymbol}0.00';
                                             _isAmountEntered = false;
                                           },
-
 
                                           isLoading: isLoading,
                                         ),
