@@ -221,8 +221,7 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:gravity="center"
-                    android:padding="24dp"
-                    android:background="@drawable/empty_box_bg">
+                    android:padding="24dp">
 
                     <ImageView
                         android:layout_width="140dp"
