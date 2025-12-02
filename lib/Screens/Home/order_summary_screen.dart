@@ -2677,6 +2677,28 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   Future<void> _removeAppliedCoupon() async {
     if (widget.orderId == null || widget.orderId == 0) return;
 
+    final offlineBox = Hive.box('offlineOrders');
+    final key = widget.orderId!.toString();
+
+    // 🔹 1️⃣ Take a snapshot BEFORE calling API
+    final rawBefore = offlineBox.get(key);
+    Map<String, dynamic>? before;
+    Map<int, Map<String, dynamic>> originalByProductId = {};
+
+    if (rawBefore != null) {
+      before = Map<String, dynamic>.from(rawBefore);
+      final beforeList = (before["products"] ?? []) as List;
+
+      for (var e in beforeList) {
+        final p = Map<String, dynamic>.from(e);
+        final type = (p["type"] ?? "").toString().toLowerCase();
+        if (type == "coupon") continue;  // skip coupon
+
+        final id = (p["product_id"] ?? p["server_item_id"] ?? 0) as int;
+        originalByProductId[id] = p; // store ORIGINAL qty
+      }
+    }
+
     setState(() => isSummaryLoading = true);
 
     try {
@@ -2685,32 +2707,56 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         couponCode: "",
       );
 
-      // RESET VALUES
+      // RESET UI VALUES
       setState(() {
         discount = 0.0;
         discountValue = 0.0;
         NetTotal = grossTotal;
-
         tax = oldTax;
         computedNetPayable = grossTotal + tax - merchantDiscount + cashbackFee;
         balanceAmount = computedNetPayable;
       });
-// ******** UPDATE HIVE (Remove Coupon Discount) ********
-      final offlineBox = Hive.box('offlineOrders');
-      final key = widget.orderId!.toString();
 
+      // 🔹 2️⃣ Fix Hive after BLoC/repository change
       final existing = offlineBox.get(key);
-      if (existing != null) {
-        existing["orderDiscount"] = 0.0;
-        existing["wooTax"] = tax;
-        existing["merchantDiscount"] = merchantDiscount;
-        existing["cashbackFee"] = cashbackFee;
 
-        offlineBox.put(key, existing);
-        print("🟢 Hive updated — coupon removed");
+      if (existing != null) {
+        final data = Map<String, dynamic>.from(existing);
+        final prodsRaw = (data["products"] ?? []) as List;
+        final prods = prodsRaw.map((e) => Map<String, dynamic>.from(e)).toList();
+
+        // remove coupon lines
+        prods.removeWhere((p) => (p["type"] ?? "").toString().toLowerCase() == "coupon");
+
+        for (var p in prods) {
+          final id = (p["product_id"] ?? p["server_item_id"] ?? 0) as int;
+          final original = originalByProductId[id];
+
+          // 🔥 restore correct quantity if we have original
+          if (original != null) {
+            p["quantity"] = original["quantity"];
+          }
+
+          final qty = (p["quantity"] ?? 1);
+          final unit = (p["unit_price"] ?? 0);
+
+          final q = qty is num ? qty.toDouble() : 1.0;
+          final u = unit is num ? unit.toDouble() : 0.0;
+
+          p["price"] = q * u;
+        }
+
+        data["products"] = prods;
+        data["orderDiscount"] = 0.0;
+        data["wooTax"] = tax;
+
+        offlineBox.put(key, data);
+
+        print("🟢 Hive updated — coupon removed, qty restored, prices recalculated");
       }
+
       await CustomerDisplayHelper.updateCustomerDisplay(widget.orderId!);
-      // 🟢 SUCCESS SNACKBAR (always show)
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Coupon removed successfully"),
@@ -2723,6 +2769,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       setState(() => isSummaryLoading = false);
     }
   }
+
 
   void _openCouponPopup() {
     final TextEditingController _couponCtrl = TextEditingController();

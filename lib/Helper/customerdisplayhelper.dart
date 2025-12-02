@@ -34,7 +34,13 @@ class CustomerDisplayHelper {
 
       final data = Map<String, dynamic>.from(raw);
 
-      // ✅ Extract offline created_at timestamp
+      print("🔶🔶🔶 RAW HIVE ORDER DATA (FULL DUMP) 🔶🔶🔶");
+      data.forEach((key, value) {
+        print(" ▶ $key : $value");
+      });
+      print("🔶🔶🔶 END RAW HIVE ORDER DATA 🔶🔶🔶");
+
+      // ------------------ DATE & TIME ------------------
       String orderDate = "";
       String orderTime = "";
 
@@ -53,41 +59,83 @@ class CustomerDisplayHelper {
           orderTime = "$hour:$minute:$second $amPm";
         }
       }
-// ------------------ REMOVE DISCOUNT ITEMS ------------------
+
+      // ------------------ FILTER PRODUCT LIST ------------------
       final productsRaw = (data["products"] ?? []) as List;
+
+      print("🔵 [CD] RAW PRODUCTS FROM HIVE (BEFORE FILTER):");
+      for (var p in productsRaw) {
+        print(" → RAW ITEM: $p");
+      }
 
       final products = productsRaw
           .map((e) => Map<String, dynamic>.from(e))
           .where((p) {
+        final type = (p["type"] ?? "").toString().toLowerCase();
+        final productId = (p["product_id"] ?? 0);
+        final price = (p["price"] ?? 0).toDouble();
         final name = (p["name"] ?? "").toString().toLowerCase();
-        // Remove discount/coupon items
-        return !(name.contains("discount") || name.contains("coupon"));
+
+        // 🚫 This is a coupon / non-real product line
+        final isCouponLine =
+            type == "coupon" ||
+                productId == -1 ||
+                name.contains("discount") ||
+                name.contains("coupon") ||
+                price < 0;
+
+        return !isCouponLine;
       })
           .toList();
 
+      print("🟢 [CD] PRODUCTS AFTER FILTER:");
+      for (var p in products) {
+        print(
+            " → ${p['name']} | qty=${p['quantity']} | unit_price=${p['unit_price']} | price=${p['price']}");
+      }
 
-// Extract payouts
+      // Helper to get correct unit price
+      double _getUnitPrice(Map<String, dynamic> p) {
+        final unit = p["unit_price"];
+        if (unit is num) return unit.toDouble();
+
+        final regular = p["regular_price"];
+        if (regular is num) return regular.toDouble();
+
+        final price = p["price"];
+        if (price is num) return price.toDouble();
+
+        return 0.0;
+      }
+
+      // ------------------ PAYOUTS ------------------
       final payouts = ((data["payouts"] ?? []) as List)
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
-// Extract cashbacks
+      // ------------------ CASHBACKS ------------------
       final cashbacks = ((data["cashbacks"] ?? []) as List)
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
-// Cashback fee
+      // ------------------ CASHBACK FEE ------------------
       double cashbackFee =
       (data["cashbackFee"] is num) ? (data["cashbackFee"] as num).toDouble() : 0.0;
 
-
-// Build items list
+      // ------------------ BUILD PARSED ITEMS LIST ------------------
       final parsedItems = [
-        ...products.map((item) => {
-          "name": item["name"] ?? "",
-          "qty": (item["quantity"] ?? 1).toDouble(),
-          "price": (item["price"] ?? 0).toDouble(),
-          "image": item['image'] ?? "",
+        ...products.map((item) {
+          final qty = (item["quantity"] ?? 1);
+          final unitPrice = _getUnitPrice(item);
+
+          return {
+            "name": item["name"] ?? "",
+            "qty": (qty is num ? qty.toDouble() : 1.0),
+            // 👇 send per-unit price OR total? depends on display logic
+            // If your display multiplies price * qty, this MUST be unit price
+            "price": unitPrice,
+            "image": item["image"] ?? "",
+          };
         }),
 
         ...payouts.map((p) => {
@@ -105,35 +153,47 @@ class CustomerDisplayHelper {
         }),
       ];
 
+      // ------------------ TOTALS ------------------
+      double productTotal = products.fold(0, (sum, p) {
+        final qty = (p["quantity"] ?? 1);
+        final unitPrice = _getUnitPrice(p);
+        final q = qty is num ? qty.toDouble() : 1.0;
+        return sum + unitPrice * q;
+      });
 
-      double productTotal = products.fold(0, (sum, p) =>
-      sum + (p["price"] ?? 0).toDouble() * (p["quantity"] ?? 1).toDouble());
+      double payoutTotal =
+      payouts.fold(0, (sum, p) => sum + (p["amount"] ?? 0).toDouble());
 
-      double payoutTotal = payouts.fold(0, (sum, p) =>
-      sum + (p["amount"] ?? 0).toDouble());
-
-      double cashbackTotal = cashbacks.fold(0, (sum, c) =>
-      sum - (c["amount"] ?? 0).toDouble()); // cashback is negative
+      double cashbackTotal =
+      cashbacks.fold(0, (sum, c) => sum - (c["amount"] ?? 0).toDouble()); // negative
 
       double grossTotal = productTotal - payoutTotal + cashbackTotal;
 
+      // Discounts 🟡
       double orderDiscount =
       (data["orderDiscount"] is num) ? (data["orderDiscount"] as num).toDouble() : 0.0;
 
       double merchantDiscountStored =
       (data["merchantDiscount"] is num) ? (data["merchantDiscount"] as num).toDouble() : 0.0;
 
-      bool merchantIsPercentage = (data["merchantDiscountIsPercentage"] as bool?) ?? false;
+      bool merchantIsPercentage =
+          (data["merchantDiscountIsPercentage"] as bool?) ?? false;
+
       double merchantDiscount = merchantDiscountStored;
 
-      double orderTax = (data["wooTax"] is num) ? (data["wooTax"] as num).toDouble() : 0.0;
+      // Tax 🟡
+      double orderTax =
+      (data["wooTax"] is num) ? (data["wooTax"] as num).toDouble() : 0.0;
 
+      // Final calculations
       double netTotal = grossTotal - orderDiscount;
       double netPayable = netTotal + cashbackFee + orderTax - merchantDiscount;
 
-      print("✅ [CD] UI Calculation:");
+      // ------------------ LOGS ------------------
+      print("✅ [CD] CALCULATION RESULTS");
       print(" productTotal = $productTotal");
       print(" payoutTotal = $payoutTotal");
+      print(" cashbackTotal = $cashbackTotal");
       print(" grossTotal = $grossTotal");
       print(" orderDiscount = $orderDiscount");
       print(
@@ -143,6 +203,8 @@ class CustomerDisplayHelper {
       print(" netPayable = $netPayable");
       print(" orderDate = $orderDate");
       print(" orderTime = $orderTime");
+
+      // ------------------ PUSH TO CUSTOMER DISPLAY ------------------
       await CustomerDisplayService.showCustomerData(
         orderId: serverOrderId,
         items: parsedItems,
@@ -163,4 +225,6 @@ class CustomerDisplayHelper {
       print(s);
     }
   }
+
+
 }
