@@ -66,6 +66,7 @@ class CustomerDisplayService {
     required double netTotal,
     required double tax,
     required double netPayable,
+    required double cashbackFee,   // ✅ NEW
     String orderDate = '',
     String orderTime = '',
     String storeId = '',
@@ -76,8 +77,9 @@ class CustomerDisplayService {
       print("📢 [CustomerDisplayService] showCustomerData() called");
       print("📝 orderId: $orderId, items count: ${items.length}");
       print(
-          "📝 grossTotal: $grossTotal, discount: $discount, merchantDiscount: $merchantDiscount, netTotal: $netTotal, tax: $tax, netPayable: $netPayable");
+          "📝 grossTotal: $grossTotal, discount: $discount, merchantDiscount: $merchantDiscount, netTotal: $netTotal, tax: $tax, netPayable: $netPayable, cashbackFee: $cashbackFee");
       print("📝 store: $storeName ($storeId), logo: $storeLogoUrl");
+
       final safeItems = items.map((item) {
         return {
           "name": item["name"] ?? "Unknown",
@@ -96,6 +98,7 @@ class CustomerDisplayService {
         "netTotal": netTotal,
         "tax": tax,
         "netPayable": netPayable,
+        "cashbackFee": cashbackFee,
         "orderDate": orderDate,
         "orderTime": orderTime,
         "storeId": storeId,

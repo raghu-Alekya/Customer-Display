@@ -147,7 +147,7 @@
                             android:id="@+id/email_label"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Customer-Info:"
+                            android:text="Customer:"
                             android:textColor="#003A82"
                             android:textSize="20sp"
                             android:textStyle="bold" />
@@ -157,7 +157,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="6dp"
-                            android:text="- "
+                            android:text="- Guest"
                             android:textColor="#353535"
                             android:textSize="20sp" />
                     </LinearLayout>
@@ -177,7 +177,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="6dp"
-                        android:text=" -"
+                        android:text=""
                         android:textColor="#353535"
                         android:textSize="20sp"
                         android:textStyle="bold" />
@@ -303,26 +303,6 @@
                         android:textSize="20sp" />
                 </LinearLayout>
                 <!-- Merchant Discount -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="3dp"> <TextView
-                    android:id="@+id/label_merchant_discount"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Merchant Discount"
-                    android:textColor="#1976D2"
-                    android:textSize="20sp" />
-                    <TextView
-                        android:id="@+id/value_merchant_discount"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="-$0.00"
-                        android:textColor="#1976D2"
-                        android:textSize="20sp" />
-                </LinearLayout>
                 <!-- Net Total -->
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -367,6 +347,54 @@
                     android:textColor="#212121"
                     android:textSize="18sp" />
                 </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="3dp"> <TextView
+                    android:id="@+id/label_merchant_discount"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Merchant Discount"
+                    android:textColor="#1976D2"
+                    android:textSize="20sp" />
+                    <TextView
+                        android:id="@+id/value_merchant_discount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="-$0.00"
+                        android:textColor="#1976D2"
+                        android:textSize="20sp" />
+                </LinearLayout>
+
+                <!-- Cashback Fee -->
+                <LinearLayout
+                    android:id="@+id/row_cashback_fee"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="3dp">
+
+                    <TextView
+                        android:id="@+id/label_cashback_fee"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Cashback Fee"
+                        android:textColor="#E65100"
+                        android:textSize="18sp" />
+
+                    <TextView
+                        android:id="@+id/value_cashback_fee"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="$0.00"
+                        android:textColor="#E65100"
+                        android:textSize="18sp" />
+                </LinearLayout>
+
 
                 <!-- Total Items & Net Payable -->
                 <LinearLayout

@@ -87,6 +87,13 @@ class OrderSummaryScreen extends StatefulWidget {
   State<OrderSummaryScreen> createState() => _OrderSummaryScreenState();
 }
 
+class NoScrollbarBehavior extends ScrollBehavior {
+  @override
+  Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) {
+    return child; // prevents scrollbar from showing
+    }
+}
+
 class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   List<Map<String, dynamic>> orderItems = [];
   String selectedPaymentMethod = TextConstants.cash;
@@ -1267,10 +1274,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     ),
                     child: isSummaryLoading
                         ? Center(child: CircularProgressIndicator())
-                        : Scrollbar(
-                      thumbVisibility: true,
-                      radius: Radius.circular(10),
-                      child: SingleChildScrollView(
+                        : ScrollConfiguration(
+                      behavior: NoScrollbarBehavior().copyWith(overscroll: false),
+                  // thumbVisibility: true,
+                  // radius: Radius.circular(10),
+                  child: SingleChildScrollView(
+                    physics: BouncingScrollPhysics(),
                         child: Column(
                           children: [
                             _buildOrderCalculation(
@@ -2686,7 +2695,21 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         computedNetPayable = grossTotal + tax - merchantDiscount + cashbackFee;
         balanceAmount = computedNetPayable;
       });
+// ******** UPDATE HIVE (Remove Coupon Discount) ********
+      final offlineBox = Hive.box('offlineOrders');
+      final key = widget.orderId!.toString();
 
+      final existing = offlineBox.get(key);
+      if (existing != null) {
+        existing["orderDiscount"] = 0.0;
+        existing["wooTax"] = tax;
+        existing["merchantDiscount"] = merchantDiscount;
+        existing["cashbackFee"] = cashbackFee;
+
+        offlineBox.put(key, existing);
+        print("🟢 Hive updated — coupon removed");
+      }
+      await CustomerDisplayHelper.updateCustomerDisplay(widget.orderId!);
       // 🟢 SUCCESS SNACKBAR (always show)
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -2844,6 +2867,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     );
   }
 
+
   Future<void> _applyCoupon(String code) async {
     if (widget.orderId == null || widget.orderId == 0) return;
 
@@ -2881,12 +2905,29 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         discount = appliedDiscount;
         tax = updatedTax;
         NetTotal = grossTotal - discount;
-        computedNetPayable = NetTotal + tax- merchantDiscount + cashbackFee;
+        computedNetPayable = NetTotal + tax - merchantDiscount + cashbackFee;
         orderTotal = computedNetPayable;
         balanceAmount = computedNetPayable;
       });
 
+// ------- UPDATE HIVE -------
+      final offlineBox = Hive.box('offlineOrders');
+      final key = widget.orderId!.toString();
+      final existing = offlineBox.get(key);
 
+      if (existing != null) {
+
+        existing["orderDiscount"] = appliedDiscount;
+        existing["wooTax"] = updatedTax;
+        existing["merchantDiscount"] = merchantDiscount;
+        existing["cashbackFee"] = cashbackFee;
+
+        offlineBox.put(key, existing);
+        print("🟢 Hive updated with orderDiscount=$appliedDiscount");
+      }
+
+// ------- UPDATE CUSTOMER DISPLAY -------
+      await CustomerDisplayHelper.updateCustomerDisplay(widget.orderId!);
       // SUCCESS SNACKBAR
       // ScaffoldMessenger.of(context).showSnackBar(
       //   const SnackBar(
@@ -4433,4 +4474,5 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       Navigator.of(context).pop(); // Direct navigation back to previous screen
     }
   }
+
 }

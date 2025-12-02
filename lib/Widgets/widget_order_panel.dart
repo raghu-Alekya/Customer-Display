@@ -2727,7 +2727,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                     'items_count': qty,
                                                     'item_sum_price': price * qty,
                                                     'item_type': 'custom item',
-                                                    'item_image': '',
+                                                    'item_image': item['item_image']
+                                                        ?? item['custom_item_image']
+                                                        ?? item['image']
+                                                        ?? 'assets/custom.png',
                                                   };
                                                 }).toList();
 
@@ -2845,7 +2848,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                                             : Platform.isWindows
                                             ? Image.asset(
-                                          'assets/default.png',
+                                          'assets/custom.png',
                                           height: MediaQuery.of(context).size.height * 0.08,
                                           width: MediaQuery.of(context).size.height * 0.075,
                                           fit: BoxFit.cover,

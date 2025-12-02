@@ -53,16 +53,35 @@ class CustomerDisplayHelper {
           orderTime = "$hour:$minute:$second $amPm";
         }
       }
+// ------------------ REMOVE DISCOUNT ITEMS ------------------
+      final productsRaw = (data["products"] ?? []) as List;
 
-      // ✅ Extract product and payout lists
-      final products = ((data["products"] ?? []) as List)
+      final products = productsRaw
           .map((e) => Map<String, dynamic>.from(e))
+          .where((p) {
+        final name = (p["name"] ?? "").toString().toLowerCase();
+        // Remove discount/coupon items
+        return !(name.contains("discount") || name.contains("coupon"));
+      })
           .toList();
 
+
+// Extract payouts
       final payouts = ((data["payouts"] ?? []) as List)
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
+// Extract cashbacks
+      final cashbacks = ((data["cashbacks"] ?? []) as List)
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+
+// Cashback fee
+      double cashbackFee =
+      (data["cashbackFee"] is num) ? (data["cashbackFee"] as num).toDouble() : 0.0;
+
+
+// Build items list
       final parsedItems = [
         ...products.map((item) => {
           "name": item["name"] ?? "",
@@ -70,30 +89,33 @@ class CustomerDisplayHelper {
           "price": (item["price"] ?? 0).toDouble(),
           "image": item['image'] ?? "",
         }),
+
         ...payouts.map((p) => {
           "name": "Payout",
           "qty": 1.0,
           "price": (p["amount"] ?? 0).toDouble(),
           "image": "assets/svg/payout.svg",
         }),
+
+        ...cashbacks.map((c) => {
+          "name": "Cashback",
+          "qty": 1.0,
+          "price": (c["amount"] ?? 0).toDouble(),
+          "image": c["product_image"] ?? "",
+        }),
       ];
 
-      print("✅ [CD] Items parsed = ${parsedItems.length}");
 
-      // ✅ Totals
-      double productTotal = 0;
-      for (var item in products) {
-        final price = (item["price"] ?? 0).toDouble();
-        final qty = (item["quantity"] ?? 1).toDouble();
-        productTotal += price * qty;
-      }
+      double productTotal = products.fold(0, (sum, p) =>
+      sum + (p["price"] ?? 0).toDouble() * (p["quantity"] ?? 1).toDouble());
 
-      double payoutTotal = 0;
-      for (var p in payouts) {
-        payoutTotal += (p["amount"] ?? 0).toDouble();
-      }
+      double payoutTotal = payouts.fold(0, (sum, p) =>
+      sum + (p["amount"] ?? 0).toDouble());
 
-      double grossTotal = productTotal + payoutTotal;
+      double cashbackTotal = cashbacks.fold(0, (sum, c) =>
+      sum - (c["amount"] ?? 0).toDouble()); // cashback is negative
+
+      double grossTotal = productTotal - payoutTotal + cashbackTotal;
 
       double orderDiscount =
       (data["orderDiscount"] is num) ? (data["orderDiscount"] as num).toDouble() : 0.0;
@@ -106,8 +128,8 @@ class CustomerDisplayHelper {
 
       double orderTax = (data["wooTax"] is num) ? (data["wooTax"] as num).toDouble() : 0.0;
 
-      double netTotal = grossTotal - orderDiscount - merchantDiscount;
-      double netPayable = netTotal + orderTax;
+      double netTotal = grossTotal - orderDiscount;
+      double netPayable = netTotal + cashbackFee + orderTax - merchantDiscount;
 
       print("✅ [CD] UI Calculation:");
       print(" productTotal = $productTotal");
@@ -132,6 +154,7 @@ class CustomerDisplayHelper {
         netPayable: netPayable,
         orderDate: orderDate,
         orderTime: orderTime,
+        cashbackFee: cashbackFee,
       );
 
       print("✅ [CD] Completed updateCustomerDisplay → $serverOrderId");

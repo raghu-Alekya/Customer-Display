@@ -122,6 +122,7 @@ class MainActivity : FlutterActivity() {
                     val netPayable = call.argument<Double>("netPayable") ?: 0.0
                     val orderDate = call.argument<String>("orderDate") ?: ""
                     val orderTime = call.argument<String>("orderTime") ?: ""
+                    val cashbackFee = call.argument<Double>("cashbackFee") ?: 0.0
 
                     Log.d("CustomerDisplay", "➡ showCustomerData invoked → orderId=$orderId, items=${items.size}, grossTotal=$grossTotal, discount=$discount, merchantDiscount=$merchantDiscount, netTotal=$netTotal, tax=$tax, netPayable=$netPayable")
                     Log.d("CustomerDisplay", "➡ orderDate='$orderDate'")
@@ -129,7 +130,7 @@ class MainActivity : FlutterActivity() {
 
                     val success = showDataOnCustomerDisplay(
                         orderId, currentStoreId, currentStoreName, currentStoreLogoUrl, items,
-                        grossTotal, discount, merchantDiscount, netTotal, tax, netPayable,orderDate, orderTime
+                        grossTotal, discount, merchantDiscount, netTotal, tax, netPayable,orderDate, orderTime,cashbackFee
                     )
 
                     if (success) {
@@ -201,20 +202,37 @@ class MainActivity : FlutterActivity() {
         tax: Double,
         netPayable: Double,
         orderDate: String,
-        orderTime: String
+        orderTime: String,
+        cashbackFee: Double
     ): Boolean {
+
         if (customerDisplayPresentation == null) {
             Log.d("CustomerDisplay", "CustomerDisplayPresentation null, showing Welcome first")
             showWelcomeOnCustomerDisplay()
         }
 
         customerDisplayPresentation?.updateCustomerData(
-            orderId, storeId, storeName, storeLogoUrl, items, grossTotal,
-            discount, merchantDiscount, netTotal, tax, netPayable,orderDate, orderTime
+            orderId,
+            storeId,
+            storeName,
+            storeLogoUrl,
+            items,
+            grossTotal,
+            discount,
+            merchantDiscount,
+            netTotal,
+            tax,
+            netPayable,
+            orderDate,
+            orderTime,
+            cashbackFee
         )
+
         Log.d("CustomerDisplay", "✔ CustomerDisplayPresentation updated with order #$orderId")
+
         return customerDisplayPresentation != null
     }
+
 
     private fun showThankYouOnCustomerDisplay(): Boolean {
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
@@ -543,7 +561,8 @@ class MainActivity : FlutterActivity() {
             tax: Double,
             netPayable: Double,
             orderDate: String,
-            orderTime: String
+            orderTime: String,
+            cashbackFee: Double
         ) {
             val defaultStoreId = "STORE001"
             val defaultStoreName = "Pinaka"
@@ -747,12 +766,15 @@ class MainActivity : FlutterActivity() {
             findViewById<TextView>(R.id.label_total_items).text = "Total Items : $totalItemCount"
             grossView.text = formatCurrency(grossTotal)
             discountView.text = formatCurrency(-discount)
+            findViewById<TextView>(R.id.label_cashback_fee).text = "Cashback Fee"
+            findViewById<TextView>(R.id.value_cashback_fee).text = formatCurrency(cashbackFee)
             merchantDiscountView.text = formatCurrency(-merchantDiscount)
             netTotalView.text = formatCurrency(netTotal)
             taxView.text = formatCurrency(tax)
             netPayableView.text = "Total : ${formatCurrency(netPayable)}"
             paymentDate.text = orderDate
             paymentTime.text = orderTime
+
 
             Log.d("CustomerDisplay", "✔ Order #$orderId totals updated, Total Items: $totalItemCount")
         }

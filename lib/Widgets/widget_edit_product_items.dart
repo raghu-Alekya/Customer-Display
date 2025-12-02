@@ -205,19 +205,45 @@ class _EditProductState extends State<EditProduct> {
 
   Widget _buildProductImage() {
     final img = widget.orderItem[AppDBConst.itemImage]?.toString() ?? "";
-    if (img.startsWith('http')) {
-      return Image.network(img, width: 65, height: 65, fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return SvgPicture.asset('assets/svg/password_placeholder.svg',
-                width: 65, height: 65, fit: BoxFit.cover);
-          });
-    } else if (img.startsWith('assets/')) {
-      return SvgPicture.asset(img, width: 65, height: 65, fit: BoxFit.cover);
-    } else if (img.isNotEmpty) {
-      return Image.file(File(img), width: 65, height: 65, fit: BoxFit.cover);
-    } else {
-      return SvgPicture.asset('assets/svg/password_placeholder.svg',
-          width: 65, height: 65, fit: BoxFit.cover);
+
+    if (img.isEmpty) {
+      return Image.asset(
+        'assets/custom.png',
+        width: 65,
+        height: 65,
+        fit: BoxFit.cover,
+      );
     }
+
+    // HTTP IMAGE
+    if (img.startsWith('http')) {
+      return Image.network(
+        img,
+        width: 65,
+        height: 65,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Image.asset('assets/custom.png', width: 65, height: 65);
+        },
+      );
+    }
+
+    // ASSETS IMAGE: PNG / JPG / SVG
+    if (img.startsWith('assets/')) {
+      if (img.endsWith('.svg')) {
+        return SvgPicture.asset(img, width: 65, height: 65, fit: BoxFit.cover);
+      } else {
+        return Image.asset(img, width: 65, height: 65, fit: BoxFit.cover);
+      }
+    }
+
+    // LOCAL FILE PATH
+    if (File(img).existsSync()) {
+      return Image.file(File(img), width: 65, height: 65, fit: BoxFit.cover);
+    }
+
+    // FALLBACK
+    return Image.asset('assets/custom.png', width: 65, height: 65);
   }
+
 }
