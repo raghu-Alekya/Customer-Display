@@ -951,6 +951,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                   });
 
                   await fetchOrderItems();
+                  await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+
 
                   _isLoading = false;
                   if (mounted) setState(() {});
@@ -1192,6 +1194,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         variationId: selected["id"],
                       );
                       await fetchOrderItems();
+                      await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
                     },
                   ),
                 );
@@ -1219,6 +1222,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             );
 
             await fetchOrderItems();
+            await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
 
             _isLoading = false;
             if (mounted) setState(() {});
@@ -2403,7 +2407,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 : Colors.black,
                           ),
                         ),
-                        const SizedBox(width: 150),
+                        const SizedBox(width: 145),
                         SvgPicture.asset(
                           'assets/svg/clock.svg',
                           width: 20,

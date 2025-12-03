@@ -682,18 +682,24 @@ class MainActivity : FlutterActivity() {
                 }
 
                 when {
-                    name.equals("Payout", ignoreCase = true) -> imageView.setImageResource(R.drawable.ic_payout)
-                    name.equals("Coupon", ignoreCase = true) -> imageView.setImageResource(R.drawable.ic_coupon)
+                    name.equals("Payout", ignoreCase = true) ->
+                        imageView.setImageResource(R.drawable.ic_payout)
+
+                    name.equals("Coupon", ignoreCase = true) ->
+                        imageView.setImageResource(R.drawable.ic_coupon)
+
                     else -> {
                         (item["image"] as? String)?.let { imageUrl ->
                             Thread {
                                 try {
                                     val input = URL(imageUrl).openStream()
                                     val bitmap = BitmapFactory.decodeStream(input)
-                                    Handler(Looper.getMainLooper()).post { imageView.setImageBitmap(bitmap) }
+                                    Handler(Looper.getMainLooper()).post {
+                                        imageView.setImageBitmap(bitmap)
+                                    }
                                 } catch (e: Exception) {
                                     Handler(Looper.getMainLooper()).post {
-                                        imageView.setImageResource(android.R.drawable.ic_menu_gallery)
+                                        imageView.setImageResource(R.drawable.custom)
                                     }
                                 }
                             }.start()

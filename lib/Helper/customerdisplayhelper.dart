@@ -3,11 +3,12 @@ import '../services/CustomerDisplayService.dart';
 
 class CustomerDisplayHelper {
   /// 🔹 Show welcome after login success, including optional logo
-  static Future<void> updateWelcomeWithStore(String storeId,
-      String storeName, {
-        String? storeLogoUrl,
-        String? storeBaseUrl,
-      }) async {
+  static Future<void> updateWelcomeWithStore(
+    String storeId,
+    String storeName, {
+    String? storeLogoUrl,
+    String? storeBaseUrl,
+  }) async {
     print(
         "🟢 [CustomerDisplayHelper] Updating welcome → storeId: $storeId, storeName: $storeName, logo: $storeLogoUrl, baseUrl: $storeBaseUrl");
 
@@ -18,6 +19,7 @@ class CustomerDisplayHelper {
       storeBaseUrl: storeBaseUrl,
     );
   }
+
   static Future<void> updateCustomerDisplay(int serverOrderId) async {
     try {
       print("🟡 [CD] START updateCustomerDisplay → serverOrderId=$serverOrderId");
@@ -225,6 +227,4 @@ class CustomerDisplayHelper {
       print(s);
     }
   }
-
-
 }

@@ -168,6 +168,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   double orderTotalAmount = 0.0; // from order helper / cart total
   bool isMobileValid = false;
   double redeemedValue = 0.0;
+  bool isPaymentStarted = false;
 
   Future<void> _fetchShiftId() async {
     final data = await UserDbHelper().getUserData();
@@ -458,9 +459,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     // ------------------------------------------------------
     // ⭐ RULE 3: Allow zero amount ONLY if balance is negative
     // ------------------------------------------------------
-    if (amount == 0 && balanceAmount >= 0) {
+    if (amount == 0 && computedNetPayable > 0) {
       setState(() => _amountErrorText = TextConstants.amountValidation);
-      return;
+    return;
     }
 
     _amountErrorText = null;
@@ -505,6 +506,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           paymentResponse.data != null &&
           paymentResponse.data!.message == "Payment Created Successfully")
       {
+
+        setState(() {
+          isPaymentStarted = true;   // 🔹 block coupons now
+        });
+
         // STOP LOADING
         setState(() => isLoading = false);
 
@@ -2108,79 +2114,63 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                       // Amount TextField
                                       // Amount TextField
                                       Column(
-                                        crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Container(
-                                            height:
-                                            ResponsiveLayout.getHeight(43),
+                                            height: ResponsiveLayout.getHeight(43),
                                             decoration: BoxDecoration(
-                                              color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
-                                                  ? ThemeNotifier
-                                                  .paymentEntryContainerColor
+                                              color: themeHelper.themeMode == ThemeMode.dark
+                                                  ? ThemeNotifier.paymentEntryContainerColor
                                                   : Colors.white,
-                                              borderRadius:
-                                              BorderRadius.circular(
-                                                  ResponsiveLayout
-                                                      .getRadius(6)),
+                                              borderRadius: BorderRadius.circular(
+                                                  ResponsiveLayout.getRadius(6)),
                                               border: Border.all(
                                                 color: _amountErrorText != null
                                                     ? Colors.red
-                                                    : themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                    ? ThemeNotifier
-                                                    .borderColor
+                                                    : themeHelper.themeMode == ThemeMode.dark
+                                                    ? ThemeNotifier.borderColor
                                                     : Colors.grey.shade300,
                                               ),
                                             ),
                                             child: TextField(
-                                              controller: amountController,
+                                              controller: amountController
+                                                ..text = computedNetPayable <= 0
+                                                    ? '${TextConstants.currencySymbol}0.00'
+                                                    : amountController.text,
                                               readOnly: true,
                                               enabled: balanceAmount >= 0,
                                               textAlign: TextAlign.right,
                                               decoration: InputDecoration(
                                                 border: InputBorder.none,
                                                 contentPadding: EdgeInsets.only(
-                                                    right: ResponsiveLayout
-                                                        .getPadding(16)),
-                                                hintText:
-                                                '${TextConstants.currencySymbol}0.00',
+                                                    right: ResponsiveLayout.getPadding(16)),
+                                                hintText: '${TextConstants.currencySymbol}0.00',
                                                 hintStyle: TextStyle(
-                                                  color: themeHelper
-                                                      .themeMode ==
-                                                      ThemeMode.dark
+                                                  color: themeHelper.themeMode == ThemeMode.dark
                                                       ? ThemeNotifier.textDark
                                                       : Colors.grey[400],
-                                                  fontSize: ResponsiveLayout
-                                                      .getFontSize(20),
+                                                  fontSize: ResponsiveLayout.getFontSize(20),
                                                   fontWeight: FontWeight.normal,
                                                 ),
                                               ),
                                               style: TextStyle(
-                                                color: _isAmountEntered
-                                                    ? (themeHelper.themeMode ==
-                                                    ThemeMode.dark
+                                                color: themeHelper.themeMode == ThemeMode.dark
                                                     ? ThemeNotifier.textDark
-                                                    : Colors.grey[900])
-                                                    : (themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                    ? ThemeNotifier.textDark
-                                                    : Colors.grey[900]),
-                                                fontSize: ResponsiveLayout
-                                                    .getFontSize(20),
-                                                fontWeight: FontWeight.bold,                                              ),
+                                                    : Colors.grey[900],
+                                                fontSize: ResponsiveLayout.getFontSize(20),
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
                                           ),
-                                          if (_amountErrorText != null)
+                                          if (computedNetPayable > 0 && _amountErrorText != null)
                                             Text(
                                               _amountErrorText!,
                                               style: TextStyle(
                                                 color: Colors.red,
-                                                fontSize: ResponsiveLayout
-                                                    .getFontSize(12),
+                                                fontSize: ResponsiveLayout.getFontSize(12),
                                               ),
                                             ),
+
                                         ],
                                       ),
 
@@ -2279,23 +2269,25 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                 .trim();
 
                                             double amount = double.tryParse(cleanAmount) ?? 0.0;
-// Allow pay when balance is negative even if amount is 0
-                                            if (amount == 0.0 && balanceAmount >= 0) {
+
+                                            // ✅ Only block when net payable > 0 AND entered amount = 0
+                                            if (amount == 0.0 && computedNetPayable > 0) {
                                               setState(() {
                                                 _amountErrorText = TextConstants.amountValidation;
                                               });
                                               return;
                                             }
 
-
                                             _amountErrorText = null;
 
-                                            _callCreatePaymentAPI(); // Pay must work even if balance is negative
+                                            _callCreatePaymentAPI(); // ✅ WORKS when net payable = 0
 
                                             _rawAmount = 0;
                                             amountController.text = '${TextConstants.currencySymbol}0.00';
                                             _isAmountEntered = false;
                                           },
+
+
 
                                           isLoading: isLoading,
                                         ),
@@ -2615,13 +2607,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               _buildCouponButton(
                                 TextConstants.coupon,
                                 "assets/coupon.png",
-                                isActive: redeemedValue ==
-                                    0, // 🔹 Disable when redeemed
+                                isActive: redeemedValue == 0 && !isPaymentStarted,  // ⭐ disable after payment
                                 onTap: () {
-                                  if (redeemedValue > 0) return; // Extra safety
+                                  if (redeemedValue > 0 || isPaymentStarted) return;
                                   _openCouponPopup();
                                 },
                               ),
+
                             ],
                           )
                         ],
@@ -2913,8 +2905,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       },
     );
   }
-
-
   Future<void> _applyCoupon(String code) async {
     if (widget.orderId == null || widget.orderId == 0) return;
 
@@ -2926,7 +2916,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         couponCode: code,
       );
 
-      // ❗ Handle backend / BLoC errors
       if (response == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -2937,7 +2926,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         return;
       }
 
-      // SUCCESS FLOW
+      // SUCCESS
       oldTax = tax;
 
       final appliedDiscount = double.tryParse(response.discountTotal) ?? 0.0;
@@ -2957,35 +2946,71 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         balanceAmount = computedNetPayable;
       });
 
-// ------- UPDATE HIVE -------
+      // ------------------ HIVE UPDATE ------------------
       final offlineBox = Hive.box('offlineOrders');
       final key = widget.orderId!.toString();
       final existing = offlineBox.get(key);
 
       if (existing != null) {
+        final data = Map<String, dynamic>.from(existing);
 
-        existing["orderDiscount"] = appliedDiscount;
-        existing["wooTax"] = updatedTax;
-        existing["merchantDiscount"] = merchantDiscount;
-        existing["cashbackFee"] = cashbackFee;
+        // 1️⃣ Load / Create originalProducts
+        List<Map<String, dynamic>> originalProducts;
 
-        offlineBox.put(key, existing);
-        print("🟢 Hive updated with orderDiscount=$appliedDiscount");
+        if (data["originalProducts"] != null) {
+          originalProducts = (data["originalProducts"] as List)
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+          print("🟢 Using saved originalProducts");
+        } else {
+          // FIRST TIME: Clean and save the products
+          originalProducts = (data["products"] as List)
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+
+          // 🔥 FIX VARIANT ZERO-PRICE BUG
+          for (var p in originalProducts) {
+            final isVariant =
+                (p["variation_id"] ?? 0) != 0 ||
+                    (p["variation_count"] ?? 0) > 0 ||
+                    (p["type"] ?? "").toString().toLowerCase() == "variant";
+
+            if (isVariant) {
+              final price = (p["price"] ?? 0).toDouble();
+
+              if ((p["unit_price"] ?? 0) == 0) p["unit_price"] = price;
+              if ((p["regular_price"] ?? 0) == 0) p["regular_price"] = price;
+              if ((p["sales_price"] ?? 0) == 0) p["sales_price"] = price;
+
+              print("🔧 FIXED VARIANT → ${p["name"]}, set unit_price=$price");
+            }
+          }
+
+
+          data["originalProducts"] = originalProducts;
+          print("🟡 Saved initial originalProducts (fixed variant prices)");
+        }
+
+        // 2️⃣ Restore ORIGINAL products before applying coupon
+        data["products"] = originalProducts
+            .map((p) => Map<String, dynamic>.from(p))
+            .toList();
+
+        // 3️⃣ Write updated totals
+        data["orderDiscount"] = appliedDiscount;
+        data["wooTax"] = updatedTax;
+        data["merchantDiscount"] = merchantDiscount;
+        data["cashbackFee"] = cashbackFee;
+
+        offlineBox.put(key, data);
+        print("🟢 Hive updated with corrected products + discount");
       }
 
-// ------- UPDATE CUSTOMER DISPLAY -------
+      // ------------------ CUSTOMER DISPLAY ------------------
       await CustomerDisplayHelper.updateCustomerDisplay(widget.orderId!);
-      // SUCCESS SNACKBAR
-      // ScaffoldMessenger.of(context).showSnackBar(
-      //   const SnackBar(
-      //     content: Text("Coupon applied successfully"),
-      //     backgroundColor: Colors.green,
-      //   ),
-      // );
+
     } catch (e) {
       print("❌ ERROR applying coupon: $e");
-
-      // Fallback generic error
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Something went wrong"),
@@ -2996,6 +3021,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       setState(() => isSummaryLoading = false);
     }
   }
+
 
   Widget _buildAmountDisplay(
       String label,
@@ -3798,6 +3824,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 // -------------------------------
 // ITEMS LOOP
 // -------------------------------
+    // -------------------------------
+// ITEMS LOOP (CLEANED & FIXED)
+// -------------------------------
     for (int i = 0; i < orderItems.length; i++) {
       var item = orderItems[i];
 
@@ -3810,33 +3839,36 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       bool isPayout = type.contains(TextConstants.payoutText);
       bool isCoupon = type.contains(TextConstants.couponText);
 
-      // Format payout/coupon as negative
+      // ⭐ Correct rate formatting
+      String formattedRate = isCoupon || isPayout
+          ? "-${TextConstants.currencySymbol}${unitPrice.abs().toStringAsFixed(2)}"
+          : "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)}";
+
+      // ⭐ Correct total formatting
       String formattedTotal = isCoupon || isPayout
           ? "-${TextConstants.currencySymbol}${lineTotal.abs().toStringAsFixed(2)}"
           : "${TextConstants.currencySymbol}${lineTotal.toStringAsFixed(2)}";
 
-      // ✅ LOG ITEM DETAILS
       if (kDebugMode) {
         print("🟩 ITEM ${i + 1}");
-        print("Name       : $itemName");
-        print("Qty        : $qty");
-        print("Unit Price : $unitPrice");
-        print("Line Total : $lineTotal");
-        print("Type       : $type");
-        print("Formatted  : $formattedTotal");
-        print("--------------------------------------------");
+        print("Name: $itemName  Qty: $qty  Rate: $formattedRate  Total: $formattedTotal  Type: $type");
       }
 
       bytes += ticket.row([
         PosColumn(text: "${i + 1}", width: 1),
         PosColumn(text: itemName, width: 5),
         PosColumn(
-            text: "$qty", width: 1, styles: PosStyles(align: PosAlign.center)),
+            text: "$qty",
+            width: 1,
+            styles: PosStyles(align: PosAlign.center)),
+
+        // ⭐ ONLY ONE RATE COLUMN NOW
         PosColumn(
-            text:
-            "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)}",
+            text: formattedRate,
             width: 2,
             styles: PosStyles(align: PosAlign.right)),
+
+        // ⭐ Correct AMOUNT column
         PosColumn(
             text: formattedTotal,
             width: 3,
@@ -3845,6 +3877,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
       bytes += ticket.emptyLines(1);
     }
+
 
     // -------------------------------
     // TOTALS
@@ -3894,12 +3927,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.merchantDiscount, width: 10),
       PosColumn(
-          text:
-          "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
-          width: 2,
-          styles: PosStyles(align: PosAlign.right)),
+          text: "-----------------------------------------------", width: 12),
     ]);
 
     bytes += ticket.row([
@@ -3909,6 +3938,17 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           width: 2,
           styles: PosStyles(align: PosAlign.right)),
     ]);
+
+
+    bytes += ticket.row([
+      PosColumn(text: TextConstants.merchantDiscount, width: 10),
+      PosColumn(
+          text:
+          "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right)),
+    ]);
+
 
     // Cashback Fee
     if (cashbackFee > 0) {
@@ -3923,16 +3963,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
 
 // Service Charges
-    if (servicecharges > 0) {
-      bytes += ticket.row([
-        PosColumn(text: TextConstants.servicecharges, width: 10),
-        PosColumn(
-          text: "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}",
-          width: 2,
-          styles: PosStyles(align: PosAlign.right),
-        ),
-      ]);
-    }
+
+    bytes += ticket.row([
+      PosColumn(text: TextConstants.servicecharges, width: 10),
+      PosColumn(
+        text: "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}",
+        width: 2,
+        styles: PosStyles(align: PosAlign.right),
+      ),
+    ]);
+
 
 
     bytes += ticket.row([

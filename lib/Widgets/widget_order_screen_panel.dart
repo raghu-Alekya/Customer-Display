@@ -741,13 +741,41 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     double grossTotal = 0.0;
 
     for (var item in orderItems) {
+      // Extract item name and type (fallback-safe)
+      // final name = (item["item_name"] ?? item["name"] ?? "").toString().toLowerCase();
+      // final type = (item["item_type"] ?? item["type"] ?? "").toString().toLowerCase();
+
+      // ❌ SKIP unwanted items
+      final name = item["item_name"]?.toString().toLowerCase() ?? "";
+      final type = item["item_type"]?.toString().toLowerCase() ?? "";
+
+      final skip =
+          name.contains("discount") ||
+              name.contains("merchant discount") ||
+              name.contains("coupon") ||
+              name.contains("loyalty") ||     // FIXED
+              name.contains("redeemed") ||
+              name.contains("points") ||
+              type.contains("discount") ||
+              type.contains("coupon") ||
+              type.contains("loyalty") ||     // FIXED
+              type.contains("points");
+
+      if (skip) {
+        print("🚫 EXCLUDED FROM GROSS TOTAL → ${item["item_name"]}");
+        continue;
+      }
+
+
+
+      // Qty fallback logic
       final qty = int.tryParse(
           item["items_count"]?.toString() ??
               item["itemCount"]?.toString() ??
               "1"
       ) ?? 1;
 
-      // Priority: item_sum_price → amount → item_price → price
+      // Price priority
       double unitPrice =
           double.tryParse(item["item_sum_price"]?.toString() ?? "") ??
               double.tryParse(item["amount"]?.toString() ?? "") ??
@@ -757,6 +785,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
       grossTotal += unitPrice;
     }
+
 
 
     print("### Gross Total Calculated: $grossTotal");
@@ -974,6 +1003,21 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                         setState(() {
                           final movedItem = orderItems.removeAt(oldIndex);
                           orderItems.insert(newIndex, movedItem);
+                          // 🔥 FORCE CASHBACK TO ALWAYS COME LAST
+                          orderItems.sort((a, b) {
+                            final typeA = a[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
+                            final typeB = b[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
+                            print("SORT DEBUG → typeA: $typeA   typeB: $typeB");
+
+                            final isCashbackA = typeA.contains("cashback");
+                            final isCashbackB = typeB.contains("cashback");
+
+                            // Cashback goes last
+                            if (isCashbackA && !isCashbackB) return 1;
+                            if (!isCashbackA && isCashbackB) return -1;
+
+                            return 0; // keep original order otherwise
+                          });
                         });
                       },
                       scrollController: _scrollController,
@@ -1671,33 +1715,33 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                       ],
                                     ),
                                     if(merchantDiscount>0)
-                                    Row(
-                                      mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Row(
-                                          spacing: 5,
-                                          children: [
-                                            // SvgPicture.asset(
-                                            //   "assets/svg/discount_star.svg",
-                                            //   height: 12,
-                                            //   width: 12,
-                                            //   color: Colors.blue, // 👈 apply blue color
-                                            // ),
-                                            Text(TextConstants.merchantDiscount,
-                                                style: TextStyle(
-                                                    color: Colors.blue,
-                                                    fontSize: 14)),
+                                      Row(
+                                        mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Row(
+                                            spacing: 5,
+                                            children: [
+                                              // SvgPicture.asset(
+                                              //   "assets/svg/discount_star.svg",
+                                              //   height: 12,
+                                              //   width: 12,
+                                              //   color: Colors.blue, // 👈 apply blue color
+                                              // ),
+                                              Text(TextConstants.merchantDiscount,
+                                                  style: TextStyle(
+                                                      color: Colors.blue,
+                                                      fontSize: 14)),
 
 
-                                          ],
-                                        ),
-                                        Text(
-                                            "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
-                                            style: TextStyle(
-                                                color: Colors.blue, fontSize: 14)),
-                                      ],
-                                    ),
+                                            ],
+                                          ),
+                                          Text(
+                                              "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
+                                              style: TextStyle(
+                                                  color: Colors.blue, fontSize: 14)),
+                                        ],
+                                      ),
                                     SizedBox(
                                       height: 2,
                                     ),
@@ -2373,9 +2417,35 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
 
     //Product Items
-    for(int i = 0; i< orderItems.length; i++) {
-
+    for (int i = 0; i < orderItems.length; i++) {
       var orderItem = orderItems[i];
+      // --------------------------------------------------
+// HIDE discount, coupons, redeem points from printing
+// --------------------------------------------------
+      final nameLower = orderItem[AppDBConst.itemName]
+          ?.toString()
+          .toLowerCase() ?? "";
+
+      final itemTypeLower = orderItem[AppDBConst.itemType]
+          ?.toString()
+          .toLowerCase() ?? "";
+
+      bool hideItem =
+          nameLower.contains("discount") ||
+              nameLower.contains("coupon") ||
+              nameLower.contains("loyalty") ||      // FIXED
+              nameLower.contains("redeemed") ||
+              nameLower.contains("points") ||
+              itemTypeLower.contains("discount") ||
+              itemTypeLower.contains("coupon") ||
+              itemTypeLower.contains("loyalty") ||  // FIXED
+              itemTypeLower.contains("points");
+
+      if (hideItem) {
+        print("🚫 HIDDEN FROM PRINT → ${orderItem[AppDBConst.itemName]}");
+        continue;
+      }
+
 
       final itemType = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
       final isPayout = itemType.contains(TextConstants.payoutText);
@@ -2383,51 +2453,163 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       final isCashback = itemType.contains("cashback") ||
           (orderItem[AppDBConst.itemName]?.toString().toLowerCase() == "cashback");
 
+      final isCouponOrPayout = isCoupon || isPayout;
 
-      final isCustomItem = itemType.contains(TextConstants.customItemText);
-      final isPayoutOrCouponOrCustomItem = isPayout || isCoupon || isCustomItem ||isCashback;
-      final isCouponOrPayout = isPayout || isCoupon||isCashback;
-
+      // Determine sales price
       final salesPrice =
-      (orderItem[AppDBConst.itemSalesPrice] == null || (orderItem[AppDBConst.itemSalesPrice]?.toDouble() ?? 0.0) == 0.0)
-          ? (orderItem[AppDBConst.itemRegularPrice] == null || (orderItem[AppDBConst.itemRegularPrice]?.toDouble() ?? 0.0) == 0.0)
+      (orderItem[AppDBConst.itemSalesPrice] == null ||
+          (orderItem[AppDBConst.itemSalesPrice]?.toDouble() ?? 0.0) == 0.0)
+          ? (orderItem[AppDBConst.itemRegularPrice] == null ||
+          (orderItem[AppDBConst.itemRegularPrice]?.toDouble() ?? 0.0) == 0.0)
           ? orderItem[AppDBConst.itemUnitPrice]?.toDouble() ?? 0.0
           : orderItem[AppDBConst.itemRegularPrice]!.toDouble()
           : orderItem[AppDBConst.itemSalesPrice]!.toDouble();
 
-      final regularPrice =  (orderItem[AppDBConst.itemRegularPrice] == null || (orderItem[AppDBConst.itemRegularPrice]?.toDouble() ?? 0.0) == 0.0)
-          ? orderItem[AppDBConst.itemUnitPrice]?.toDouble() ?? 0.0
-          : orderItem[AppDBConst.itemRegularPrice]!.toDouble();
+      double negativeItemPrice =
+          orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice];
 
-      double negativeItemPrice = orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice];
-      ///Check if payout is showing $-25.00, make it -$25.00
-      var itemPrice = negativeItemPrice.toStringAsFixed(2);
-      if(negativeItemPrice.isNegative){
-        itemPrice = "-${TextConstants.currencySymbol}${negativeItemPrice.abs().toStringAsFixed(2)}";
+      // ----- RATE -----
+      double rateValue;
+      if (isCashback) {
+        rateValue = salesPrice.abs();
+
+      } else if (isCouponOrPayout) {
+        rateValue = negativeItemPrice; // negative
+      } else {
+        rateValue = salesPrice;
       }
 
+// ----- AMOUNT -----
+      double amountValue;
+      if (isCashback) {
+        amountValue = (orderItem[AppDBConst.itemCount] * salesPrice).abs();
+
+      } else if (isCouponOrPayout) {
+        amountValue = negativeItemPrice; // negative
+      } else {
+        amountValue = orderItem[AppDBConst.itemCount] * salesPrice;
+      }
+
+// ----- SPECIAL FIX: Payout must display sales price also -----
+      double displaySalesPrice = salesPrice;
+
+// Cashback must show its actual value
+//       if (isCashback) {
+//         displaySalesPrice = salesPrice.abs();
+//       }
+
+
+// Payout must also show abs value
+      if (isPayout && salesPrice == 0) {
+        displaySalesPrice = negativeItemPrice.abs();
+      }
+
+
+// ----- FORMAT AMOUNT -----
+      String formattedAmount = amountValue < 0
+          ? "-${TextConstants.currencySymbol}${amountValue.abs().toStringAsFixed(2)}"
+          : "${TextConstants.currencySymbol}${amountValue.toStringAsFixed(2)}";
+
+// ----- FORMAT RATE (sign before $) -----
+      String formattedRate;
+      if (rateValue < 0) {
+        formattedRate =
+        "-${TextConstants.currencySymbol}${rateValue.abs().toStringAsFixed(2)}";
+      } else {
+        formattedRate =
+        "${TextConstants.currencySymbol}${rateValue.toStringAsFixed(2)}";
+      }
+
+      // ------------------------------------
+      // DEBUG PRINT FOR EACH PRODUCT
+      // ------------------------------------
       if (kDebugMode) {
-        if(isCouponOrPayout){
-          print(" >>>>> Adding isCouponOrPayout item ${orderItem[AppDBConst.itemName]} to print with salesPrice $itemPrice");
+        print("🟦 -----------------------------");
+        print("🟦 ITEM #${i + 1}");
+        print("🟦 Name         : ${orderItem[AppDBConst.itemName]}");
+        print("🟦 Qty          : ${orderItem[AppDBConst.itemCount]}");
+        // INSERT THIS FIX HERE ⬇️
+        String formattedSalesPrice;
+        if (isPayout) {
+          formattedSalesPrice =
+          "-${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
+        } else {
+          formattedSalesPrice =
+          "${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
         }
-        else {
-          print(" >>>>> Adding regular item ${orderItem[AppDBConst.itemName]} to print with salesPrice ${(orderItem[AppDBConst.itemCount] * salesPrice).toStringAsFixed(2)}");
+        if (isCashback) {
+          double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
+
+          double cashbackValue =
+              (orderItem['amount'] as num?)?.toDouble() ??
+                  (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
+                  (orderItem['itemTotalPrice'] as num?)?.toDouble() ??
+                  0.0;
+
+          double rateValueCashback = cashbackValue / qty;
+
+          formattedRate =
+          "${TextConstants.currencySymbol}${rateValueCashback.toStringAsFixed(2)}";
+
+          formattedAmount =
+          "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
+
+          formattedSalesPrice =
+          "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
+
+
+          // -----------------------------------
+          // DEBUG PRINT
+          // -----------------------------------
+          print("🟦 -----------------------------");
+          print("🟦 Cashback ITEM");
+          print("🟦 Qty          : $qty");
+          print("🟦 Sales Price  : $formattedSalesPrice");
+          print("🟦 Rate Value   : $formattedRate");
+          print("🟦 Amount Value : $formattedAmount");
+          print("🟦 -----------------------------");
         }
+
+
+        print("🟦 Sales Price  : $formattedSalesPrice");
+        // END FIX ⬆️
+        print("🟦 Raw Neg Price: $negativeItemPrice");
+        print("🟦 Rate Value   : $formattedRate");
+        print("🟦 Amount Value : $formattedAmount");
+        print("🟦 isCashback   : $isCashback");
+        print("🟦 isCoupon     : $isCoupon");
+        print("🟦 isPayout     : $isPayout");
+        print("🟦 -----------------------------");
       }
 
+      // -------------------------
+      // ESC/POS VALID 12-WIDTH ROW
+      // -------------------------
       bytes += ticket.row([
-        PosColumn(text: "${i+1}", width: 1),
-        PosColumn(text: "${orderItem[AppDBConst.itemName]}", width:5,),
-        PosColumn(text: "${orderItem[AppDBConst.itemCount]}", width: 1,styles: PosStyles(align: PosAlign.center)),
-        PosColumn(text: "${TextConstants.currencySymbol}${salesPrice.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
-        // PosColumn(text: "${(regularPrice - salesPrice).toStringAsFixed(2)}", width: 1, styles: PosStyles(align: PosAlign.right)),, ///removed based on request on 3-Sep-25
-        PosColumn(text: isCouponOrPayout
-            ? itemPrice
-            : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * salesPrice).toStringAsFixed(2)}", width: 3, styles: PosStyles(align: PosAlign.right)),
+        PosColumn(text: "${i + 1}", width: 1),
+        PosColumn(text: "${orderItem[AppDBConst.itemName]}", width: 5),
+        PosColumn(
+          text: "${orderItem[AppDBConst.itemCount]}",
+          width: 1,
+          styles: PosStyles(align: PosAlign.center),
+        ),
+        PosColumn(
+          text: formattedRate,
+          width: 2,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+        PosColumn(
+          text: formattedAmount,
+          width: 3,
+          styles: PosStyles(align: PosAlign.right),
+        ),
       ]);
-      // bytes += ticket.feed(1);
-      bytes += ticket.emptyLines(1);///check if we can add spaces after product line to look spacious
+
+      bytes += ticket.emptyLines(1);
     }
+
+
+
 
     //bytes += ticket.feed(1);
     bytes += ticket.row([
