@@ -2313,25 +2313,53 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         double payoutTotal = offlinePayouts.fold<double>(0, (sum, payout) {
           return sum + (double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0);
         });
+
         double cashbackTotal = offlineCashback.fold(0, (sum, cash) {
           return sum + (double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0);
         });
 
-        grossTotal = productTotal + payoutTotal+ cashbackTotal;
+// ✅ Gross Total
+        grossTotal = productTotal + payoutTotal + cashbackTotal;
 
+// ✅ Order Discount
         orderDiscount = (offlineOrder['orderDiscount'] is num)
             ? (offlineOrder['orderDiscount'] as num).toDouble()
             : 0.0;
-
+// ✅ Merchant Discount (raw - safe read)
         merchantDiscount = (offlineOrder['merchantDiscount'] is num)
             ? (offlineOrder['merchantDiscount'] as num).toDouble()
             : 0.0;
 
-        final isPercentageDiscount = (offlineOrder['merchantDiscountIsPercentage'] as bool?) ?? false;
-        print("🔥 FINAL orderTax CALCULATED from Hive products = $orderTax");
+        double effectiveMerchantDiscount = 0.0;
 
-        netTotal = grossTotal - orderDiscount - merchantDiscount;
-        netPayable = netTotal + orderTax + cashbackFee;
+        if (totalItems > 0) {
+          // ✅ Apply normally
+          effectiveMerchantDiscount = merchantDiscount;
+        } else {
+          // ✅ PERMANENT DELETE FROM MEMORY + HIVE
+          merchantDiscount = 0.0;
+          effectiveMerchantDiscount = 0.0;
+
+          offlineOrder.remove('merchantDiscount');
+          offlineOrder.remove('merchantDiscountIsPercentage');
+
+          if (orderHelper.activeOrderId != null) {
+            offlineBox.put(orderHelper.activeOrderId.toString(), offlineOrder);
+            print("🗑 Merchant discount permanently removed and memory reset");
+          }
+        }
+
+// ✅ Now it's safe to read percentage flag
+        final isPercentageDiscount =
+            (offlineOrder['merchantDiscountIsPercentage'] as bool?) ?? false;
+
+
+
+// ✅ Final Safe Totals
+        netTotal = grossTotal - orderDiscount - effectiveMerchantDiscount;
+
+        netPayable = (netTotal + orderTax + cashbackFee)
+            .clamp(0.0, double.infinity);
 
         if (orderHelper.activeOrderId != null) {
           final updatedOrder = Map<String, dynamic>.from(rawOfflineOrder);
@@ -2348,8 +2376,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           offlineBox.put(orderHelper.activeOrderId.toString(), updatedOrder);
           print("💾 Saved latest totals into offlineOrders Hive");
         }
-
-
 
         // 🔹 Format date/time
         if (offlineOrder['created_at'] != null) {
@@ -3095,7 +3121,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               ],
                             ),
                             SizedBox(height: 2),
-                            if(merchantDiscount>0)
+                            if (merchantDiscount > 0 && totalItems>0)
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [

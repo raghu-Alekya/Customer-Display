@@ -956,8 +956,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final theme = Theme.of(context);
 
-    // ✅ NEW: Correct total items based on qty
     int totalItems = orderItems.fold(0, (sum, item) {
+      final name = item['item_name']?.toString().toLowerCase() ?? '';
+
+      if (name == 'payout' || name == 'cashback') {
+        return sum;
+      }
+
       final qty = int.tryParse(item['items_count']?.toString() ?? '1') ?? 1;
       return sum + qty;
     });
@@ -1130,7 +1135,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                                 return;
                               }
-                              
+
                               if (!(isPhoneValid || isEmailValid) || redeemedValue > 0) return;
 
                               setState(() => isAddLoading = true);
@@ -1903,37 +1908,37 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               // ---------------- DELETE ICON FOR DISCOUNT ----------------
               if ((label == TextConstants.discountText || isDiscount)
                   && discount > 0
-                  && redeemedValue == 0)   // <--- ADD THIS
+                  && redeemedValue == 0)
                 GestureDetector(
-                  onTap: isPaymentDone ? null : () async => await _removeAppliedCoupon(),
+                  onTap: isPaymentStarted ? null : () async => await _removeAppliedCoupon(),
                   child: Padding(
                     padding: const EdgeInsets.only(left: 5),
                     child: Icon(
                       Icons.delete_forever,
-                      color: isPaymentDone ? Colors.grey : Colors.red,
+                      color: isPaymentStarted ? Colors.grey : Colors.red,
                       size: 20,
                     ),
                   ),
                 ),
+
               if (label == "Redeemed Amount" && redeemedValue > 0)
                 GestureDetector(
-                  onTap: isPaymentDone        // <--- FIX
-                      ? null                  // disable delete
+                  onTap: isPaymentStarted
+                      ? null
                       : () async {
-                    setState(() {
-                      redeemedValue = 0;
-                    });
+                    setState(() => redeemedValue = 0);
                     await _removeRedeemedAmount();
                   },
                   child: Padding(
                     padding: const EdgeInsets.only(left: 5),
                     child: Icon(
                       Icons.delete_forever,
-                      color: isPaymentDone ? Colors.grey : Colors.red,   // <--- FIX (visual disabled)
+                      color: isPaymentStarted ? Colors.grey : Colors.red,
                       size: 20,
                     ),
                   ),
-                )
+                ),
+
 
             ],
           ),
@@ -2500,10 +2505,19 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               _buildPaymentOptionButton(
                                 TextConstants.redeemPoints,
                                 "assets/redeem.png",
-                                isActive: redeemedValue == 0 && availablePoints > 0 && isRedeemActive,
+                                isActive: redeemedValue == 0
+                                    && availablePoints > 0
+                                    && isRedeemActive
+                                    && !isPaymentStarted,   // ⭐ Disable after partial payment
                                 onTap: () async {
-                                  if (!isRedeemActive) return;   // safety
-                                  print("======== 🟦 REDEEM BUTTON PRESSED 🟦 ========");
+
+                                  if (!isRedeemActive) return;
+
+                                  // ⭐ Block redeem when partial payment has started
+                                  if (isPaymentStarted) {
+                                    print("⛔ Redeem blocked: Payment already started");
+                                    return;
+                                  }
 
                                   print("🔍 Current State Before Action:");
                                   print("➡ redeemedValue: $redeemedValue");
