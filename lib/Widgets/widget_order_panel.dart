@@ -1895,8 +1895,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   }
 
   int totalItems = 0;
-
-
   Future<void> deleteOfflineItem(Map<String, dynamic> orderItem) async {
     if (orderHelper.activeOrderId == null) return;
 
@@ -1908,6 +1906,34 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
     final Map<String, dynamic> offlineOrder =
     Map<String, dynamic>.from(rawOfflineOrder);
+
+    // ============================
+    // 🛑 CHECK: LAST ITEM + MERCHANT DISCOUNT
+    // ============================
+
+    final double merchantDiscount = (offlineOrder['merchantDiscount'] is num)
+        ? (offlineOrder['merchantDiscount'] as num).toDouble()
+        : 0.0;
+
+    final int totalItemCount =
+        ((offlineOrder['products'] as List?)?.length ?? 0) +
+            ((offlineOrder['payouts'] as List?)?.length ?? 0) +
+            ((offlineOrder['cashbacks'] as List?)?.length ?? 0);
+
+    if (merchantDiscount > 0 && totalItemCount == 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please delete merchant discount first"),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return; // ⛔ STOP — DO NOT DELETE LAST ITEM
+    }
+
+    // ============================
+    // CONTINUE WITH NORMAL DELETE LOGIC
+    // ============================
 
     // 🔍 Detect type: product / payout / cashback
     final String itemType =
@@ -1939,7 +1965,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
         return amt1 == amt2;
       });
-
       offlineOrder['payouts'] = payouts;
     }
 
@@ -1951,7 +1976,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
         return amt1 == amt2;
       });
-
       offlineOrder['cashbacks'] = cashbacks;
     }
 
@@ -1984,17 +2008,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     await CustomerDisplayHelper.updateCustomerDisplay(
         orderHelper.activeOrderId!);
 
-    if (kDebugMode) {
-      print("🗑️ Deleted offline $itemType successfully!");
-      print("Updated offline order:");
-      print(const JsonEncoder.withIndent('  ').convert(offlineOrder));
-    }
-
     // 🔁 Refresh UI
     setState(() {
       orderItems.remove(orderItem);
     });
   }
+
 
   double getCustomItemTax({
     required String taxClass,
@@ -2003,7 +2022,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     required List<Tax> taxes,
   }) {
     try {
-
+      // Find tax rate from your local tax list
       final selected = taxes.firstWhere(
             (t) => t.slug == taxClass,
         orElse: () => Tax(slug: "", name: ""),
@@ -2013,19 +2032,23 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         print("⚠ No tax class match → tax = 0.0");
         return 0.0;
       }
+
+      // Example: "gst_18" → extract "18"
       final rateString = selected.slug.replaceAll(RegExp(r'[^0-9]'), "");
       final rate = double.tryParse(rateString) ?? 0.0;
-      double tax = ((price * rate) / 100) * qty;
-      double roundedTax = double.parse(tax.toStringAsFixed(2));
 
-      print("🔥 Custom Item Tax (Rounded): $roundedTax");
+      final taxAmount = ((price * rate) / 100) * qty;
 
-      return roundedTax;
+      print("🔥 Custom Item Tax:");
+      print("   price: $price, qty: $qty, rate: $rate%, tax: $taxAmount");
+
+      return taxAmount;
     } catch (e) {
       print("❌ ERROR in getCustomItemTax → $e");
       return 0.0;
     }
   }
+
   double getProductTaxFromHive(int productId, double price, int qty) {
     try {
       final box = Hive.box('productCache');
@@ -2049,6 +2072,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         if (product != null) {
           print("✔ Product found in cache key: $key");
           print("📦 Cached product JSON: $product");
+
+          // 1️⃣ WooCommerce tax structure
           if (product['tax'] != null &&
               product['tax']['tax_rates'] != null &&
               product['tax']['tax_rates'] is List &&
@@ -2058,37 +2083,29 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 product['tax']['tax_rates'][0]['rate'].toString()
             ) ?? 0.0;
 
-            double itemTax = ((price * rate) / 100) * qty;
-            itemTax = double.parse(itemTax.toStringAsFixed(2));
+            final itemTax = ((price * rate) / 100) * qty;
 
-            print("🔥 TAX FOUND (tax_rates) → rate: $rate%, tax: $itemTax");
+            print("🔥 TAX FOUND in tax_rates → rate: $rate%");
+            print("🔥 itemTax = price($price) × $rate% × qty($qty) = $itemTax");
 
             return itemTax;
           }
+
+          // 2️⃣ If taxes[] exists
           if (product['taxes'] != null && product['taxes'] is List) {
-            double t = double.tryParse(product['taxes'][0]['subtotal'].toString()) ?? 0.0;
-
-            double itemTax = t * qty;
-
-            itemTax = double.parse(itemTax.toStringAsFixed(2));
-
-            print("✔ TAX from taxes[] → $itemTax");
-
-            return itemTax;
+            final t = double.tryParse(product['taxes'][0]['subtotal'].toString()) ?? 0.0;
+            print("✔ TAX from taxes[]: $t × qty = ${t * qty}");
+            return t * qty;
           }
+
+          // 3️⃣ subtotal_tax exists
           if (product['subtotal_tax'] != null) {
-            double t = double.tryParse(product['subtotal_tax'].toString()) ?? 0.0;
-
-            double itemTax = t * qty;
-
-            itemTax = double.parse(itemTax.toStringAsFixed(2));
-
-            print("✔ TAX from subtotal_tax → $itemTax");
-
-            return itemTax;
+            final t = double.tryParse(product['subtotal_tax'].toString()) ?? 0.0;
+            print("✔ TAX from subtotal_tax: $t × qty = ${t * qty}");
+            return t * qty;
           }
 
-          print("⚠ No tax field found for product: $productId");
+          print("⚠ No tax field detected for product: $productId");
           return 0.0;
         }
       }
@@ -2101,6 +2118,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     return 0.0;
   }
 
+
+// Current Order UI
   Widget buildCurrentOrder() {
     final theme = Theme.of(context); // Build #1.0.6 - added theme for order panel
     bool isKeyboardVisible = View.of(context).viewInsets.bottom > 0;
@@ -2313,53 +2332,25 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         double payoutTotal = offlinePayouts.fold<double>(0, (sum, payout) {
           return sum + (double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0);
         });
-
         double cashbackTotal = offlineCashback.fold(0, (sum, cash) {
           return sum + (double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0);
         });
 
-// ✅ Gross Total
-        grossTotal = productTotal + payoutTotal + cashbackTotal;
+        grossTotal = productTotal + payoutTotal+ cashbackTotal;
 
-// ✅ Order Discount
         orderDiscount = (offlineOrder['orderDiscount'] is num)
             ? (offlineOrder['orderDiscount'] as num).toDouble()
             : 0.0;
-// ✅ Merchant Discount (raw - safe read)
+
         merchantDiscount = (offlineOrder['merchantDiscount'] is num)
             ? (offlineOrder['merchantDiscount'] as num).toDouble()
             : 0.0;
 
-        double effectiveMerchantDiscount = 0.0;
+        final isPercentageDiscount = (offlineOrder['merchantDiscountIsPercentage'] as bool?) ?? false;
+        print("🔥 FINAL orderTax CALCULATED from Hive products = $orderTax");
 
-        if (totalItems > 0) {
-          // ✅ Apply normally
-          effectiveMerchantDiscount = merchantDiscount;
-        } else {
-          // ✅ PERMANENT DELETE FROM MEMORY + HIVE
-          merchantDiscount = 0.0;
-          effectiveMerchantDiscount = 0.0;
-
-          offlineOrder.remove('merchantDiscount');
-          offlineOrder.remove('merchantDiscountIsPercentage');
-
-          if (orderHelper.activeOrderId != null) {
-            offlineBox.put(orderHelper.activeOrderId.toString(), offlineOrder);
-            print("🗑 Merchant discount permanently removed and memory reset");
-          }
-        }
-
-// ✅ Now it's safe to read percentage flag
-        final isPercentageDiscount =
-            (offlineOrder['merchantDiscountIsPercentage'] as bool?) ?? false;
-
-
-
-// ✅ Final Safe Totals
-        netTotal = grossTotal - orderDiscount - effectiveMerchantDiscount;
-
-        netPayable = (netTotal + orderTax + cashbackFee)
-            .clamp(0.0, double.infinity);
+        netTotal = grossTotal - orderDiscount - merchantDiscount;
+        netPayable = netTotal + orderTax + cashbackFee;
 
         if (orderHelper.activeOrderId != null) {
           final updatedOrder = Map<String, dynamic>.from(rawOfflineOrder);
@@ -2376,6 +2367,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           offlineBox.put(orderHelper.activeOrderId.toString(), updatedOrder);
           print("💾 Saved latest totals into offlineOrders Hive");
         }
+
+
 
         // 🔹 Format date/time
         if (offlineOrder['created_at'] != null) {
@@ -3121,7 +3114,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               ],
                             ),
                             SizedBox(height: 2),
-                            if (merchantDiscount > 0 && totalItems>0)
+                            if(merchantDiscount>0)
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [

@@ -1844,44 +1844,18 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       final existingOrder = Map<String, dynamic>.from(offlineBox.get(key));
 
       // Load existing discount list
-      // ✅ Safely derive cart items ONLY from Hive order
-      final List items = List.from(existingOrder['items'] ?? []);
-      final int totalItems = items.length;
-
-// ✅ Load existing discount list
       final discounts = (existingOrder["discounts"] as List? ?? [])
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
-      print("🔍 Cart Items = $totalItems | Existing Discounts = ${discounts.length}");
-
-// ✅ AUTO-DELETE discount when cart is empty
-      if (totalItems == 0 && discounts.isNotEmpty) {
-        print("🧹 Cart empty → Forcibly removing stale discount from Hive");
-
-        discounts.clear();
-        existingOrder.remove('merchantDiscount');
-        existingOrder.remove('merchantDiscountIsPercentage');
-        existingOrder.remove('merchantDiscountIds');
-        existingOrder['discounts'] = [];
-
-        await offlineBox.put(key, existingOrder);
-
-        print("✅ Stale discount removed permanently from offline order");
-      }
-
-// ✅ BLOCK only when items exist + discount exists
-      if (discounts.isNotEmpty && totalItems > 0) {
+      if (discounts.isNotEmpty) {
         setState(() => _isDiscountLoading = false);
-
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
             content: Text("A discount already exists for this order."),
             backgroundColor: Colors.orange,
           ),
         );
-
-        print("⛔ Discount blocked → already exists & cart not empty");
         return;
       }
 
