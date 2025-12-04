@@ -2273,6 +2273,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     final tax = uiOrderTax;
     final cashbackFee = uiCashbackFee;
     final hiveRedeemedValue = uiRedeemedValue;
+    final netpayable= uiNetPayable;
 
 
     if (kDebugMode) {
@@ -2528,7 +2529,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         print("🟦 ITEM #${i + 1}");
         print("🟦 Name         : ${orderItem[AppDBConst.itemName]}");
         print("🟦 Qty          : ${orderItem[AppDBConst.itemCount]}");
-        // INSERT THIS FIX HERE ⬇️
+        // INSERT THIS FIX HERE ⬇
         String formattedSalesPrice;
         if (isPayout) {
           formattedSalesPrice =
@@ -2572,7 +2573,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
 
         print("🟦 Sales Price  : $formattedSalesPrice");
-        // END FIX ⬆️
+        // END FIX ⬆
         print("🟦 Raw Neg Price: $negativeItemPrice");
         print("🟦 Rate Value   : $formattedRate");
         print("🟦 Amount Value : $formattedAmount");
@@ -2668,7 +2669,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     //Net Payable
     bytes += ticket.row([
       PosColumn(text: TextConstants.netPayable, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "${TextConstants.currencySymbol}${netpayable.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
