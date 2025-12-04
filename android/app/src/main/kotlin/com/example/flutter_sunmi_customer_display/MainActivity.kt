@@ -123,6 +123,8 @@ class MainActivity : FlutterActivity() {
                     val orderDate = call.argument<String>("orderDate") ?: ""
                     val orderTime = call.argument<String>("orderTime") ?: ""
                     val cashbackFee = call.argument<Double>("cashbackFee") ?: 0.0
+                    val loyaltyContact = call.argument<String>("loyaltyContact") ?: ""
+                    Log.d("CustomerDisplay", "☎ Loyalty Contact received: $loyaltyContact")
 
                     Log.d("CustomerDisplay", "➡ showCustomerData invoked → orderId=$orderId, items=${items.size}, grossTotal=$grossTotal, discount=$discount, merchantDiscount=$merchantDiscount, netTotal=$netTotal, tax=$tax, netPayable=$netPayable")
                     Log.d("CustomerDisplay", "➡ orderDate='$orderDate'")
@@ -130,7 +132,7 @@ class MainActivity : FlutterActivity() {
 
                     val success = showDataOnCustomerDisplay(
                         orderId, currentStoreId, currentStoreName, currentStoreLogoUrl, items,
-                        grossTotal, discount, merchantDiscount, netTotal, tax, netPayable,orderDate, orderTime,cashbackFee
+                        grossTotal, discount, merchantDiscount, netTotal, tax, netPayable,orderDate, orderTime,cashbackFee,loyaltyContact
                     )
 
                     if (success) {
@@ -203,7 +205,8 @@ class MainActivity : FlutterActivity() {
         netPayable: Double,
         orderDate: String,
         orderTime: String,
-        cashbackFee: Double
+        cashbackFee: Double,
+        loyaltyContact: String
     ): Boolean {
 
         if (customerDisplayPresentation == null) {
@@ -225,7 +228,8 @@ class MainActivity : FlutterActivity() {
             netPayable,
             orderDate,
             orderTime,
-            cashbackFee
+            cashbackFee,
+            loyaltyContact
         )
 
         Log.d("CustomerDisplay", "✔ CustomerDisplayPresentation updated with order #$orderId")
@@ -297,6 +301,7 @@ class MainActivity : FlutterActivity() {
         private var currentStoreName: String = ""
         private var currentStoreLogoUrl: String? = null
         private var currentStoreBaseUrl: String = ""
+
 
         private lateinit var slideshowContainer: LinearLayout
 
@@ -562,7 +567,8 @@ class MainActivity : FlutterActivity() {
             netPayable: Double,
             orderDate: String,
             orderTime: String,
-            cashbackFee: Double
+            cashbackFee: Double,
+            loyaltyContact: String
         ) {
             val defaultStoreId = "STORE001"
             val defaultStoreName = "Pinaka"
@@ -572,9 +578,24 @@ class MainActivity : FlutterActivity() {
             currentStoreName = storeName?.takeIf { it.isNotEmpty() } ?: defaultStoreName
             currentStoreLogoUrl = storeLogoUrl?.takeIf { it?.isNotEmpty() == true } ?: defaultStoreLogoUrl
 
+            Log.d("CustomerDisplay", "📱 Displaying Customer Contact: $loyaltyContact")
+
+
             Log.d("CustomerDisplay", "➡ Showing Customer Display layout")
             setContentView(R.layout.customer_display_layout)
             bindOrderViews()
+
+            // --- Loyalty Contact Display ---
+            val emailValueView = findViewById<TextView>(R.id.email_value)
+
+            if (loyaltyContact.isNotEmpty()) {
+                emailValueView.text = loyaltyContact
+            } else {
+                emailValueView.text = "- Guest"
+            }
+
+            Log.d("CustomerDisplay", "📱 Loyalty Contact displayed: ${emailValueView.text}")
+
 
             // Update store info
             updateStoreInfo(currentStoreId, currentStoreName, currentStoreLogoUrl, orderDate, orderTime)
@@ -654,9 +675,12 @@ class MainActivity : FlutterActivity() {
                 val price = (item["price"] as? Number)?.toDouble() ?: 0.0
                 val total = price * qty
 
-                if (!name.equals("Payout", ignoreCase = true) && !name.equals("Coupon", ignoreCase = true)) {
+                if (!name.equals("Payout", ignoreCase = true) &&
+                    !name.equals("Cashback", ignoreCase = true)) {
+
                     totalItemCount += qty
                 }
+
 
                 // Item Layout
                 val itemLayout = LinearLayout(context).apply {
@@ -728,8 +752,12 @@ class MainActivity : FlutterActivity() {
 
                 val qtyPriceView = TextView(context).apply {
                     textSize = 17f
-                    text = "${formatCurrency(price)} × $qty"
                     setTextColor(Color.DKGRAY)
+                    text = when {
+                        name.equals("Payout", ignoreCase = true) -> ""
+                        name.equals("Cashback", ignoreCase = true) -> ""
+                        else -> "${formatCurrency(price)} × $qty"
+                    }
                 }
 
                 detailsLayout.addView(nameView)

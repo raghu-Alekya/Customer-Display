@@ -22,7 +22,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String ownReceiptText        = "Customize your own receipt";
   static const String companyNameText       = "Company Name";
   static const String companyNameHintText   = "Company Name";
-  static const String cashbackFee               = "CashbackFee";
+  static const String cashbackFee               = "Cashback Fee";
   static const String gstinText             = "GSTIN";
   static const String gstinHintText         = "GSTIN";
   static const String headerText            = "Header";
@@ -215,7 +215,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String customItemAlert       = "Custom Item Alert";
   static const String customItemAlertDescription = "You're about to add a custom item. Make sure the item details are accurate before proceeding.";
   static const String addCustomItem         = "Add Custom Item";
-  static const String addCashbackAmount      = "Add CashBack Amount";
+  static const String addCashbackAmount      = "Add Cashback Amount";
   static const String couponNotApplied      = "Coupon Not Applied";
   static const String couponNotAppliedDescription = "The coupon couldn’t be applied. Please double-check the eligibility criteria or try a different code.";
   static const String invalidDiscount       = "Invalid Discount";

@@ -47,12 +47,18 @@ class CustomerDisplayHelper {
       String orderTime = "";
 
       final createdAt = data["created_at"]?.toString() ?? "";
+
       if (createdAt.isNotEmpty) {
         final dt = DateTime.tryParse(createdAt);
         if (dt != null) {
-          orderDate =
-          "${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}";
 
+          // 👉 Format: MM-DD-YYYY
+          orderDate =
+          "${dt.month.toString().padLeft(2, '0')}-"
+              "${dt.day.toString().padLeft(2, '0')}-"
+              "${dt.year}";
+
+          // 👉 12-hour time with AM/PM
           final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
           final minute = dt.minute.toString().padLeft(2, '0');
           final second = dt.second.toString().padLeft(2, '0');
@@ -64,6 +70,7 @@ class CustomerDisplayHelper {
 
       // ------------------ FILTER PRODUCT LIST ------------------
       final productsRaw = (data["products"] ?? []) as List;
+
 
       print("🔵 [CD] RAW PRODUCTS FROM HIVE (BEFORE FILTER):");
       for (var p in productsRaw) {
@@ -205,6 +212,10 @@ class CustomerDisplayHelper {
       print(" netPayable = $netPayable");
       print(" orderDate = $orderDate");
       print(" orderTime = $orderTime");
+      // ------------------ LOYALTY CONTACT ------------------
+      final loyaltyContact = data["loyaltyContact"]?.toString() ?? "";
+      print("☎ Loyalty Contact = $loyaltyContact");
+
 
       // ------------------ PUSH TO CUSTOMER DISPLAY ------------------
       await CustomerDisplayService.showCustomerData(
@@ -219,6 +230,7 @@ class CustomerDisplayHelper {
         orderDate: orderDate,
         orderTime: orderTime,
         cashbackFee: cashbackFee,
+        loyaltyContact: loyaltyContact,
       );
 
       print("✅ [CD] Completed updateCustomerDisplay → $serverOrderId");

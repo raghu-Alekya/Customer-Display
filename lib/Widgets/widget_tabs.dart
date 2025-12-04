@@ -72,6 +72,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
   // Payout value
   String _payoutAmount = "";
+  double _maxCashbackLimit = 0.0;
+
 
   // Adding a separate state variable for selected tab
   late int _selectedTabIndex;
@@ -104,6 +106,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     orderBloc = OrderBloc(OrderRepository()); // Build #1.0.53
     productBloc = ProductBloc(ProductRepository());
     super.initState();
+    _loadCashbackLimit();
     _customItemNameController.addListener(() {
       _customItemName = _customItemNameController.text;
     });
@@ -188,6 +191,24 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     _skuController.dispose();
     super.dispose();
   }
+  void _loadCashbackLimit() {
+    final config = CashbackHelper.getCashbackConfig();
+
+    if (config != null &&
+        config["cash_back_service"] != null &&
+        config["cash_back_service"]["max_cashback"] != null) {
+
+      setState(() {
+        _maxCashbackLimit =
+            double.tryParse(config["cash_back_service"]["max_cashback"].toString()) ?? 0.0;
+      });
+
+      print("🟢 Loaded Max Cashback Limit = $_maxCashbackLimit");
+    } else {
+      print("❌ max_cashback NOT FOUND");
+    }
+  }
+
 
   // Fetch order ID and total from OrderHelper
   Future<void> _loadOrderData() async {
@@ -687,7 +708,23 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   : const Color(0xFF1E2745),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
+          // ⭐ MAX Cashback Info (from backend)
+          if (_maxCashbackLimit > 0)
+            Column(
+              children: [
+                Text(
+                  "Max Allowed Cashback: ${TextConstants.currencySymbol}${_maxCashbackLimit.toStringAsFixed(2)}",
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.green,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 5),
+              ],
+            ),
+
 
           // 💰 Payout Display
           Container(
@@ -2226,6 +2263,21 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       final offlineBox = Hive.box('offlineOrders');
       final productBox = Hive.box('productCache');
       final cashbackAmount = double.parse(_cashbackAmount);
+      // 🔥 MAX CASHBACK VALIDATION
+      if (_maxCashbackLimit > 0 && cashbackAmount > _maxCashbackLimit) {
+        setState(() => _isCashbackLoading = false);
+
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Cashback cannot exceed ${TextConstants.currencySymbol}${_maxCashbackLimit.toStringAsFixed(2)}",
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return; // ❗ STOP here → Do NOT add cashback
+      }
 
       int? orderId = OrderHelper().activeOrderId;
 

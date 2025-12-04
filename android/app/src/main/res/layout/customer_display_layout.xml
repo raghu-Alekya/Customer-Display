@@ -13,7 +13,7 @@
     <LinearLayout
         android:id="@+id/header_container"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
+        android:layout_height="60dp"
         android:background="#1F3A68"
         android:orientation="horizontal"
         android:gravity="center_vertical"
@@ -66,7 +66,7 @@
                 android:paddingStart="6dp"
                 android:text="18 November, 2025"
                 android:textColor="#FFFFFF"
-                android:textSize="16sp"
+                android:textSize="22sp"
                 android:textStyle="bold" />
 
             <!-- SMALLER GAP + VERTICAL LINE -->
@@ -92,7 +92,7 @@
                 android:layout_height="wrap_content"
                 android:text="12:00 PM"
                 android:textColor="#FFFFFF"
-                android:textSize="16sp"
+                android:textSize="22sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -290,7 +290,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Discount"
+                        android:text="Discount/Coupon"
                         android:textColor="#388E3C"
                         android:textSize="20sp" />
 

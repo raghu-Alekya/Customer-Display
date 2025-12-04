@@ -171,19 +171,34 @@ class _EditProductState extends State<EditProduct> {
               QuantityControl(
                 controller: controller,
                 quantity: quantity,
-                onDecrement: updateQuantity,
-                onIncrement: updateQuantity,
+                onDecrement: (q) {
+                  if (q > 0) updateQuantity(q - 1);
+                },
+                onIncrement: (q) {
+                  if (q < 99) updateQuantity(q + 1);
+                },
               ),
+
               const SizedBox(height: 20),
               Expanded(
                 child: CustomNumPad(
                   isDarkTheme: isDark,
                   onDigitPressed: (digit) {
-                    int newQty = int.tryParse(
-                      (controller.text.isEmpty ? "0" : controller.text) + digit,
-                    ) ?? quantity;
+                    String current = controller.text.isEmpty ? "0" : controller.text;
+
+                    // Build new quantity by appending digit
+                    String newValue = current + digit;
+
+                    int newQty = int.tryParse(newValue) ?? quantity;
+
+                    // ⭐ LIMIT TO 99
+                    if (newQty > 99) {
+                      newQty = 99;
+                    }
+
                     updateQuantity(newQty);
                   },
+
                   onClearPressed: () => updateQuantity(0),
                   onAddPressed: quantity > 0
                       ? () {

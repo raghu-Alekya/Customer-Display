@@ -1102,15 +1102,36 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                   showCustomerInput = false;
                                   isPhoneValid = false;
                                   isEmailValid = false;
-                                  isRedeemActive = false;   // <-- FIXED
+                                  isRedeemActive = false;
                                 });
+
+                                // ---------------- CLEAR LOYALTY CONTACT FROM HIVE ----------------
+                                final offlineBox = Hive.box('offlineOrders');
+                                final localKey = widget.offlineOrderId?.toString();
+
+                                if (localKey != null) {
+                                  final existing = offlineBox.get(localKey);
+
+                                  if (existing != null) {
+                                    final d = Map<String, dynamic>.from(existing);
+                                    d["loyaltyContact"] = "";  // <---- IMPORTANT
+                                    offlineBox.put(localKey, d);
+
+                                    print("🟡 Loyalty contact removed for $localKey");
+                                  }
+                                }
+
+                                // ---------------- UPDATE CUSTOMER DISPLAY WITH NO LOYALTY ----------------
+                                final localOrderId = widget.offlineOrderId;
+                                if (localOrderId != null) {
+                                  print("📺 Customer Display → loyalty cleared");
+                                  await CustomerDisplayHelper.updateCustomerDisplay(localOrderId);
+                                }
+
                                 return;
                               }
-
-
-                              // ADD BUTTON → SHOW LOADING
-                              if (!(isPhoneValid || isEmailValid) ||
-                                  redeemedValue > 0) return;
+                              
+                              if (!(isPhoneValid || isEmailValid) || redeemedValue > 0) return;
 
                               setState(() => isAddLoading = true);
 
@@ -1118,8 +1139,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               final orderId = widget.orderId ?? 0;
 
                               try {
-                                final rawResponse =
-                                await orderBloc.addLoyaltyPoints(
+                                final rawResponse = await orderBloc.addLoyaltyPoints(
                                   orderId: orderId,
                                   contact: contact,
                                 );
@@ -1127,9 +1147,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 final result = jsonDecode(rawResponse);
                                 final data = result["data"];
 
-                                final int pts = int.tryParse(
-                                    data["available_points"].toString()) ??
-                                    0;
+                                final int pts = int.tryParse(data["available_points"].toString()) ?? 0;
 
                                 setState(() {
                                   loyaltyData = data;
@@ -1138,15 +1156,38 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                   showCustomerInput = true;
                                 });
 
+                                // ---------------- SAVE CONTACT INTO HIVE ----------------
+                                final offlineBox = Hive.box('offlineOrders');
+                                final localKey = widget.offlineOrderId?.toString();
+
+                                if (localKey != null) {
+                                  final existing = offlineBox.get(localKey);
+
+                                  if (existing != null) {
+                                    final d = Map<String, dynamic>.from(existing);
+                                    d["loyaltyContact"] = contact;   // <---- SAVE CONTACT
+                                    offlineBox.put(localKey, d);
+
+                                    print("🟢 Loyalty contact saved into Hive for $localKey → $contact");
+                                  }
+                                }
+
+                                // -------------- UPDATE CUSTOMER DISPLAY -----------------
+                                final localOrderId = widget.offlineOrderId;
+                                if (localOrderId != null) {
+                                  print("📌 Updating Customer Display → loyalty added");
+                                  await CustomerDisplayHelper.updateCustomerDisplay(localOrderId);
+                                }
+
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text(
-                                          "Loyalty Points Added Successfully!"),
+                                      content: Text("Loyalty Points Added Successfully!"),
                                       backgroundColor: Colors.green,
                                     ),
                                   );
                                 }
+
                               } catch (e) {
                                 print("❌ Loyalty API Error: $e");
 
@@ -1158,11 +1199,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                     ),
                                   );
                                 }
+
+                              } finally {
+                                if (mounted) setState(() => isAddLoading = false);
                               }
-                              finally {
-                                if (mounted)
-                                  setState(() => isAddLoading = false);
-                              }
+
                             },
                             child: Container(
                               margin: const EdgeInsets.all(2),
@@ -2642,7 +2683,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         width: 168,
         padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? Color(0xFF27AE60) : Colors.grey, // 🔹 Grey if disabled
+          color: isActive ? Color(0xFF27AE60) : Colors.grey,
+          // 🔹 Grey if disabled
           borderRadius: BorderRadius.circular(6),
         ),
         child: Row(
@@ -2666,104 +2708,76 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
-  Future<void> _removeAppliedCoupon() async {
-    if (widget.orderId == null || widget.orderId == 0) return;
+    Future<void> _removeAppliedCoupon() async {
+      if (widget.orderId == null || widget.orderId == 0) return;
 
-    final offlineBox = Hive.box('offlineOrders');
-    final key = widget.orderId!.toString();
+      final offlineBox = Hive.box('offlineOrders');
+      final localKey = widget.offlineOrderId?.toString();  // 🔥 ALWAYS LOCAL KEY
 
-    // 🔹 1️⃣ Take a snapshot BEFORE calling API
-    final rawBefore = offlineBox.get(key);
-    Map<String, dynamic>? before;
-    Map<int, Map<String, dynamic>> originalByProductId = {};
-
-    if (rawBefore != null) {
-      before = Map<String, dynamic>.from(rawBefore);
-      final beforeList = (before["products"] ?? []) as List;
-
-      for (var e in beforeList) {
-        final p = Map<String, dynamic>.from(e);
-        final type = (p["type"] ?? "").toString().toLowerCase();
-        if (type == "coupon") continue;  // skip coupon
-
-        final id = (p["product_id"] ?? p["server_item_id"] ?? 0) as int;
-        originalByProductId[id] = p; // store ORIGINAL qty
+      if (localKey == null) {
+        print("❌ No offlineOrderId found");
+        return;
       }
-    }
 
-    setState(() => isSummaryLoading = true);
+      setState(() => isSummaryLoading = true);
 
-    try {
-      await orderBloc.removeCoupon(
-        orderId: widget.orderId!,
-        couponCode: "",
-      );
+      try {
+        // 🔥 Woo API call uses Woo ID only
+        await orderBloc.removeCoupon(
+          orderId: widget.orderId!,
+          couponCode: "",
+        );
 
-      // RESET UI VALUES
-      setState(() {
-        discount = 0.0;
-        discountValue = 0.0;
-        NetTotal = grossTotal;
-        tax = oldTax;
-        computedNetPayable = grossTotal + tax - merchantDiscount + cashbackFee;
-        balanceAmount = computedNetPayable;
-      });
+        // --------- UPDATE UI TOTALS ---------
+        setState(() {
+          discount = 0.0;
+          discountValue = 0.0;
+          NetTotal = grossTotal;
+          tax = oldTax;
+          computedNetPayable = grossTotal + tax - merchantDiscount + cashbackFee;
+          balanceAmount = computedNetPayable;
+        });
 
-      // 🔹 2️⃣ Fix Hive after BLoC/repository change
-      final existing = offlineBox.get(key);
+        // --------- UPDATE HIVE TOTALS ONLY ----------
+        final existing = offlineBox.get(localKey);
 
-      if (existing != null) {
-        final data = Map<String, dynamic>.from(existing);
-        final prodsRaw = (data["products"] ?? []) as List;
-        final prods = prodsRaw.map((e) => Map<String, dynamic>.from(e)).toList();
+        if (existing != null) {
+          final data = Map<String, dynamic>.from(existing);
 
-        // remove coupon lines
-        prods.removeWhere((p) => (p["type"] ?? "").toString().toLowerCase() == "coupon");
+          // ONLY update totals
+          data["orderDiscount"] = 0.0;
+          data["wooTax"] = oldTax;
+          data["merchantDiscount"] = merchantDiscount;
+          data["cashbackFee"] = cashbackFee;
 
-        for (var p in prods) {
-          final id = (p["product_id"] ?? p["server_item_id"] ?? 0) as int;
-          final original = originalByProductId[id];
+          offlineBox.put(localKey, data);
 
-          // 🔥 restore correct quantity if we have original
-          if (original != null) {
-            p["quantity"] = original["quantity"];
-          }
-
-          final qty = (p["quantity"] ?? 1);
-          final unit = (p["unit_price"] ?? 0);
-
-          final q = qty is num ? qty.toDouble() : 1.0;
-          final u = unit is num ? unit.toDouble() : 0.0;
-
-          p["price"] = q * u;
+          print("🟢 Hive totals updated (LOCAL KEY: $localKey) — no product changes");
+        } else {
+          print("⚠ No hive order found for localKey → $localKey");
         }
 
-        data["products"] = prods;
-        data["orderDiscount"] = 0.0;
-        data["wooTax"] = tax;
+        // --------- CUSTOMER DISPLAY ----------
+        print("📌 Updating Customer Display using LOCAL ORDER ID = $localKey");
+        await CustomerDisplayHelper.updateCustomerDisplay(widget.offlineOrderId!);
 
-        offlineBox.put(key, data);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Coupon removed successfully"),
+            backgroundColor: Colors.green,
+          ),
+        );
 
-        print("🟢 Hive updated — coupon removed, qty restored, prices recalculated");
+      } catch (e) {
+        print("❌ Error removing coupon: $e");
+      } finally {
+        setState(() => isSummaryLoading = false);
       }
-
-      await CustomerDisplayHelper.updateCustomerDisplay(widget.orderId!);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Coupon removed successfully"),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      print("❌ ERROR removing coupon: $e");
-    } finally {
-      setState(() => isSummaryLoading = false);
     }
-  }
 
 
-  void _openCouponPopup() {
+
+    void _openCouponPopup() {
     final TextEditingController _couponCtrl = TextEditingController();
 
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -2926,16 +2940,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         return;
       }
 
-      // SUCCESS
       oldTax = tax;
 
       final appliedDiscount = double.tryParse(response.discountTotal) ?? 0.0;
       final updatedTax = double.tryParse(response.totalTax) ?? tax;
-      final backendNet = double.tryParse(response.total) ?? computedNetPayable;
-
-      print("✔ Discount = $appliedDiscount");
-      print("✔ Updated Tax = $updatedTax");
-      print("✔ Final Net = $backendNet");
 
       setState(() {
         discount = appliedDiscount;
@@ -2946,68 +2954,37 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         balanceAmount = computedNetPayable;
       });
 
-      // ------------------ HIVE UPDATE ------------------
       final offlineBox = Hive.box('offlineOrders');
-      final key = widget.orderId!.toString();
-      final existing = offlineBox.get(key);
+      final localKey = widget.offlineOrderId?.toString();
 
-      if (existing != null) {
-        final data = Map<String, dynamic>.from(existing);
+      if (localKey != null) {
+        final existing = offlineBox.get(localKey);
 
-        // 1️⃣ Load / Create originalProducts
-        List<Map<String, dynamic>> originalProducts;
+        if (existing != null) {
+          final data = Map<String, dynamic>.from(existing);
 
-        if (data["originalProducts"] != null) {
-          originalProducts = (data["originalProducts"] as List)
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
-          print("🟢 Using saved originalProducts");
+          data["orderDiscount"] = appliedDiscount;
+          data["wooTax"] = updatedTax;
+          data["merchantDiscount"] = merchantDiscount;
+          data["cashbackFee"] = cashbackFee;
+
+          offlineBox.put(localKey, data);
+
+          print("🟢 Hive updated using LOCAL KEY → $localKey");
         } else {
-          // FIRST TIME: Clean and save the products
-          originalProducts = (data["products"] as List)
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
-
-          // 🔥 FIX VARIANT ZERO-PRICE BUG
-          for (var p in originalProducts) {
-            final isVariant =
-                (p["variation_id"] ?? 0) != 0 ||
-                    (p["variation_count"] ?? 0) > 0 ||
-                    (p["type"] ?? "").toString().toLowerCase() == "variant";
-
-            if (isVariant) {
-              final price = (p["price"] ?? 0).toDouble();
-
-              if ((p["unit_price"] ?? 0) == 0) p["unit_price"] = price;
-              if ((p["regular_price"] ?? 0) == 0) p["regular_price"] = price;
-              if ((p["sales_price"] ?? 0) == 0) p["sales_price"] = price;
-
-              print("🔧 FIXED VARIANT → ${p["name"]}, set unit_price=$price");
-            }
-          }
-
-
-          data["originalProducts"] = originalProducts;
-          print("🟡 Saved initial originalProducts (fixed variant prices)");
+          print("⚠ Hive missing local order → $localKey");
         }
-
-        // 2️⃣ Restore ORIGINAL products before applying coupon
-        data["products"] = originalProducts
-            .map((p) => Map<String, dynamic>.from(p))
-            .toList();
-
-        // 3️⃣ Write updated totals
-        data["orderDiscount"] = appliedDiscount;
-        data["wooTax"] = updatedTax;
-        data["merchantDiscount"] = merchantDiscount;
-        data["cashbackFee"] = cashbackFee;
-
-        offlineBox.put(key, data);
-        print("🟢 Hive updated with corrected products + discount");
       }
 
       // ------------------ CUSTOMER DISPLAY ------------------
-      await CustomerDisplayHelper.updateCustomerDisplay(widget.orderId!);
+      final localOrderId = widget.offlineOrderId;
+
+      if (localOrderId != null) {
+        print("📌 Updating Customer Display using LOCAL ORDER ID = $localOrderId");
+        await CustomerDisplayHelper.updateCustomerDisplay(localOrderId);
+      } else {
+        print("⚠ No localOrderId found for Customer Display");
+      }
 
     } catch (e) {
       print("❌ ERROR applying coupon: $e");

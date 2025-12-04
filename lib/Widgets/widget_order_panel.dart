@@ -2152,6 +2152,24 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
         final Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(rawOfflineOrder);
 
+        // / ⭐ OPTIONAL: auto-remove cashback if amount is 0
+        if (offlineOrder['cashbacks'] != null &&
+            offlineOrder['cashbacks'] is List &&
+            (offlineOrder['cashbacks'] as List).isNotEmpty) {
+
+          final firstCashback = offlineOrder['cashbacks'][0];
+          final cashbackAmount =
+              double.tryParse(firstCashback['amount']?.toString() ?? '0') ?? 0.0;
+
+          if (cashbackAmount == 0) {
+            if (kDebugMode) {
+              print("🧹 Auto-removing cashback because amount is 0");
+            }
+            offlineOrder['cashbacks'] = [];
+            offlineOrder['cashbackFee'] = 0.0;
+          }
+        }
+
         // 🛍️ Load products
         final offlineProducts = ((offlineOrder['products'] ?? []) as List)
             .map((e) => Map<String, dynamic>.from(e as Map))
@@ -2169,6 +2187,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         cashbackFee = (offlineOrder['cashbackFee'] is num)
             ? (offlineOrder['cashbackFee'] as num).toDouble()
             : 0.0;
+
+// If no cashback entries, force fee to 0
+        if (offlineCashback.isEmpty) {
+          cashbackFee = 0.0;
+        }
 
         // final productBox = Hive.box('productCache');
         // final cashbackProduct = productBox.values.firstWhere(
@@ -3193,7 +3216,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                     ],
                                   ),
                                   Text(
-                                    "+${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
+                                    "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
                                     style: TextStyle(
                                       color: Color(0XFF55CBCD),
                                       fontSize: 12,

@@ -66,7 +66,8 @@ class CustomerDisplayService {
     required double netTotal,
     required double tax,
     required double netPayable,
-    required double cashbackFee,   // ✅ NEW
+    required double cashbackFee,
+    String loyaltyContact = "", // ✅ NEW
     String orderDate = '',
     String orderTime = '',
     String storeId = '',
@@ -104,6 +105,8 @@ class CustomerDisplayService {
         "storeId": storeId,
         "storeName": storeName,
         "storeLogoUrl": storeLogoUrl ?? "",
+        "loyaltyContact": loyaltyContact,
+
       });
 
       print("✅ [CustomerDisplayService] Customer data sent successfully");
