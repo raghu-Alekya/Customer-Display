@@ -2003,7 +2003,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     required List<Tax> taxes,
   }) {
     try {
-      // Find tax rate from your local tax list
+
       final selected = taxes.firstWhere(
             (t) => t.slug == taxClass,
         orElse: () => Tax(slug: "", name: ""),
@@ -2013,23 +2013,19 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         print("⚠ No tax class match → tax = 0.0");
         return 0.0;
       }
-
-      // Example: "gst_18" → extract "18"
       final rateString = selected.slug.replaceAll(RegExp(r'[^0-9]'), "");
       final rate = double.tryParse(rateString) ?? 0.0;
+      double tax = ((price * rate) / 100) * qty;
+      double roundedTax = double.parse(tax.toStringAsFixed(2));
 
-      final taxAmount = ((price * rate) / 100) * qty;
+      print("🔥 Custom Item Tax (Rounded): $roundedTax");
 
-      print("🔥 Custom Item Tax:");
-      print("   price: $price, qty: $qty, rate: $rate%, tax: $taxAmount");
-
-      return taxAmount;
+      return roundedTax;
     } catch (e) {
       print("❌ ERROR in getCustomItemTax → $e");
       return 0.0;
     }
   }
-
   double getProductTaxFromHive(int productId, double price, int qty) {
     try {
       final box = Hive.box('productCache');
@@ -2053,8 +2049,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         if (product != null) {
           print("✔ Product found in cache key: $key");
           print("📦 Cached product JSON: $product");
-
-          // 1️⃣ WooCommerce tax structure
           if (product['tax'] != null &&
               product['tax']['tax_rates'] != null &&
               product['tax']['tax_rates'] is List &&
@@ -2064,29 +2058,37 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 product['tax']['tax_rates'][0]['rate'].toString()
             ) ?? 0.0;
 
-            final itemTax = ((price * rate) / 100) * qty;
+            double itemTax = ((price * rate) / 100) * qty;
+            itemTax = double.parse(itemTax.toStringAsFixed(2));
 
-            print("🔥 TAX FOUND in tax_rates → rate: $rate%");
-            print("🔥 itemTax = price($price) × $rate% × qty($qty) = $itemTax");
+            print("🔥 TAX FOUND (tax_rates) → rate: $rate%, tax: $itemTax");
+
+            return itemTax;
+          }
+          if (product['taxes'] != null && product['taxes'] is List) {
+            double t = double.tryParse(product['taxes'][0]['subtotal'].toString()) ?? 0.0;
+
+            double itemTax = t * qty;
+
+            itemTax = double.parse(itemTax.toStringAsFixed(2));
+
+            print("✔ TAX from taxes[] → $itemTax");
+
+            return itemTax;
+          }
+          if (product['subtotal_tax'] != null) {
+            double t = double.tryParse(product['subtotal_tax'].toString()) ?? 0.0;
+
+            double itemTax = t * qty;
+
+            itemTax = double.parse(itemTax.toStringAsFixed(2));
+
+            print("✔ TAX from subtotal_tax → $itemTax");
 
             return itemTax;
           }
 
-          // 2️⃣ If taxes[] exists
-          if (product['taxes'] != null && product['taxes'] is List) {
-            final t = double.tryParse(product['taxes'][0]['subtotal'].toString()) ?? 0.0;
-            print("✔ TAX from taxes[]: $t × qty = ${t * qty}");
-            return t * qty;
-          }
-
-          // 3️⃣ subtotal_tax exists
-          if (product['subtotal_tax'] != null) {
-            final t = double.tryParse(product['subtotal_tax'].toString()) ?? 0.0;
-            print("✔ TAX from subtotal_tax: $t × qty = ${t * qty}");
-            return t * qty;
-          }
-
-          print("⚠ No tax field detected for product: $productId");
+          print("⚠ No tax field found for product: $productId");
           return 0.0;
         }
       }
@@ -2099,8 +2101,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     return 0.0;
   }
 
-
-// Current Order UI
   Widget buildCurrentOrder() {
     final theme = Theme.of(context); // Build #1.0.6 - added theme for order panel
     bool isKeyboardVisible = View.of(context).viewInsets.bottom > 0;
