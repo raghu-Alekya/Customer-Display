@@ -15,6 +15,7 @@ import '../../Repositories/Orders/order_repository.dart';
 
 class OrderBloc { // Build #1.0.25 - added by naveen
   final OrderRepository _orderRepository;
+  String lastApplyCouponError = "";
 
   // Build #1.0.53 : updated code - Stream Controllers ---
   late  StreamController<APIResponse<CreateOrderResponseModel>> _createOrderController;
@@ -838,7 +839,11 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       return response;
 
     } catch (e) {
-      applyCouponSink.add(APIResponse.error(_extractErrorMessage(e)));
+      final errorMessage = _extractErrorMessage(e);
+
+      lastApplyCouponError = errorMessage;   // <--- SAVE IT HERE
+
+      applyCouponSink.add(APIResponse.error(errorMessage));
       return null;
     }
   }

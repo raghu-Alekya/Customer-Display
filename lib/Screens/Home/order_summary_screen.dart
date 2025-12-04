@@ -2944,16 +2944,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         couponCode: code,
       );
 
+      // ----------- SHOW REPOSITORY ERROR MESSAGE -----------
       if (response == null) {
+        final errorMessage = orderBloc.lastApplyCouponError.isNotEmpty
+            ? orderBloc.lastApplyCouponError
+            : "Invalid coupon or unable to apply coupon";
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Invalid coupon or unable to apply coupon"),
+          SnackBar(
+            content: Text(errorMessage),
             backgroundColor: Colors.red,
           ),
         );
         return;
       }
 
+      // ---------------- SUCCESS FLOW ----------------
       oldTax = tax;
 
       final appliedDiscount = double.tryParse(response.discountTotal) ?? 0.0;
@@ -2963,7 +2969,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         discount = appliedDiscount;
         tax = updatedTax;
         NetTotal = grossTotal - discount;
-        computedNetPayable = NetTotal + tax - merchantDiscount + cashbackFee;
+        computedNetPayable =
+            NetTotal + tax - merchantDiscount + cashbackFee;
         orderTotal = computedNetPayable;
         balanceAmount = computedNetPayable;
       });
@@ -2973,31 +2980,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
       if (localKey != null) {
         final existing = offlineBox.get(localKey);
-
         if (existing != null) {
           final data = Map<String, dynamic>.from(existing);
-
           data["orderDiscount"] = appliedDiscount;
           data["wooTax"] = updatedTax;
           data["merchantDiscount"] = merchantDiscount;
           data["cashbackFee"] = cashbackFee;
-
           offlineBox.put(localKey, data);
-
-          print("🟢 Hive updated using LOCAL KEY → $localKey");
-        } else {
-          print("⚠ Hive missing local order → $localKey");
         }
       }
 
-      // ------------------ CUSTOMER DISPLAY ------------------
+      // Customer Display
       final localOrderId = widget.offlineOrderId;
-
       if (localOrderId != null) {
-        print("📌 Updating Customer Display using LOCAL ORDER ID = $localOrderId");
         await CustomerDisplayHelper.updateCustomerDisplay(localOrderId);
-      } else {
-        print("⚠ No localOrderId found for Customer Display");
       }
 
     } catch (e) {
