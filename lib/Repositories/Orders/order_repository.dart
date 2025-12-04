@@ -653,25 +653,45 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     required double redeemAmount,
     required int redeemPoints,
   }) async {
-
-
     final String url =
         "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.loyaltyRedeem}";
+
     final body = {
       "redeem_points": redeemPoints,
       "redeem_amount": redeemAmount,
       "contact": contact,
       "order_id": orderId
     };
-    final response = await _helper.post(
-      url,
-      body,
-      true,
-      validateMarchentUrl: true,
-    );
 
-    return response;
+    try {
+      final response = await _helper.post(
+        url,
+        body,
+        true,
+        validateMarchentUrl: true,
+      );
+
+      return response;
+    } catch (e) {
+      throw Exception(_extractRedeemError(e));   // <----- ADD THIS
+    }
   }
+  String _extractRedeemError(dynamic e) {
+    try {
+      if (e is String) {
+        return e;
+      }
+
+      if (e is Map<String, dynamic>) {
+        if (e.containsKey("message")) return e["message"];
+        if (e.containsKey("error")) return e["error"];
+        if (e.containsKey("msg")) return e["msg"];
+      }
+    } catch (_) {}
+
+    return "Unable to redeem loyalty points";
+  }
+
 
   Future<dynamic> addLoyaltyPoints({
     required int orderId,

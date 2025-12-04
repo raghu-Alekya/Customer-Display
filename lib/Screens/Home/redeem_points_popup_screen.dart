@@ -313,17 +313,18 @@ class _RedeemPointsDialogState extends State<RedeemPointsDialog> {
             });
           }
         } catch (e) {
-          print("❌ Redeem API Error: $e");
+          final errorMessage = e.toString().replaceAll("Exception: ", "");
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Failed to redeem points"),
+              SnackBar(
+                content: Text(errorMessage),
                 backgroundColor: Colors.red,
               ),
             );
           }
-        } finally {
+        }
+        finally {
           if (mounted) setState(() => isRedeemLoading = false);
         }
       },
