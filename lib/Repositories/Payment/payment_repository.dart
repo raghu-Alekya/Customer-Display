@@ -69,6 +69,38 @@ class PaymentRepository {  // Build #1.0.25 - added by naveen
     }
   }
 
+  // 3. Update Payment Meta (NEW)
+  Future<bool> updatePaymentMeta({
+    required int paymentId,
+    required String key,
+    required String value,
+  }) async {
+    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.payments}${EndUrlConstants.paymentmeta}";
+    final body = {
+      "payment_id": paymentId,
+      "key": key,
+      "value": value,
+    };
+
+    if (kDebugMode) {
+      print("Updating Payment Meta URL: $url");
+      print("Updating Payment Meta Body: $body");
+    }
+
+    final response = await _helper.post(url, body, true);
+
+    if (kDebugMode) {
+      print("Payment Meta Update Response: $response");
+    }
+
+    if (response is Map && response["success"] == true) {
+      return true;
+    }
+
+    return false;
+  }
+
+
   // 3. Get Payments by Order ID
   Future<List<PaymentListModel>> getPaymentsByOrderId(int orderId) async {
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.payments}${EndUrlConstants.paymentByOrderIdEndUrl}$orderId";

@@ -149,6 +149,8 @@ class EndUrlConstants { // Build #1.0.13
   static const String deleteFastKeyEndUrl         = "/delete-fastkey"; // Build #1.0.19
   static const String allCategoriesEndUrl         = "?page=1&per_page=100&hide_empty=true&parent="; // Build #1.0.21
   static const String createPaymentEndUrl         = "/create-payment";  // Build #1.0.25
+  static const String paymentmeta         = "/update-payment-meta";  // Build #1.0.25
+
   static const String paymentByIdEndUrl           = "/get-payment-by-id?payment_id=";
   static const String paymentByOrderIdEndUrl      = "/get-payments-by-order-id?order_id=";
   static const String variationsEndUrl            = "/variations"; //Build 1.1.36

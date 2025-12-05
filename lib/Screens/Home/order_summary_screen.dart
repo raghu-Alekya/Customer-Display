@@ -518,6 +518,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         paidAmount = amount;
 
         paymentId = paymentData.paymentId.toString();
+
         orderStatus = paymentData.orderStatus ?? TextConstants.processing;
 
         // --------------------------------------------------
@@ -562,6 +563,28 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
         balanceAmount =
             double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
+
+// ------------------------------------------------------
+// ⭐ UPDATE PAYMENT META (CORRECT LOCATION)
+// ------------------------------------------------------
+        if (changeAmount != null && changeAmount! > 0) {
+          final repo = PaymentRepository();
+
+          bool updated = await repo.updatePaymentMeta(
+            paymentId: int.parse(paymentId!),
+            key: "_payment_remaining_change",
+            value: changeAmount!.toStringAsFixed(2),
+          );
+
+          if (kDebugMode) {
+            print(">>> Update Remaining Change API Status: $updated");
+          }
+        }
+
+// ------------------------------------------------------
+// ⭐ SAVE BALANCE + TENDER AMOUNT TO ORDER + HIVE
+// ------------------------------------------------------
+
 
         // ------------------------------------------------------
         // ⭐ SAVE BALANCE + TENDER AMOUNT TO ORDER + HIVE
