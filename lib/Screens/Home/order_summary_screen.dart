@@ -91,7 +91,7 @@ class NoScrollbarBehavior extends ScrollBehavior {
   @override
   Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) {
     return child; // prevents scrollbar from showing
-    }
+  }
 }
 
 class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
@@ -461,7 +461,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     // ------------------------------------------------------
     if (amount == 0 && computedNetPayable > 0) {
       setState(() => _amountErrorText = TextConstants.amountValidation);
-    return;
+      return;
     }
 
     _amountErrorText = null;
@@ -1328,10 +1328,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         ? Center(child: CircularProgressIndicator())
                         : ScrollConfiguration(
                       behavior: NoScrollbarBehavior().copyWith(overscroll: false),
-                  // thumbVisibility: true,
-                  // radius: Radius.circular(10),
-                  child: SingleChildScrollView(
-                    physics: BouncingScrollPhysics(),
+                      // thumbVisibility: true,
+                      // radius: Radius.circular(10),
+                      child: SingleChildScrollView(
+                        physics: BouncingScrollPhysics(),
                         child: Column(
                           children: [
                             _buildOrderCalculation(
@@ -2133,7 +2133,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                         padding: EdgeInsets.only(
                                             top: ResponsiveLayout.getPadding(7),
                                             left:
-                                            ResponsiveLayout.getPadding(7)),
+                                            ResponsiveLayout.getPadding(12)),
                                         decoration: BoxDecoration(
                                           color: themeHelper.themeMode ==
                                               ThemeMode.dark
@@ -2146,10 +2146,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           TextConstants.cashPayment,
                                           style: TextStyle(
                                             color: Colors.red,
-                                            fontWeight: FontWeight.w500,
+                                            fontWeight: FontWeight.w600,
                                             fontSize:
                                             ResponsiveLayout.getFontSize(
-                                                12),
+                                                14),
                                           ),
                                         ),
                                       ),
@@ -2722,76 +2722,76 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
-    Future<void> _removeAppliedCoupon() async {
-      if (widget.orderId == null || widget.orderId == 0) return;
+  Future<void> _removeAppliedCoupon() async {
+    if (widget.orderId == null || widget.orderId == 0) return;
 
-      final offlineBox = Hive.box('offlineOrders');
-      final localKey = widget.offlineOrderId?.toString();  // 🔥 ALWAYS LOCAL KEY
+    final offlineBox = Hive.box('offlineOrders');
+    final localKey = widget.offlineOrderId?.toString();  // 🔥 ALWAYS LOCAL KEY
 
-      if (localKey == null) {
-        print("❌ No offlineOrderId found");
-        return;
-      }
-
-      setState(() => isSummaryLoading = true);
-
-      try {
-        // 🔥 Woo API call uses Woo ID only
-        await orderBloc.removeCoupon(
-          orderId: widget.orderId!,
-          couponCode: "",
-        );
-
-        // --------- UPDATE UI TOTALS ---------
-        setState(() {
-          discount = 0.0;
-          discountValue = 0.0;
-          NetTotal = grossTotal;
-          tax = oldTax;
-          computedNetPayable = grossTotal + tax - merchantDiscount + cashbackFee;
-          balanceAmount = computedNetPayable;
-        });
-
-        // --------- UPDATE HIVE TOTALS ONLY ----------
-        final existing = offlineBox.get(localKey);
-
-        if (existing != null) {
-          final data = Map<String, dynamic>.from(existing);
-
-          // ONLY update totals
-          data["orderDiscount"] = 0.0;
-          data["wooTax"] = oldTax;
-          data["merchantDiscount"] = merchantDiscount;
-          data["cashbackFee"] = cashbackFee;
-
-          offlineBox.put(localKey, data);
-
-          print("🟢 Hive totals updated (LOCAL KEY: $localKey) — no product changes");
-        } else {
-          print("⚠ No hive order found for localKey → $localKey");
-        }
-
-        // --------- CUSTOMER DISPLAY ----------
-        print("📌 Updating Customer Display using LOCAL ORDER ID = $localKey");
-        await CustomerDisplayHelper.updateCustomerDisplay(widget.offlineOrderId!);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Coupon removed successfully"),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-      } catch (e) {
-        print("❌ Error removing coupon: $e");
-      } finally {
-        setState(() => isSummaryLoading = false);
-      }
+    if (localKey == null) {
+      print("❌ No offlineOrderId found");
+      return;
     }
 
+    setState(() => isSummaryLoading = true);
+
+    try {
+      // 🔥 Woo API call uses Woo ID only
+      await orderBloc.removeCoupon(
+        orderId: widget.orderId!,
+        couponCode: "",
+      );
+
+      // --------- UPDATE UI TOTALS ---------
+      setState(() {
+        discount = 0.0;
+        discountValue = 0.0;
+        NetTotal = grossTotal;
+        tax = oldTax;
+        computedNetPayable = grossTotal + tax - merchantDiscount + cashbackFee;
+        balanceAmount = computedNetPayable;
+      });
+
+      // --------- UPDATE HIVE TOTALS ONLY ----------
+      final existing = offlineBox.get(localKey);
+
+      if (existing != null) {
+        final data = Map<String, dynamic>.from(existing);
+
+        // ONLY update totals
+        data["orderDiscount"] = 0.0;
+        data["wooTax"] = oldTax;
+        data["merchantDiscount"] = merchantDiscount;
+        data["cashbackFee"] = cashbackFee;
+
+        offlineBox.put(localKey, data);
+
+        print("🟢 Hive totals updated (LOCAL KEY: $localKey) — no product changes");
+      } else {
+        print("⚠ No hive order found for localKey → $localKey");
+      }
+
+      // --------- CUSTOMER DISPLAY ----------
+      print("📌 Updating Customer Display using LOCAL ORDER ID = $localKey");
+      await CustomerDisplayHelper.updateCustomerDisplay(widget.offlineOrderId!);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Coupon removed successfully"),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+    } catch (e) {
+      print("❌ Error removing coupon: $e");
+    } finally {
+      setState(() => isSummaryLoading = false);
+    }
+  }
 
 
-    void _openCouponPopup() {
+
+  void _openCouponPopup() {
     final TextEditingController _couponCtrl = TextEditingController();
 
     final bool isDark = Theme.of(context).brightness == Brightness.dark;

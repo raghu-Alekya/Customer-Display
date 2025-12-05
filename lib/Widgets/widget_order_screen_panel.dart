@@ -308,7 +308,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       return;
     }
 
-    // 1️⃣ Try normal SQLite order
+    //1️⃣ Try normal SQLite order
     List<Map<String, dynamic>> ordersData =
     await orderHelper.getOrderById(widget.activeOrderId!);
 
@@ -498,7 +498,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       highlightColor: Colors.grey[100]!,
       child: Container(
         width: MediaQuery.of(context).size.width * 0.30,
-        padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+        padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
         child: Card(
           elevation: 4,
           margin: const EdgeInsets.only(top: 10),
@@ -613,12 +613,25 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       child: Card(
         elevation: 4,
         margin: const EdgeInsets.only(top: 10),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+
+        // ⬅ Rounded corners (works same for dark & light)
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+
         child: Column(
           children: [
-            Container( // New design for history orders
-              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground: null,
-              padding: const EdgeInsets.fromLTRB(10, 10,10,10),
+            // ⬅ Header section
+            Container(
+              decoration: BoxDecoration(
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.primaryBackground
+                    : Colors.white,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(12),   // match card rounding
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
               alignment: Alignment.centerLeft,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -627,7 +640,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("#${widget.activeOrderId ?? 'N/A'}",style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),),
+                      Text(
+                        "#${widget.activeOrderId ?? 'N/A'}",
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       StatusWidget(
                         status: _order?[AppDBConst.orderStatus] ?? '',
                       ),
@@ -636,11 +655,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                 ],
               ),
             ),
-            Expanded(child: buildCurrentOrder()),
+
+            // ⬅ Content below the header
+            Expanded(
+              child: buildCurrentOrder(),
+            ),
           ],
         ),
       ),
     );
+
   }
 
   //Build #1.0.67: Handler methods for response and error
@@ -856,16 +880,22 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
 
 
-    // Load Cashback Fee from Hive (online)
     if (wooOrderId.isNotEmpty) {
-      final box = Hive.box('offlineOrders');
-      final cached = box.get(wooOrderId);
-
-      if (cached != null && cached["cashback_fee"] != null) {
-        cashbackFee = (cached["cashback_fee"] as num).toDouble();
-        print("💰 Cashback Fee loaded from Hive for WooID $wooOrderId → $cashbackFee");
+      // 1️⃣ Check orderExtras first
+      var extrasBox = Hive.box('orderExtras').get(wooOrderId);
+      if (extrasBox != null && extrasBox["cashback_fee"] != null) {
+        cashbackFee = (extrasBox["cashback_fee"] as num).toDouble();
+        print("💰 Cashback Fee loaded from orderExtras → $cashbackFee");
+      } else {
+        // 2️⃣ Fallback to offlineOrders
+        var offlineBox = Hive.box('offlineOrders').get(wooOrderId);
+        if (offlineBox != null && offlineBox["cashback_fee"] != null) {
+          cashbackFee = (offlineBox["cashback_fee"] as num).toDouble();
+          print("💰 Cashback Fee loaded from offlineOrders → $cashbackFee");
+        }
       }
     }
+
 
     // ----------- ONLINE TOTAL COMPUTATION -----------
     // NET TOTAL (no tax)
@@ -972,7 +1002,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
             const SizedBox(height: 4),
             Expanded(
               child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 6),
+                margin: const EdgeInsets.symmetric(horizontal: 0),
                 decoration: BoxDecoration(
                   // color: themeHelper.themeMode == ThemeMode.dark
                   //     ? const Color(0xFF353848) // dark mode background
@@ -2004,7 +2034,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                           TextConstants.printInvoice,
                           style: TextStyle(
                             fontSize: 16,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                       )
@@ -2127,7 +2157,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                               .pay, // Build #1.0.175: No need show amount on PAY button in order screen panel
                           style: TextStyle(
                             fontSize: 16,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                       ),

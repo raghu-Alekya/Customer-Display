@@ -384,7 +384,7 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return Container(
       width: MediaQuery.of(context).size.width * 0.3,
-      height: MediaQuery.of(context).size.height * 0.232,
+      height: MediaQuery.of(context).size.height * 0.220,
       decoration: BoxDecoration(
         color: themeHelper.themeMode == ThemeMode.dark
             ? Color(0xFF1F1D2B) // outer dark background
@@ -401,7 +401,7 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
           GestureDetector(
             onTap: () => Navigator.of(context).pop(),
             child: Container(
-              height: 30,
+              height: 42,
               width: 100,
               decoration: BoxDecoration(
                 color: themeHelper.themeMode == ThemeMode.dark
@@ -443,7 +443,7 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
           SizedBox(height: 8),
           Container(
             width: MediaQuery.of(context).size.width * 0.280,
-            height: MediaQuery.of(context).size.height * 0.150,
+            height: MediaQuery.of(context).size.height * 0.130,
             decoration: BoxDecoration(
               color: themeHelper.themeMode == ThemeMode.dark
                   ? Color(0xFF273142)
@@ -827,7 +827,7 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
       width: sidebarPosition == SidebarPosition.bottom
           ? MediaQuery.of(context).size.width * 0.675
           : MediaQuery.of(context).size.width * 0.608,
-      height: MediaQuery.of(context).size.height * 0.630,
+      height: MediaQuery.of(context).size.height * 0.650,
       decoration: BoxDecoration(
         color: themeHelper.themeMode == ThemeMode.dark
             ? ThemeNotifier.primaryBackground
@@ -916,7 +916,7 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
                       children: [
                         Icon(
                           Icons.add,
-                          size: MediaQuery.of(context).size.width * 0.01,
+                          size: MediaQuery.of(context).size.width * 0.015,
                           color: shift.shiftStatus == 'closed'
                               ? Colors.grey
                               : Color(0xFFFFFFFF),

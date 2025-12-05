@@ -778,7 +778,8 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
               /// NumPad
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(8),
+                  padding:
+                  const EdgeInsets.symmetric(vertical: 40, horizontal: 12),
                   decoration: BoxDecoration(
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? const Color(0xFF1F1D2B)
@@ -1107,7 +1108,7 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
                     },
                     decoration: InputDecoration(
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 7),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
                       filled: true,
                       fillColor: isDark
                           ? const Color(0xFF4D505F)

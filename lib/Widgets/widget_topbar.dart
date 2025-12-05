@@ -125,6 +125,7 @@ import '../Utilities/responsive_layout.dart';
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 
 import '../Utilities/svg_images_utility.dart';
+import 'OrderPopupHelper.dart';
 enum Screen { FASTKEY, CATEGORY, ADD, ORDERS, APPS, SHIFT, SAFE, EDIT }
 class TopBar extends StatefulWidget { // Build #1.0.13 : Updated top bar with search api integration
   final Function() onModeChanged;
@@ -375,14 +376,8 @@ class _TopBarState extends State<TopBar> {
 
                                             // 🟥 Step 2: Check order existence
                                             if (dbOrderId == null) {
-                                              ScaffoldMessenger.of(_context).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text("No active order selected"),
-                                                  backgroundColor: Colors.red,
-                                                  duration: Duration(seconds: 2),
-                                                ),
-                                              );
-                                              return;
+                                              await OrderPopupHelper.showNoOrderPopup(_context);
+                                              return; // 🚫 stop further execution
                                             }
 
                                             final activeOrderId = dbOrderId.toString();

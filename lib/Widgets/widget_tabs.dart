@@ -26,6 +26,7 @@ import '../Repositories/Assets/asset_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
 import '../Utilities/svg_images_utility.dart';
+import 'OrderPopupHelper.dart';
 import 'widget_custom_num_pad.dart';
 
 class AppScreenTabWidget extends StatefulWidget {
@@ -2491,6 +2492,14 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   // Preserved success toast, UI refresh, and field clearing logic.
   // Removed commented-out navigation code, as it’s marked as not working.
   Future<void> _handleAddCustomItem() async {
+
+    // 🟥 STOP if no active order — show popup
+    final orderHelper = OrderHelper();
+    if (orderHelper.activeOrderId == null) {
+      await OrderPopupHelper.showNoOrderPopup(widget.scaffoldMessengerContext);
+      return;
+    }
+
     if (kDebugMode) print("🟢 [STEP 0] ENTER _handleAddCustomItem()");
 
     // -----------------------------
@@ -2841,11 +2850,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       );
     }
   }
-
-
-
-
-
 
   /// ✅ Converts any deeply nested Map/List from Hive into JSON-safe Map<String, dynamic>
   dynamic _convertToJsonSafe(dynamic value) {

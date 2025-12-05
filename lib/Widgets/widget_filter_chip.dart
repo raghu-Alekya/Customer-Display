@@ -44,7 +44,7 @@ class FilterChipWidget extends StatelessWidget { // Build #1.0.8, Surya added
         padding: EdgeInsets.symmetric(horizontal: 4),
         child: Chip(
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          backgroundColor: selectedValue != "All" ? Colors.redAccent : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground :  Colors.grey.shade200,
+          backgroundColor: selectedValue != "All" ? Colors.redAccent : themeHelper.themeMode == ThemeMode.dark ? Color(0xFF252837) :  Colors.grey.shade200,
           side: BorderSide(
             color: themeHelper.themeMode == ThemeMode.dark
                 ? ThemeNotifier.borderColor
@@ -52,12 +52,12 @@ class FilterChipWidget extends StatelessWidget { // Build #1.0.8, Surya added
             width: 1.0, // Set border width
           ),
 
-    label: Row(
+          label: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 //'$label ',
-                    // ': $selectedValue',
+                // ': $selectedValue',
                 selectedValue == "All" ? label : selectedValue,
                 style: TextStyle(
                     color: selectedValue != "All" ? Colors.white : themeHelper.themeMode == ThemeMode.dark

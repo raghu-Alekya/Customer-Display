@@ -175,7 +175,7 @@ class _ShiftHistoryDashboardScreenState
                   icon: Icon(
                     Icons.arrow_back_rounded,
                     color: Colors.white,
-                    size: 14,
+                    size: 20,
                     weight: 10,
                   ),
                   label: Text(
@@ -214,7 +214,7 @@ class _ShiftHistoryDashboardScreenState
                       offset: Offset(0, 2),
                     ),
                   ],
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: TextButton.icon(
                   onPressed: () {
@@ -230,7 +230,7 @@ class _ShiftHistoryDashboardScreenState
                   icon: const Icon(
                     Icons.add,
                     color: Colors.white,
-                    size: 20,
+                    size: 22,
                   ),
                   label: const Text(
                     'Update',
@@ -356,7 +356,7 @@ class _ShiftHistoryDashboardScreenState
                                       decoration: BoxDecoration(
                                         color: themeHelper.themeMode ==
                                             ThemeMode.dark
-                                            ? Color(0xFF0A122D)
+                                            ? Color(0xFF030816)
                                             : Color(0xFFF8F8F8),
                                         border: Border(
                                           bottom: BorderSide(

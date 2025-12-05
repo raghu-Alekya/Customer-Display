@@ -767,6 +767,7 @@ import '../Repositories/Search/product_search_repository.dart';
 import '../Utilities/shimmer_effect.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import '../Utilities/svg_images_utility.dart';
+import 'OrderPopupHelper.dart';
 import 'widget_logs_toast.dart';
 
 class NestedGridWidget extends StatelessWidget {
@@ -968,6 +969,14 @@ class NestedGridWidget extends StatelessWidget {
                   children: [
                     GestureDetector(
                       onTap: () async {
+                        if (orderHelper?.activeOrderId == null) {
+                          print("⛔ No active order → Show popup and block product adding");
+
+                          await OrderPopupHelper.showNoOrderPopup(context);
+
+                          return; // 🚫 STOP item adding
+                        }
+
                         try {
                           print("🟩 TAP: Starting product add flow for item → ${item["fast_key_item_name"]}");
 

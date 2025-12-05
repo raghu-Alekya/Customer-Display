@@ -26,6 +26,8 @@ void main() async {
   await Hive.openBox('fastKeysBox');
   await Hive.openBox('deletedOrders');
   await Hive.openBox('cashbackConfig');
+  await Hive.openBox('orderExtras');
+
   await Hive.openBox('user');
 
   // 1️⃣ First → initialize base URL

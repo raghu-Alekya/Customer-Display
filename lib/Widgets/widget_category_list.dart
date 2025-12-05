@@ -1260,7 +1260,7 @@ class CategoryList extends StatelessWidget {
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(Icons.edit,
-                          size: 14, color: Colors.blueAccent),
+                          size: 25, color: Colors.blueAccent),
                     ),
                   ),
                 ),
@@ -1482,7 +1482,6 @@ class CategoryList extends StatelessWidget {
       ),
     );
   }
-
   Widget _buildCircularNavButton(
       BuildContext context, IconData icon, VoidCallback onPressed) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -1502,14 +1501,18 @@ class CategoryList extends StatelessWidget {
           ),
         ],
       ),
-      child: IconButton(
-        icon: Icon(icon, size: 24),
-        color: themeHelper.themeMode == ThemeMode.dark
-            ? Colors.white
-            : Colors.black45,
-        onPressed: onPressed,
-        padding: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(8), // ⬅ inner padding
+        child: IconButton(
+          icon: Icon(icon, size: 24),
+          color: themeHelper.themeMode == ThemeMode.dark
+              ? Colors.white
+              : Colors.black45,
+          onPressed: onPressed,
+          padding: EdgeInsets.all(0),
+        ),
       ),
+
     );
   }
 

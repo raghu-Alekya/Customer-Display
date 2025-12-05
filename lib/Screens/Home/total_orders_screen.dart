@@ -144,6 +144,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
             setState(() {
               _orders = response.data!.ordersData;
+
               _totalOrdersCount = response.data!.orderTotalCount;
               isLoading = false;
 
@@ -878,8 +879,9 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                             ),
                                             border: Border.all(
                                                 color: themeHelper.themeMode ==
-                                                        ThemeMode.dark
-                                                    ? ThemeNotifier.borderColor
+                                                    ThemeMode.dark
+                                                    ? const Color(
+                                                    0xFF252837)
                                                     : Colors.grey.shade300),
                                           ),
                                           child: Row(
@@ -936,18 +938,17 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                                 decoration: BoxDecoration(
                                                   color: isSelected
                                                       ? (themeHelper
-                                                                  .themeMode ==
-                                                              ThemeMode.dark
-                                                          ? Color(
-                                                              0xFF383B4C) // Dark selection color for dark mode 334756
-                                                          : Color(
-                                                              0xFFDFDFDF)) // Light selection color for light mode F3ECEC
+                                                      .themeMode ==
+                                                      ThemeMode.dark
+                                                      ? Color(
+                                                      0xFF383B4C) // Dark selection color for dark mode 334756
+                                                      : Color(
+                                                      0xFFDFDFDF)) // Light selection color for light mode F3ECEC
                                                       : (themeHelper
-                                                                  .themeMode ==
-                                                              ThemeMode.dark
-                                                          ? ThemeNotifier
-                                                              .primaryBackground
-                                                          : Colors.white),
+                                                      .themeMode ==
+                                                      ThemeMode.dark
+                                                      ? Color(0xFF201F29)
+                                                      : Color(0xFFF9F9F9)),
                                                   borderRadius:
                                                       const BorderRadius.only(
                                                     topLeft: Radius.circular(0),

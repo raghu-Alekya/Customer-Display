@@ -55,6 +55,7 @@ import '../Repositories/Search/product_search_repository.dart';
 import '../Screens/Home/add_screen.dart';
 import '../Screens/Home/edit_product_screen.dart';
 import '../services/CustomerDisplayService.dart';
+import 'OrderPopupHelper.dart';
 import 'widget_logs_toast.dart';
 
 String logString = "";
@@ -798,16 +799,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             final activeOrderId = orderHelper.activeOrderId;
 
             if (activeOrderId == null) {
-              _isLoading = false;
-              if (mounted) setState(() {});
-              _scaffoldMessenger.showSnackBar(
-                const SnackBar(
-                  content: Text("⚠ No active order found."),
-                  backgroundColor: Colors.orange,
-                ),
-              );
+              await OrderPopupHelper.showNoOrderPopup(context);
               return;
             }
+
 
             final productBox = Hive.box('productCache');
             final cacheKey = "sku_${trimmedBarcode.toLowerCase()}";
@@ -1679,95 +1674,124 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       print("📦 Deleted Orders Box Ready: ${deletedBox != null}");
 
       final bool isOfflineOrder = offlineBox.containsKey(orderId.toString());
-
-      // ============================================================
-      // ===============  OFFLINE ORDER DELETE LOGIC  ===============
-      // ============================================================
       if (isOfflineOrder) {
         print("\n🟡 OFFLINE ORDER DETECTED — Performing Offline Delete Flow");
         await OrderRepository().saveOfflineOrderTotals(orderId);
 
         // ⭐ 1️⃣ READ ORDER DATA BEFORE DELETE
-        print("\n🟡 OFFLINE ORDER DETECTED — Performing Offline Delete Flow");
-
-// ⭐ 1️⃣ READ ORDER DATA BEFORE DELETE
         final orderData = offlineBox.get(orderId.toString());
         print("📤 Original Offline Order Data:\n$orderData");
 
-// ⭐ 2️⃣ BACKUP TO deletedOrders BOX
-        // ⭐ 2️⃣ BACKUP TO deletedOrders BOX WITH FULL DATA + TOTALS
-        if (orderData != null) {
-          final userData = await UserDbHelper().getUserData();
-          final currentUserId = userData?[AppDBConst.userId];
-          final currentUserName = userData?[AppDBConst.username] ?? "";
-          final currentShiftId = await UserDbHelper().getUserShiftId();
-
-          /// 🧮 These values must be available from UI
-          final enhancedDeletedOrder = {
-            ...orderData,
-
-            // ---- DELETE METADATA ----
-            "deleted_order_id": orderId,
-            "deleted_by_user_id": currentUserId,
-            "deleted_by_user_name": currentUserName,
-            "deleted_shift_id": currentShiftId,
-            "deleted_at": DateTime.now().toIso8601String(),
-
-            // ---- TOTALS FROM HIVE (NOT from UI variables) ----
-            "gross_total": orderData["gross_total"] ?? 0.0,
-            "order_discount": orderData["orderDiscount"] ?? 0.0,
-            "merchant_discount": orderData["merchantDiscount"] ?? 0.0,
-            "order_tax": orderData["order_tax"] ?? 0.0,
-            "net_total": orderData["net_total"] ?? 0.0,
-            "net_payable": orderData["net_payable"] ?? 0.0,
-          };
-
-
-          await deletedBox.put(orderId.toString(), enhancedDeletedOrder);
-
-
-          print("🟣 FULL DELETED ORDER DATA (Pretty Format):\n"
-              "${const JsonEncoder.withIndent('  ').convert(enhancedDeletedOrder)}");
-
-        } else {
-          print("⚠️ WARNING: orderData is NULL — not backed up!");
+        if (orderData == null) {
+          print("⚠️ orderData is NULL — cannot sync or backup!");
+          return;
         }
 
+        // ⭐ 2️⃣ Sync attempt BEFORE deleting locally
+        print("🌐 Attempting to sync deleted offline order to backend…");
 
-// ⭐ 3️⃣ PRINT COMPLETE DELETED ORDER DATA
-        final deletedData = deletedBox.get(orderId.toString());
-        print("🔵 Deleted Totals → "
-            "gross=${deletedData['gross_total']}, "
-            "discount=${deletedData['order_discount']}, "
-            "merchantDiscount=${deletedData['merchant_discount']}, "
-            "tax=${deletedData['order_tax']}, "
-            "netTotal=${deletedData['net_total']}, "
-            "payable=${deletedData['net_payable']}");
+        final result = await OrderRepository().syncOfflineDeletedOrders([orderData]);
+        final bool syncSuccess = result["success"] == true;
+        final int? syncedWooId = result["wooOrderId"];
 
-        if (deletedData != null) {
-          print("🟣 FULL DELETED ORDER DATA (Pretty Format):\n"
-              "${const JsonEncoder.withIndent('  ').convert(deletedData)}");
-        } else {
-          print("⚠️ No deleted data found for order $orderId");
+// ******************************************************************
+// 🔥 ALWAYS SAVE CASHBACK + TAX + WOO ORDER ID IN orderExtras BOX
+// ******************************************************************
+        final extrasBox = Hive.box("orderExtras");
+
+// 1️⃣ Resolve Woo Order ID correctly (supports all key formats)
+        // if server returned Woo Order ID → use it
+        final wooOrderId = (syncedWooId ??
+            orderData["woo_order_id"] ??
+            orderData["wooOrderId"] ??
+            orderId).toString();
+
+
+// 2️⃣ Resolve Cashback Fee from ALL possible key names
+        final cashbackFee = (
+            orderData["cashbackFee"] ??
+                orderData["order_cashback_fee"] ??
+                orderData["cashback_fee"] ??
+                orderData["cashbackFeeTotal"] ??
+                orderData["cashback"] ??
+                0
+        ).toDouble();
+
+// 3️⃣ Resolve Tax (all supported variations)
+        final tax = (
+            orderData["tax"] ??
+                orderData["wooTax"] ??
+                orderData["order_tax"] ??
+                orderData["totalTax"] ??
+                0
+        ).toDouble();
+
+// 4️⃣ Save final extras
+        await extrasBox.put(wooOrderId, {
+          "woo_order_id": wooOrderId,
+          "local_offline_id": orderId,
+          "cashback_fee": cashbackFee,
+          "tax": tax,
+          "synced": syncSuccess,
+          "saved_at": DateTime.now().toIso8601String(),
+        });
+
+        print("💾 SAVED TO orderExtras BOX:");
+        print("   WooID: $wooOrderId");
+        print("   Cashback Fee: $cashbackFee");
+        print("   Tax: $tax");
+        print("   Synced: $syncSuccess");
+        print("📦 Current orderExtras: ${extrasBox.get(wooOrderId)}");
+// ******************************************************************
+
+
+        if (syncSuccess) {
+          print("✅ Deleted order synced successfully → No Hive backup needed");
+
+          await offlineBox.delete(orderId.toString());
+          await orderHelper.deleteOrder(orderId);
+
+          // UI cleanup
+          setState(() {
+            tabs.removeAt(index);
+            if (tabs.isEmpty) {
+              orderHelper.activeOrderId = null;
+              orderItems = [];
+            }
+          });
+
+          setState(() => _isLoading = false);
+          return;
         }
 
+        // ❌ Sync failed → store in deletedOrders
+        print("⚠️ Sync FAILED → Storing in deletedOrders Hive box...");
 
-        // ⭐ 3️⃣ DELETE ORIGINAL ORDER
-        print("🗑 Deleting orderId $orderId from offlineOrders…");
+        final userData = await UserDbHelper().getUserData();
+        final currentUserId = userData?[AppDBConst.userId];
+        final currentUserName = userData?[AppDBConst.username] ?? "";
+        final currentShiftId = await UserDbHelper().getUserShiftId();
+
+        final enhancedDeletedOrder = {
+          ...orderData,
+          "deleted_order_id": orderId,
+          "client_order_id": orderId.toString(),
+          "deleted_by_user_id": currentUserId,
+          "deleted_by_user_name": currentUserName,
+          "deleted_shift_id": currentShiftId,
+          "deleted_at": DateTime.now().toIso8601String(),
+        };
+        await deletedBox.put(orderId.toString(), enhancedDeletedOrder);
+
+        // Delete from offline and UI cleanup
         await offlineBox.delete(orderId.toString());
-
-        print("🧹 Removing order from orderHelper DB…");
         await orderHelper.deleteOrder(orderId);
 
-        // ⭐ 4️⃣ CLEANUP LOCAL STATE
-        print("🧹 Cleaning orderHelper.orders and orderIds…");
         orderHelper.orders.removeWhere((o) =>
         o[AppDBConst.orderServerId] == orderId ||
             o[AppDBConst.orderId] == orderId);
         orderHelper.orderIds.remove(orderId);
 
-        // ⭐ 5️⃣ REMOVE TAB FROM UI
-        print("🗂 Removing tab from UI…");
         setState(() {
           tabs.removeAt(index);
           for (int i = 0; i < tabs.length; i++) {
@@ -1775,45 +1799,33 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           }
         });
 
-        print("📝 Remaining Tabs: ${tabs.length}");
-
-        // ⭐ NO TABS LEFT
         if (tabs.isEmpty) {
-          print("❗ No tabs left. Clearing active order…");
           orderHelper.activeOrderId = null;
           orderItems = [];
           await _initializeTabController();
           setState(() => _isLoading = false);
-
-          print("================= 🗑 REMOVE TAB END (EMPTY) ================");
           return;
         }
 
-        // ⭐ 7️⃣ NEW ACTIVE TAB
-        final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
-        final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
-
-        print("🔄 Switching active tab to index $newIndex with orderId $newActiveOrderId");
+        final int newIndex =
+        index >= tabs.length ? tabs.length - 1 : index;
+        final int newActiveOrderId =
+        tabs[newIndex]["orderId"] as int;
 
         if (isRemovedTabActive) {
-          print("🔄 Saving new active order ID because we removed active tab");
           await orderHelper.setActiveOrder(newActiveOrderId);
           await orderHelper.saveLastActiveOrderId(newActiveOrderId);
         }
 
-        print("🔧 Reinitializing tab controller…");
         await _initializeTabController();
-
-        print("📥 Fetching order items for new active order…");
         await fetchOrderItems();
 
         _tabController!.index = newIndex;
 
         setState(() => _isLoading = false);
-
-        print("================= 🗑 REMOVE TAB END (OFFLINE) ================\n");
         return;
       }
+
 
       // ============================================================
       // ===============  ONLINE ORDER DELETE AREA  ================
@@ -1911,24 +1923,49 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     // 🛑 CHECK: LAST ITEM + MERCHANT DISCOUNT
     // ============================
 
+    // ============================
+// 🛑 CHECK: MERCHANT DISCOUNT & NEGATIVE TOTAL PREVENTION
+// ============================
+
     final double merchantDiscount = (offlineOrder['merchantDiscount'] is num)
         ? (offlineOrder['merchantDiscount'] as num).toDouble()
         : 0.0;
 
-    final int totalItemCount =
-        ((offlineOrder['products'] as List?)?.length ?? 0) +
-            ((offlineOrder['payouts'] as List?)?.length ?? 0) +
-            ((offlineOrder['cashbacks'] as List?)?.length ?? 0);
+// If no discount → allow delete
+    if (merchantDiscount > 0) {
 
-    if (merchantDiscount > 0 && totalItemCount == 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please delete merchant discount first"),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return; // ⛔ STOP — DO NOT DELETE LAST ITEM
+      // 1️⃣ Calculate current total amount
+      double productsTotal = ((offlineOrder['products'] as List?) ?? [])
+          .fold(0.0, (sum, p) => sum + (double.tryParse(p['price']?.toString() ?? '0') ?? 0));
+
+      double payoutsTotal = ((offlineOrder['payouts'] as List?) ?? [])
+          .fold(0.0, (sum, p) => sum + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0));
+
+      double cashbacksTotal = ((offlineOrder['cashbacks'] as List?) ?? [])
+          .fold(0.0, (sum, c) => sum + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0));
+
+      double currentTotal = productsTotal + payoutsTotal + cashbacksTotal;
+
+      // 2️⃣ Get price of the item being deleted
+      double itemPrice =
+          double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+
+      // 3️⃣ New total after deletion
+      double newTotal = currentTotal - itemPrice;
+
+      // 4️⃣ Check if discount is greater than new total
+      if (newTotal < merchantDiscount) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              "Merchant discount exists. Deleting this item will make the order total negative. Please remove discount first.",
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return; // ⛔ STOP DELETE
+      }
     }
 
     // ============================
@@ -3098,9 +3135,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(TextConstants.subTotalText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight), ),
+                                Text(TextConstants.subTotalText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight), ),
                                 Text("${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", //Build #1.0.68
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
                               ],
                             ),
                             SizedBox(height: 2),
@@ -3108,9 +3145,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                Text(TextConstants.taxText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14,color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 : Colors.grey),),
+                                Text(TextConstants.taxText, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13,color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 : Colors.grey),),
                                 Text("${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}", //Build #1.0.92: removed minus "-"
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 :Colors.grey)),
+                                    style: TextStyle( fontWeight: FontWeight.w600,fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 :Colors.grey)),
                               ],
                             ),
                             SizedBox(height: 2),
@@ -3124,7 +3161,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                       // SvgPicture.asset("assets/svg/discount_star.svg",
                                       //   height: 12, width: 12,
                                       //   colorFilter: ColorFilter.mode(Colors.blueAccent, BlendMode.srcIn),),
-                                      Text(TextConstants.merchantDiscount, style: TextStyle(color: Color(0xFF007BFF), fontSize: 14)),
+                                      Text(TextConstants.merchantDiscount, style: TextStyle(color: Color(0xFF007BFF), fontSize: 12,fontWeight: FontWeight.w600,)),
                                       merchantDiscount.toStringAsFixed(2) == '0.00' ? SizedBox() : GestureDetector(
                                         onTap: () async {
                                           if (kDebugMode) print("####################### Remove Merchant Discount locally");
@@ -3205,7 +3242,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                     ],
                                   ),
                                   Text("-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
-                                      style: TextStyle(color: Colors.blue, fontSize: 12)),
+                                      style: TextStyle(color: Colors.blue, fontSize: 12,fontWeight: FontWeight.w600,)),
                                 ],
                               ),
                             SizedBox(height: 2),
@@ -3222,14 +3259,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   Row(
                                     spacing: 5,
                                     children: [
-                                      Icon(Icons.wallet_giftcard,
-                                          size: 14,
-                                          color: Color(0XFF55CBCD)),
+                                      // Icon(Icons.wallet_giftcard,
+                                      //     size: 14,
+                                      //     color: Color(0XFF55CBCD)),
                                       Text(
                                         TextConstants.cashbackFee,
                                         style: TextStyle(
                                           color: Color(0XFF55CBCD),
-                                          fontSize: 14,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                     ],

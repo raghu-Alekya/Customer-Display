@@ -193,6 +193,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       print("📦 Offline order updated -> Total products: ${products.length}");
     }
   }
+
+
   Future<Map<String, dynamic>?> syncSingleOfflineOrder(
       Map<String, dynamic> offlineOrder) async {
     try {
@@ -645,6 +647,232 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       }
       throw Exception("Failed to fetch orders");
     }
+  }
+  Future<Map<String, dynamic>> syncOfflineDeletedOrders(List<Map<String, dynamic>> orders) async {
+    final String url =
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.deleteofflineorders}";
+
+    List<Map<String, dynamic>> formattedOrders = [];
+
+    for (var order in orders) {
+      final List<Map<String, dynamic>> lineItems = [];
+      final List<Map<String, dynamic>> feeLines = [];
+
+      final products = (order["products"] ?? []) as List;
+
+      // ---------------------------------------------------------
+      // ⭐ LINE ITEMS (PRODUCTS + CUSTOM ITEMS)
+      // ---------------------------------------------------------
+      for (var raw in products) {
+        final item = Map<String, dynamic>.from(raw);
+
+        final double price =
+            double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+        final double qty =
+            double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
+        final double total = price * qty;
+
+        final dynamic pidRaw =
+            item["product_id"] ??
+                item["id"] ??
+                item["productId"] ??
+                item["productID"] ??
+                item["meta"]?["product_id"];
+
+        final int? pid =
+        pidRaw == null ? null : int.tryParse(pidRaw.toString());
+
+        if (pid == null || pid == 0) {
+          // ⭐ CUSTOM ITEM
+          lineItems.add({
+            "name": item["name"] ?? "Custom Item",
+            "quantity": qty,
+            "sku": item["sku"] ?? "",
+            "price": price.toStringAsFixed(2),
+            "tax_status": "taxable",
+            "tax_class": "",
+            "type": "custom"
+          });
+          continue;
+        }
+
+        // ⭐ NORMAL PRODUCT
+        lineItems.add({
+          "product_id": pid,
+          "name": item["name"] ?? "",
+          "quantity": qty,
+          "subtotal": total.toStringAsFixed(2),
+          "total": total.toStringAsFixed(2),
+        });
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ PAYOUTS
+      // ---------------------------------------------------------
+      final payouts = (order["payouts"] ?? []) as List? ?? [];
+      for (final p in payouts) {
+        final double amount =
+            double.tryParse(p["amount"]?.toString() ?? "0") ?? 0.0;
+
+        final int? pid =
+        int.tryParse(p["payout_product_id"]?.toString() ?? "");
+
+        if (pid != null && pid > 0) {
+          lineItems.add({
+            "product_id": pid,
+            "name": p["product_name"] ?? "Payout",
+            "quantity": 1,
+            "subtotal": amount.toStringAsFixed(2),
+            "total": amount.toStringAsFixed(2),
+          });
+        } else {
+          feeLines.add({
+            "name": p["product_name"] ?? "Payout",
+            "tax_status": "none",
+            "total": amount.toStringAsFixed(2),
+          });
+        }
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ CASHBACKS
+      // ---------------------------------------------------------
+      // ---------------------------------------------------------
+// ⭐ CASHBACKS (always line_item if product_id exists)
+// ---------------------------------------------------------
+      final cashbacks = (order["cashbacks"] ?? []) as List? ?? [];
+      for (final c in cashbacks) {
+        final double amount =
+            double.tryParse(c["amount"]?.toString() ?? "0") ?? 0.0;
+
+        // Try all possible product ID keys used in your database
+        final dynamic cashbackPidRaw =
+            c["cashback_product_id"] ??
+                c["product_id"] ??
+                c["id"] ??
+                c["cashbackProductId"] ??
+                c["cashback_productID"];
+
+        final int? pid =
+        cashbackPidRaw == null ? null : int.tryParse(cashbackPidRaw.toString());
+
+        // Fallback name if missing
+        final String name = c["product_name"] ?? "Cashback";
+
+        if (pid != null && pid > 0) {
+          // ⭐ Cashback must be sent as line_item
+          lineItems.add({
+            "product_id": pid,
+            "name": name,
+            "quantity": 1,
+            "subtotal": amount.toStringAsFixed(2),
+            "total": amount.toStringAsFixed(2),
+          });
+          print("🟢 Cashback sent as LINE ITEM → product_id: $pid");
+        } else {
+          // Only fallback if product_id truly missing
+          feeLines.add({
+            "name": name,
+            "tax_status": "none",
+            "total": amount.toStringAsFixed(2),
+          });
+          print("🟡 Cashback missing product_id → sent as FEE LINE");
+        }
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ MERCHANT DISCOUNT
+      // ---------------------------------------------------------
+      final discount = double.tryParse(order["merchantDiscount"]?.toString() ?? "0") ?? 0.0;
+      final ids = (order["merchantDiscountIds"] ?? []).cast<int>();
+
+      if (discount > 0 && ids.isNotEmpty) {
+        final int pid = ids.first;
+
+        lineItems.add({
+          "product_id": pid,
+          "name": "Discount",
+          "quantity": 1,
+          "subtotal": (-discount).toStringAsFixed(2),
+          "total": (-discount).toStringAsFixed(2),
+          "tax_status": "none",
+          "type": "discount"
+        });
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ META DATA
+      // ---------------------------------------------------------
+      final metaData = [
+        {"key": "pos_device_id", "value": order["device_id"] ?? ""},
+        {"key": "pos_placed_by", "value": order["user_name"] ?? ""},
+        {"key": "shift_id", "value": order["shift_id"]?.toString() ?? ""},
+      ];
+
+      // ---------------------------------------------------------
+      // ⭐ PAYMENT BLOCK (required)
+      // ---------------------------------------------------------
+      final payment = {
+        "method": "cash",
+        "paid": false,
+        "transaction_id": "deleted_${order["order_id"]}"
+      };
+
+      // ---------------------------------------------------------
+      // ⭐ BUILD FINAL ORDER PAYLOAD
+      // ---------------------------------------------------------
+      formattedOrders.add({
+        "client_order_id": order["client_order_id"].toString(),
+        "payment_method": "cash",
+        "payment_method_title": "POS-CASH",
+        "set_paid": false,
+        "wps_cart_points": "",
+        "status": "canceled",
+        "currency": null,
+        "customer_id": null,
+        "customer_note": "",
+        "parent_id": null,
+        "meta_data": metaData,
+        "fee_lines": feeLines,
+        "line_items": lineItems,
+        "tax_lines": [],
+        "payment": payment,
+      });
+    }
+
+    final body = {"orders": formattedOrders};
+
+    debugPrint(
+      "📤 FINAL DELETE SYNC PAYLOAD:\n${JsonEncoder.withIndent('  ').convert(body)}",
+      wrapWidth: 9000,
+    );
+
+
+    try {
+      final response = await _helper.post(url, body, true, validateMarchentUrl: true);
+
+      // -------------------------------
+      // ⭐ Extract Woo Order ID
+      // -------------------------------
+      int? wooOrderId;
+      try {
+        final decoded = jsonDecode(response);
+        final result = decoded["results"]?[0];
+        wooOrderId = result?["order_id"];
+      } catch (_) {}
+
+      return {
+        "success": true,
+        "wooOrderId": wooOrderId,
+      };
+    } catch (e) {
+      print("❌ Delete Sync Error: $e");
+      return {
+        "success": false,
+        "wooOrderId": null,
+      };
+    }
+
   }
 
   Future<dynamic> redeemLoyaltyPoints({
