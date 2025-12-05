@@ -2486,7 +2486,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 : Colors.black,
                           ),
                         ),
-                        const SizedBox(width: 145),
+                        const SizedBox(width: 135),
                         SvgPicture.asset(
                           'assets/svg/clock.svg',
                           width: 20,

@@ -442,7 +442,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       padding: const EdgeInsets.only(top: 20),
       child: Column(
         children: [
-          // 🏷️ Title
+          // 🏷 Title
           Text(
             TextConstants.applyDiscountToSale,
             style: TextStyle(
@@ -484,11 +484,30 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               ),
               style: TextStyle(
                 fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: themeHelper.themeMode == ThemeMode.dark
-                    ? ThemeNotifier.textDark
-                    : const Color(0xFF1E2745),
+
+                // ✔ Bold only when non-zero
+                fontWeight: (() {
+                  final clean = _discountValue
+                      .replaceAll('%', '')
+                      .replaceAll(TextConstants.currencySymbol, '');
+                  return (clean == "0.00" || clean.isEmpty)
+                      ? FontWeight.normal
+                      : FontWeight.bold;
+                })(),
+
+                // ✔ Light grey when zero or empty
+                color: (() {
+                  final clean = _discountValue
+                      .replaceAll('%', '')
+                      .replaceAll(TextConstants.currencySymbol, '');
+                  return (clean == "0.00" || clean.isEmpty)
+                      ? Colors.grey.shade400
+                      : (themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.textDark
+                      : const Color(0xFF1E2745));
+                })(),
               ),
+
               decoration: InputDecoration(
                 filled: true,
                 fillColor: themeHelper.themeMode == ThemeMode.dark
