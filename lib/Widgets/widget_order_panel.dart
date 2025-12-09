@@ -3482,20 +3482,36 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                         "Tax: $syncedTax, Cashback Fee: $syncedCashbackFee");
                                   }
 
-                                  // 🔥 Update Hive with tax + cashback
                                   if (serverOrderId != null) {
-                                    final offlineBox = Hive.box('offlineOrders');
-                                    final orderKey = orderHelper.activeOrderId.toString();
 
-                                    final data = Map<String, dynamic>.from(rawOrder);
+                                    final box = Hive.box('offlineOrders');
 
-                                    // 🔥 Save wooOrderId inside local order
-                                    data["wooOrderId"] = serverOrderId;
+                                    final localKey = orderHelper.activeOrderId.toString();
+                                    final wooKey = serverOrderId.toString();
 
-                                    offlineBox.put(orderKey, data);
+                                    // Load existing order (LOCAL)
+                                    final existing = box.get(localKey);
 
-                                    print("💾 Saved wooOrderId=$serverOrderId for local order $orderKey");
+                                    if (existing != null) {
+
+                                      final updatedOrder = Map<String, dynamic>.from(existing);
+
+                                      updatedOrder["wooOrderId"] = wooKey;
+                                      updatedOrder["tax"] = syncedTax;
+                                      updatedOrder["cashback_fee"] = syncedCashbackFee;
+
+                                      // 🔥 Save under local key
+                                      await box.put(localKey, updatedOrder);
+
+                                      // 🔥 Save under WooCommerce key
+                                      await box.put(wooKey, updatedOrder);
+
+                                      print("💾 Updated tax+cashback under Local=$localKey AND Woo=$wooKey");
+                                    } else {
+                                      print("❌ No local offlineOrder found to update");
+                                    }
                                   }
+
 
                                   // Update local variables too
                                   orderTax = syncedTax;
