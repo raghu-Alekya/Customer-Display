@@ -36,6 +36,12 @@ class CustomerDisplayHelper {
 
       final data = Map<String, dynamic>.from(raw);
 
+      // 🔥 Fetch WooCommerce Order ID stored earlier after sync
+      final wooOrderId = data["wooOrderId"];
+
+      print("🟣 [CD] Woo Order ID fetched from Hive → $wooOrderId");
+
+
       print("🔶🔶🔶 RAW HIVE ORDER DATA (FULL DUMP) 🔶🔶🔶");
       data.forEach((key, value) {
         print(" ▶ $key : $value");
@@ -97,12 +103,6 @@ class CustomerDisplayHelper {
       })
           .toList();
 
-      print("🟢 [CD] PRODUCTS AFTER FILTER:");
-      for (var p in products) {
-        print(
-            " → ${p['name']} | qty=${p['quantity']} | unit_price=${p['unit_price']} | price=${p['price']}");
-      }
-
       // Helper to get correct unit price
       double _getUnitPrice(Map<String, dynamic> p) {
         final unit = p["unit_price"];
@@ -115,6 +115,13 @@ class CustomerDisplayHelper {
         if (price is num) return price.toDouble();
 
         return 0.0;
+      }
+
+      print("🟢 [CD] PRODUCTS AFTER FILTER:");
+      for (var p in products) {
+        print(
+            " → ${p['name']} | qty=${p['quantity']} | unit_price=${_getUnitPrice(p)} | price=${p['price']}"
+        );
       }
 
       // ------------------ PAYOUTS ------------------
@@ -130,6 +137,8 @@ class CustomerDisplayHelper {
       // ------------------ CASHBACK FEE ------------------
       double cashbackFee =
       (data["cashbackFee"] is num) ? (data["cashbackFee"] as num).toDouble() : 0.0;
+
+      print("💰 cashbackFee = $cashbackFee");
 
       // ------------------ BUILD PARSED ITEMS LIST ------------------
       final parsedItems = [
@@ -174,9 +183,9 @@ class CustomerDisplayHelper {
       payouts.fold(0, (sum, p) => sum + (p["amount"] ?? 0).toDouble());
 
       double cashbackTotal =
-      cashbacks.fold(0, (sum, c) => sum - (c["amount"] ?? 0).toDouble()); // negative
+      cashbacks.fold(0, (sum, c) => sum + (c["amount"] ?? 0).toDouble());
 
-      double grossTotal = productTotal - payoutTotal + cashbackTotal;
+      double grossTotal = productTotal + payoutTotal + cashbackTotal;
 
       // Discounts 🟡
       double orderDiscount =
@@ -219,7 +228,7 @@ class CustomerDisplayHelper {
 
       // ------------------ PUSH TO CUSTOMER DISPLAY ------------------
       await CustomerDisplayService.showCustomerData(
-        orderId: serverOrderId,
+        orderId: wooOrderId ?? serverOrderId,
         items: parsedItems,
         grossTotal: grossTotal,
         discount: orderDiscount,

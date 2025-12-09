@@ -2784,8 +2784,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         // ONLY update totals
         data["orderDiscount"] = 0.0;
         data["wooTax"] = oldTax;
-        data["merchantDiscount"] = merchantDiscount;
-        data["cashbackFee"] = cashbackFee;
+        //data["merchantDiscount"] = merchantDiscount;
+        // data["cashbackFee"] = cashbackFee;
 
         offlineBox.put(localKey, data);
 
@@ -3007,8 +3007,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           final data = Map<String, dynamic>.from(existing);
           data["orderDiscount"] = appliedDiscount;
           data["wooTax"] = updatedTax;
-          data["merchantDiscount"] = merchantDiscount;
-          data["cashbackFee"] = cashbackFee;
+          //data["merchantDiscount"] = merchantDiscount;
+          //data["cashbackFee"] = cashbackFee;
           offlineBox.put(localKey, data);
         }
       }

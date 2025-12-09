@@ -3484,12 +3484,19 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                                   // 🔥 Update Hive with tax + cashback
                                   if (serverOrderId != null) {
-                                    await updateOfflineOrderTaxAndCashback(
-                                      serverOrderId.toString(),   // 🔥 store using Woo ID
-                                      syncedTax,
-                                      syncedCashbackFee,
-                                    );
+                                    final offlineBox = Hive.box('offlineOrders');
+                                    final orderKey = orderHelper.activeOrderId.toString();
+
+                                    final data = Map<String, dynamic>.from(rawOrder);
+
+                                    // 🔥 Save wooOrderId inside local order
+                                    data["wooOrderId"] = serverOrderId;
+
+                                    offlineBox.put(orderKey, data);
+
+                                    print("💾 Saved wooOrderId=$serverOrderId for local order $orderKey");
                                   }
+
                                   // Update local variables too
                                   orderTax = syncedTax;
                                   cashbackFee = syncedCashbackFee;
