@@ -19,6 +19,30 @@ import '../../Models/Orders/orders_model.dart';
 import '../../Models/Orders/total_orders_count_model.dart';
 import '../../Utilities/global_utility.dart';
 
+class FastKeyImageModel {
+  final int id;
+  final String name;
+  final String url;
+  final String imageType;
+
+  FastKeyImageModel({
+    required this.id,
+    required this.name,
+    required this.url,
+    required this.imageType,
+  });
+
+  factory FastKeyImageModel.fromJson(Map<String, dynamic> json) {
+    return FastKeyImageModel(
+      id: json["id"],
+      name: json["name"],
+      url: json["url"],
+      imageType: json["image_type"],
+    );
+  }
+}
+
+
 class OrderRepository {  // Build #1.0.25 - added by naveen
   final APIHelper _helper = APIHelper();
 
@@ -93,6 +117,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       couponLines: [],
     );
   }
+
   Future<void> saveOfflineOrderTotals(int orderId) async {
     final box = Hive.box('offlineOrders');
     final raw = box.get(orderId.toString());
@@ -504,6 +529,33 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       throw Exception("Unexpected response type in update order PUT");
     }
   }
+  Future<Map<String, List<FastKeyImageModel>>> getFastKeyImages() async {
+    final String url = UrlMethodConstants.fastkeyimages;
+
+    try {
+      final raw = await _helper.get(url, true);
+      final response = raw is String ? jsonDecode(raw) : raw;
+
+      if (kDebugMode) {
+        print("FastKey Images Response: $response");
+      }
+
+      final data = response["data"] as Map<String, dynamic>;
+      Map<String, List<FastKeyImageModel>> result = {};
+
+      data.forEach((key, value) {
+        result[key] = (value as List)
+            .map((json) => FastKeyImageModel.fromJson(json))
+            .toList();
+      });
+
+      return result;
+    } catch (e) {
+      print("❌ Error fetching FastKey images: $e");
+      return {};
+    }
+  }
+
   //Build #1.0.40: getOrders
   Future<OrdersListModel> getOrders({bool allStatuses = false, int pageNumber =1, int pageLimit = 30, String status = "", String orderType = "", String userId = ""}) async {
     //Build #1.0.54: added if allStatuses is true, include all statuses; otherwise, just "processing"
@@ -648,6 +700,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       throw Exception("Failed to fetch orders");
     }
   }
+
+
   Future<Map<String, dynamic>> syncOfflineDeletedOrders(List<Map<String, dynamic>> orders) async {
     final String url =
         "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.deleteofflineorders}";

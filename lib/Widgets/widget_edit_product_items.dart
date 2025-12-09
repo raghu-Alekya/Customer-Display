@@ -7,7 +7,6 @@ import '../Constants/text.dart';
 import '../Database/db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Widgets/widget_custom_num_pad.dart';
-
 class EditProduct extends StatefulWidget {
   final Map<String, dynamic> orderItem;
   final Function(int) onQuantityUpdated;
@@ -32,20 +31,26 @@ class _EditProductState extends State<EditProduct> {
   @override
   void initState() {
     super.initState();
-    quantity = widget.orderItem[AppDBConst.itemCount] ?? 1;
-    var orderItem = widget.orderItem;
 
-    _regularPrice = (orderItem[AppDBConst.itemRegularPrice] == null ||
-        (orderItem[AppDBConst.itemRegularPrice]?.toDouble() ?? 0.0) == 0.0)
-        ? orderItem[AppDBConst.itemUnitPrice]?.toDouble() ?? 0.0
-        : orderItem[AppDBConst.itemRegularPrice]!.toDouble();
+    quantity = widget.orderItem[AppDBConst.itemCount] ?? 1;
+
+    var item = widget.orderItem;
+
+    _regularPrice =
+    (item[AppDBConst.itemRegularPrice] == null ||
+        (item[AppDBConst.itemRegularPrice]?.toDouble() ?? 0.0) == 0.0)
+        ? item[AppDBConst.itemUnitPrice]?.toDouble() ?? 0.0
+        : item[AppDBConst.itemRegularPrice]!.toDouble();
 
     controller = TextEditingController(text: quantity.toString());
   }
 
+  // ✅ FIXED update quantity logic
   void updateQuantity(int newQuantity) {
+    if (newQuantity < 0) newQuantity = 0;
+    if (newQuantity > 99) newQuantity = 99;
+
     setState(() {
-      if (newQuantity < 0) newQuantity = 0;
       quantity = newQuantity;
       controller.text = quantity.toString();
     });
@@ -56,10 +61,10 @@ class _EditProductState extends State<EditProduct> {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final isDark = themeHelper.themeMode == ThemeMode.dark;
 
-    // Determine width/height based on dialog or full screen
     final width = widget.isDialog
         ? MediaQuery.of(context).size.width * 0.28
         : MediaQuery.of(context).size.width * 0.65;
+
     final height = widget.isDialog
         ? MediaQuery.of(context).size.height * 0.68
         : MediaQuery.of(context).size.height * 0.9;
@@ -90,7 +95,6 @@ class _EditProductState extends State<EditProduct> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Product card
                   Expanded(
                     child: Container(
                       padding: const EdgeInsets.all(12),
@@ -151,7 +155,6 @@ class _EditProductState extends State<EditProduct> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  // Close button
                   InkWell(
                     onTap: () => Navigator.of(context).pop(),
                     child: Container(
@@ -168,49 +171,51 @@ class _EditProductState extends State<EditProduct> {
                 ],
               ),
               const SizedBox(height: 20),
+
               QuantityControl(
                 controller: controller,
                 quantity: quantity,
-                onDecrement: (q) {
-                  if (q > 0) updateQuantity(q - 1);
-                },
-                onIncrement: (q) {
-                  if (q < 99) updateQuantity(q + 1);
-                },
+                onDecrement: (q) => updateQuantity(q),
+                onIncrement: (q) => updateQuantity(q),
               ),
 
               const SizedBox(height: 20),
+
               Expanded(
                 child: CustomNumPad(
                   isDarkTheme: isDark,
-                  onDigitPressed: (digit) {
-                    String current = controller.text.isEmpty ? "0" : controller.text;
 
-                    // Build new quantity by appending digit
+                  // ✅ FIXED NUMPAD LOGIC
+                  onDigitPressed: (digit) {
+                    String current = controller.text;
+
+                    // If current = 0 → replace value
+                    if (current == "0") {
+                      updateQuantity(int.parse(digit));
+                      return;
+                    }
+
+                    // Append digit but limit to 2 digits (0–99)
                     String newValue = current + digit;
 
                     int newQty = int.tryParse(newValue) ?? quantity;
-
-                    // ⭐ LIMIT TO 99
-                    if (newQty > 99) {
-                      newQty = 99;
-                    }
 
                     updateQuantity(newQty);
                   },
 
                   onClearPressed: () => updateQuantity(0),
+
                   onAddPressed: quantity > 0
                       ? () {
                     widget.onQuantityUpdated(quantity);
                     Navigator.pop(context);
                   }
                       : null,
+
                   actionButtonType: ActionButtonType.add,
                   gridPadding: EdgeInsets.zero,
                 ),
               ),
-
             ],
           ),
         ),

@@ -261,6 +261,8 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
   // OrderPanelPosition orderPanelPosition = OrderPanelPosition.right;
   bool isLoading = true;
   bool isBulkAdding = false;
+  bool isimageLoading = false;
+
 
 
   final ValueNotifier<int?> fastKeyTabIdNotifier = ValueNotifier<int?>(null);
@@ -1688,26 +1690,31 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                                       ),
                                       child: GestureDetector(
                                         onTap: () async {
-                                          ///Use below code to select from device space
-                                          // final pickedFile = await ImagePicker()
-                                          //     .pickImage(
-                                          //     source: ImageSource.gallery);
-                                          // if (pickedFile != null) {
-                                          //   setStateDialog(() =>
-                                          //   imagePath = pickedFile.path);
-                                          // }
-                                          ///Use below code to select from woocomerce space
+                                          setStateDialog(() => isLoading = true);
+
                                           var image = await _showSelectImageDialog(context: context);
-                                          ///update the selected image
+
                                           if (kDebugMode) {
                                             print("2 image path selected is : $image");
                                           }
-                                          setStateDialog(() =>
-                                          imagePath = image);
+
+                                          setStateDialog(() {
+                                            imagePath = image;
+                                            isLoading = false;
+                                          });
                                         },
-                                        child: Icon(
+                                        child: isLoading
+                                            ? SizedBox(
+                                          height: 25,
+                                          width: 25,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.5,
+                                            color: Colors.red,
+                                          ),
+                                        )
+                                            : Icon(
                                           Icons.edit,
-                                          size: 18,
+                                          size: 25,
                                           color: Colors.red[400],
                                         ),
                                       ),
@@ -1962,179 +1969,251 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
       },
     );
   }
-
-
-  Future<String> _showSelectImageDialog({required BuildContext context, int? index}) async {
-    // bool isEditing = index != null;
-    // TextEditingController nameController = TextEditingController(text: isEditing ? fastKeyTabs[index!].fastkeyTitle : '');
-    // String imagePath = isEditing ? fastKeyTabs[index!].fastkeyImage : 'assets/default.png';
-    // bool showError = false;
+  Future<String> _showSelectImageDialog({
+    required BuildContext context,
+    int? index,
+  }) async {
     final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);
+    bool isDark = themeHelper.themeMode == ThemeMode.dark;
+
     String imagePath = "";
     var size = MediaQuery.of(context).size;
-    List<Widget> images = [];
-    // images.add(Image.asset('assets/default.png', height: 35));
-    var mediaImages = await AssetDBHelper.instance.getMediaList();
-    for(var image in mediaImages){
-      images.add(
-          GestureDetector(
-            onTap: () async {
-              imagePath = image.url;
-              if (kDebugMode) {
-                print("1 image path selected is : $imagePath");
-              }
-              Navigator.pop(context);
-              await Future.delayed(Duration(milliseconds: 500));
-              setState(() {
-              });
-            },
-            child:
-            Container(
-              padding: EdgeInsets.all(10),
-              child:
-              _buildImageWidget(image.url),),
-          )
+    final fastKeyImages = await OrderRepository().getFastKeyImages();
+    final types = fastKeyImages.keys.toList();
 
-      );
+    int selectedTab = 0;
+
+    List<FastKeyImageModel> getCurrentList() {
+      return fastKeyImages[types[selectedTab]] ?? [];
     }
 
-    var image = await showDialog(
+    var selectedImage = await showDialog<String>(
       context: context,
       builder: (context) {
-        return
-          /*Dialog(
-            child: SingleChildScrollView(
-              child:
-              CustomScrollView(
-                primary: false,
-                slivers: <Widget>[
-                  SliverPadding(
-                    padding: const EdgeInsets.all(3.0),
-                    sliver: SliverGrid.count(
-                      mainAxisSpacing: 1, //horizontal space
-                      crossAxisSpacing: 1, //vertical space
-                      crossAxisCount: 3, //number of images for a row
-                      children: images,
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor:
+              isDark ? ThemeNotifier.secondaryBackground : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              contentPadding: EdgeInsets.only(left: 24, right: 24, top: 20),
+              title: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Select Image",
+                    style: TextStyle(
+                      fontFamily: "Inter",
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? ThemeNotifier.textDark : Colors.black87,
                     ),
                   ),
+
+                  /// CLOSE BUTTON
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.red[400],
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.close, color: Colors.white, size: 20),
+                    ),
+                  )
                 ],
               ),
-            ),
-          );*/
-          StatefulBuilder(
-            builder: (context, setStateDialog) {
-              return
-                AlertDialog(
-
-                  backgroundColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : null,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
-                  contentPadding: EdgeInsets.only(left: 24, right: 24, top: 20, bottom: 0),
-                  // titlePadding: EdgeInsets.only(left: 24, right: 24, top: 24, bottom: 16),
-                  actionsPadding: EdgeInsets.only(right: 24, top: 10),
-                  // insetPadding: EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-                  title: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        TextConstants.selectImageText,
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.black87,
-                        ),
-                      ),
-                      InkWell(
-                        onTap: () => Navigator.pop(context),
-                        child: Container(
-                          padding: EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.red[400],
-                            shape: BoxShape.circle,
+              content: SizedBox(
+                width: size.width * 0.65,
+                height: size.height * 0.65,
+                child: Column(
+                  children: [
+                    /// 🔥 DYNAMIC TABS
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        for (int i = 0; i < types.length; i++) ...[
+                          _buildTabButton(
+                            label: types[i],
+                            index: i,
+                            selectedIndex: selectedTab,
+                            isDark: isDark,
+                            onTap: () => setStateDialog(() => selectedTab = i),
                           ),
-                          child: Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-                  content:
-                  Container(
-                    width: size.width *0.6,
-                    height:size.height *0.6,
-                    child:
-                    CustomScrollView(
-
-                      primary: false,
-                      slivers: <Widget>[
-                        SliverPadding(
-                          padding: const EdgeInsets.all(3.0),
-                          sliver: SliverGrid.count(
-                            mainAxisSpacing: 1, //horizontal space
-                            crossAxisSpacing: 1, //vertical space
-                            crossAxisCount: 7, //number of images for a row
-                            children: images,
-                          ),
-                        ),
+                          SizedBox(width: 10),
+                        ],
                       ],
                     ),
-                  ),
-                );
-            },
-          );
+
+                    SizedBox(height: 20),
+
+                    /// 🔥 IMAGE GRID
+                    Expanded(
+                      child: Container(
+                        padding: EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Color(0xFF34384A) // dark gray background
+                              : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+
+                        child: GridView.builder(
+                          itemCount: getCurrentList().length,
+                          gridDelegate:
+                          SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 6,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                          ),
+                          itemBuilder: (_, i) {
+                            final img = getCurrentList()[i];
+
+                            return GestureDetector(
+                              onTap: () => Navigator.pop(context, img.url),
+
+                              child: Container(
+                                padding: EdgeInsets.all(8),
+                                child: _buildImageWidget(img.url),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
       },
-    ).whenComplete(() async {
-      await Future.delayed(Duration(milliseconds: 500));
-      setState(() {
-        if (kDebugMode) {
-          print("3 image path selected is : $imagePath");
-        }
-      });
-    });
-    return image ?? imagePath;
+    );
+
+    return selectedImage ?? imagePath;
+  }
+
+  /// ------------------------------------------------------------
+  ///  🔥 TAB BUTTON WITH DARK/LIGHT MODE COLORS
+  /// ------------------------------------------------------------
+  Widget _buildTabButton({
+    required String label,
+    required int index,
+    required int selectedIndex,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    final isSelected = index == selectedIndex;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 40, vertical: 10),
+            decoration: BoxDecoration(
+              gradient: isSelected
+                  ? const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFFFF8A80),
+                  Color(0xFFFF6E6E),
+                  Color(0xFFFE6464),
+                ],
+              )
+                  : null,
+              color: isSelected
+                  ? null
+                  : (isDark ? Color(0xFF4D505F) : Colors.grey[200]),
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: isSelected
+                  ? [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  offset: Offset(0, 4),
+                  blurRadius: 8,
+                ),
+              ]
+                  : [],
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: isSelected
+                    ? Colors.white
+                    : (isDark ? Colors.white : Colors.black),
+              ),
+            ),
+          ),
+
+          /// Underline
+          // AnimatedContainer(
+          //   duration: Duration(milliseconds: 200),
+          //   height: 3,
+          //   width: isSelected ? 95 : 0,
+          //   margin: EdgeInsets.only(top: 4),
+          //   decoration: BoxDecoration(
+          //     color: isSelected ? Colors.red : Colors.transparent,
+          //     borderRadius: BorderRadius.circular(2),
+          //   ),
+          // ),
+        ],
+      ),
+    );
   }
 
   Widget _buildImageWidget(String imagePath) {
     if (kDebugMode) {
       print("_buildImageWidget for imagePath: $imagePath");
     }
-    if (imagePath.isEmpty) return _safeSvgPicture('assets/svg/password_placeholder.svg');
+
+    if (imagePath.isEmpty) {
+      return _safeSvgPicture('assets/svg/password_placeholder.svg');
+    }
+
     if (imagePath.startsWith('assets/') && imagePath.endsWith('.svg')) {
       return _safeSvgPicture(imagePath);
     } else if (imagePath.startsWith('assets/')) {
-      return
-        ClipRRect(
-            borderRadius: BorderRadius.circular(16.0),
-            child: Image.asset(imagePath, height: 80, width: 80, fit: BoxFit.cover));
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16.0),
+        child: Image.asset(
+          imagePath,
+          height: 80,
+          width: 80,
+          fit: BoxFit.cover,
+        ),
+      );
     } else if (imagePath.startsWith("http")) {
       return Container(
         width: 75,
         height: 75,
         decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: Colors.white38
+          borderRadius: BorderRadius.circular(16),
+          color: Colors.transparent,   // <-- FIXED (no grey background)
         ),
         child: ClipRRect(
-            borderRadius: BorderRadius.circular(16.0),
-            child: Image.network(
-              imagePath,
-              width: 75,
-              height: 75,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  width: 75,
-                  height: 75,
-                  color: Colors.grey.shade300,
-                  child: const Icon(Icons.broken_image, color: Colors.grey),
-                );
-              },
-            )),
+          borderRadius: BorderRadius.circular(16.0),
+          child: Image.network(
+            imagePath,
+            width: 75,
+            height: 75,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                width: 75,
+                height: 75,
+                color: Colors.transparent, // also transparent on error
+                child: const Icon(Icons.broken_image, color: Colors.grey),
+              );
+            },
+          ),
+        ),
       );
     } else {
       return Platform.isWindows
@@ -2143,12 +2222,13 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
         height: 75,
         width: 75,
       )
-          :Image.file(
+          : Image.file(
         File(imagePath),
         height: 80,
         width: 80,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => _safeSvgPicture('assets/svg/password_placeholder.svg'),
+        errorBuilder: (context, error, stackTrace) =>
+            _safeSvgPicture('assets/svg/password_placeholder.svg'),
       );
     }
   }
