@@ -21,6 +21,8 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.widget.FrameLayout
 import org.json.JSONArray
 import java.text.NumberFormat
 import java.util.Locale
@@ -576,7 +578,8 @@ class MainActivity : FlutterActivity() {
 
             currentStoreId = storeId?.takeIf { it.isNotEmpty() } ?: defaultStoreId
             currentStoreName = storeName?.takeIf { it.isNotEmpty() } ?: defaultStoreName
-            currentStoreLogoUrl = storeLogoUrl?.takeIf { it?.isNotEmpty() == true } ?: defaultStoreLogoUrl
+            currentStoreLogoUrl =
+                storeLogoUrl?.takeIf { it?.isNotEmpty() == true } ?: defaultStoreLogoUrl
 
             Log.d("CustomerDisplay", "📱 Displaying Customer Contact: $loyaltyContact")
 
@@ -598,7 +601,13 @@ class MainActivity : FlutterActivity() {
 
 
             // Update store info
-            updateStoreInfo(currentStoreId, currentStoreName, currentStoreLogoUrl, orderDate, orderTime)
+            updateStoreInfo(
+                currentStoreId,
+                currentStoreName,
+                currentStoreLogoUrl,
+                orderDate,
+                orderTime
+            )
 
             // Slideshow
             slideshowImageView = findViewById(R.id.slideshow_image)
@@ -621,12 +630,28 @@ class MainActivity : FlutterActivity() {
 
                 summaryContainer.visibility = View.GONE
 
-                val emptyLayout = LinearLayout(context).apply {
+                // 🔲 Frame container
+                val frameLayout = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER
+
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.MATCH_PARENT
+                    )
+
+                    background = GradientDrawable().apply {
+                        setColor(Color.WHITE)
+                        setStroke(dpToPx(2), Color.LTGRAY)
+                        cornerRadius = dpToPx(0).toFloat()
+                    }
+
+                    // ✅ SMALL, EVEN padding only
+                    setPadding(
+                        dpToPx(24),
+                        dpToPx(24),
+                        dpToPx(24),
+                        dpToPx(24)
                     )
                 }
 
@@ -634,21 +659,40 @@ class MainActivity : FlutterActivity() {
                     setImageResource(R.drawable.empty_cart)
                     scaleType = ImageView.ScaleType.CENTER_INSIDE
                     layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { bottomMargin = 16 }
+                        dpToPx(180),
+                        dpToPx(180)
+                    ).apply {
+                        setMargins(0, 0, 0, dpToPx(16))
+                    }
                 }
 
                 val emptyMessage = TextView(context).apply {
                     text = "No items in the Order panel"
-                    textSize = 22f
+                    textSize = 28f
                     setTextColor(Color.BLACK)
                     gravity = Gravity.CENTER
                 }
 
-                emptyLayout.addView(emptyImage)
-                emptyLayout.addView(emptyMessage)
-                itemsContainer.addView(emptyLayout)
+                frameLayout.addView(emptyImage)
+                frameLayout.addView(emptyMessage)
+
+                // ✅ Container centers frameLayout
+                val container = FrameLayout(context).apply {
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                    addView(
+                        frameLayout,
+                        FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            Gravity.CENTER
+                        )
+                    )
+                }
+
+                itemsContainer.addView(container)
                 return
             }
 
@@ -667,61 +711,73 @@ class MainActivity : FlutterActivity() {
             // -----------------------------------------------------
             orderIdView.text = "#$orderId"
             itemsContainer.removeAllViews()
+
             var totalItemCount = 0
+            val itemsHeader = findViewById<LinearLayout>(R.id.items_header)
+
+// ✅ Show header only when real items exist
+            val hasRealItems = items.any {
+                val n = it["name"] as? String ?: ""
+                !n.equals("Payout", true) && !n.equals("Cashback", true)
+            }
+            itemsHeader.visibility = if (hasRealItems) View.VISIBLE else View.GONE
 
             for ((index, item) in items.withIndex()) {
+
                 val name = (item["name"] as? String) ?: ""
                 val qty = (item["qty"] as? Number)?.toInt() ?: 0
                 val price = (item["price"] as? Number)?.toDouble() ?: 0.0
                 val total = price * qty
 
-                if (!name.equals("Payout", ignoreCase = true) &&
-                    !name.equals("Cashback", ignoreCase = true)) {
-
+                // ✔ SAME CALCULATION
+                if (!name.equals("Payout", true) && !name.equals("Cashback", true)) {
                     totalItemCount += qty
                 }
 
-
-                // Item Layout
-                val itemLayout = LinearLayout(context).apply {
+                // ================= ROW =================
+                val row = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
-                    setPadding(0, 0, 0, 0)
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
                     )
-                    gravity = Gravity.CENTER_VERTICAL
                     setBackgroundColor(Color.WHITE)
                 }
 
-                // Image
+                // ================= ITEM COLUMN (1.5f) =================
+                val itemColumn = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1.5f)
+                }
+
+// ❌ Image removed from UI — no empty gap
+// (ImageView not added to itemColumn)
+
+// ================================================
+// IMAGE LOADING LOGIC (kept for future use)
+// ================================================
+                /*
                 val imageView = ImageView(context).apply {
-                    layoutParams = LinearLayout.LayoutParams(80, 80).apply { rightMargin = 16 }
+                    layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40))
+                        .apply { marginEnd = dpToPx(8) }
                     scaleType = ImageView.ScaleType.CENTER_CROP
-                    clipToOutline = true
-                    background = GradientDrawable().apply {
-                        cornerRadius = 12f
-                        setColor(Color.TRANSPARENT)
-                    }
                 }
 
                 when {
-                    name.equals("Payout", ignoreCase = true) ->
-                        imageView.setImageResource(R.drawable.ic_payout)
-
-                    name.equals("Coupon", ignoreCase = true) ->
-                        imageView.setImageResource(R.drawable.ic_coupon)
-
+                    name.equals("Payout", true) -> imageView.setImageResource(R.drawable.ic_payout)
+                    name.equals("Coupon", true) -> imageView.setImageResource(R.drawable.ic_coupon)
                     else -> {
-                        (item["image"] as? String)?.let { imageUrl ->
+                        (item["image"] as? String)?.let { url ->
                             Thread {
                                 try {
-                                    val input = URL(imageUrl).openStream()
-                                    val bitmap = BitmapFactory.decodeStream(input)
+                                    val bmp = BitmapFactory.decodeStream(URL(url).openStream())
                                     Handler(Looper.getMainLooper()).post {
-                                        imageView.setImageBitmap(bitmap)
+                                        imageView.setImageBitmap(bmp)
                                     }
-                                } catch (e: Exception) {
+                                } catch (_: Exception) {
                                     Handler(Looper.getMainLooper()).post {
                                         imageView.setImageResource(R.drawable.custom)
                                     }
@@ -731,72 +787,70 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
-                // Details Layout
-                val detailsLayout = LinearLayout(context).apply {
-                    orientation = LinearLayout.VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                }
-
-                val displayName = if (name.length > 20) name.take(20) + "..." else name
+                // To re-enable images later:
+                // itemColumn.addView(imageView)
+                */
 
                 val nameView = TextView(context).apply {
-                    textSize = 17f
+                    text = if (name.length > 26) "${name.take(26)}…" else name
+                    textSize = 20f
                     setTypeface(typeface, Typeface.BOLD)
-                    text = displayName
                     setTextColor(Color.BLACK)
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { bottomMargin = 4 }
                 }
 
+//                itemColumn.addView(imageView)
+                itemColumn.addView(nameView)
+
+                // ================= QTY × PRICE COLUMN (1.0f) =================
                 val qtyPriceView = TextView(context).apply {
-                    textSize = 17f
+                    layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+                    gravity = Gravity.CENTER
+                    textSize = 18f
                     setTextColor(Color.DKGRAY)
                     text = when {
-                        name.equals("Payout", ignoreCase = true) -> ""
-                        name.equals("Cashback", ignoreCase = true) -> ""
-                        else -> "${formatCurrency(price)} × $qty"
+                        name.equals("Payout", true) -> ""
+                        name.equals("Cashback", true) -> ""
+                        else -> "$qty × ${formatCurrency(price)}"
                     }
                 }
 
-                detailsLayout.addView(nameView)
-                detailsLayout.addView(qtyPriceView)
-
+                // ================= TOTAL COLUMN (0.8f) =================
                 val totalView = TextView(context).apply {
-                    textSize = 18f
-                    setTypeface(typeface, Typeface.BOLD)
-                    text = formatCurrency(total)
+                    layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 0.8f)
                     gravity = Gravity.END
-                    setTextColor(Color.BLACK)
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { setMargins(0, 0, 10, 0) }
+                    textSize = 17f
+                    setTypeface(typeface, Typeface.BOLD)
+
+                    // 🔥 Color rule for payout:
+                    setTextColor(
+                        if (name.equals("Payout", true)) Color.RED
+                        else Color.BLACK
+                    )
+
+                    text = formatCurrency(total)
                 }
 
-                itemLayout.addView(imageView)
-                itemLayout.addView(detailsLayout)
-                itemLayout.addView(totalView)
 
-                itemsContainer.addView(itemLayout)
+                // Add columns into row
+                row.addView(itemColumn)
+                row.addView(qtyPriceView)
+                row.addView(totalView)
 
+                itemsContainer.addView(row)
+
+                // ===== Divider =====
                 if (index < items.size - 1) {
-                    val divider = View(context).apply {
-                        setBackgroundColor(Color.BLACK)
+                    itemsContainer.addView(View(context).apply {
                         layoutParams = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             1
-                        ).apply {
-                            topMargin = 1
-                            bottomMargin = 1
-                        }
-                    }
-                    itemsContainer.addView(divider)
+                        )
+                        setBackgroundColor(Color.LTGRAY)
+                    })
                 }
             }
 
-            // Totals
+// ================= TOTALS (UNCHANGED) =================
             findViewById<TextView>(R.id.label_total_items).text = "Total Items : $totalItemCount"
             grossView.text = formatCurrency(grossTotal)
             discountView.text = formatCurrency(-discount)
@@ -808,16 +862,25 @@ class MainActivity : FlutterActivity() {
             netPayableView.text = "Total : ${formatCurrency(netPayable)}"
             paymentDate.text = orderDate
             paymentTime.text = orderTime
+            paymentDate.setTextColor(Color.WHITE)
+            paymentTime.setTextColor(Color.WHITE)
 
 
-            Log.d("CustomerDisplay", "✔ Order #$orderId totals updated, Total Items: $totalItemCount")
+            Log.d(
+                "CustomerDisplay",
+                "✔ Order #$orderId totals updated, Total Items: $totalItemCount"
+            )
         }
+        private fun dpToPx(dp: Int): Int {
+            return (dp * context.resources.displayMetrics.density).toInt()
+        }
+
 
         fun showThankYouLayout() {
             stopSlideshow()
             setContentView(R.layout.thank_you_layout)
 
-            val storeLogoView = findViewById<ImageView>(R.id.thank_you_store_logo)
+            //val storeLogoView = findViewById<ImageView>(R.id.thank_you_store_logo)
             val thankYouText = findViewById<TextView>(R.id.thank_you_text)
             val visitAgainText = findViewById<TextView>(R.id.visit_again_text)
 

@@ -11,21 +11,6 @@
         android:orientation="horizontal">
 
         <!-- Left half: slideshow -->
-        <FrameLayout
-            android:id="@+id/slideshow_container"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:padding="16dp">
-            <ImageView
-                android:id="@+id/slideshow_image"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="centerCrop"/>
-        </FrameLayout>
-
-        <!-- Right half: welcome text/logo -->
         <LinearLayout
             android:id="@+id/welcome_info"
             android:layout_width="0dp"
@@ -49,7 +34,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Welcome To Pinaka"
-                android:textSize="36sp"
+                android:textSize="40sp"
                 android:textStyle="bold"
                 android:textColor="#FFFFFF"
                 android:gravity="center"
@@ -60,6 +45,21 @@
 
         </LinearLayout>
 
+        <!-- Right half: welcome text/logo -->
+        <FrameLayout
+            android:id="@+id/slideshow_container"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:padding="16dp">
+            <ImageView
+                android:id="@+id/slideshow_image"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"/>
+        </FrameLayout>
+
     </LinearLayout>
 
     <!-- Footer -->
@@ -68,7 +68,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Powered by Pinaka"
-        android:textSize="12sp"
+        android:textSize="20sp"
         android:textColor="#FFFFFF"
         android:gravity="center"
         android:layout_gravity="bottom|center_horizontal"

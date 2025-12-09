@@ -2060,25 +2060,56 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             //   }
                             // });
                             // Build #1.0.104: refresh when back to this screen
+                            List<Map<String, dynamic>> visibleLineItems(
+                                List<Map<String, dynamic>> items,
+                                ) {
+                              return items.where((item) {
+                                final nameLower = (item[AppDBConst.itemName] ?? '')
+                                    .toString()
+                                    .trim()
+                                    .toLowerCase();
+
+                                final itemTypeLower = (item['item_type'] ?? '') // ✅ FIXED KEY
+                                    .toString()
+                                    .trim()
+                                    .toLowerCase();
+
+                                final isNonProduct =
+                                    nameLower.contains('discount') ||
+                                        nameLower.contains('coupon') ||
+                                        nameLower.contains('loyalty') ||
+                                        nameLower.contains('redeemed') ||
+                                        nameLower.contains('points') ||
+                                        itemTypeLower.contains('discount') ||
+                                        itemTypeLower.contains('coupon') ||   // ✅ WILL MATCH
+                                        itemTypeLower.contains('loyalty') ;
+
+
+                                return !isNonProduct;
+                              }).toList();
+                            }
+
+
+                            final filteredItems = visibleLineItems(orderItems);
+
                             final result = await Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    OrderSummaryScreen(
-                                      formattedDate: displayDate,
-                                      formattedTime: displayTime,
-                                      orderItems: orderItems,
-                                      grossTotal: grossTotal.toDouble(),
-                                      orderDiscount: orderDiscount,
-                                      merchantDiscount: merchantDiscount,
-                                      orderTax: orderTax,
-                                      netPayable: netPayable.toDouble(),
-                                      orderId: orderHelper.activeOrderId,
-                                      cashbackFee: cashbackFee,
-
-                                    ),
+                                builder: (_) => OrderSummaryScreen(
+                                  orderItems: filteredItems, // ✅ ONLY product items
+                                  formattedDate: displayDate,
+                                  formattedTime: displayTime,
+                                  grossTotal: grossTotal.toDouble(),
+                                  orderDiscount: orderDiscount,
+                                  merchantDiscount: merchantDiscount,
+                                  orderTax: orderTax,
+                                  netPayable: netPayable.toDouble(),
+                                  orderId: orderHelper.activeOrderId,
+                                  cashbackFee: cashbackFee,
+                                ),
                               ),
                             );
+
                             if (kDebugMode) {
                               print(
                                   "###### OrderScreenPanel: Returned from OrderSummaryScreen with result: $result");

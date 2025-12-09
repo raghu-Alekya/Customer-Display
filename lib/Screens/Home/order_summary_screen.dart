@@ -135,6 +135,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isPaymentDone = false;
   Map<String, dynamic> _order = {};
 
+  double ebtTotal = 12.34; // Example
+
+  TextEditingController ebtAmountController = TextEditingController();
 
 
   double NetTotal = 0.0;
@@ -2047,6 +2050,28 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 
 
+  String _getPaymentHeader() {
+    switch (selectedPaymentMethod) {
+      case TextConstants.cash:
+        return TextConstants.cashPayment;
+
+      case TextConstants.card:
+        return TextConstants.cardPayment;
+
+      case TextConstants.wallet:
+        return TextConstants.walletPayment;
+
+      case TextConstants.ebtText:
+        return TextConstants.ebtPayment;
+
+      default:
+        return TextConstants.cashPayment;
+    }
+  }
+
+
+
+
   Widget _buildPaymentSection() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return Container(
@@ -2107,9 +2132,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       // ),
                       _buildAmountDisplay(
                         TextConstants.EBTAmount,
-                        '${TextConstants.currencySymbol}0.00',
+                        '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
                         amountColor: Colors.green,
                       ),
+
                     ],
                   ),
 
@@ -2166,15 +2192,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                               ResponsiveLayout.getRadius(6)),
                                         ),
                                         child: Text(
-                                          TextConstants.cashPayment,
+                                          _getPaymentHeader(),
                                           style: TextStyle(
                                             color: Colors.red,
                                             fontWeight: FontWeight.w600,
-                                            fontSize:
-                                            ResponsiveLayout.getFontSize(
-                                                14),
+                                            fontSize: ResponsiveLayout.getFontSize(14),
                                           ),
-                                        ),
+                                        )
+
                                       ),
                                       SizedBox(
                                           height:
@@ -2248,7 +2273,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           ResponsiveLayout.getHeight(8)),
 
 // QUICK AMOUNT BUTTONS - FIXED
-                                      if (balanceAmount > 0)
+                                      if (balanceAmount > 0 && selectedPaymentMethod != TextConstants.ebtText)
+
                                         Row(
                                           mainAxisAlignment:
                                           MainAxisAlignment.spaceBetween,
@@ -2287,20 +2313,34 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           amountController.text,
                                           balanceAmount: balanceAmount,
                                           onDigitPressed: (value) {
-                                            if (balanceAmount < 0) return;
-                                            if (_amountErrorText != null) {
-                                              _amountErrorText = null;
-                                            }
+                                            if (selectedPaymentMethod == TextConstants.ebtText) {
+                                              // Apply EBT LIMIT
+                                              int maxAmount = (ebtTotal * 100).toInt();
 
-                                            if (value == '00') {
-                                              _rawAmount = _rawAmount * 100;
-                                            } else {
-                                              int digit = int.tryParse(value) ?? 0;
-                                              _rawAmount = _rawAmount * 10 + digit;
+                                              int digit = value == '00'
+                                                  ? 0
+                                                  : int.tryParse(value) ?? 0;
+
+                                              int newAmount = value == '00'
+                                                  ? _rawAmount * 100
+                                                  : _rawAmount * 10 + digit;
+
+                                              // ❌ Don't allow exceeding EBT amount
+                                              if (newAmount > maxAmount) return;
+
+                                              _rawAmount = newAmount;
+                                            }
+                                            else {
+                                              // Normal non-EBT logic
+                                              if (value == '00') {
+                                                _rawAmount = _rawAmount * 100;
+                                              } else {
+                                                int digit = int.tryParse(value) ?? 0;
+                                                _rawAmount = _rawAmount * 10 + digit;
+                                              }
                                             }
 
                                             double displayValue = _rawAmount / 100.0;
-
                                             amountController.text =
                                             '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
@@ -2308,6 +2348,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                               _isAmountEntered = _rawAmount != 0;
                                             });
                                           },
+
 
                                           onClearPressed: () {
                                             _rawAmount = 0;
@@ -2469,34 +2510,58 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       child: Column(
                         children: [
                           _buildPaymentModeButton(
-                              TextConstants.cash, Icons.money,
-                              isSelected: selectedPaymentMethod ==
-                                  TextConstants.cash, onTap: () {
-                            setState(() {
-                              selectedPaymentMethod = TextConstants.cash;
-                            });
-                          }),
+                            TextConstants.cash,
+                            Icons.money,
+                            isSelected: selectedPaymentMethod == TextConstants.cash,
+                            onTap: () {
+                              setState(() {
+                                selectedPaymentMethod = TextConstants.cash;
+                              });
+                            },
+                          ),
+
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
+
                           _buildPaymentModeButton(
-                              TextConstants.card, Icons.credit_card, onTap: () {
-                            setState(() {
-                              selectedPaymentMethod = TextConstants.card;
-                            });
-                          }),
+                            TextConstants.card,
+                            Icons.credit_card,
+                            isSelected: selectedPaymentMethod == TextConstants.card,   // ← Added
+                            onTap: () {
+                              setState(() {
+                                selectedPaymentMethod = TextConstants.card;
+                              });
+                            },
+                          ),
+
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
-                          _buildPaymentModeButton(TextConstants.wallet,
-                              Icons.account_balance_wallet, onTap: () {
-                                setState(() {
-                                  selectedPaymentMethod = TextConstants.wallet;
-                                });
-                              }),
-                          SizedBox(height: ResponsiveLayout.getHeight(10)),
+
                           _buildPaymentModeButton(
-                              TextConstants.ebtText, Icons.payment, onTap: () {
-                            setState(() {
-                              selectedPaymentMethod = TextConstants.ebtText;
-                            });
-                          }),
+                            TextConstants.wallet,
+                            Icons.account_balance_wallet,
+                            isSelected: selectedPaymentMethod == TextConstants.wallet, // ← Added
+                            onTap: () {
+                              setState(() {
+                                selectedPaymentMethod = TextConstants.wallet;
+                              });
+                            },
+                          ),
+
+                          SizedBox(height: ResponsiveLayout.getHeight(10)),
+
+                          _buildPaymentModeButton(
+                            TextConstants.ebtText,
+                            Icons.payment,
+                            isSelected: selectedPaymentMethod == TextConstants.ebtText,
+                            onTap: () {
+                              setState(() {
+                                selectedPaymentMethod = TextConstants.ebtText;
+                                _rawAmount = (ebtTotal * 100).toInt();
+                                amountController.text = '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
+                              });
+
+                            },
+                          ),
+
                         ],
                       ),
                     ),
@@ -2784,8 +2849,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         // ONLY update totals
         data["orderDiscount"] = 0.0;
         data["wooTax"] = oldTax;
-        //data["merchantDiscount"] = merchantDiscount;
-        // data["cashbackFee"] = cashbackFee;
 
         offlineBox.put(localKey, data);
 
@@ -3007,8 +3070,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           final data = Map<String, dynamic>.from(existing);
           data["orderDiscount"] = appliedDiscount;
           data["wooTax"] = updatedTax;
-          //data["merchantDiscount"] = merchantDiscount;
-          //data["cashbackFee"] = cashbackFee;
           offlineBox.put(localKey, data);
         }
       }
@@ -3197,15 +3258,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
   }
 
-  Widget _buildPaymentModeButton(String label, IconData icon,
-      {bool isSelected = false, VoidCallback? onTap}) {
+  Widget _buildPaymentModeButton(
+      String label,
+      IconData icon, {
+        bool isSelected = false,
+        VoidCallback? onTap,
+      }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
-    return Container(
-      width: ResponsiveLayout.getWidth(168),
-      height: ResponsiveLayout.getHeight(64),
-      padding: ResponsiveLayout.getResponsivePadding(vertical: 10),
-      margin: EdgeInsets.symmetric(vertical: 2),
-      decoration: BoxDecoration(
+
+    return GestureDetector(
+      onTap: onTap, // ← FIX: This enables clicking
+      child: Container(
+        width: ResponsiveLayout.getWidth(168),
+        height: ResponsiveLayout.getHeight(64),
+        padding: ResponsiveLayout.getResponsivePadding(vertical: 10),
+        margin: EdgeInsets.symmetric(vertical: 2),
+        decoration: BoxDecoration(
           color: isSelected
               ? Colors.red.shade100
               : themeHelper.themeMode == ThemeMode.dark
@@ -3213,11 +3281,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               : Colors.white,
           borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(5)),
           border: isSelected
-              ? Border.all(color: Colors.red.shade300,)
+              ? Border.all(color: Colors.red.shade300)
               : Border.all(
-              color: themeHelper.themeMode == ThemeMode.dark
-                  ? ThemeNotifier.borderColor
-                  : Colors.grey.shade200),
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.borderColor
+                : Colors.grey.shade200,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.grey.withOpacity(0.1),
@@ -3225,41 +3294,34 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               blurRadius: 2,
               offset: const Offset(0, 1),
             ),
-          ]),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            color: isSelected
-                ? Colors.red
-                : themeHelper.themeMode == ThemeMode.dark
-                ? Colors.grey
-                : Colors.grey,
-            size: ResponsiveLayout.getIconSize(32),
-          ),
-          SizedBox(width: ResponsiveLayout.getWidth(8)),
-          Text(
-            label,
-            style: TextStyle(
-              color: isSelected
-                  ? Colors.red
-                  : themeHelper.themeMode == ThemeMode.dark
-                  ? Colors.grey
-                  : Colors.grey,
-              // fontWeight: isSelected ? FontWeight.bold : FontWeight.w900,
-              fontFamily: 'Montserrat',
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500, // Regular
-
-              fontSize: isSelected
-                  ? ResponsiveLayout.getFontSize(18)   // selected size
-                  : ResponsiveLayout.getFontSize(16),  // unselected size
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? Colors.red : Colors.grey,
+              size: ResponsiveLayout.getIconSize(32),
             ),
-          ),
-        ],
+            SizedBox(width: ResponsiveLayout.getWidth(8)),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.red : Colors.grey,
+                fontFamily: 'Montserrat',
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                fontSize: isSelected
+                    ? ResponsiveLayout.getFontSize(18)
+                    : ResponsiveLayout.getFontSize(16),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+
   Widget _buildPaymentOptionButton(
       String title,
       String iconPath, {

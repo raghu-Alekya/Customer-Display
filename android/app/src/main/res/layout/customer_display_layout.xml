@@ -157,7 +157,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="6dp"
-                            android:text="- Guest"
+                            android:text=""
                             android:textColor="#353535"
                             android:textSize="20sp" />
                     </LinearLayout>
@@ -188,6 +188,52 @@
 
             </LinearLayout>
             <!-- =============================================================== -->
+            <!-- ITEM LIST HEADER -->
+            <LinearLayout
+                android:id="@+id/items_header"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:background="#1F3A68"
+                android:visibility="gone">
+
+                <!-- Item -->
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1.5"
+                    android:text="Item Name"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:textColor="#FFFFFFFF" />
+
+                <!-- Qty × Price -->
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="Qty × Price"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:textColor="#FFFFFFFF" />
+
+                <!-- Total -->
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="0.8"
+                    android:gravity="end"
+                    android:text="Total"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:textColor="#FFFFFFFF" />
+            </LinearLayout>
+
+
 
 
 
@@ -213,12 +259,12 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:padding="20dp"
                 android:visibility="gone">
 
                 <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:id="@+id/empty_state_frame"
+                    android:layout_width="320dp"
+                    android:layout_height="240dp"
                     android:orientation="vertical"
                     android:gravity="center"
                     android:padding="24dp">
@@ -244,6 +290,7 @@
             </LinearLayout>
 
 
+
             <!-- ================= SUMMARY PANEL ================= -->
             <LinearLayout
                 android:id="@+id/summary_container"
@@ -262,6 +309,7 @@
                     <TextView
                         android:id="@+id/label_gross_total"
                         android:layout_width="0dp"
+                        android:paddingStart="8dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="Gross Total"
@@ -273,6 +321,7 @@
                         android:id="@+id/value_gross_total"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:paddingEnd="8dp"
                         android:text="$0.00"
                         android:textColor="#212121"
                         android:textSize="24sp"
@@ -288,18 +337,20 @@
                     <TextView
                         android:id="@+id/label_discount"
                         android:layout_width="0dp"
+                        android:paddingStart="8dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="Discount/Coupon"
-                        android:textColor="#388E3C"
+                        android:textColor="#036A07"
                         android:textSize="20sp" />
 
                     <TextView
                         android:id="@+id/value_discount"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:paddingEnd="8dp"
                         android:text="-$0.00"
-                        android:textColor="#388E3C"
+                        android:textColor="#036A07"
                         android:textSize="20sp" />
                 </LinearLayout>
                 <!-- Merchant Discount -->
@@ -307,14 +358,16 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
                     android:orientation="horizontal"
                     android:layout_marginTop="3dp"> <TextView
                     android:id="@+id/label_net_total"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
+                    android:paddingEnd="8dp"
                     android:text="Net Total"
-                    android:textColor="#212121"
+                    android:textColor="#353535"
                     android:textSize="22sp"
                     android:textStyle="bold" />
 
@@ -322,8 +375,9 @@
                         android:id="@+id/value_net_total"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:paddingEnd="8dp"
                         android:text="$0.00"
-                        android:textColor="#212121"
+                        android:textColor="#353535"
                         android:textSize="22sp"
                         android:textStyle="bold" />
                 </LinearLayout>
@@ -331,42 +385,48 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
                     android:orientation="horizontal"
                     android:layout_marginBottom="3dp"> <TextView
                     android:id="@+id/label_tax"
                     android:layout_width="0dp"
+                    android:paddingStart="4dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="Tax"
-                    android:textColor="#212121"
+                    android:textColor="#808080"
                     android:textSize="18sp" /> <TextView
                     android:id="@+id/value_tax"
                     android:layout_width="wrap_content"
+                    android:paddingEnd="8dp"
                     android:layout_height="wrap_content"
                     android:text="$0.00"
-                    android:textColor="#212121"
+                    android:textColor="#808080"
                     android:textSize="18sp" />
                 </LinearLayout>
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
                     android:orientation="horizontal"
                     android:layout_marginBottom="3dp"> <TextView
                     android:id="@+id/label_merchant_discount"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:paddingStart="4dp"
                     android:layout_weight="1"
                     android:text="Merchant Discount"
-                    android:textColor="#1976D2"
-                    android:textSize="20sp" />
+                    android:textColor="#007BFF"
+                    android:textSize="18sp" />
                     <TextView
                         android:id="@+id/value_merchant_discount"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:paddingEnd="8dp"
                         android:text="-$0.00"
-                        android:textColor="#1976D2"
-                        android:textSize="20sp" />
+                        android:textColor="#007BFF"
+                        android:textSize="18sp" />
                 </LinearLayout>
 
                 <!-- Cashback Fee -->
@@ -374,6 +434,7 @@
                     android:id="@+id/row_cashback_fee"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
                     android:orientation="horizontal"
                     android:layout_marginBottom="3dp">
 
@@ -383,15 +444,16 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="Cashback Fee"
-                        android:textColor="#E65100"
+                        android:textColor="#55CBCD"
                         android:textSize="18sp" />
 
                     <TextView
                         android:id="@+id/value_cashback_fee"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:paddingEnd="8dp"
                         android:text="$0.00"
-                        android:textColor="#E65100"
+                        android:textColor="#55CBCD"
                         android:textSize="18sp" />
                 </LinearLayout>
 

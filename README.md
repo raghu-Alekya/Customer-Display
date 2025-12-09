@@ -18,3 +18,11 @@ samples, guidance on mobile development, and a full API reference.
 (build no:370)
 1.customer display cashback
 2.windows scroll issue
+
+(build no:374)
+1,customer display ui modifications.
+-- removed images form cart.
+-- customer layout, welocme page, thank you page font sizes.
+
+2.fast key images fetch.
+3.number pad qty increase.
