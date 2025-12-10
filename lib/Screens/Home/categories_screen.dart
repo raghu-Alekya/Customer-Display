@@ -172,6 +172,7 @@
 //   }
 // }
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -397,23 +398,63 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
           // Deduplicate products by id
           final uniqueProducts = <int, Map<String, dynamic>>{};
           for (var product in response.data!.products) {
-            var tagg = product.tags?.firstWhere((element) => element.name == TextConstants.age_restricted, orElse: () => Tags());
-            var hasAgeRestriction = tagg?.name?.contains(TextConstants.age_restricted);
+
+            // ✅ STEP 1: Normalize ALL TAGS (DECLARE FIRST)
+            final List<Map<String, dynamic>> normalizedTags =
+            (product.tags ?? []).map((t) {
+              return {
+                "id": t.id,
+                "name": t.name?.toLowerCase() ?? "",
+                "slug": t.slug?.toLowerCase() ?? "",
+              };
+            }).toList();
             if (kDebugMode) {
-              print("CategoriesScreen: _loadProductsByCategory hasAgeRestriction $hasAgeRestriction, minAge: ${tagg?.slug ?? "0"}");
+              print("🏷 NORMALIZED TAGS → productId=${product.id}");
+              print(const JsonEncoder.withIndent('  ').convert(normalizedTags));
             }
+
+
+            // ✅ STEP 2: Age restriction detection using normalized tags
+            final ageTag = normalizedTags.firstWhere(
+                  (t) =>
+              t["name"] == TextConstants.age_restricted ||
+                  t["slug"] == TextConstants.age_restricted,
+              orElse: () => {},
+            );
+
+            final int minAge =
+                int.tryParse(ageTag["slug"]?.toString() ?? "0") ?? 0;
+
+            final bool hasAgeRestriction = minAge > 0;
+
+            if (kDebugMode) {
+              print(
+                "CategoriesScreen: hasAgeRestriction=$hasAgeRestriction, minAge=$minAge, tags=$normalizedTags",
+              );
+            }
+
+            // ✅ STEP 3: Assign product data
             uniqueProducts[product.id] = {
               'fast_key_product_id': product.id,
               'fast_key_item_name': product.name,
-              'fast_key_item_image': product.images.isNotEmpty ? product.images.first : '',
+              'fast_key_item_image':
+              product.images.isNotEmpty ? product.images.first : '',
               'fast_key_item_price': product.price,
-              'fast_key_item_sku': product.sku ?? '', // Ensure SKU
-              ///Todo: add minAge in category product item
-              'fast_key_item_min_age': int.parse(tagg?.slug ?? "0"),
-              'variations': product.variations, // Build #1.0.157: pass variations & type values to nested grid
+              'fast_key_item_sku': product.sku ?? '',
+
+              // ✅ AGE
+              'fast_key_item_min_age': minAge,
+              'has_age_restriction': hasAgeRestriction,
+
+              // ✅ TAGS
+              'fast_key_item_tags': normalizedTags,
+
+              // ✅ VARIANTS
+              'variations': product.variations,
               'type': product.type,
             };
           }
+
           categoryProducts = uniqueProducts.values.toList();
           reorderedIndices = List.filled(categoryProducts.length, null);
           isShowingSubCategories = false;

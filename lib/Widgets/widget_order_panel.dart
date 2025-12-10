@@ -55,6 +55,7 @@ import '../Repositories/Search/product_search_repository.dart';
 import '../Screens/Home/add_screen.dart';
 import '../Screens/Home/edit_product_screen.dart';
 import '../services/CustomerDisplayService.dart';
+import 'ManualPriceDialog.dart';
 import 'OrderPopupHelper.dart';
 import 'widget_logs_toast.dart';
 
@@ -1027,6 +1028,67 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             if ((product.images ?? []).isNotEmpty) {
               image = product.images!.first.src ?? "";
             }
+
+            // ✅ Check variable product tag FIRST
+            final hasVariablePriceTag = (product.tags ?? []).any((tag) {
+              final name = (tag.name ?? "").toLowerCase();
+              final slug = (tag.slug ?? "").toLowerCase();
+              return name.contains("variable product") || slug.contains("variable-product");
+            });
+
+            print("🧪 hasVariablePriceTag = $hasVariablePriceTag");
+
+// Debug loading state
+            print("⏳ _isLoading before popup = $_isLoading");
+
+            if (hasVariablePriceTag) {
+              print("💡 Triggering ManualPriceDialog for variable product");
+              try {
+                final double? enteredPrice = await ManualPriceDialog.show(
+                  context,
+                  productName: productName,
+                  minPrice: productPrice,
+                );
+
+                print("💬 ManualPriceDialog returned → $enteredPrice");
+
+                if (enteredPrice == null) {
+                  print("❌ User cancelled ManualPriceDialog");
+                  return; // user cancelled
+                }
+
+                print("✅ Adding variable product to order with price $enteredPrice");
+
+                await orderHelper.addItemToOrder(
+                  productId,
+                  productName,
+                  image,
+                  enteredPrice,
+                  1,
+                  productSku,
+                  activeOrderId,
+                  type: ItemType.product.value,
+                  productId: productId,
+                  variationId: -1,
+                );
+
+                print("🛒 Product added to order");
+
+                await fetchOrderItems();
+                await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+
+                print("📊 Customer display updated");
+
+              } finally {
+                _isLoading = false;
+                if (mounted) setState(() {});
+                print("⏳ _isLoading after popup = $_isLoading");
+              }
+
+              return; // Stop further flow for this product
+            }
+
+            print("➡ Not a variable product, continuing normal flow");
 
             // ---------------------------------------------------------------------------
 // ⭐ FINAL EBT ELIGIBILITY CHECK (NOW PRODUCT IS LOADED) ✅

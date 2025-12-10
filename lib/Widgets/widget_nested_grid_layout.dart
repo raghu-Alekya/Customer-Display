@@ -767,6 +767,7 @@ import '../Repositories/Search/product_search_repository.dart';
 import '../Utilities/shimmer_effect.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import '../Utilities/svg_images_utility.dart';
+import 'ManualPriceDialog.dart';
 import 'OrderPopupHelper.dart';
 import 'widget_logs_toast.dart';
 
@@ -1015,6 +1016,20 @@ class NestedGridWidget extends StatelessWidget {
                           // 👇 Print complete product data for debug
                           print("🧾 Full product data dump:");
                           print(const JsonEncoder.withIndent('  ').convert(item));
+                          // 🏷 Extract tags
+                          final List<Map<String, dynamic>> tags =
+                          List<Map<String, dynamic>>.from(item["fast_key_item_tags"] ?? []);
+
+// ✅ DECLARE HERE (VERY IMPORTANT)
+                          final bool hasVariablePriceTag = tags.any((t) =>
+                          t["slug"] == "variable-product" ||
+                              t["slug"] == "variable" ||
+                              t["name"] == "variable product" ||
+                              t["name"] == "variable");
+
+                          if (kDebugMode) {
+                            print("🧪 hasVariablePriceTag = $hasVariablePriceTag");
+                        }
 
                           // 🆔 Extract core product fields
                           final productId =
@@ -1076,9 +1091,32 @@ class NestedGridWidget extends StatelessWidget {
                           // ✅ Detect variants & restrictions
                           final hasVariants = (item["type"] == "variable" ||
                               (item["variations"] != null && item["variations"].isNotEmpty));
-                          final minAge =
+                          // 🔞 Detect min age (field OR tags)
+                          int minAge =
                               int.tryParse(item["fast_key_item_min_age"]?.toString() ?? "0") ?? 0;
-                          final hasAgeRestriction = minAge > 0;
+
+// ✅ FALLBACK → derive from tags (VERY IMPORTANT)
+                          if (minAge == 0) {
+                            for (final t in tags) {
+                              final name = (t["name"] ?? "").toString().toLowerCase();
+                              final slug = (t["slug"] ?? "").toString();
+
+                              if (name.contains("age") || name.contains("restricted")) {
+                                final parsedAge = int.tryParse(slug);
+                                if (parsedAge != null && parsedAge > 0) {
+                                  minAge = parsedAge;
+                                  break;
+                                }
+                              }
+                            }
+                          }
+
+                          final bool hasAgeRestriction = minAge > 0;
+
+                          if (kDebugMode) {
+                            print("🔞 Age detection → hasAgeRestriction=$hasAgeRestriction, minAge=$minAge");
+                          }
+
 
                           print(
                               "🔍 Product details: id=$productId, name=$productName, price=$productPrice, hasVariants=$hasVariants, hasAgeRestriction=$hasAgeRestriction, minAge=$minAge");
@@ -1135,7 +1173,32 @@ class NestedGridWidget extends StatelessWidget {
 
                           } else {
                             print("✅ No age restriction for this product.");
+
                           }
+
+                          // 💰 Variable Price (Manual Entry)
+                          double finalPrice = productPrice;
+
+                          if (hasVariablePriceTag && !hasVariants) {
+                            print("💰 Variable price product → Asking cashier to enter price");
+
+                            // Use the static show method
+                            final enteredPrice = await ManualPriceDialog.show(
+                              context,
+                              productName: productName,
+                            );
+
+                            if (enteredPrice == null) {
+                              print("❌ Price entry cancelled → Product not added");
+                              return;
+                            }
+
+                            finalPrice = enteredPrice;
+                            print("✅ Final price set by cashier: ₹$finalPrice");
+                          }
+
+                          // print("✅ Manual price entered: ₹$finalPrice");
+                          //             }
                           // 🧩 Variant Handling
                           if (hasVariants) {
                             print("🧩 Product has variants → Loading offline variants...");
@@ -1325,30 +1388,26 @@ class NestedGridWidget extends StatelessWidget {
                             // 🟩 Simple Product
                             print("🟩 Simple product, adding directly...");
                             await orderHelper?.addItemToOrder(
-                              0,
-                              productName,
-                              productImage,
-                              productPrice,
-                              1,
-                              productSku,
-                              activeOrderId,
+                              null,               // ✅ serverItemId
+                              productName,        // ✅ name
+                              productImage,       // ✅ image
+                              finalPrice,         // ✅ price (manual or default)
+                              1,                  // ✅ quantity
+                              productSku,         // ✅ sku
+                              activeOrderId,      // ✅ orderId
                               type: 'product',
                               productId: productId,
                               variationId: -1,
-                              salesPrice: productPrice,
-                              regularPrice: productPrice,
-                              unitPrice: productPrice,
-
-                              /// 🔥 ADD THIS LINE
+                              salesPrice: finalPrice,
+                              regularPrice: finalPrice,
+                              unitPrice: finalPrice,
                               isEbtEligible: isEbtEligible,
-
                               onItemAdded: () async {
                                 print("✅ Simple product added successfully!");
                                 onItemTapped(index, variantAdded: false);
                                 await orderHelper?.loadData();
                               },
                             );
-
                           }
 
                           print("🎉 Product flow completed for → $productName");

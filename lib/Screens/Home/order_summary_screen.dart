@@ -45,6 +45,8 @@ import '../Auth/login_screen.dart';
 import 'Settings/image_utils.dart';
 import 'Settings/printer_setup_screen.dart';
 import 'edit_product_screen.dart';
+import 'package:android_intent_plus/android_intent.dart';
+
 
 import 'package:thermal_printer/thermal_printer.dart';
 
@@ -141,6 +143,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
 
   TextEditingController ebtAmountController = TextEditingController();
+
 
 
   double NetTotal = 0.0;
@@ -280,6 +283,23 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       });
     }
   }
+  void _openSunmiSaleScreen({
+    required double amount,
+    required String orderId,
+  }) {
+    final intent = AndroidIntent(
+      action: "com.example.PAY_SALE",
+      package: "com.sunmi.payment.demo",
+      componentName: "com.sunmi.payment.demo.page.trans.SaleActivity",
+      arguments: {
+        "amount": amount.toString(),   // keep decimals
+        "orderId": orderId,            // pass order id
+      },
+    );
+
+    intent.launch();
+  }
+
 
   Future<void> updateOfflineOrderRedeem(
       String orderId,
@@ -1299,28 +1319,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             ? ThemeNotifier.borderColor
                             : Colors.grey.shade200),
                   ),
-                  child: Scrollbar(
-                    controller: _scrollController,
-                    scrollbarOrientation: ScrollbarOrientation.right,
-                    thumbVisibility: true,
-                    thickness: 8.0,
-                    interactive: false,
-                    radius: const Radius.circular(8),
-                    trackVisibility: true,
-                    child: ListView.separated(
+                  child: ListView.separated(
                       controller: _scrollController,
                       padding: EdgeInsets.zero,
                       itemCount: orderItems.length,
-                      separatorBuilder: (context, index) =>
-                          Divider(height: 1, color: themeHelper.themeMode == ThemeMode.dark
-                              ? Colors.black26
-                              : Colors.grey.shade300,
-                          ),
+                      separatorBuilder: (context, index) => Divider(
+                        height: 1,
+                        color: themeHelper.themeMode == ThemeMode.dark
+                            ? Colors.black26
+                            : Colors.grey.shade300,
+                      ),
                       itemBuilder: (context, index) {
                         return _buildOrderItem(index);
                       },
-                    ),
-                  ),
+                      ),
                 ),
               ),
               Container(
@@ -2551,8 +2563,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               });
                             },
                           ),
-
-
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
 
                           _buildPaymentModeButton(
@@ -2564,9 +2574,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 selectedPaymentMethod = TextConstants.card;
                                 _resetAmount();
                               });
+
+                              _openSunmiSaleScreen(
+                                amount: balanceAmount,
+                                orderId: (widget.orderId ?? widget.offlineOrderId).toString(),
+                              );
+
                             },
                           ),
-
 
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
 

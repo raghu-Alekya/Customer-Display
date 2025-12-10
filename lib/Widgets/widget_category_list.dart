@@ -1212,7 +1212,6 @@ class CategoryList extends StatelessWidget {
         child: AnimatedContainer(
           width: ResponsiveLayout.getHeight(80),
           duration: const Duration(milliseconds: 300),
-          //padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
           decoration: BoxDecoration(
             color: isSelected
                 ? ThemeNotifier.tabSelection
@@ -1239,60 +1238,109 @@ class CategoryList extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              Positioned(
-                top: 0,
-                right: -6,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 300),
-                  opacity: showEditButton ? 1.0 : 0.0,
-                  child: GestureDetector(
-                    onTap: () {
-                      if (kDebugMode) {
-                        print(
-                            "### CategoryList: Edit button pressed at index: $index");
-                      }
-                      onEditButtonPressed!(index); // Trigger edit dialog
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.transparent,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.edit,
-                          size: 25, color: Colors.blueAccent),
-                    ),
-                  ),
-                ),
-              ),
+
+              // ⭐ CATEGORY UI (Image + Text) → always FIRST so it stays behind
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  _buildImage(category['image'], context),
-                  Text(
-                    category['title'],
-                    maxLines: 1,
-                    style: TextStyle(
-                      fontSize: 12,
-                      overflow: TextOverflow.ellipsis,
-                      fontWeight: FontWeight.normal,
-                      fontVariations: const <FontVariation>[
-                        FontVariation('wght', 900.0)
-                      ],
-                      color: isSelected
-                          ? Colors.black87
-                          : themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.textDark
-                          : Colors.black87,
+
+                  // Image dull effect
+                  AnimatedOpacity(
+                    duration: const Duration(milliseconds: 300),
+                    opacity: showEditButton ? 0.25 : 1.0,
+                    child: _buildImage(category['image'], context),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  // Text dull effect
+                  AnimatedOpacity(
+                    duration: const Duration(milliseconds: 300),
+                    opacity: showEditButton ? 0.25 : 1.0,
+                    child: Text(
+                      category['title'],
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 12,
+                        overflow: TextOverflow.ellipsis,
+                        fontVariations: const [FontVariation('wght', 900)],
+                        color: isSelected
+                            ? Colors.black87
+                            : themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.textDark
+                            : Colors.black87,
+                      ),
                     ),
                   ),
                 ],
               ),
+
+              // ⭐ EDIT UI (RECTANGLE + WHITE CIRCLE + ICON) → always ON TOP
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 300),
+                opacity: showEditButton ? 1.0 : 0.0,
+                child: IgnorePointer(
+                  ignoring: !showEditButton,
+                  child: GestureDetector(
+                    onTap: () => onEditButtonPressed!(index),
+
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+
+                        // Grey rectangle background
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: Color(0xFFD9D9D9).withOpacity(0.40), //
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 1,
+                                offset: Offset(0, 0),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // ⭐ White high-opacity circle on top
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: Color(0xFFCEE5FF).withOpacity(1.0), // FULL WHITE
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 3,
+                                offset: Offset(0, 0),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Edit icon
+                        const Icon(
+                          Icons.edit,
+                          size: 24,
+                          color: Color(0xFF007BFF),
+                        ),
+                      ],
+                    ),
+
+                  ),
+                ),
+              ),
             ],
           ),
+
         ),
       ),
+
     );
   }
 

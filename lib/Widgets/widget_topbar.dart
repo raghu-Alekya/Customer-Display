@@ -125,6 +125,7 @@ import '../Utilities/responsive_layout.dart';
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 
 import '../Utilities/svg_images_utility.dart';
+import 'ManualPriceDialog.dart';
 import 'OrderPopupHelper.dart';
 enum Screen { FASTKEY, CATEGORY, ADD, ORDERS, APPS, SHIFT, SAFE, EDIT }
 class TopBar extends StatefulWidget { // Build #1.0.13 : Updated top bar with search api integration
@@ -450,6 +451,71 @@ class _TopBarState extends State<TopBar> {
                                               );
                                             }
 
+// --- Debug: print product info ---
+          print("🟢 Product tappedProduct tapped: ${product.name}");
+          print("Has Variants: ${product.variations != null && product.variations!.isNotEmpty}");
+          print("Tags:");
+          for (var tag in tags) {
+          print(" - ${tag.name} (slug: ${tag.slug})");
+          }
+
+// --- Step 1: Age verification ---
+          tags.any((t) => t.name == TextConstants.age_restricted);
+          if (hasAgeRestriction) {
+          final ageTag = tags.firstWhere((t) => t.name == TextConstants.age_restricted);
+          final dynamic hiveAge = rawOrder["age_verified"];
+          final bool alreadyVerified =
+          hiveAge == true || hiveAge == 1 || hiveAge?.toString().toLowerCase() == "true";
+
+          if (!alreadyVerified) {
+          final int minAge = int.tryParse(ageTag.slug?.toString() ?? "0") ?? 0;
+          print("🔞 Age verification required, minAge = $minAge");
+
+          final prov = AgeVerificationProvider();
+          final ok = await prov.verifyAge(context, minAge: minAge);
+
+          if (!ok) {
+          print("❌ Age verification failed → Block product");
+          return; // Stop flow
+          }
+
+          rawOrder["age_verified"] = true;
+          await offlineBox.put(activeOrderId, rawOrder);
+          print("✅ Age verification passed, flag saved");
+          }
+          }
+
+// --- Step 2: Variable product / manual price check ---
+          final bool hasVariants = product.variations != null && product.variations!.isNotEmpty;
+          final double productPrice = product.price?.toDouble() ?? 0.0;
+          double finalPrice = productPrice;
+
+          final bool hasVariablePriceTag = tags.any((t) =>
+          t.slug?.toLowerCase() == "variable-product" ||
+          t.slug?.toLowerCase() == "variable" ||
+          t.name?.toLowerCase() == "variable product" ||
+          t.name?.toLowerCase() == "variable"
+          );
+
+          if (hasVariablePriceTag && !hasVariants) {
+          print("💰 Variable product detected → showing manual price popup");
+
+          // ✅ Use the static show method of your ManualPriceDialog widget
+          final enteredPrice = await ManualPriceDialog.show(
+          _context, // Use the parent context that is still valid
+          productName: product.name ?? "Product",
+          minPrice: productPrice,
+          );
+
+          if (enteredPrice == null) {
+          print("❌ Price entry cancelled → Product not added");
+          return; // Stop the flow if cashier cancels
+          }
+
+          finalPrice = enteredPrice;
+          print("✅ Final price set by cashier: ₹$finalPrice");
+          }
+
 
                                             // 🟦 Step 4: Handle Variants (locally)
                                             if (product.variations != null && product.variations!.isNotEmpty) {
@@ -746,12 +812,6 @@ class _TopBarState extends State<TopBar> {
                                                 setState(() => isAddingItemLoading = false);
                                               }
                                             }
-
-
-
-
-
-
 
                                           } catch (e, s) {
                                             if (kDebugMode) print("TopBar onTap Exception: $e\n$s");
@@ -1351,4 +1411,8 @@ class _TopBarState extends State<TopBar> {
       ),
     );
   }
+}
+
+extension on String? {
+  toDouble() {}
 }
