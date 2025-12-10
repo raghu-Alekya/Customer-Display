@@ -94,6 +94,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
   double tenderAmount = 0.0;
   double changeAmount = 0.0;
   double cashbackFee = 0.0;
+  double ebtAmount = 0.0;
 
   double hiveRedeemedValue = 0.0;
   int hiveRedeemedPoints = 0;
@@ -1070,6 +1071,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             ?.toString()
                             .toLowerCase() ?? '';
 
+                        final bool isEbtEligible = orderItem['is_ebt_eligible'] == true;  // ✅ FIXED
+
+
                         /// Hide coupons
                         if (itemTypeRaw.contains(TextConstants.couponText.toLowerCase())) {
                           return Container(
@@ -1434,6 +1438,25 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                 ),
                                               ],
                                             ),
+                                            if (isEbtEligible) ...[
+                                              const SizedBox(height: 3),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.green,
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: const Text(
+                                                  "EBT",
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+
                                             // Modified: Show quantity * price only for non-Payout/Coupon items
                                             if (!isPayoutOrCouponOrCustomItem) ...[
                                               Builder(
@@ -2106,6 +2129,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                   netPayable: netPayable.toDouble(),
                                   orderId: orderHelper.activeOrderId,
                                   cashbackFee: cashbackFee,
+                                  ebtAmount: ebtAmount,
                                 ),
                               ),
                             );

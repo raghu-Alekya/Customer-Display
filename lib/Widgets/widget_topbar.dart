@@ -395,6 +395,14 @@ class _TopBarState extends State<TopBar> {
 // Safely get tags list
                                             final tags = product.tags ?? [];
 
+// 🔹 EBT Eligibility Check (via tag name OR slug)
+                                            final bool isEbtEligible = tags.any((t) {
+                                              final name = t.name?.toString().toLowerCase() ?? "";
+                                              final slug = t.slug?.toString().toLowerCase() ?? "";
+                                              return name == "ebt" || name == "ebt eligible" || slug == "ebt" || slug == "ebt-eligible";
+                                            });
+
+
 // Check if any tag is age_restricted
                                             final bool hasAgeRestriction =
                                             tags.any((t) => t.name == TextConstants.age_restricted);
@@ -565,6 +573,8 @@ class _TopBarState extends State<TopBar> {
                                                                 variationName: variant["name"],
                                                                 unitPrice: variantPrice,
                                                                 salesPrice: variantPrice,
+                                                                isEbtEligible: isEbtEligible,
+
                                                                 onItemAdded: () async {
                                                                   _removeOverlay();
                                                                   _clearSearch();
@@ -721,6 +731,8 @@ class _TopBarState extends State<TopBar> {
                                                   salesPrice: pPrice,
                                                   regularPrice: pPrice,
                                                   unitPrice: pPrice,
+                                                  isEbtEligible: isEbtEligible,
+
                                                   onItemAdded: () {
                                                     _removeOverlay();
                                                     _clearSearch();

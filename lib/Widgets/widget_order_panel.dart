@@ -1028,6 +1028,30 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               image = product.images!.first.src ?? "";
             }
 
+            // ---------------------------------------------------------------------------
+// ⭐ FINAL EBT ELIGIBILITY CHECK (NOW PRODUCT IS LOADED) ✅
+// ---------------------------------------------------------------------------
+            bool isEbtEligible = false;
+
+            try {
+              final tags = product?.tags ?? [];
+
+              isEbtEligible = tags.any((t) {
+                final name = (t.name ?? "").toLowerCase();
+                final slug = (t.slug ?? "").toLowerCase();
+
+                return name == "ebt" ||
+                    name == "ebt eligible" ||
+                    slug == "ebt" ||
+                    slug == "ebt-eligible";
+              });
+
+              print("💳 FINAL EBT Eligible? → $isEbtEligible (via product.tags)");
+            } catch (e) {
+              print("⚠ EBT eligibility error → $e");
+            }
+
+
             // ⭐ AGE RESTRICTION CHECK — ONE TIME PER ORDER (FINAL FIX)
             // ----------------------------------------------------------- */
 
@@ -1187,6 +1211,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         type: ItemType.product.value,
                         productId: id,
                         variationId: selected["id"],
+                        isEbtEligible: isEbtEligible,
                       );
                       await fetchOrderItems();
                       await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
@@ -1214,6 +1239,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               type: ItemType.product.value,
               productId: productId,
               variationId: -1,
+              isEbtEligible: isEbtEligible,
             );
 
             await fetchOrderItems();
@@ -2298,16 +2324,17 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 'item_tax': 0.0,
               };
             }
-
-            // ---------------------- Valid Product Item ----------------------
             final productId = item['product_id'] ?? item['id'];
             final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
             final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-
-            // TAX FROM HIVE
             final itemTax = getProductTaxFromHive(productId, price, qty);
 
             orderTax += itemTax;
+            print("🧾 ORDER PANEL ITEM → "
+                "Name: ${item['name']} | "
+                "Qty: $qty | "
+                "Price: $price | "
+                "EBT: ${item['is_ebt_eligible']}");
 
             return {
               'item_name': item['name'] ?? item['product_name'] ?? '',
@@ -2317,7 +2344,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               'item_image': item['image'] ?? '',
               'item_type': itemType,
               'item_tax': itemTax,
+              'is_ebt_eligible': item['is_ebt_eligible'] == true,
             };
+
           }),
 
           // ---------------------- Payouts ----------------------
@@ -2594,6 +2623,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         /// Set display name based on item type
                         String displayName = originalName;
 
+
                         if (isPayout) {
                           displayName = 'Payout';
                         } else if (isCashback) {
@@ -2622,6 +2652,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         final regularPrice =  (orderItem[AppDBConst.itemRegularPrice] == null || (orderItem[AppDBConst.itemRegularPrice]?.toDouble() ?? 0.0) == 0.0)
                             ? orderItem[AppDBConst.itemUnitPrice]?.toDouble() ?? 0.0
                             : orderItem[AppDBConst.itemRegularPrice]!.toDouble();
+                        final bool isEbtEligible = orderItem["is_ebt_eligible"] == true;
 
                         return ClipRRect(
                           // Build #1.0.151: FIXED - change ensures that sliding an item in one order does not affect the Slidable state of items at the same index in other orders.
@@ -2794,6 +2825,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                   };
                                                 }).toList();
 
+
                                                 // Rebuild custom items
                                                 final updatedCustom = customItems.map((item) {
                                                   final price = double.tryParse(
@@ -2953,6 +2985,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                         ),
                                       ),
                                       const SizedBox(width: 10),
+
                                       Expanded(
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2970,27 +3003,57 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                       child: Column(
                                                         crossAxisAlignment: CrossAxisAlignment.start,
                                                         children: [
-                                                          // 🔹 Product name
-                                                          Text(
-                                                            displayName,
-                                                            maxLines: 2,
-                                                            overflow: TextOverflow.ellipsis,
-                                                            style: TextStyle(
-                                                              fontSize: 12,
-                                                              fontWeight: FontWeight.bold,
-                                                              color: themeHelper.themeMode == ThemeMode.dark
-                                                                  ? ThemeNotifier.textDark
-                                                                  : ThemeNotifier.textLight,
-                                                            ),
+                                                          Row(
+                                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                                            children: [
+                                                              Expanded(
+                                                                child: Column(
+                                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                                  children: [
+                                                                    // Product name
+                                                                    Text(
+                                                                      displayName,
+                                                                      maxLines: 2,
+                                                                      overflow: TextOverflow.ellipsis,
+                                                                      style: TextStyle(
+                                                                        fontSize: 12,
+                                                                        fontWeight: FontWeight.bold,
+                                                                        color: themeHelper.themeMode == ThemeMode.dark
+                                                                            ? ThemeNotifier.textDark
+                                                                            : ThemeNotifier.textLight,
+                                                                      ),
+                                                                    ),
+
+                                                                    if (isVariant) ...[
+                                                                      const SizedBox(height: 4),
+                                                                      Icon(Icons.link, size: 15, color: Colors.red),
+                                                                    ],
+
+                                                                    // ⭐ ADD EBT TAG HERE
+                                                                    if (isEbtEligible) ...[
+                                                                      const SizedBox(height: 4),
+                                                                      Container(
+                                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                                        decoration: BoxDecoration(
+                                                                          color: Colors.green,
+                                                                          borderRadius: BorderRadius.circular(4),
+                                                                        ),
+                                                                        child: const Text(
+                                                                          "EBT",
+                                                                          style: TextStyle(
+                                                                            color: Colors.white,
+                                                                            fontSize: 10,
+                                                                            fontWeight: FontWeight.bold,
+                                                                          ),
+                                                                        ),
+                                                                      ),
+                                                                    ],
+
+                                                                  ],
+                                                                ),
+                                                              ),
+                                                            ],
                                                           ),
-                                                          if (isVariant) ...[
-                                                            const SizedBox(height: 4),
-                                                            Icon(
-                                                              Icons.link,
-                                                              size: 15,
-                                                              color: Colors.red,
-                                                            ),
-                                                          ],
                                                         ],
                                                       ),
                                                     ),
@@ -3452,13 +3515,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                           try {
                             int? serverOrderId;
 
-
-                            // 🔥 Your Sync Logic + Hive Update
-
                             if (orderHelper.activeOrderId != null) {
                               final String orderId = orderHelper.activeOrderId.toString();
 
-                              // Fetch offline order
                               final rawOrder = getOfflineOrder(orderId);
 
                               if (rawOrder != null) {
@@ -3470,74 +3529,71 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 if (syncResult != null) {
                                   serverOrderId = syncResult["order_id"];
 
-                                  final syncedTax = syncResult["tax"] ?? 0.0;
+                                  // -----------------------------
+                                  // ✅ FETCH VALUES FROM SERVER
+                                  // -----------------------------
+                                  final syncedTax =
+                                      double.tryParse(syncResult["tax"]?.toString() ?? "0") ?? 0.0;
 
-                                  final syncedCashbackFee =
-                                  (syncResult["cashback_fee"] ?? 0.0) is num
-                                      ? (syncResult["cashback_fee"] as num).toDouble()
-                                      : double.tryParse(syncResult["cashback_fee"]?.toString() ?? '0') ?? 0.0;
+                                  final syncedCashback =
+                                      double.tryParse(syncResult["cashback_fee"]?.toString() ?? "0") ??
+                                          0.0;
 
-                                  if (kDebugMode) {
-                                    print("✅ Offline order sync completed → Server ID: $serverOrderId, "
-                                        "Tax: $syncedTax, Cashback Fee: $syncedCashbackFee");
-                                  }
+                                  final syncedEbt =
+                                      double.tryParse(syncResult["ebt_total"]?.toString() ?? "0") ?? 0.0;
+
+                                  print("💳 Synced EBT Eligible Total = $syncedEbt");
+
+
+                                  print("💳 Synced EBT Eligible Total = $syncedEbt");
 
                                   if (serverOrderId != null) {
-
                                     final box = Hive.box('offlineOrders');
-
                                     final localKey = orderHelper.activeOrderId.toString();
                                     final wooKey = serverOrderId.toString();
 
-                                    // Load existing order (LOCAL)
                                     final existing = box.get(localKey);
 
                                     if (existing != null) {
-
                                       final updatedOrder = Map<String, dynamic>.from(existing);
 
+                                      // ---------------------------------------
+                                      // ✅ UPDATE LOCAL HIVE RECORD
+                                      // ---------------------------------------
                                       updatedOrder["wooOrderId"] = wooKey;
                                       updatedOrder["tax"] = syncedTax;
-                                      updatedOrder["cashback_fee"] = syncedCashbackFee;
+                                      updatedOrder["cashback_fee"] = syncedCashback;
+                                      updatedOrder["ebt_total"] = syncedEbt;    // ⭐ SAVE EBT
 
-                                      // 🔥 Save under local key
+                                      // Save Local key
                                       await box.put(localKey, updatedOrder);
 
-                                      // 🔥 Save under WooCommerce key
+                                      // Save Woo key
                                       await box.put(wooKey, updatedOrder);
 
-                                      print("💾 Updated tax+cashback under Local=$localKey AND Woo=$wooKey");
-                                    } else {
-                                      print("❌ No local offlineOrder found to update");
+                                      print("💾 Saved TAX=$syncedTax Cashback=$syncedCashback EBT=$syncedEbt");
                                     }
                                   }
 
-
-                                  // Update local variables too
+                                  // Update local variables
                                   orderTax = syncedTax;
-                                  cashbackFee = syncedCashbackFee;
-
-                                } else {
-                                  if (kDebugMode) print("⚠ Sync succeeded but no server data found");
+                                  cashbackFee = syncedCashback;
                                 }
-
-                                if (serverOrderId != null) {
-                                  if (kDebugMode) print("✅ Offline order sync completed → Server ID: $serverOrderId");
-                                } else {
-                                  if (kDebugMode) print("⚠ Sync completed but no server ID returned");
-                                }
-
-                              } else {
-                                if (kDebugMode) print("⚠ No offline order found for sync → ID: $orderId");
                               }
                             }
 
-// Debug before navigating
-                            if (kDebugMode) {
-                              print("🧾 Using order ID in OrderSummaryScreen → ${serverOrderId ?? orderHelper.activeOrderId}");
-                            }
+                            // -------------------------------------------
+                            // ⭐ PASS EBT TOTAL TO ORDER SUMMARY SCREEN
+                            // -------------------------------------------
+                            final box = Hive.box('offlineOrders');
+                            final hiveKey =
+                            (serverOrderId?.toString() ?? orderHelper.activeOrderId.toString());
 
-                            // ✅ Pass the actual WooCommerce order ID
+                            final double ebtAmount =
+                            (box.get(hiveKey)?["ebt_total"] ?? 0.0).toDouble();
+
+                            print("📤 Passing EBT to Summary Screen = $ebtAmount");
+
                             final result = await Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -3554,6 +3610,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   isOfflineSynced: serverOrderId != null,
                                   offlineOrderId: orderHelper.activeOrderId,
                                   cashbackFee: cashbackFee,
+                                  ebtAmount: ebtAmount,
                                 ),
                               ),
                             );
@@ -3565,7 +3622,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               });
                             }
                           } catch (e) {
-                            if (kDebugMode) print("❌ Error syncing order: $e");
+                            print("❌ Error syncing order: $e");
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text("Failed to sync order: $e")),
                             );

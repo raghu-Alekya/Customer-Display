@@ -1196,7 +1196,6 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
   // Adds an item to the currently active order; creates an order if none exists
   static final Set<String> _activeAdds = {};
-
   Future<void> addItemToOrder(
       int? serverItemId,
       String name,
@@ -1215,12 +1214,16 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         double? salesPrice,
         double? regularPrice,
         double? unitPrice,
+        bool isEbtEligible = false,
       }) async {
+
+    print("🍏 addItemToOrder() CALLED for: $name | EBT: $isEbtEligible");
+
     final key = '$orderId-$productId-$variationId';
 
     // 🛡 Prevent double execution
     if (_activeAdds.contains(key)) {
-      if (kDebugMode) print("⚠ Duplicate addItemToOrder ignored for $key");
+      print("⚠ Duplicate addItemToOrder ignored for $key");
       return;
     }
     _activeAdds.add(key);
@@ -1229,7 +1232,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       final box = Hive.box('offlineOrders');
       final order = box.get(orderId.toString());
       if (order == null) {
-        if (kDebugMode) print("⚠ No offline order found for $orderId");
+        print("⚠ No offline order found for $orderId");
         return;
       }
 
@@ -1251,15 +1254,25 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         final oldQty = (existing['quantity'] ?? 0).toInt();
         final newQty = oldQty + quantity;
 
+        final mergedEbt =
+            (existing['is_ebt_eligible'] == true) || (isEbtEligible == true);
+
+
+        print("🔁 EXISTING ITEM FOUND → $name");
+        print("   Old Qty: $oldQty → New Qty: $newQty");
+        print("   EBT (existing or new): $mergedEbt");
+
         products[existingIndex] = {
           ...existing,
           'quantity': newQty,
           'price': price,
+          'is_ebt_eligible': mergedEbt,
         };
 
-        if (kDebugMode)
-          print("🔁 Updated existing product: $name (Qty: $oldQty → $newQty)");
       } else {
+        print("🆕 ADDING NEW PRODUCT → $name");
+        print("   EBT Eligible: $isEbtEligible");
+
         products.add({
           'server_item_id': serverItemId,
           'name': name,
@@ -1276,19 +1289,27 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           'sales_price': salesPrice,
           'regular_price': regularPrice,
           'unit_price': unitPrice,
-        });
 
-        if (kDebugMode) print("🆕 Added new product: $name");
+          /// ⭐ NOW SAVED CORRECTLY
+          'is_ebt_eligible': isEbtEligible,
+        });
       }
 
       await box.put(orderId.toString(), {...order, 'products': products});
 
+      print("💾 ORDER UPDATED → Product Count: ${products.length}");
+      for (var p in products) {
+        print("   ▶ ${p['name']} | Qty: ${p['quantity']} | EBT: ${p['is_ebt_eligible']}");
+      }
+
       await loadData();
       if (onItemAdded != null) onItemAdded();
+
     } finally {
-      _activeAdds.remove(key); // ✅ unlock after done
+      _activeAdds.remove(key);
     }
   }
+
   static Map<String, dynamic> _inMemoryProductCache = {};
 
   static void addToCache(String sku, Map<String, dynamic> productJson) {

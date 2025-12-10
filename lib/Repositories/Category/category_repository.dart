@@ -85,12 +85,18 @@ class CategoryRepository {
   Future<CategoryProductListResponse> getProductsByCategory(int categoryId) async {
     final box = Hive.box(productBoxName);
     final cacheKey = "products_$categoryId";
+
     final cachedData = box.get(cacheKey);
 
     if (cachedData != null) {
+      print("🔍 RAW DATA FROM HIVE BOX [$cacheKey] → $cachedData");
+
       final List<dynamic> cachedList = json.decode(cachedData['data']);
-      if (kDebugMode) print("📦 Loaded cached products (category: $categoryId)");
+
+      print("📦 Loaded cached products (category: $categoryId)");
+
       _updateProductsFromApi(categoryId); // background refresh
+
       return CategoryProductListResponse.fromJson(cachedList);
     }
 
@@ -109,7 +115,8 @@ class CategoryRepository {
 
   /// 🔥 Fetch products + normalize + cache (tax + age + variants)
   Future<CategoryProductListResponse> _getProductsFromApi(int categoryId) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.productByCategories}/$categoryId";
+    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants
+        .productByCategories}/$categoryId";
     if (kDebugMode) print("🌍 Fetching products: $url");
 
     final response = await _helper.get(url, true);
@@ -129,13 +136,14 @@ class CategoryRepository {
       throw Exception("Unexpected product response type");
     }
 
-    // ✅ Normalize for UI immediately
+// 🚀 Normalize for UI immediately
     final normalizedProducts = productList.map((product) {
       final image = (product["image"] is Map && product["image"]["src"] != null)
           ? product["image"]["src"]
           : (product["image"] is String ? product["image"] : "");
 
-      final name = (product["name"] is Map && product["name"]["rendered"] != null)
+      final name = (product["name"] is Map &&
+          product["name"]["rendered"] != null)
           ? product["name"]["rendered"]
           : (product["name"] is String ? product["name"] : "Unnamed Product");
 
@@ -146,24 +154,25 @@ class CategoryRepository {
 
       bool hasAgeRestriction = false;
       int minAge = 0;
+
       final metaAge = product["fast_key_item_min_age"] ??
           product["min_age"] ??
           product["meta_data"]?.firstWhere(
                 (m) => m["key"] == "min_age",
             orElse: () => {"value": 0},
           )["value"];
+
       if (metaAge != null) {
         minAge = int.tryParse(metaAge.toString()) ?? 0;
       }
-
-      if (product["tags"] is List) {
-        hasAgeRestriction = (product["tags"] as List)
-            .any((tag) => tag.toString().toLowerCase().contains("age"));
-      }
       if (minAge > 0) hasAgeRestriction = true;
 
-      final bool hasVariants =
-          product["variations"] != null && (product["variations"] as List).isNotEmpty;
+      // Copy tags
+      final List productTags = product["tags"] ?? [];
+
+      final isEbtEligible = productTags.any((t) =>
+      t["name"].toString().toLowerCase().contains("ebt") ||
+          t["slug"].toString().toLowerCase().contains("ebt"));
 
       return {
         ...product,
@@ -171,20 +180,60 @@ class CategoryRepository {
         "fast_key_item_image": image,
         "fast_key_item_price": price,
         "fast_key_product_id": product["id"],
-        "has_variants": hasVariants,
+        "tags": productTags,
+        "has_variants": product["variations"] != null &&
+            (product["variations"] as List).isNotEmpty,
         "has_age_restriction": hasAgeRestriction,
         "min_age": minAge,
         "tax_status": taxStatus,
         "tax_class": taxClass,
+
+        /// 🔥 ADD THIS
+        "is_ebt_eligible": isEbtEligible,
       };
+
     }).toList();
 
-    // ⚡ Show API response on screen *before* caching
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    print("🔍 NORMALIZED PRODUCT DATA + EBT FLAG");
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+    for (final p in normalizedProducts) {
+      print("🟦 PRODUCT ID: ${p["fast_key_product_id"]}");
+      print("   NAME: ${p["fast_key_item_name"]}");
+      print("   TAGS: ${p["tags"]}");
+      print("   EBT Eligible: ${p["is_ebt_eligible"]}");
+      print("--------------------------------------------------");
+    }
+
+
+
+// 🔍 DEBUG: Print tags and EBT eligibility
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    print("🔍 NORMALIZED PRODUCT TAG DUMP (Category: $categoryId)");
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+    for (final p in normalizedProducts) {
+      final pid = p["fast_key_product_id"];
+      final pname = p["fast_key_item_name"];
+      final tags = p["tags"] ?? [];
+
+      final isEbtEligible = tags.any((t) =>
+      t["name"].toString().toLowerCase().contains("ebt") ||
+          t["slug"].toString().toLowerCase().contains("ebt"));
+
+      print("🟦 PRODUCT → ID: $pid | NAME: $pname");
+      print("     ➤ tags: $tags");
+      print("     ➤ EBT Eligible: $isEbtEligible");
+    }
+
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+
+// Continue existing flow
     final categoryResponse = CategoryProductListResponse.fromJson(productList);
-
-    // 🚀 Start caching asynchronously (non-blocking)
-    unawaited(_cacheProductsAndVariations(categoryId, productList, normalizedProducts));
-
+    unawaited(_cacheProductsAndVariations(
+        categoryId, productList, normalizedProducts));
     return categoryResponse;
   }
 

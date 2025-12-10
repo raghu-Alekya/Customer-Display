@@ -814,6 +814,36 @@ class NestedGridWidget extends StatelessWidget {
     this.orderBloc,
     this.orderHelper,
   });
+  bool _isProductEbtEligible(Map<String, dynamic> item) {
+    try {
+      final productBox = Hive.box('productCache');
+      final productId = item["fast_key_product_id"].toString();
+
+      for (final key in productBox.keys) {
+        if (!key.toString().startsWith("products_")) continue;
+
+        final cached = productBox.get(key);
+        if (cached == null) continue;
+
+        if (cached is Map && cached["data"] != null) {
+          final List<dynamic> products = jsonDecode(cached["data"]);
+
+          final match = products.firstWhere(
+                (p) => p["fast_key_product_id"].toString() == productId,
+            orElse: () => null,
+          );
+
+          if (match != null) {
+            return match["is_ebt_eligible"] == true;
+          }
+        }
+      }
+    } catch (e) {
+      print("EBT CHECK ERROR → $e");
+    }
+
+    return false;
+  }
 
   Widget _buildImage(String imagePath) {
     final imageWidget = imagePath.startsWith("http")
@@ -954,6 +984,8 @@ class NestedGridWidget extends StatelessWidget {
               final isReordered = reorderedIndices.isNotEmpty &&
                   reorderedIndices[itemIndex] != null;
               final item = items[itemIndex];
+              final bool showEbtTag = _isProductEbtEligible(item);
+
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
                 decoration: BoxDecoration(
@@ -987,9 +1019,53 @@ class NestedGridWidget extends StatelessWidget {
                           // 🆔 Extract core product fields
                           final productId =
                               int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
+
+
                           final productName = (item["fast_key_item_name"] is String)
                               ? item["fast_key_item_name"]
                               : item["fast_key_item_name"]?["rendered"] ?? "Unnamed Product";
+
+                          // ⭐ Load EBT eligibility from productCache normalized list
+                          bool isEbtEligible = false;
+
+                          try {
+                            final productBox = Hive.box('productCache');
+
+                            // Loop through all productCache keys (products_<category>)
+                            for (final key in productBox.keys) {
+                              if (!key.toString().startsWith("products_")) continue;
+
+                              final cached = productBox.get(key);
+                              if (cached == null) continue;
+
+                              // cached structure: { timestamp: ..., data: "[...json list...]" }
+                              if (cached is Map && cached["data"] != null) {
+                                final List<dynamic> products = jsonDecode(cached["data"]);
+
+                                final match = products.firstWhere(
+                                      (p) => p["fast_key_product_id"].toString() == productId.toString(),
+                                  orElse: () => null,
+                                );
+
+                                if (match != null) {
+                                  isEbtEligible = match["is_ebt_eligible"] == true;
+
+                                  print(
+                                      "🥗 EBT FOUND → Product: $productName | Eligible: $isEbtEligible | Found in: $key | TAGS: ${match["tags"]}");
+
+                                  break;
+                                }
+                              }
+                            }
+
+                            if (!isEbtEligible) {
+                              print("⚠ No EBT tag found in productCache for $productName (id=$productId)");
+                            }
+
+                          } catch (e) {
+                            print("⚠ Error reading EBT eligibility from productCache → $e");
+                          }
+
                           final productPrice =
                               double.tryParse(item["fast_key_item_price"].toString()) ?? 0.0;
                           final productSku = item["fast_key_item_sku"] ?? "SKU-$productId";
@@ -1060,7 +1136,6 @@ class NestedGridWidget extends StatelessWidget {
                           } else {
                             print("✅ No age restriction for this product.");
                           }
-
                           // 🧩 Variant Handling
                           if (hasVariants) {
                             print("🧩 Product has variants → Loading offline variants...");
@@ -1231,12 +1306,17 @@ class NestedGridWidget extends StatelessWidget {
                                     salesPrice: variantPrice,
                                     regularPrice: variantPrice,
                                     unitPrice: variantPrice,
+
+                                    /// 🔥 ADD THIS
+                                    isEbtEligible: isEbtEligible,
+
                                     onItemAdded: () async {
                                       print("✅ Variant item added successfully!");
                                       onItemTapped(index, variantAdded: true);
                                       await orderHelper?.loadData();
                                     },
                                   );
+
                                 },
                               ),
                             );
@@ -1258,12 +1338,17 @@ class NestedGridWidget extends StatelessWidget {
                               salesPrice: productPrice,
                               regularPrice: productPrice,
                               unitPrice: productPrice,
+
+                              /// 🔥 ADD THIS LINE
+                              isEbtEligible: isEbtEligible,
+
                               onItemAdded: () async {
                                 print("✅ Simple product added successfully!");
                                 onItemTapped(index, variantAdded: false);
                                 await orderHelper?.loadData();
                               },
                             );
+
                           }
 
                           print("🎉 Product flow completed for → $productName");
@@ -1292,7 +1377,7 @@ class NestedGridWidget extends StatelessWidget {
                             child: Row(
                               children: [
                                 _buildImage(item["fast_key_item_image"]),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 7),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
@@ -1303,7 +1388,7 @@ class NestedGridWidget extends StatelessWidget {
                                       Text(
                                         item["fast_key_item_name"],
                                         style: TextStyle(
-                                          fontSize: 11,
+                                          fontSize: 10,
                                           color: themeHelper.themeMode == ThemeMode.dark
                                               ? ThemeNotifier.textDark
                                               : ThemeNotifier.textLight,
@@ -1317,7 +1402,7 @@ class NestedGridWidget extends StatelessWidget {
                                           Text(
                                             '${TextConstants.currencySymbol}${double.tryParse(item["fast_key_item_price"].toString())?.toStringAsFixed(2) ?? "0.00"}',
                                             style: TextStyle(
-                                              fontSize: 12,
+                                              fontSize: 10,
                                               fontWeight: FontWeight.bold,
                                               color: themeHelper
                                                   .themeMode ==
@@ -1353,6 +1438,22 @@ class NestedGridWidget extends StatelessWidget {
                                             ),
                                         ],
                                       ),
+                                      if (showEbtTag)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical:1 ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.shade600,
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text(
+                                            "EBT",
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),

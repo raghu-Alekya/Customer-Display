@@ -487,12 +487,32 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         CustomerDisplayHelper.updateCustomerDisplay(
             int.tryParse(localOrderId) ?? serverOrderId);
 
+        // ---------------------------------------------------------
+// ⭐ Extract EBT Eligible Total from Woo response
+// ---------------------------------------------------------
+        double ebtTotal = 0.0;
+
+        final metaList = decoded["meta_data"] as List? ?? [];
+        for (final meta in metaList) {
+          if ((meta["key"] ?? "") == "_pinaka_ebt_eligible_total") {
+            ebtTotal = double.tryParse(meta["value"].toString()) ?? 0.0;
+            break;
+          }
+        }
+
+        print("🔵 EBT extracted from Woo → $ebtTotal");
+
+// ---------------------------------------------------------
+// ⭐ Return all values including EBT
+// ---------------------------------------------------------
         return {
           "order_id": serverOrderId,
           "tax": wooTax,
           "total": wooTotal,
           "cashback_fee": cashbackFee,
+          "ebt_total": ebtTotal,       // ✅ ADD THIS
         };
+
       }
     } catch (e, s) {
       print("❌ Failed to sync offline order: $e");

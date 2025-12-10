@@ -64,6 +64,7 @@ class OrderSummaryScreen extends StatefulWidget {
   final int? offlineOrderId;
   final double cashbackFee;
   final double ?balanceamount;
+  final double ebtAmount;   // ✅ NEW
 
 
   const OrderSummaryScreen({
@@ -77,6 +78,7 @@ class OrderSummaryScreen extends StatefulWidget {
     required this.netPayable,
     required this.orderId,
     required this.cashbackFee,
+    required this.ebtAmount,
     this.isOfflineSynced = false,
     this.offlineOrderId,
     super.key,
@@ -135,7 +137,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isPaymentDone = false;
   Map<String, dynamic> _order = {};
 
-  double ebtTotal = 12.34; // Example
+  double ebtTotal = 0.0; // will be loaded from widget.ebtAmount
+
 
   TextEditingController ebtAmountController = TextEditingController();
 
@@ -194,9 +197,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     merchantDiscount = widget.merchantDiscount;
     tax = widget.orderTax;
     orderId = widget.orderId;
+    ebtTotal = widget.ebtAmount;
     _displayDate = widget.formattedDate;
     _displayTime = widget.formattedTime;
     cashbackFee = widget.cashbackFee;
+    print("💳 EBT Total in Summary Screen = $ebtTotal");
     NetTotal = grossTotal - discount;
     computedNetPayable =
         grossTotal + tax - discount - merchantDiscount + cashbackFee;
@@ -1642,6 +1647,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 orderItem['variation_name'].toString().trim().isNotEmpty) ||
             (orderItem['variation_id'] != null &&
                 orderItem['variation_id'] != 0);
+    final bool isEbtEligible = orderItem['is_ebt_eligible'] == true;
+
 
     final String itemName = orderItem['item_name']?.toString() ?? '';
     final double itemPrice = (orderItem['item_price'] ?? 0).toDouble();
@@ -1705,7 +1712,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 12),
       child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.075,
+        height: MediaQuery.of(context).size.height * 0.077,
         child: Row(
           children: [
             // 🖼️ Image Section
@@ -1760,7 +1767,24 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         ],
 
                         const SizedBox(height: 2),
-
+                        if (isEbtEligible) ...[
+                          const SizedBox(height: 3),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              "EBT",
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                         // 🔹 Price × Qty (not for payouts/custom/coupon)
                         if (!isPayoutOrCoupon)
                           Text(
@@ -2067,6 +2091,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       default:
         return TextConstants.cashPayment;
     }
+  }
+
+  void _resetAmount() {
+    _rawAmount = 0;
+    amountController.text = '${TextConstants.currencySymbol}0.00';
+    _amountErrorText = null;
+    _isAmountEntered = false;
   }
 
 
@@ -2516,32 +2547,37 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             onTap: () {
                               setState(() {
                                 selectedPaymentMethod = TextConstants.cash;
+                                _resetAmount();
                               });
                             },
                           ),
+
 
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
 
                           _buildPaymentModeButton(
                             TextConstants.card,
                             Icons.credit_card,
-                            isSelected: selectedPaymentMethod == TextConstants.card,   // ← Added
+                            isSelected: selectedPaymentMethod == TextConstants.card,
                             onTap: () {
                               setState(() {
                                 selectedPaymentMethod = TextConstants.card;
+                                _resetAmount();
                               });
                             },
                           ),
+
 
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
 
                           _buildPaymentModeButton(
                             TextConstants.wallet,
                             Icons.account_balance_wallet,
-                            isSelected: selectedPaymentMethod == TextConstants.wallet, // ← Added
+                            isSelected: selectedPaymentMethod == TextConstants.wallet,
                             onTap: () {
                               setState(() {
                                 selectedPaymentMethod = TextConstants.wallet;
+                                _resetAmount();
                               });
                             },
                           ),
@@ -2556,12 +2592,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               setState(() {
                                 selectedPaymentMethod = TextConstants.ebtText;
                                 _rawAmount = (ebtTotal * 100).toInt();
-                                amountController.text = '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
-                              });
+                                amountController.text =
+                                '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
 
+                                _amountErrorText = null;
+                                _isAmountEntered = true;
+                              });
                             },
                           ),
-
                         ],
                       ),
                     ),
