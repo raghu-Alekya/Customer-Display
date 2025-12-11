@@ -1273,7 +1273,7 @@ class NestedGridWidget extends StatelessWidget {
                             // Use the static show method
                             final enteredPrice = await ManualPriceDialog.show(
                               context,
-                              productName: productName,
+                              productName: productName, productImage: '', minPrice: 0.0,
                             );
 
                             if (enteredPrice == null) {

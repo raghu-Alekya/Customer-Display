@@ -1053,7 +1053,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 final double? enteredPrice = await ManualPriceDialog.show(
                   context,
                   productName: productName,
-                  minPrice: productPrice,
+                  minPrice: productPrice, productImage: '',
                 );
 
                 print("💬 ManualPriceDialog returned → $enteredPrice");

@@ -502,7 +502,7 @@ class _TopBarState extends State<TopBar> {
                                               final enteredPrice = await ManualPriceDialog.show(
                                                 _context, // Use the parent context that is still valid
                                                 productName: product.name ?? "Product",
-                                                minPrice: productPrice,
+                                                minPrice: productPrice, productImage: '',
                                               );
 
                                               if (enteredPrice == null) {
