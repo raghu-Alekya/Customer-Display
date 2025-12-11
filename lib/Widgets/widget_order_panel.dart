@@ -2840,6 +2840,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                               }
                                             }
 
+
                                             // 🔍 UPDATE CUSTOM ITEMS
                                             for (var custom in customItems) {
                                               final customName =
@@ -3078,20 +3079,20 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                                 child: Column(
                                                                   crossAxisAlignment: CrossAxisAlignment.start,
                                                                   children: [
-                                                                    // Product name
                                                                     Text(
-                                                                      displayName,
-                                                                      maxLines: 2,
-                                                                      overflow: TextOverflow.ellipsis,
-                                                                      style: TextStyle(
-                                                                        fontSize: 12,
-                                                                        fontWeight: FontWeight.bold,
-                                                                        color: themeHelper.themeMode == ThemeMode.dark
-                                                                            ? ThemeNotifier.textDark
-                                                                            : ThemeNotifier.textLight,
-                                                                      ),
-                                                                    ),
-
+                                                                        displayName.length > 40
+                                                                            ? displayName.substring(0, 40) + "..."
+                                                                            : displayName,
+                                                                        maxLines: 1,
+                                                                        overflow: TextOverflow.ellipsis,
+                                                                        style: TextStyle(
+                                                                          fontSize: 12,
+                                                                          fontWeight: FontWeight.bold,
+                                                                          color: themeHelper.themeMode == ThemeMode.dark
+                                                                              ? ThemeNotifier.textDark
+                                                                              : ThemeNotifier.textLight,
+                                                                        ),
+                                                                        ),
                                                                     if (isVariant) ...[
                                                                       const SizedBox(height: 4),
                                                                       Icon(Icons.link, size: 15, color: Colors.red),

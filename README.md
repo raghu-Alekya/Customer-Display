@@ -26,3 +26,10 @@ samples, guidance on mobile development, and a full API reference.
 
 2.fast key images fetch.
 3.number pad qty increase.
+
+(build no:375)
+1. EBT Payment method.
+2. variable price.
+3. ui modifications
+--render issue resolving.
+--age verification popup UI modification.
