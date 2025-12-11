@@ -423,7 +423,7 @@ class CustomNumPad extends StatelessWidget {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 0), // ✅ Outside spacing
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6), // ✅ Inside spacing
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 0), // ✅ Inside spacing
       width: double.infinity,
       decoration: BoxDecoration(
         color: themeHelper.themeMode == ThemeMode.dark
@@ -540,7 +540,7 @@ class CustomNumPad extends StatelessWidget {
     //final themeHelper = Provider.of<ThemeNotifier>(context);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 0), // ✅ Outside spacing
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8), // ✅ Inside spacing
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), // ✅ Inside spacing
       width: double.infinity,
       decoration: BoxDecoration(
         color:  isDarkTheme

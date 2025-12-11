@@ -2319,6 +2319,33 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       final existingOrder =
       Map<String, dynamic>.from(offlineBox.get(key) ?? {});
 
+      // -------------------------------------------------------
+// 🚫 STOP Cashback if order panel has EBT eligible product
+// -------------------------------------------------------
+      final List<Map<String, dynamic>> existingProducts =
+      (existingOrder["products"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+
+      bool hasEbtProduct = existingProducts.any((p) {
+        return p["is_ebt_eligible"] == true;
+      });
+
+      if (hasEbtProduct) {
+        setState(() => _isCashbackLoading = false);
+
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+          const SnackBar(
+            content: Text("Cashback is not allowed when EBT products are in the order."),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        return; // ❗ STOP here — Do NOT add cashback
+      }
+
+
       final List<Map<String, dynamic>> cashbacks =
       (existingOrder["cashbacks"] as List? ?? [])
           .map((e) => Map<String, dynamic>.from(e))

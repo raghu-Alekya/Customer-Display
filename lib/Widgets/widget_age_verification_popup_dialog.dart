@@ -440,8 +440,9 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
             _isScanningInProgress
                 ? SizedBox(height: MediaQuery.of(context).size.height * 0.3, child: CircularProgressIndicator(),)
                 : Container(
+              height: 575,
               width: MediaQuery.of(context).size.width * 0.325,
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(15),
               child: Column(
                 children: [
                   // Header with close button
@@ -497,7 +498,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
                     textAlign: TextAlign.center,
                     softWrap: true,
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 14,
                       color: themeHelper.themeMode == ThemeMode.dark
                           ? Colors.white70 : Colors.grey[600],
                       height: 1.4,
@@ -508,17 +509,22 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
 
                   // Date input section
                   Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Enter Customer Age',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: themeHelper.themeMode == ThemeMode.dark
-                            ? ThemeNotifier.textDark : Colors.black87,
+                    alignment: Alignment.centerLeft, // ⭐ center-left alignment
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 30), // ⭐ Add your padding here
+                      child: Text(
+                        'Enter Customer Age',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: themeHelper.themeMode == ThemeMode.dark
+                              ? ThemeNotifier.textDark
+                              : Colors.black87,
+                        ),
                       ),
                     ),
                   ),
+
 
                   const SizedBox(height: 4),
 
@@ -587,11 +593,13 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
 //                 ),
                   // Date input field with date picker
                   Container(
+                    height: 50,
+                    width: 320,
                     decoration: BoxDecoration(
                       color: themeHelper.themeMode == ThemeMode.dark
                           ? ThemeNotifier.paymentEntryContainerColor : Colors.white,
                       border: Border.all(color: themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.borderColor : Colors.blue),
+                          ? ThemeNotifier.borderColor : Color(0xFF6E7B87)),
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: [
                         BoxShadow(
@@ -711,7 +719,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
                   ],
 
                   SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.45,
+                    height: MediaQuery.of(context).size.height * 0.42,
                     child: CustomNumPad(
                       numPadType: NumPadType.age, // Choose: login, payment, age
                       onDigitPressed: updateDob,
@@ -736,7 +744,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
 
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.grey[700],
+                            backgroundColor: Color(0xFF4C5F7D),
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             shape: RoundedRectangleBorder(

@@ -846,6 +846,47 @@ class NestedGridWidget extends StatelessWidget {
     return false;
   }
 
+  bool _isVariableProduct(Map<String, dynamic> item) {
+    try {
+      final productBox = Hive.box('productCache');
+      final productId = item["fast_key_product_id"].toString();
+
+      for (final key in productBox.keys) {
+        if (!key.toString().startsWith("products_")) continue;
+
+        final cached = productBox.get(key);
+        if (cached == null) continue;
+
+        if (cached is Map && cached["data"] != null) {
+          final List<dynamic> products = jsonDecode(cached["data"]);
+
+          final match = products.firstWhere(
+                (p) => p["fast_key_product_id"].toString() == productId,
+            orElse: () => null,
+          );
+
+          if (match != null) {
+            final tags = match["tags"];
+            List<dynamic> tagList = [];
+
+            if (tags is String) {
+              tagList = jsonDecode(tags); // parse if tags stored as JSON string
+            } else if (tags is List) {
+              tagList = tags;
+            }
+
+            return tagList.contains("variable_product"); // use your actual tag key
+          }
+        }
+      }
+    } catch (e) {
+      print("VARIABLE PRODUCT CHECK ERROR → $e");
+    }
+
+    return false;
+  }
+
+
   Widget _buildImage(String imagePath) {
     final imageWidget = imagePath.startsWith("http")
         ? SizedBox(
@@ -1021,7 +1062,7 @@ class NestedGridWidget extends StatelessWidget {
                           List<Map<String, dynamic>>.from(item["fast_key_item_tags"] ?? []);
 
 // ✅ DECLARE HERE (VERY IMPORTANT)
-                          final bool hasVariablePriceTag = tags.any((t) =>
+                          bool hasVariablePriceTag = tags.any((t) =>
                           t["slug"] == "variable-product" ||
                               t["slug"] == "variable" ||
                               t["name"] == "variable product" ||
@@ -1029,7 +1070,7 @@ class NestedGridWidget extends StatelessWidget {
 
                           if (kDebugMode) {
                             print("🧪 hasVariablePriceTag = $hasVariablePriceTag");
-                        }
+                          }
 
                           // 🆔 Extract core product fields
                           final productId =
@@ -1080,6 +1121,53 @@ class NestedGridWidget extends StatelessWidget {
                           } catch (e) {
                             print("⚠ Error reading EBT eligibility from productCache → $e");
                           }
+
+
+                          try {
+                            final productBox = Hive.box('productCache');
+
+                            // Loop through all productCache keys (products_<category>)
+                            for (final key in productBox.keys) {
+                              if (!key.toString().startsWith("products_")) continue;
+
+                              final cached = productBox.get(key);
+                              if (cached == null) continue;
+
+                              // cached structure: { timestamp: ..., data: "[...json list...]" }
+                              if (cached is Map && cached["data"] != null) {
+                                final List<dynamic> products = jsonDecode(cached["data"]);
+
+                                final match = products.firstWhere(
+                                      (p) => p["fast_key_product_id"].toString() == productId.toString(),
+                                  orElse: () => null,
+                                );
+
+                                if (match != null) {
+                                  // Check if the product's tags contain the variable tag
+                                  final tags = match["tags"];
+                                  if (tags is List<dynamic>) {
+                                    hasVariablePriceTag = tags.any(
+                                          (t) => t is Map && t["slug"] == "variable-product",
+                                    );
+                                  }
+
+                                  print(
+                                      "💰 Variable Tag → Product: $productName | Has Variable Tag: $hasVariablePriceTag | Found in: $key | TAGS: $tags"
+                                  );
+
+                                  break;
+                                }
+                              }
+                            }
+
+                            if (!hasVariablePriceTag) {
+                              print("⚠ No variable product tag found in productCache for $productName (id=$productId)");
+                            }
+                          } catch (e) {
+                            print("⚠ Error reading variable product tag from productCache → $e");
+                          }
+
+
 
                           final productPrice =
                               double.tryParse(item["fast_key_item_price"].toString()) ?? 0.0;

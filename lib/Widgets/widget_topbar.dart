@@ -98,6 +98,7 @@ import 'package:focus_detector/focus_detector.dart';
 import 'package:hive/hive.dart';
 import 'package:pinaka_pos/Constants/misc_features.dart';
 import 'package:pinaka_pos/Utilities/printer_settings.dart';
+// import 'package:pinaka_pos/Widgets/widget_variableprice.dart';
 import 'package:pinaka_pos/Widgets/widget_variants_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:sunmi_printer_plus/core/sunmi/sunmi_drawer.dart';
@@ -396,14 +397,6 @@ class _TopBarState extends State<TopBar> {
 // Safely get tags list
                                             final tags = product.tags ?? [];
 
-// 🔹 EBT Eligibility Check (via tag name OR slug)
-                                            final bool isEbtEligible = tags.any((t) {
-                                              final name = t.name?.toString().toLowerCase() ?? "";
-                                              final slug = t.slug?.toString().toLowerCase() ?? "";
-                                              return name == "ebt" || name == "ebt eligible" || slug == "ebt" || slug == "ebt-eligible";
-                                            });
-
-
 // Check if any tag is age_restricted
                                             final bool hasAgeRestriction =
                                             tags.any((t) => t.name == TextConstants.age_restricted);
@@ -450,71 +443,76 @@ class _TopBarState extends State<TopBar> {
                                                     "${product.variations != null && product.variations!.isNotEmpty}",
                                               );
                                             }
+                                            // --- Fetch product tags safely ---
 
 // --- Debug: print product info ---
-          print("🟢 Product tappedProduct tapped: ${product.name}");
-          print("Has Variants: ${product.variations != null && product.variations!.isNotEmpty}");
-          print("Tags:");
-          for (var tag in tags) {
-          print(" - ${tag.name} (slug: ${tag.slug})");
-          }
+                                            print("🟢 Product tappedProduct tapped: ${product.name}");
+                                            print("Has Variants: ${product.variations != null && product.variations!.isNotEmpty}");
+                                            print("Tags:");
+                                            for (var tag in tags) {
+                                              print(" - ${tag.name} (slug: ${tag.slug})");
+                                            }
 
 // --- Step 1: Age verification ---
-          tags.any((t) => t.name == TextConstants.age_restricted);
-          if (hasAgeRestriction) {
-          final ageTag = tags.firstWhere((t) => t.name == TextConstants.age_restricted);
-          final dynamic hiveAge = rawOrder["age_verified"];
-          final bool alreadyVerified =
-          hiveAge == true || hiveAge == 1 || hiveAge?.toString().toLowerCase() == "true";
+                                            tags.any((t) => t.name == TextConstants.age_restricted);
+                                            if (hasAgeRestriction) {
+                                              final ageTag = tags.firstWhere((t) => t.name == TextConstants.age_restricted);
+                                              final dynamic hiveAge = rawOrder["age_verified"];
+                                              final bool alreadyVerified =
+                                                  hiveAge == true || hiveAge == 1 || hiveAge?.toString().toLowerCase() == "true";
 
-          if (!alreadyVerified) {
-          final int minAge = int.tryParse(ageTag.slug?.toString() ?? "0") ?? 0;
-          print("🔞 Age verification required, minAge = $minAge");
+                                              if (!alreadyVerified) {
+                                                final int minAge = int.tryParse(ageTag.slug?.toString() ?? "0") ?? 0;
+                                                print("🔞 Age verification required, minAge = $minAge");
 
-          final prov = AgeVerificationProvider();
-          final ok = await prov.verifyAge(context, minAge: minAge);
+                                                final prov = AgeVerificationProvider();
+                                                final ok = await prov.verifyAge(context, minAge: minAge);
 
-          if (!ok) {
-          print("❌ Age verification failed → Block product");
-          return; // Stop flow
-          }
+                                                if (!ok) {
+                                                  print("❌ Age verification failed → Block product");
+                                                  return; // Stop flow
+                                                }
 
-          rawOrder["age_verified"] = true;
-          await offlineBox.put(activeOrderId, rawOrder);
-          print("✅ Age verification passed, flag saved");
-          }
-          }
+                                                rawOrder["age_verified"] = true;
+                                                await offlineBox.put(activeOrderId, rawOrder);
+                                                print("✅ Age verification passed, flag saved");
+                                              }
+                                            }
 
 // --- Step 2: Variable product / manual price check ---
-          final bool hasVariants = product.variations != null && product.variations!.isNotEmpty;
-          final double productPrice = product.price?.toDouble() ?? 0.0;
-          double finalPrice = productPrice;
+                                            final bool hasVariants = product.variations != null && product.variations!.isNotEmpty;
+                                            final double productPrice =
+                                            (product.price is num)
+                                                ? (product.price as num).toDouble()
+                                                : double.tryParse(product.price?.toString() ?? "") ?? 0.0;
 
-          final bool hasVariablePriceTag = tags.any((t) =>
-          t.slug?.toLowerCase() == "variable-product" ||
-          t.slug?.toLowerCase() == "variable" ||
-          t.name?.toLowerCase() == "variable product" ||
-          t.name?.toLowerCase() == "variable"
-          );
+                                            double finalPrice = productPrice;
 
-          if (hasVariablePriceTag && !hasVariants) {
-          print("💰 Variable product detected → showing manual price popup");
+                                            final bool hasVariablePriceTag = tags.any((t) =>
+                                            t.slug?.toLowerCase() == "variable-product" ||
+                                                t.slug?.toLowerCase() == "variable" ||
+                                                t.name?.toLowerCase() == "variable product" ||
+                                                t.name?.toLowerCase() == "variable"
+                                            );
 
-          // ✅ Use the static show method of your ManualPriceDialog widget
-          final enteredPrice = await ManualPriceDialog.show(
-          _context, // Use the parent context that is still valid
-          productName: product.name ?? "Product",
-          minPrice: productPrice,
-          );
+                                            if (hasVariablePriceTag && !hasVariants) {
+                                              print("💰 Variable product detected → showing manual price popup");
 
-          if (enteredPrice == null) {
-          print("❌ Price entry cancelled → Product not added");
-          return; // Stop the flow if cashier cancels
-          }
+                                              // ✅ Use the static show method of your ManualPriceDialog widget
+                                              final enteredPrice = await ManualPriceDialog.show(
+                                                _context, // Use the parent context that is still valid
+                                                productName: product.name ?? "Product",
+                                                minPrice: productPrice,
+                                              );
 
-          finalPrice = enteredPrice;
-          print("✅ Final price set by cashier: ₹$finalPrice");
-          }
+                                              if (enteredPrice == null) {
+                                                print("❌ Price entry cancelled → Product not added");
+                                                return; // Stop the flow if cashier cancels
+                                              }
+
+                                              finalPrice = enteredPrice;
+                                              print("✅ Final price set by cashier: ₹$finalPrice");
+                                            }
 
 
                                             // 🟦 Step 4: Handle Variants (locally)
@@ -639,8 +637,6 @@ class _TopBarState extends State<TopBar> {
                                                                 variationName: variant["name"],
                                                                 unitPrice: variantPrice,
                                                                 salesPrice: variantPrice,
-                                                                isEbtEligible: isEbtEligible,
-
                                                                 onItemAdded: () async {
                                                                   _removeOverlay();
                                                                   _clearSearch();
@@ -784,21 +780,19 @@ class _TopBarState extends State<TopBar> {
                                                   pid,
                                                   product.name ?? 'Unknown',
                                                   product.images?.isNotEmpty == true ? product.images!.first : '',
-                                                  pPrice,
+                                                  finalPrice, //  <<<<<<  USE finalPrice here
                                                   1,
                                                   psku,
                                                   int.tryParse(activeOrderId) ?? 0,
                                                   type: "simple",
                                                   productId: pid,
-                                                  variationId: -1, // ✔ unified rule
+                                                  variationId: -1,
                                                   variationName: null,
                                                   variationCount: 0,
                                                   combo: null,
-                                                  salesPrice: pPrice,
-                                                  regularPrice: pPrice,
-                                                  unitPrice: pPrice,
-                                                  isEbtEligible: isEbtEligible,
-
+                                                  salesPrice: finalPrice,   // <<< important
+                                                  regularPrice: finalPrice, // <<< important
+                                                  unitPrice: finalPrice,    // <<< important
                                                   onItemAdded: () {
                                                     _removeOverlay();
                                                     _clearSearch();
@@ -812,6 +806,12 @@ class _TopBarState extends State<TopBar> {
                                                 setState(() => isAddingItemLoading = false);
                                               }
                                             }
+
+
+
+
+
+
 
                                           } catch (e, s) {
                                             if (kDebugMode) print("TopBar onTap Exception: $e\n$s");
@@ -1413,6 +1413,6 @@ class _TopBarState extends State<TopBar> {
   }
 }
 
-extension on String? {
-  toDouble() {}
-}
+// extension on String? {
+//   toDouble() {}
+// }

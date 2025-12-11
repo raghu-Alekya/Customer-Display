@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:dotted_line/dotted_line.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hive/hive.dart';
@@ -38,6 +40,7 @@ import '../../Repositories/Payment/payment_repository.dart';
 import '../../Utilities/global_utility.dart';
 import '../../Utilities/responsive_layout.dart';
 import '../../Utilities/result_utility.dart';
+import '../../Widgets/scanner_guard.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_payment_dialog.dart';
 import '../../services/CustomerDisplayService.dart';
@@ -138,10 +141,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 // ⭐ store full API data globally
   bool isPaymentDone = false;
   Map<String, dynamic> _order = {};
+  bool couponPopupActive = false;
+
 
   double ebtTotal = 0.0; // will be loaded from widget.ebtAmount
-
-
+  double payByEbt = 0.0;   // ADD THIS
   TextEditingController ebtAmountController = TextEditingController();
 
 
@@ -192,8 +196,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   @override
   void initState() {
     super.initState();
+
     _fetchShiftId();
-    orderBloc = OrderBloc(OrderRepository()); // Build #1.0.49
+    orderBloc = OrderBloc(OrderRepository());
+
+    // Load order values
     orderItems = widget.orderItems;
     grossTotal = widget.grossTotal;
     discount = widget.orderDiscount;
@@ -204,17 +211,21 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     _displayDate = widget.formattedDate;
     _displayTime = widget.formattedTime;
     cashbackFee = widget.cashbackFee;
+
     print("💳 EBT Total in Summary Screen = $ebtTotal");
+
+    // Compute totals
     NetTotal = grossTotal - discount;
     computedNetPayable =
         grossTotal + tax - discount - merchantDiscount + cashbackFee;
-    // balanceAmount = computedNetPayable;
-    // orderTotal = computedNetPayable;
-    // ✅ Correct: Only calculate fresh orderTotal
+
     orderTotal = computedNetPayable;
 
+    print("🧮 Computed Net Payable (Order Total) = $orderTotal");
 
-    // ⭐ RESTORE PARTIAL PAYMENT VALUES IF ORDER IS PENDING
+    // ================================
+    // ⭐ RESTORE PAYMENT FROM HIVE
+    // ================================
     final offlineBox = Hive.box('offlineOrders');
     final orderIdKey = (orderId ?? 0).toString();
 
@@ -223,23 +234,43 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       Map<String, dynamic>.from(offlineBox.get(orderIdKey));
 
       if (offlineOrder['tenderAmount'] != null &&
-          offlineOrder['balanceAmount'] != null) {
+          offlineOrder['balanceAmount'] != null)
+      {
+        // main restore
         tenderAmount = (offlineOrder['tenderAmount'] as num).toDouble();
         balanceAmount = (offlineOrder['balanceAmount'] as num).toDouble();
 
-        print("🟩 Restored Pending Payment → tender=$tenderAmount, balance=$balanceAmount");
-      } else {
-        // fallback – calculate fresh
-        balanceAmount = computedNetPayable;
+        // ⭐ Restore split values for cash & other
+        payByCash = (offlineOrder['payByCash'] as num?)?.toDouble() ?? 0.0;
+        payByOther = (offlineOrder['payByOther'] as num?)?.toDouble() ?? 0.0;
+
+        print("🟩 Restored Pending Payment:");
+        print("   → payByCash = $payByCash");
+        print("   → payByOther = $payByOther");
+        print("   → Tender Amount = $tenderAmount");
+        print("   → Balance Amount = $balanceAmount");
+      }
+      else {
+        balanceAmount = orderTotal;
       }
     }
+    else {
+      balanceAmount = orderTotal;
+    }
 
-    //redeeem points
+    // Show restored payment state
+    print("💵 Current Payment Breakdown:");
+    print("   → payByCash = $payByCash");
+    print("   → payByOther = $payByOther");
+    print("   → tenderAmount = $tenderAmount");
+    print("   → balanceAmount = $balanceAmount");
+
+    // Redeem listener
     mobileController.addListener(() {
       setState(() {
-        isMobileValid = RegExp(r'^[0-9]{10}$').hasMatch(mobileController.text);
+        isMobileValid =
+            RegExp(r'^[0-9]{10}$').hasMatch(mobileController.text);
 
-        // If mobile becomes invalid, auto-disable redeem
         if (!isMobileValid) {
           isRedeemActive = false;
         }
@@ -247,19 +278,29 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     });
 
     _fetchUserId();
-    if (kDebugMode) {
-      print("🧾 Order Summary Init:");
-      print("Items: ${widget.orderItems.length}");
-      print("Gross: ${widget.grossTotal}");
-      print("Discount: ${widget.orderDiscount}");
-      print("Tax: ${widget.orderTax}");
-      print("Net Payable: ${widget.netPayable}");
-      print("📦 Full Order Items Data:");
-      print("Cashback Fee: $cashbackFee");
-      for (var item in orderItems) {
-        print(jsonEncode(item)); // pretty-print each item as JSON
-      }
+
+    // Debug dump
+    print("🧾 Order Summary Init:"
+        "\nItems: ${widget.orderItems.length}"
+        "\nGross: ${widget.grossTotal}"
+        "\nDiscount: ${widget.orderDiscount}"
+        "\nTax: ${widget.orderTax}"
+        "\nCashback Fee: $cashbackFee"
+        "\nNet Payable: ${widget.netPayable}");
+
+    for (var item in orderItems) {
+      print(jsonEncode(item));
     }
+
+    print("💵 INITIAL PAYMENT STATE:");
+    print("   payByCash = $payByCash");
+    print("   payByOther = $payByOther");
+    print("   tenderAmount = $tenderAmount");
+    print("   balanceAmount = $balanceAmount");
+    print("   orderTotal = $orderTotal");
+
+    // Fetch payments from API (if needed)
+    _fetchPaymentsByOrderId();
   }
 
   @override
@@ -292,8 +333,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       package: "com.sunmi.payment.demo",
       componentName: "com.sunmi.payment.demo.page.trans.SaleActivity",
       arguments: {
-        "amount": amount.toString(),   // keep decimals
-        "orderId": orderId,            // pass order id
+        "amount": amount.toString(),
+        "orderId": orderId,
       },
     );
 
@@ -324,6 +365,48 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     await box.put(orderId, updated);
 
     print("💾 [Hive] Saved redeem → ID: $orderId | value: $redeemedValue | points: $redeemedPoints | left: $updatedAvailablePoints");
+  }
+  void _recalculateAfterPayment(double amount) {
+    double remaining = balanceAmount;
+
+    // 1️⃣ If paying by EBT
+    if (selectedPaymentMethod == TextConstants.ebtText) {
+
+      if (amount >= ebtTotal) {
+        // Full EBT paid
+        amount -= ebtTotal;
+        remaining -= ebtTotal;
+        ebtTotal = 0;
+      } else {
+        // Partial EBT payment
+        ebtTotal -= amount;
+        remaining -= amount;
+        amount = 0;
+      }
+    }
+
+    // 2️⃣ If paying by CASH or CARD etc.
+    else {
+      double nonEbtBalance = remaining - ebtTotal; // balance that cash CAN pay safely
+
+      if (amount <= nonEbtBalance) {
+        // Case 1 → cash does NOT affect EBT
+        remaining -= amount;
+      } else {
+        // Case 2 → extra cash reduces EBT
+        double extraCash = amount - nonEbtBalance;
+
+        // Reduce EBT by that extra amount
+        ebtTotal = (ebtTotal - extraCash).clamp(0, double.infinity);
+
+        // New remaining balance becomes exactly new EBT
+        remaining = ebtTotal;
+      }
+    }
+
+    balanceAmount = remaining.clamp(0, double.infinity);
+
+    setState(() {});
   }
 
   Future<void> removeOfflineOrderRedeem(String orderId) async {
@@ -383,58 +466,89 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       }
     }
   }
-
-//Build #1.0.99: Added new method to process payment list
   void _processPaymentList(List<PaymentListModel> payments) {
     double cashTotal = 0.0;
     double otherTotal = 0.0;
+    double ebtPaid = 0.0;
 
+    // ---------------------------
+    // 1️⃣ Accumulate Paid Amounts
+    // ---------------------------
     for (var payment in payments) {
       double amount = double.tryParse(payment.amount) ?? 0.0;
 
       if (!payment.voidStatus) {
-        if (payment.paymentMethod == TextConstants.cash) {
+        if (payment.paymentMethod == TextConstants.ebtText) {
+          ebtPaid += amount;
+        }
+        else if (payment.paymentMethod == TextConstants.cash) {
           cashTotal += amount;
-        } else {
+        }
+        else {
           otherTotal += amount;
         }
       }
     }
 
     if (kDebugMode) {
-      print("###### _processPaymentList ->>> payByCash1: $cashTotal, payByOther1: $otherTotal");
+      print("EBT Paid: $ebtPaid");
+      print("Cash Paid: $cashTotal, Other Paid: $otherTotal");
     }
+
+    // ---------------------------
+    // 2️⃣ Restore Base EBT
+    // ---------------------------
+    double originalEbt = widget.ebtAmount;
+    double remainingEbt = originalEbt - ebtPaid;
+
+    // ---------------------------
+    // 3️⃣ Cash Overpayment Should Reduce EBT  ⭐ FIX
+    // ---------------------------
+    double effectiveOrderTotal = orderTotal - redeemedValue;
+
+    // Cash can only pay this portion:
+    double nonEbtBalance = effectiveOrderTotal - originalEbt;
+
+    if (cashTotal > nonEbtBalance) {
+      double extraCash = cashTotal - nonEbtBalance;
+      remainingEbt -= extraCash;
+    }
+
+    // Clamp after adjustment
+    remainingEbt = remainingEbt.clamp(0, originalEbt);
+    ebtTotal = remainingEbt;
+
+    // ---------------------------
+    // 4️⃣ Recalculate Final Balance
+    // ---------------------------
+    double totalPaid = cashTotal + otherTotal + ebtPaid;
+    double newBalance = effectiveOrderTotal - totalPaid;
+
+    bool isBalanceZero = newBalance <= 0;
 
     setState(() {
       payByCash = cashTotal;
       payByOther = otherTotal;
+      payByEbt = ebtPaid;
 
-      // ⭐ REAL FIX: use the actual order total
-      double effectiveOrderTotal = orderTotal - redeemedValue;
+      balanceAmount = newBalance.clamp(0.0, double.infinity);
 
-      balanceAmount = effectiveOrderTotal - (payByCash + payByOther);
-
-      bool isBalanceZero = balanceAmount <= 0;
-
-      // Change only when OVERPAID and NOT processing
       if (isBalanceZero && orderStatus != TextConstants.processing) {
-        changeAmount = balanceAmount.abs();
+        changeAmount = newBalance.abs();
         balanceAmount = 0;
       } else {
         changeAmount = 0;
       }
 
-      // Update tender
-      tenderAmount = payByCash + payByOther;
+      tenderAmount = totalPaid;
     });
 
     if (kDebugMode) {
-      print("UPDATED BALANCE : $balanceAmount");
-      print("UPDATED CHANGE  : $changeAmount");
-      print("UPDATED TENDER  : $tenderAmount");
+      print("⭐ EBT Remaining After Adjust: $ebtTotal");
+      print("⭐ Updated Balance: $balanceAmount");
+      print("⭐ Updated Tender: $tenderAmount");
     }
   }
-
 
 
   // void fetchOrderItems() async {
@@ -544,6 +658,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
         final paymentData = paymentResponse.data!;
         paidAmount = amount;
+        _recalculateAfterPayment(amount);
+
 
         paymentId = paymentData.paymentId.toString();
 
@@ -1320,19 +1436,19 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             : Colors.grey.shade200),
                   ),
                   child: ListView.separated(
-                      controller: _scrollController,
-                      padding: EdgeInsets.zero,
-                      itemCount: orderItems.length,
-                      separatorBuilder: (context, index) => Divider(
-                        height: 1,
-                        color: themeHelper.themeMode == ThemeMode.dark
-                            ? Colors.black26
-                            : Colors.grey.shade300,
-                      ),
-                      itemBuilder: (context, index) {
-                        return _buildOrderItem(index);
-                      },
-                      ),
+                    controller: _scrollController,
+                    padding: EdgeInsets.zero,
+                    itemCount: orderItems.length,
+                    separatorBuilder: (context, index) => Divider(
+                      height: 1,
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? Colors.black26
+                          : Colors.grey.shade300,
+                    ),
+                    itemBuilder: (context, index) {
+                      return _buildOrderItem(index);
+                    },
+                  ),
                 ),
               ),
               Container(
@@ -1442,6 +1558,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             _buildOrderCalculation(
                                 TextConstants.payByCash,
                                 '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
+                            _buildOrderCalculation(
+                              "Pay by EBT",
+                              '${TextConstants.currencySymbol}${payByEbt.toStringAsFixed(2)}',
+                            ),
 
                             _buildOrderCalculation(
                                 TextConstants.payByOther,
@@ -1724,7 +1844,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 12),
       child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.077,
+        height: MediaQuery.of(context).size.height * 0.097,
         child: Row(
           children: [
             // 🖼️ Image Section
@@ -2117,6 +2237,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
   Widget _buildPaymentSection() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
+    bool hasEbtItem = orderItems.any((item) => item["is_ebt_eligible"] == true);
     return Container(
       // Remove the fixed height constraint to let it match the left container
       margin: EdgeInsets.only(
@@ -2220,28 +2341,28 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                     children: [
                                       // Label container
                                       Container(
-                                        height: ResponsiveLayout.getHeight(36),
-                                        width: double.infinity,
-                                        padding: EdgeInsets.only(
-                                            top: ResponsiveLayout.getPadding(7),
-                                            left:
-                                            ResponsiveLayout.getPadding(12)),
-                                        decoration: BoxDecoration(
-                                          color: themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                              ? ThemeNotifier.tabsBackground
-                                              : Colors.red[50],
-                                          borderRadius: BorderRadius.circular(
-                                              ResponsiveLayout.getRadius(6)),
-                                        ),
-                                        child: Text(
-                                          _getPaymentHeader(),
-                                          style: TextStyle(
-                                            color: Colors.red,
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: ResponsiveLayout.getFontSize(14),
+                                          height: ResponsiveLayout.getHeight(36),
+                                          width: double.infinity,
+                                          padding: EdgeInsets.only(
+                                              top: ResponsiveLayout.getPadding(7),
+                                              left:
+                                              ResponsiveLayout.getPadding(12)),
+                                          decoration: BoxDecoration(
+                                            color: themeHelper.themeMode ==
+                                                ThemeMode.dark
+                                                ? ThemeNotifier.tabsBackground
+                                                : Colors.red[50],
+                                            borderRadius: BorderRadius.circular(
+                                                ResponsiveLayout.getRadius(6)),
                                           ),
-                                        )
+                                          child: Text(
+                                            _getPaymentHeader(),
+                                            style: TextStyle(
+                                              color: Colors.red,
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: ResponsiveLayout.getFontSize(14),
+                                            ),
+                                          )
 
                                       ),
                                       SizedBox(
@@ -2270,24 +2391,21 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                               ),
                                             ),
                                             child: TextField(
-                                              controller: amountController
-                                                ..text = computedNetPayable <= 0
-                                                    ? '${TextConstants.currencySymbol}0.00'
-                                                    : amountController.text,
+                                              controller: amountController,
                                               readOnly: true,
                                               enabled: balanceAmount >= 0,
                                               textAlign: TextAlign.right,
                                               decoration: InputDecoration(
                                                 border: InputBorder.none,
                                                 contentPadding: EdgeInsets.only(
-                                                    right: ResponsiveLayout.getPadding(16)),
+                                                  right: ResponsiveLayout.getPadding(16),
+                                                ),
                                                 hintText: '${TextConstants.currencySymbol}0.00',
                                                 hintStyle: TextStyle(
                                                   color: themeHelper.themeMode == ThemeMode.dark
                                                       ? ThemeNotifier.textDark
                                                       : Colors.grey[400],
                                                   fontSize: ResponsiveLayout.getFontSize(20),
-                                                  fontWeight: FontWeight.normal,
                                                 ),
                                               ),
                                               style: TextStyle(
@@ -2327,14 +2445,26 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                 (amount) => GestureDetector(
                                               onTap: () {
                                                 setState(() {
-                                                  _rawAmount = (amount *
-                                                      100)
-                                                      .toInt(); // <-- FIX: Overwrite
+                                                  selectedPaymentMethod = TextConstants.ebtText;
+
+                                                  // NEW LOGIC → Prefill the amount with the *minimum* of EBT total or balance amount
+                                                  double allowedAmount = ebtTotal;
+
+                                                  if (balanceAmount < ebtTotal) {
+                                                    allowedAmount = balanceAmount;   // only allow balance amount
+                                                  }
+
+                                                  _rawAmount = (allowedAmount * 100).toInt();
+
                                                   amountController.text =
-                                                  '${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}';
+                                                  '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
+
+                                                  _amountErrorText = null;
                                                   _isAmountEntered = true;
                                                 });
                                               },
+
+
                                               child: _buildQuickAmountButton(
                                                   '${TextConstants.currencySymbol} ${amount.toStringAsFixed(2)}'),
                                             ),
@@ -2357,8 +2487,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           balanceAmount: balanceAmount,
                                           onDigitPressed: (value) {
                                             if (selectedPaymentMethod == TextConstants.ebtText) {
-                                              // Apply EBT LIMIT
-                                              int maxAmount = (ebtTotal * 100).toInt();
+                                              int maxAmount = (min(ebtTotal, balanceAmount) * 100).toInt();
 
                                               int digit = value == '00'
                                                   ? 0
@@ -2368,11 +2497,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                   ? _rawAmount * 100
                                                   : _rawAmount * 10 + digit;
 
-                                              // ❌ Don't allow exceeding EBT amount
+                                              // Limit entry so user cannot exceed allowed EBT amount
                                               if (newAmount > maxAmount) return;
 
                                               _rawAmount = newAmount;
                                             }
+
                                             else {
                                               // Normal non-EBT logic
                                               if (value == '00') {
@@ -2606,15 +2736,21 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             onTap: () {
                               setState(() {
                                 selectedPaymentMethod = TextConstants.ebtText;
-                                _rawAmount = (ebtTotal * 100).toInt();
+
+                                // ALWAYS allow only the smaller amount
+                                double allowedAmount = min(ebtTotal, balanceAmount);
+
+                                _rawAmount = (allowedAmount * 100).toInt();
+
                                 amountController.text =
-                                '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
+                                '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
 
                                 _amountErrorText = null;
                                 _isAmountEntered = true;
                               });
                             },
                           ),
+
                         ],
                       ),
                     ),
@@ -2646,11 +2782,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               _buildPaymentOptionButton(
                                 TextConstants.redeemPoints,
                                 "assets/redeem.png",
-                                isActive: redeemedValue == 0
-                                    && availablePoints > 0
-                                    && isRedeemActive
-                                    && !isPaymentStarted,   // ⭐ Disable after partial payment
+                                isActive: redeemedValue == 0 &&
+                                    availablePoints > 0 &&
+                                    isRedeemActive &&
+                                    !isPaymentStarted &&
+                                    !hasEbtItem,
                                 onTap: () async {
+                                  if (hasEbtItem) return; // block redeem
 
                                   if (!isRedeemActive) return;
 
@@ -2803,8 +2941,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               _buildCouponButton(
                                 TextConstants.coupon,
                                 "assets/coupon.png",
-                                isActive: redeemedValue == 0 && !isPaymentStarted,  // ⭐ disable after payment
+                                isActive: redeemedValue == 0 &&
+                                    !isPaymentStarted &&
+                                    !hasEbtItem,
                                 onTap: () {
+                                  if (hasEbtItem) return;  // block coupon
                                   if (redeemedValue > 0 || isPaymentStarted) return;
                                   _openCouponPopup();
                                 },
@@ -2927,10 +3068,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       setState(() => isSummaryLoading = false);
     }
   }
-
-
-
   void _openCouponPopup() {
+    ScannerGuard.isCouponPopupOpen = true;
+
     final TextEditingController _couponCtrl = TextEditingController();
 
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -2942,136 +3082,158 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final Color textPrimary = isDark ? Colors.white : Colors.black87;
     final Color textSecondary = isDark ? Colors.white70 : Colors.black54;
     final Color hintColor = isDark ? Colors.white38 : Colors.grey;
-    final Color redPrimary = const Color(0xFFFD6464); // SAME for both modes
+    final Color redPrimary = const Color(0xFFFD6464);
 
     showDialog(
       context: context,
       barrierDismissible: true,
       builder: (context) {
-        return Dialog(
-          backgroundColor: dialogBg,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Container(
-            padding: const EdgeInsets.all(26),
-            width: MediaQuery.of(context).size.width * 0.30,
-            decoration: BoxDecoration(
-              color: dialogBg,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                if (!isDark)
-                  BoxShadow(
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                    color: Colors.black.withOpacity(0.15),
-                  ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ---------- TITLE ----------
-                Center(
-                  child: Text(
-                    "Apply Coupon",
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: redPrimary,
-                    ),
-                  ),
-                ),
+        return WillPopScope(
+          onWillPop: () async {
+            ScannerGuard.isCouponPopupOpen = false;   // 🔓 enable scanner again
+            return true;
+          },
+          child: BarcodeKeyboardListener(
+            bufferDuration: const Duration(milliseconds: 600),
+            onBarcodeScanned: (barcode) {
+              final code = barcode.trim();
+              print("🎯 Coupon QR/Barcode scanned → $code");
 
-                const SizedBox(height: 20),
-
-                // ---------- TEXTFIELD ----------
-                TextField(
-                  controller: _couponCtrl,
-                  keyboardType: TextInputType.number,
-                  style: TextStyle(color: textPrimary),
-                  decoration: InputDecoration(
-                    labelText: "Enter Coupon Code",
-                    labelStyle: TextStyle(color: textSecondary),
-                    hintStyle: TextStyle(color: hintColor),
-                    filled: true,
-                    fillColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: redPrimary, width: 1),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: borderColor, width: 1.0),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 25),
-
-                // ---------- BUTTONS ----------
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    // CANCEL BUTTON
-                    TextButton(
-                      style: TextButton.styleFrom(
-                        foregroundColor: redPrimary,
-                        side: BorderSide(color: redPrimary, width: 1),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 18, vertical: 10),
+              _couponCtrl.text = code;  // ✅ Correct prefill
+            },
+            child: Dialog(
+              backgroundColor: dialogBg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(26),
+                width: MediaQuery.of(context).size.width * 0.30,
+                decoration: BoxDecoration(
+                  color: dialogBg,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    if (!isDark)
+                      BoxShadow(
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                        color: Colors.black.withOpacity(0.15),
                       ),
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text(
-                        "Cancel",
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-
-                    const SizedBox(width: 12),
-
-                    // APPLY BUTTON
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: redPrimary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 12),
-                      ),
-                      onPressed: () async {
-                        final code = _couponCtrl.text.trim();
-
-                        if (code.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text("Please enter coupon code"),
-                              backgroundColor: Colors.redAccent,
-                            ),
-                          );
-                          return;
-                        }
-
-                        Navigator.pop(context);
-                        await _applyCoupon(code);
-                      },
-                      child: const Text("Apply"),
-                    ),
                   ],
-                )
-              ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Text(
+                        "Apply Coupon",
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: redPrimary,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    TextField(
+                      controller: _couponCtrl,
+                      keyboardType: TextInputType.number,
+                      style: TextStyle(color: textPrimary),
+                      decoration: InputDecoration(
+                        labelText: "Enter Coupon Code",
+                        labelStyle: TextStyle(color: textSecondary),
+                        hintStyle: TextStyle(color: hintColor),
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: redPrimary, width: 1),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: borderColor, width: 1.0),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 25),
+
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: redPrimary,
+                            side: BorderSide(color: redPrimary, width: 1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 10,
+                            ),
+                          ),
+                          onPressed: () {
+                            ScannerGuard.isCouponPopupOpen = false; // CLOSE FLAG
+                            Navigator.pop(context);
+                          },
+                          child: const Text(
+                            "Cancel",
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+
+                        const SizedBox(width: 12),
+
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: redPrimary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 12,
+                            ),
+                          ),
+                          onPressed: () async {
+                            final code = _couponCtrl.text.trim();
+
+                            if (code.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text("Please enter coupon code"),
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                              );
+                              return;
+                            }
+
+                            ScannerGuard.isCouponPopupOpen = false; // CLOSE FLAG
+                            Navigator.pop(context);
+                            await _applyCoupon(code);
+                          },
+                          child: const Text("Apply"),
+                        ),
+                      ],
+                    )
+                  ],
+                ),
+              ),
             ),
           ),
         );
       },
-    );
+    ).then((_) {
+      ScannerGuard.isCouponPopupOpen = false;   // 🔓 Ensure scanner re-enables
+    });
   }
+
+
   Future<void> _applyCoupon(String code) async {
     if (widget.orderId == null || widget.orderId == 0) return;
 

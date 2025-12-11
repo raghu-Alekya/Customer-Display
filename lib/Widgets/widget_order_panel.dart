@@ -20,6 +20,7 @@ import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 import 'package:pinaka_pos/Models/Search/product_search_model.dart';
 import 'package:pinaka_pos/Providers/Auth/product_variation_provider.dart';
 import 'package:pinaka_pos/Screens/Home/order_summary_screen.dart';
+import 'package:pinaka_pos/Widgets/scanner_guard.dart';
 import 'package:pinaka_pos/Widgets/widget_age_verification_popup_dialog.dart';
 import 'package:pinaka_pos/Widgets/widget_alert_popup_dialogs.dart';
 import 'package:pinaka_pos/Widgets/widget_custom_num_pad.dart';
@@ -784,6 +785,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         useKeyDownEvent: Platform.isWindows,
         caseSensitive: true,
         onBarcodeScanned: (barcode) async {
+          if (ScannerGuard.isCouponPopupOpen) {
+            print("🔒 Coupon popup active → OrderPanel scanner ignored");
+            return;
+          }
+
           try {
             final trimmedBarcode = barcode.trim();
             if (kDebugMode) print("🔹 Scanned → $trimmedBarcode");
@@ -2721,7 +2727,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                           key: ValueKey('${orderItem[AppDBConst.itemServerId]}_${_listVersion}_ClipRRect_$index'), // Build 1.0.214: Fixed Issue [SCRUM - 366] -> Swipe-to-Delete UI State Not Resetting After Add/Delete Operations // Updated key to include order ID
                           borderRadius: BorderRadius.circular(20),
                           child: SizedBox(
-                            height: MediaQuery.of(context).size.height * 0.10,
+                            height: MediaQuery.of(context).size.height * 0.11,
                             child: Slidable(
                               // Build #1.0.151: FIXED - change ensures that sliding an item in one order does not affect the Slidable state of items at the same index in other orders.
                               key: ValueKey('${orderItem[AppDBConst.itemServerId]}_${_listVersion}_Slidable_$index'), // Build 1.0.214: Fixed Issue [SCRUM - 366] -> Swipe-to-Delete UI State Not Resetting After Add/Delete Operations // Updated key to include order ID
