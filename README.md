@@ -33,3 +33,9 @@ samples, guidance on mobile development, and a full API reference.
 3. ui modifications
 --render issue resolving.
 --age verification popup UI modification.
+
+(build no:376)
+
+1.card payment method completed.
+2.variable price issue resolved.
+3.ui modifications.

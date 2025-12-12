@@ -55,6 +55,7 @@ import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
 import '../Screens/Home/add_screen.dart';
 import '../Screens/Home/edit_product_screen.dart';
+import '../Utilities/svg_images_utility.dart';
 import '../services/CustomerDisplayService.dart';
 import 'ManualPriceDialog.dart';
 import 'OrderPopupHelper.dart';
@@ -2721,7 +2722,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 : Colors.black,
                           ),
                         ),
-                        const SizedBox(width: 135),
+                        const SizedBox(width: 132),
                         SvgPicture.asset(
                           'assets/svg/clock.svg',
                           width: 20,
@@ -3237,24 +3238,24 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                                     ],
 
                                                                     // ⭐ ADD EBT TAG HERE
-                                                                    if (isEbtEligible) ...[
-                                                                      const SizedBox(height: 4),
-                                                                      Container(
-                                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                                        decoration: BoxDecoration(
-                                                                          color: Colors.green,
-                                                                          borderRadius: BorderRadius.circular(4),
-                                                                        ),
-                                                                        child: const Text(
-                                                                          "EBT",
-                                                                          style: TextStyle(
-                                                                            color: Colors.white,
-                                                                            fontSize: 10,
-                                                                            fontWeight: FontWeight.bold,
-                                                                          ),
-                                                                        ),
-                                                                      ),
-                                                                    ],
+                                                                    // if (isEbtEligible) ...[
+                                                                    //   const SizedBox(height: 4),
+                                                                    //   Container(
+                                                                    //     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                                    //     decoration: BoxDecoration(
+                                                                    //       color: Colors.green,
+                                                                    //       borderRadius: BorderRadius.circular(4),
+                                                                    //     ),
+                                                                    //     child: const Text(
+                                                                    //       "EBT",
+                                                                    //       style: TextStyle(
+                                                                    //         color: Colors.white,
+                                                                    //         fontSize: 10,
+                                                                    //         fontWeight: FontWeight.bold,
+                                                                    //       ),
+                                                                    //     ),
+                                                                    //   ),
+                                                                    // ],
 
                                                                   ],
                                                                 ),
@@ -3293,17 +3294,68 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                             ),
                                             // Build #1.0.181: Fixed - Quantity for Custom Item Not Displayed After Switching Screens [JIRA #319]
                                             // we have to show price * qty for custom item also / condition updated, only dont show for payout and coupons
-                                            if (!isCouponOrPayout)
-                                              Text(
-                                                "${TextConstants.currencySymbol}${(orderItem['item_price'] ?? orderItem['price'] ?? 0).toStringAsFixed(2)} × ${(orderItem['items_count'] ?? orderItem['quantity'] ?? 1)}",
-                                                style: TextStyle(
-                                                  color: themeHelper.themeMode == ThemeMode.dark
-                                                      ? ThemeNotifier.textDark
-                                                      : Colors.black54,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
+                                            Row(
+                                              children: [
+                                                // PRICE × QTY
+                                                if (!isCouponOrPayout)
+                                                  Text(
+                                                    "${TextConstants.currencySymbol}${(orderItem['item_price'] ?? orderItem['price'] ?? 0).toStringAsFixed(2)} × ${(orderItem['items_count'] ?? orderItem['quantity'] ?? 1)}",
+                                                    style: TextStyle(
+                                                      color: themeHelper.themeMode == ThemeMode.dark
+                                                          ? ThemeNotifier.textDark
+                                                          : Colors.black54,
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+
+                                                // Space only when price exists AND (EBT or Variant to show)
+                                                if (!isCouponOrPayout && (isEbtEligible || isVariant))
+                                                  const SizedBox(width: 6),
+
+                                                // EBT BADGE
+                                                if (isEbtEligible)
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.green,
+                                                      borderRadius: BorderRadius.circular(4),
+                                                    ),
+                                                    child: const Text(
+                                                      "EBT",
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 6,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+
+                                                // Spacing ONLY if EBT is shown AND variant icon also needs to appear
+                                                if (isEbtEligible && isVariant)
+                                                  const SizedBox(width: 6),
+
+                                                // VARIANT LINK ICON
+                                                if (isVariant)
+                                                  Row(
+                                                    children: [
+                                                      SvgPicture.asset(
+                                                          SvgUtils
+                                                              .variationIcon,
+                                                          height: 10,
+                                                          width: 10),
+                                                      // SizedBox(width: 4),
+                                                      // Text(
+                                                      //   '${item["variations"].length}',
+                                                      //   style: TextStyle(
+                                                      //     fontSize: 12,
+                                                      //     color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
+                                                      //   ),
+                                                      // ),
+                                                    ],
+                                                  ),
+                                              ],
+                                            )
                                           ],
                                         ),
                                       ),

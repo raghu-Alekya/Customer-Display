@@ -50,159 +50,167 @@ class _ManualPriceDialogState extends State<ManualPriceDialog> {
       Navigator.pop(context, double.tryParse(enteredPrice));
     }
   }
+  @override
 
-  @override
-  @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // ------ COLORS FOR BOTH THEMES ------
+    final dialogBg = isDark ? const Color(0xFF1A1C2A) : Colors.white;
+    final cardBg = isDark ? const Color(0xFF2B2D3C) : const Color(0xFFF2F4F7);
+
+    final textPrimary = isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final textSecondary = isDark ? Colors.white70 : Colors.grey;
+
+    final clearTextColor = const Color(0xFFE74C3C);
+    final clearBg = isDark ? const Color(0xFF3B1F1F) : const Color(0xFFFFEDED);
+
+    final addBg = const Color(0xFF2C3E78);
+    final addText = Colors.white;
+
     return Dialog(
-      backgroundColor: Colors.white,
+      backgroundColor: dialogBg,
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxWidth: 400,
-          maxHeight: 550,
-        ),
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 600),
         child: Stack(
           children: [
-            // MAIN CONTENT
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
               child: Column(
                 children: [
-                  // ------------------ FIXED TOP CONTENT ------------------
-                  Column(
+                  // ---------------- PRODUCT ROW ----------------
+                  Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // PRODUCT ROW
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: widget.productImage.startsWith("http")
-                                ? Image.network(
-                              widget.productImage,
-                              width: 40,
-                              height: 40,
-                              fit: BoxFit.cover,
-                            )
-                                : Image.asset(
-                              widget.productImage,
-                              width: 80,
-                              height: 80,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-
-                          const SizedBox(width: 16),
-
-                          // Product Text
-                          Flexible(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Text(
-                                  widget.productName,
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  "(${widget.quantity} Pieces)",
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // LABEL
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: const Text(
-                          "Enter Price",
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
+                      // PRODUCT IMAGE
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.asset(
+                          widget.productImage,
+                          width: 75,
+                          height: 75,
+                          fit: BoxFit.cover,
                         ),
                       ),
 
+                      const SizedBox(width: 16),
 
-                      const SizedBox(height: 20),
-
-                      // TEXT FIELD
-                      SizedBox(
-                        height: 40,
-                        child: TextField(
-                          readOnly: true,
-                          controller: TextEditingController(text: enteredPrice),
-                          decoration: InputDecoration(
-                            hintText: "This product requires a custom price.",
-                            contentPadding: const EdgeInsets.symmetric(
-                              vertical: 8,
-                              horizontal: 10,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: Color(0xFFCBD3E1),
-                                width: 1.2,
+                      // PRODUCT NAME + QTY
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              widget.productName,
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w600,
+                                color: textPrimary,
                               ),
                             ),
-                          ),
+                            const SizedBox(height: 4),
+                            Text(
+                              "(${widget.quantity} Pieces)",
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-
-                      const SizedBox(height: 20),
                     ],
                   ),
 
-                  // ------------------ KEYPAD ------------------
+
+                  const SizedBox(height: 15),
+
+                  // ---------------- Label ----------------
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "Enter Price",
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: textPrimary,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  // ---------------- TEXT FIELD ----------------
+                  SizedBox(
+                    height: 44,
+                    child: TextField(
+                      readOnly: true,
+                      controller: TextEditingController(text: enteredPrice),
+                      style: TextStyle(color: textPrimary, fontSize: 16),
+                      decoration: InputDecoration(
+                        hintText: "This product requires a custom price.",
+                        hintStyle: TextStyle(color: textSecondary),
+                        filled: true,
+                        fillColor: cardBg,
+                        contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(
+                              color:
+                              isDark ? Colors.white12 : const Color(0xFFCBD3E1)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide:
+                          BorderSide(color: addBg, width: 1.5),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // ---------------- KEYPAD ----------------
                   Expanded(
                     child: GridView.builder(
                       padding: EdgeInsets.zero,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: 12,
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        childAspectRatio: 1.8,
+                        mainAxisSpacing: 14,
+                        crossAxisSpacing: 14,
+                        childAspectRatio: 1.7,
                       ),
                       itemBuilder: (context, index) {
                         if (index == 9) {
                           return _buildKey(
                             "Clear",
                             onTap: _clear,
-                            textColor: const Color(0xFFE74C3C),
-                            bgColor: const Color(0xFFFFEDED),
+                            bgColor: clearBg,
+                            textColor: clearTextColor,
                           );
                         } else if (index == 10) {
-                          return _buildKey("0", onTap: () => _onKeyTap("0"));
+                          return _buildKey("0",
+                              onTap: () => _onKeyTap("0"),
+                              bgColor: cardBg,
+                              textColor: textPrimary);
                         } else if (index == 11) {
-                          return _buildKey(
-                            "Add",
-                            onTap: _submit,
-                            bgColor: const Color(0xFF2C3E78),
-                            textColor: Colors.white,
-                          );
+                          return _buildKey("Add",
+                              onTap: _submit,
+                              bgColor: addBg,
+                              textColor: addText);
                         } else {
                           return _buildKey(
                             "${index + 1}",
                             onTap: () => _onKeyTap("${index + 1}"),
+                            bgColor: cardBg,
+                            textColor: textPrimary,
                           );
                         }
                       },
@@ -212,24 +220,19 @@ class _ManualPriceDialogState extends State<ManualPriceDialog> {
               ),
             ),
 
-            // ------------------ CLOSE BUTTON (ABSOLUTE POSITION) ------------------
+            // CLOSE BUTTON
             Positioned(
-              top: 15,
-              right: 15,
+              top: 14,
+              right: 14,
               child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
                 onTap: () => Navigator.pop(context),
                 child: Container(
                   padding: const EdgeInsets.all(6),
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Color(0xFFE74C3C),
+                    color: const Color(0xFFE74C3C),
                   ),
-                  child: const Icon(
-                    Icons.close,
-                    color: Colors.white,
-                    size: 16,
-                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 17),
                 ),
               ),
             ),

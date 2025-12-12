@@ -2536,29 +2536,32 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                               balanceAmount)
                                               .map(
                                                 (amount) => GestureDetector(
-                                              onTap: () {
-                                                setState(() {
-                                                  selectedPaymentMethod = TextConstants.ebtText;
+                                                    onTap: () {
+                                                      setState(() {
+                                                        double allowedAmount = balanceAmount;
 
-                                                  // NEW LOGIC → Prefill the amount with the *minimum* of EBT total or balance amount
-                                                  double allowedAmount = ebtTotal;
+                                                        // --- EBT PAYMENT CASE ---
+                                                        if (selectedPaymentMethod == TextConstants.ebtText) {
+                                                          allowedAmount = min(balanceAmount, ebtTotal);
+                                                        }
 
-                                                  if (balanceAmount < ebtTotal) {
-                                                    allowedAmount = balanceAmount;   // only allow balance amount
-                                                  }
+                                                        // --- CARD PAYMENT CASE ---
+                                                        else if (selectedPaymentMethod == TextConstants.card) {
+                                                          allowedAmount = balanceAmount;   // full remaining balance allowed
+                                                        }
 
-                                                  _rawAmount = (allowedAmount * 100).toInt();
+                                                        // UPDATE RAW AMOUNT
+                                                        _rawAmount = (allowedAmount * 100).toInt();
 
-                                                  amountController.text =
-                                                  '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
+                                                        // UPDATE TEXT FIELD
+                                                        amountController.text =
+                                                        '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
 
-                                                  _amountErrorText = null;
-                                                  _isAmountEntered = true;
-                                                });
-                                              },
-
-
-                                              child: _buildQuickAmountButton(
+                                                        _amountErrorText = null;
+                                                        _isAmountEntered = true;
+                                                      });
+                                                    },
+                                                    child: _buildQuickAmountButton(
                                                   '${TextConstants.currencySymbol} ${amount.toStringAsFixed(2)}'),
                                             ),
                                           )
@@ -2578,45 +2581,49 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           getPaidAmount: () =>
                                           amountController.text,
                                           balanceAmount: balanceAmount,
-                                          onDigitPressed: (value) {
-                                            if (selectedPaymentMethod == TextConstants.ebtText) {
-                                              int maxAmount = (min(ebtTotal, balanceAmount) * 100).toInt();
+                                            onDigitPressed: (value) {
+                                              if (selectedPaymentMethod == TextConstants.ebtText) {
+                                                int maxAmount = (min(ebtTotal, balanceAmount) * 100).toInt();
 
-                                              int digit = value == '00'
-                                                  ? 0
-                                                  : int.tryParse(value) ?? 0;
+                                                int digit = value == '00'
+                                                    ? 0
+                                                    : int.tryParse(value) ?? 0;
 
-                                              int newAmount = value == '00'
-                                                  ? _rawAmount * 100
-                                                  : _rawAmount * 10 + digit;
+                                                int newAmount = value == '00'
+                                                    ? _rawAmount * 100
+                                                    : _rawAmount * 10 + digit;
 
-                                              // Limit entry so user cannot exceed allowed EBT amount
-                                              if (newAmount > maxAmount) return;
+                                                if (newAmount > maxAmount) return;
 
-                                              _rawAmount = newAmount;
-                                            }
-
-                                            else {
-                                              // Normal non-EBT logic
-                                              if (value == '00') {
-                                                _rawAmount = _rawAmount * 100;
-                                              } else {
-                                                int digit = int.tryParse(value) ?? 0;
-                                                _rawAmount = _rawAmount * 10 + digit;
+                                                _rawAmount = newAmount;
                                               }
-                                            }
 
-                                            double displayValue = _rawAmount / 100.0;
-                                            amountController.text =
-                                            '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+                                              else {
+                                                // ---------- CARD LIMIT LOGIC ----------
+                                                int maxAmount = (balanceAmount * 100).toInt();
 
-                                            setState(() {
-                                              _isAmountEntered = _rawAmount != 0;
-                                            });
-                                          },
+                                                if (value == '00') {
+                                                  int newAmount = _rawAmount * 100;
+                                                  if (newAmount > maxAmount) return;
+                                                  _rawAmount = newAmount;
+                                                } else {
+                                                  int digit = int.tryParse(value) ?? 0;
+                                                  int newAmount = _rawAmount * 10 + digit;
+                                                  if (newAmount > maxAmount) return;
+                                                  _rawAmount = newAmount;
+                                                }
+                                              }
 
+                                              double displayValue = _rawAmount / 100.0;
+                                              amountController.text =
+                                              '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
-                                          onClearPressed: () {
+                                              setState(() {
+                                                _isAmountEntered = _rawAmount != 0;
+                                              });
+                                            },
+
+                                            onClearPressed: () {
                                             _rawAmount = 0;
                                             amountController.text =
                                             '${TextConstants.currencySymbol}0.00';
@@ -2809,11 +2816,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             onTap: () {
                               setState(() {
                                 selectedPaymentMethod = TextConstants.card;
-                                _resetAmount();
-                              });
+                                double allowedAmount = balanceAmount;
 
-                              setState(() {
-                                _isAmountEntered = false;
+                                _rawAmount = (allowedAmount * 100).toInt();
+
+                                amountController.text =
+                                '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
+
+                                _amountErrorText = null;
+                                _isAmountEntered = true;
                               });
                             },
                           ),

@@ -1663,7 +1663,7 @@ class NestedGridWidget extends StatelessWidget {
                                             "EBT",
                                             style: TextStyle(
                                               color: Colors.white,
-                                              fontSize: 8,
+                                              fontSize: 6,
                                               fontWeight: FontWeight.bold,
                                             ),
                                           ),
