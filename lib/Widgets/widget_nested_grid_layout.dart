@@ -1169,7 +1169,7 @@ class NestedGridWidget extends StatelessWidget {
 
 
 
-                          final productPrice =
+                          var productPrice =
                               double.tryParse(item["fast_key_item_price"].toString()) ?? 0.0;
                           final productSku = item["fast_key_item_sku"] ?? "SKU-$productId";
                           final productImage = (item["fast_key_item_image"] is String)
@@ -1263,30 +1263,97 @@ class NestedGridWidget extends StatelessWidget {
                             print("✅ No age restriction for this product.");
 
                           }
-
+// 💰 Variable Price (Manual Entry)
                           // 💰 Variable Price (Manual Entry)
                           double finalPrice = productPrice;
 
+// RUN THIS BEFORE ANY POPUP
                           if (hasVariablePriceTag && !hasVariants) {
-                            print("💰 Variable price product → Asking cashier to enter price");
+                            print("💰 Variable price product detected → Checking global first-add status…");
 
-                            // Use the static show method
+                            final orderKey = activeOrderId.toString();
+                            final hiveOrder = Map<String, dynamic>.from(
+                              box.get(orderKey, defaultValue: {}),
+                            );
+
+                            final variableKey = "variable_price_added_$productId";
+                            final savedPriceKey = "selected_price_$productId";
+                            final savedPrice = hiveOrder[savedPriceKey];
+
+                            if (savedPrice != null) {
+                              print("🔁 Auto-loading saved manual price for productId=$productId → ₹$savedPrice");
+                              productPrice = savedPrice; // <-- FORCE OVERRIDE DEFAULT PRICE
+                            }
+
+                            // ⛔ GLOBAL CHECK: Has popup been shown before?
+                            final alreadyAddedBefore =
+                                hiveOrder[variableKey] == true ||
+                                    hiveOrder[variableKey] == 1 ||
+                                    hiveOrder[variableKey]?.toString().toLowerCase() == "true";
+
+                            // -------------------------------------------------------------
+                            // 1️⃣ PRODUCT ADDED BEFORE → SKIP POPUP ALWAYS
+                            // -------------------------------------------------------------
+                            if (alreadyAddedBefore) {
+                              print("🔁 Variable product already added earlier → SKIPPING POPUP → increment quantity");
+
+                              // Load saved manual price
+                              final savedPrice = hiveOrder[savedPriceKey];
+                              finalPrice = savedPrice ?? productPrice;
+
+                              await orderHelper?.addItemToOrder(
+                                null,
+                                productName,
+                                productImage,
+                                finalPrice,
+                                1,
+                                productSku,
+                                activeOrderId,
+                                type: 'product',
+                                productId: productId,
+                                variationId: -1,
+                                salesPrice: finalPrice,
+                                regularPrice: finalPrice,
+                                unitPrice: finalPrice,
+                                isEbtEligible: isEbtEligible,
+                                onItemAdded: () async {
+                                  await orderHelper?.loadData();
+                                },
+                              );
+
+                              onItemTapped(index, variantAdded: false);
+                              return; // ⛔ VERY IMPORTANT — stop popup here
+                            }
+
+                            // -------------------------------------------------------------
+                            // 2️⃣ FIRST TIME EVER → SHOW POPUP
+                            // -------------------------------------------------------------
+                            print("💰 First-time variable product → showing manual price popup");
+
                             final enteredPrice = await ManualPriceDialog.show(
                               context,
-                              productName: productName, productImage: '', minPrice: 0.0,
+                              productName: productName,
+                              productImage: productImage,
+                              minPrice: productPrice,
                             );
 
                             if (enteredPrice == null) {
-                              print("❌ Price entry cancelled → Product not added");
+                              print("❌ Manual price cancelled");
                               return;
                             }
 
                             finalPrice = enteredPrice;
-                            print("✅ Final price set by cashier: ₹$finalPrice");
+
+                            // SAVE FLAGS
+                            hiveOrder[variableKey] = true;       // mark popup shown
+                            hiveOrder[savedPriceKey] = finalPrice; // store price
+
+                            await box.put(orderKey, hiveOrder);
+
+                            print("💾 Stored $variableKey = true");
+                            print("💾 Stored $savedPriceKey = $finalPrice");
                           }
 
-                          // print("✅ Manual price entered: ₹$finalPrice");
-                          //             }
                           // 🧩 Variant Handling
                           if (hasVariants) {
                             print("🧩 Product has variants → Loading offline variants...");

@@ -103,8 +103,9 @@ class NoScrollbarBehavior extends ScrollBehavior {
 
 class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   List<Map<String, dynamic>> orderItems = [];
-  String selectedPaymentMethod = TextConstants.cash;
+  String selectedPaymentMethod = "";
   TextEditingController amountController = TextEditingController();
+
   final PaymentBloc paymentBloc =
   PaymentBloc(PaymentRepository()); // Added PaymentBloc
   final ScrollController _scrollController = ScrollController();
@@ -166,6 +167,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool _showFullSummary = false;
   String? _amountErrorText;
   bool _isAmountEntered = false;
+  double payByCard = 0.0;
+
 
   double discountValue = 0.0;
 
@@ -199,6 +202,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     _fetchShiftId();
     orderBloc = OrderBloc(OrderRepository());
+    selectedPaymentMethod = TextConstants.cash;
 
     // Load order values
     orderItems = widget.orderItems;
@@ -324,21 +328,104 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       });
     }
   }
-  void _openSunmiSaleScreen({
+  static const MethodChannel _paymentChannel =
+  MethodChannel("sunmi_payment_channel");
+  Future<void> _openSunmiSaleScreen({
     required double amount,
     required String orderId,
-  }) {
-    final intent = AndroidIntent(
-      action: "com.example.PAY_SALE",
-      package: "com.sunmi.payment.demo",
-      componentName: "com.sunmi.payment.demo.page.trans.SaleActivity",
-      arguments: {
-        "amount": amount.toString(),
-        "orderId": orderId,
-      },
+  }) async {
+
+    final result = await _paymentChannel.invokeMethod("startSale", {
+      "amount": amount.toString(),
+      "orderId": orderId,
+    });
+
+    final data = jsonDecode(result);
+    final fullSunmi = jsonDecode(data["fullResponse"]);
+
+    double paidAmount = double.tryParse(fullSunmi["processedAmount"] ?? "0") ?? 0.0;
+
+    // 1️⃣ Add to card total
+    payByCard += paidAmount;
+
+    // 2️⃣ Apply your balance logic
+    selectedPaymentMethod = TextConstants.card;
+    _recalculateAfterPayment(paidAmount);
+
+    // 3️⃣ Increase tender
+    tenderAmount += paidAmount;
+
+    setState(() {});
+
+    // 4️⃣ Auto-create payment API entry
+    _createPaymentFromSunmi(paidAmount, fullSunmi);
+
+    // -------------------------------
+    // ⭐ ADD THIS POPUP LOGIC HERE
+    // -------------------------------
+    if (balanceAmount > 0) {
+      // Partial payment → show partial payment dialog
+      _showPartialPaymentDialog(context, paidAmount);
+    } else {
+      // Full card payment completed → show completed dialog
+      _showPaymentDialog(
+        context,
+        paidAmount,
+        changeAmount: 0,
+        showChange: false,
+      );
+    }
+  }
+
+  Future<void> _createPaymentFromSunmi(
+      double amount,
+      Map<String, dynamic> sunmi,
+      ) async {
+
+    final String datetime =
+    DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
+    final paymentRequest = PaymentRequestModel(
+      title: "Card",
+      orderId: orderId ?? 0,
+      amount: amount,
+      paymentMethod: TextConstants.card,   // ⭐ correct method
+      shiftId: shiftId,
+      vendorId: vendorId,
+      userId: userId ?? 0,
+      serviceType: serviceType,
+      datetime: datetime,
+      notes: jsonEncode({
+        "sunmiTransactionId": sunmi["transactionId"],
+        "sunmiOrderId": sunmi["orderId"],
+        "authCode": sunmi["authCode"],
+        "cardType": sunmi["cardType"],
+        "maskedCard": sunmi["maskedCardNumber"],
+        "hostRef": sunmi["hostReferenceNumber"],
+      }),
     );
 
-    intent.launch();
+    paymentBloc.createPayment(paymentRequest);
+  }
+
+  void _showPaymentPopup(Map<String, dynamic> sunmi) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Sunmi Payment Result"),
+        content: SingleChildScrollView(
+          child: Text(
+            const JsonEncoder.withIndent("  ").convert(sunmi),
+          ),
+        ),
+        actions: [
+          TextButton(
+            child: const Text("OK"),
+            onPressed: () => Navigator.pop(context),
+          )
+        ],
+      ),
+    );
   }
 
 
@@ -509,9 +596,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     // Cash can only pay this portion:
     double nonEbtBalance = effectiveOrderTotal - originalEbt;
 
-    if (cashTotal > nonEbtBalance) {
-      double extraCash = cashTotal - nonEbtBalance;
-      remainingEbt -= extraCash;
+    // ALL non-EBT payments: cash + card + others
+    double nonEbtPaid = cashTotal + otherTotal;
+
+// If non-EBT paid exceeds allowed portion → extra reduces EBT
+    if (nonEbtPaid > nonEbtBalance) {
+      double extra = nonEbtPaid - nonEbtBalance;
+      remainingEbt -= extra;
     }
 
     // Clamp after adjustment
@@ -576,10 +667,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
 
     // ------------------------------------------------------
-    // ⭐ RULE 1: If balance > 0 → amount field required
+    // ⭐ RULE 0: Ensure user selected a payment method
     // ------------------------------------------------------
-    if (balanceAmount > 0 && amountController.text.isEmpty) {
-      if (kDebugMode) print("Error: Amount TextField is empty");
+    if (selectedPaymentMethod == null || selectedPaymentMethod!.isEmpty) {
+      print("❌ ERROR: No payment method selected");
+      return;
+    }
+
+    final bool isCard = selectedPaymentMethod == TextConstants.card;
+
+    // ------------------------------------------------------
+    // ⭐ RULE 1: If method is NOT card, amount is required
+    // ------------------------------------------------------
+    if (!isCard && balanceAmount > 0 && amountController.text.isEmpty) {
+      print("❌ ERROR: Amount required for Cash / Wallet / EBT");
       return;
     }
 
@@ -591,23 +692,30 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     double amount = double.tryParse(cleanAmount) ?? 0.0;
 
     // ------------------------------------------------------
-    // ⭐ RULE 2: No negative amount allowed
+    // ⭐ RULE 2: CARD amount handled by Sunmi, ignore validation
     // ------------------------------------------------------
-    if (amount < 0) {
-      if (kDebugMode) print("Error: Invalid negative amount");
-      return;
-    }
+    if (isCard) {
+      print("💳 CARD PAYMENT → Skipping amount validation, Sunmi handles it.");
+      amount = amount > 0 ? amount : 0.0;
+    } else {
+      // ------------------------------------------------------
+      // ⭐ RULE 3: No negative amount
+      // ------------------------------------------------------
+      if (amount < 0) {
+        print("❌ ERROR: Negative amount");
+        return;
+      }
 
-    // ------------------------------------------------------
-    // ⭐ RULE 3: Allow zero amount ONLY if balance is negative
-    // ------------------------------------------------------
-    if (amount == 0 && computedNetPayable > 0) {
-      setState(() => _amountErrorText = TextConstants.amountValidation);
-      return;
+      // ------------------------------------------------------
+      // ⭐ RULE 4: Amount cannot be zero IF balance > 0
+      // ------------------------------------------------------
+      if (amount == 0 && computedNetPayable > 0) {
+        setState(() => _amountErrorText = TextConstants.amountValidation);
+        return;
+      }
     }
 
     _amountErrorText = null;
-
     double remainingBalance = balanceAmount;
 
     setState(() => isLoading = true);
@@ -615,11 +723,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final String datetime =
     DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
+    // ⭐ Important fix: Dynamic paymentMethod
     final paymentRequest = PaymentRequestModel(
-      title: selectedPaymentMethod,
+      title: selectedPaymentMethod!,
       orderId: orderId ?? 0,
       amount: amount,
-      paymentMethod: selectedPaymentMethod,
+      paymentMethod: selectedPaymentMethod!, // <-- correct method passed
       shiftId: shiftId,
       vendorId: vendorId,
       userId: userId ?? 0,
@@ -633,150 +742,129 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     paymentBloc.createPayment(paymentRequest);
 
     StreamSubscription? subscription;
-    subscription = paymentBloc.createPaymentStream.listen((paymentResponse) async {
-      if (kDebugMode) {
-        print("Payment stream response: $paymentResponse");
-      }
+    subscription = paymentBloc.createPaymentStream.listen(
+          (paymentResponse) async {
+        if (kDebugMode) {
+          print("Payment stream response: $paymentResponse");
+        }
 
-      if (paymentResponse.status == Status.ERROR) {
-        setState(() => isLoading = false);
-        subscription?.cancel();
-        return;
-      }
+        if (paymentResponse.status == Status.ERROR) {
+          setState(() => isLoading = false);
+          subscription?.cancel();
+          return;
+        }
 
-      if (paymentResponse.status == Status.COMPLETED &&
-          paymentResponse.data != null &&
-          paymentResponse.data!.message == "Payment Created Successfully")
-      {
+        if (paymentResponse.status == Status.COMPLETED &&
+            paymentResponse.data != null &&
+            paymentResponse.data!.message == "Payment Created Successfully") {
+          setState(() {
+            isPaymentStarted = true;
+          });
 
-        setState(() {
-          isPaymentStarted = true;   // 🔹 block coupons now
-        });
+          setState(() => isLoading = false);
 
-        // STOP LOADING
-        setState(() => isLoading = false);
+          final paymentData = paymentResponse.data!;
+          paidAmount = amount;
 
-        final paymentData = paymentResponse.data!;
-        paidAmount = amount;
-        _recalculateAfterPayment(amount);
+          _recalculateAfterPayment(amount);
 
+          paymentId = paymentData.paymentId.toString();
+          orderStatus =
+              paymentData.orderStatus ?? TextConstants.processing;
 
-        paymentId = paymentData.paymentId.toString();
+          // ------------------------------------------
+          // OFFLINE DELETE (unchanged)
+          // ------------------------------------------
+          if (widget.isOfflineSynced && widget.offlineOrderId != null) {
+            try {
+              final offlineId = widget.offlineOrderId!;
+              final box = Hive.box('offlineOrders');
 
-        orderStatus = paymentData.orderStatus ?? TextConstants.processing;
+              if (box.containsKey(offlineId.toString())) {
+                await box.delete(offlineId.toString());
+              }
 
-        // --------------------------------------------------
-        // ⭐ OFFLINE DELETE
-        // --------------------------------------------------
-        if (widget.isOfflineSynced && widget.offlineOrderId != null) {
-          try {
-            final offlineId = widget.offlineOrderId!;
-            final box = Hive.box('offlineOrders');
-
-            if (box.containsKey(offlineId.toString())) {
-              await box.delete(offlineId.toString());
-              print("✔ Deleted offline order $offlineId from Hive");
+              await orderHelper.deleteOrder(offlineId);
+            } catch (e) {
+              print("⚠ Failed deleting offline order: $e");
             }
+          }
 
-            await orderHelper.deleteOrder(offlineId);
-            print("✔ Deleted offline order $offlineId from SQLite");
+          // ------------------------------------------
+          // BALANCE CALCULATION (unchanged)
+          // ------------------------------------------
+          final bool isExactPayment = (amount == remainingBalance);
+          final bool isOverPayment = (amount > remainingBalance);
+          final bool isPartialPayment = (amount < remainingBalance);
+
+          tenderAmount += amount;
+
+          if (isOverPayment) {
+            changeAmount = amount - remainingBalance;
+            balanceAmount = 0.0;
+          } else if (isExactPayment) {
+            changeAmount = 0.0;
+            balanceAmount = 0.0;
+          } else if (isPartialPayment) {
+            balanceAmount = remainingBalance - amount;
+            changeAmount = 0.0;
+          }
+
+          balanceAmount =
+              double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
+          if (changeAmount != null && changeAmount! > 0) {
+            final repo = PaymentRepository();
+            await repo.updatePaymentMeta(
+              paymentId: int.parse(paymentId!),
+              key: "_payment_remaining_change",
+              value: changeAmount!.toStringAsFixed(2),
+            );
+          }
+
+          _order["balanceAmount"] = balanceAmount;
+          _order["paidAmount"] = tenderAmount;
+          _order["tenderAmount"] = tenderAmount;
+
+          try {
+            final offlineBox = Hive.box('offlineOrders');
+            final key = (orderId ?? 0).toString();
+
+            if (offlineBox.containsKey(key)) {
+              final updated =
+              Map<String, dynamic>.from(offlineBox.get(key));
+              updated["balanceAmount"] = balanceAmount;
+              updated["paidAmount"] = tenderAmount;
+              updated["tenderAmount"] = tenderAmount;
+
+              offlineBox.put(key, updated);
+            }
           } catch (e) {
-            print("⚠ Failed deleting offline order: $e");
+            print("⚠ Hive update error: $e");
           }
-        }
 
-        // ------------------------------------------------------
-        // ⭐ BALANCE CALCULATION (YOUR OLD CORRECT LOGIC)
-        // ------------------------------------------------------
-        final bool isExactPayment = (amount == remainingBalance);
-        final bool isOverPayment = (amount > remainingBalance);
-        final bool isPartialPayment = (amount < remainingBalance);
+          amountController.clear();
 
-        tenderAmount += amount;
+          if (mounted) setState(() {});
 
-        if (isOverPayment) {
-          changeAmount = amount - remainingBalance;
-          balanceAmount = 0.0;
-        } else if (isExactPayment) {
-          changeAmount = 0.0;
-          balanceAmount = 0.0;
-        } else if (isPartialPayment) {
-          balanceAmount = remainingBalance - amount;
-          changeAmount = 0.0;
-        }
-
-        balanceAmount =
-            double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
-
-// ------------------------------------------------------
-// ⭐ UPDATE PAYMENT META (CORRECT LOCATION)
-// ------------------------------------------------------
-        if (changeAmount != null && changeAmount! > 0) {
-          final repo = PaymentRepository();
-
-          bool updated = await repo.updatePaymentMeta(
-            paymentId: int.parse(paymentId!),
-            key: "_payment_remaining_change",
-            value: changeAmount!.toStringAsFixed(2),
-          );
-
-          if (kDebugMode) {
-            print(">>> Update Remaining Change API Status: $updated");
+          // ------------------------------------------
+          // SHOW POPUPS (unchanged)
+          // ------------------------------------------
+          if (isPartialPayment && balanceAmount > 0) {
+            _showPartialPaymentDialog(context, amount);
+          } else {
+            _fetchPaymentsByOrderId();
+            _showPaymentDialog(
+              context,
+              amount,
+              changeAmount: changeAmount,
+              showChange: changeAmount > 0,
+            );
           }
+
+          subscription?.cancel();
         }
-
-// ------------------------------------------------------
-// ⭐ SAVE BALANCE + TENDER AMOUNT TO ORDER + HIVE
-// ------------------------------------------------------
-
-
-        // ------------------------------------------------------
-        // ⭐ SAVE BALANCE + TENDER AMOUNT TO ORDER + HIVE
-        // ------------------------------------------------------
-        _order["balanceAmount"] = balanceAmount;
-        _order["paidAmount"] = tenderAmount;
-        _order["tenderAmount"] = tenderAmount;
-
-        try {
-          final offlineBox = Hive.box('offlineOrders');
-          final key = (orderId ?? 0).toString();
-
-          if (offlineBox.containsKey(key)) {
-            final updated =
-            Map<String, dynamic>.from(offlineBox.get(key));
-            updated["balanceAmount"] = balanceAmount;
-            updated["paidAmount"] = tenderAmount;
-            updated["tenderAmount"] = tenderAmount;
-
-            offlineBox.put(key, updated);
-            print("✔ Hive updated → balance=$balanceAmount paid=$tenderAmount");
-          }
-        } catch (e) {
-          print("⚠ Hive update error: $e");
-        }
-
-        amountController.clear();
-
-        if (mounted) setState(() {});
-
-        // ------------------------------------------------------
-        // ⭐ SHOW POPUPS
-        // ------------------------------------------------------
-        if (isPartialPayment && balanceAmount > 0) {
-          _showPartialPaymentDialog(context, amount);
-        } else {
-          _fetchPaymentsByOrderId();
-          _showPaymentDialog(
-            context,
-            amount,
-            changeAmount: changeAmount,
-            showChange: changeAmount > 0,
-          );
-        }
-
-        subscription?.cancel();
-      }
-    });
+      },
+    );
   }
 
   @override
@@ -1554,6 +1642,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 "Redeemed Amount",
                                 '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
                               ),
+                            _buildOrderCalculation(
+                              "Pay by Card",
+                              '${TextConstants.currencySymbol}${payByCard.toStringAsFixed(2)}',
+                            ),
 
                             _buildOrderCalculation(
                                 TextConstants.payByCash,
@@ -2392,7 +2484,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                             ),
                                             child: TextField(
                                               controller: amountController,
-                                              readOnly: true,
+                                              readOnly: false,
+                                              keyboardType: TextInputType.numberWithOptions(decimal: true),
                                               enabled: balanceAmount >= 0,
                                               textAlign: TextAlign.right,
                                               decoration: InputDecoration(
@@ -2434,7 +2527,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           ResponsiveLayout.getHeight(8)),
 
 // QUICK AMOUNT BUTTONS - FIXED
-                                      if (balanceAmount > 0 && selectedPaymentMethod != TextConstants.ebtText)
+                                      if (balanceAmount > 0 && selectedPaymentMethod != TextConstants.ebtText && selectedPaymentMethod != TextConstants.card)
 
                                         Row(
                                           mainAxisAlignment:
@@ -2553,7 +2646,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                                             double amount = double.tryParse(cleanAmount) ?? 0.0;
 
-                                            // ✅ Only block when net payable > 0 AND entered amount = 0
+                                            // ❗ Block when amount = 0 (except netPayable = 0)
                                             if (amount == 0.0 && computedNetPayable > 0) {
                                               setState(() {
                                                 _amountErrorText = TextConstants.amountValidation;
@@ -2563,14 +2656,29 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                                             _amountErrorText = null;
 
-                                            _callCreatePaymentAPI(); // ✅ WORKS when net payable = 0
+                                            // ⭐ ONLY HERE → check payment mode
+                                            if (selectedPaymentMethod == TextConstants.card) {
+                                              print("💳 Opening Sunmi ONLY after Pay click");
+
+                                              _openSunmiSaleScreen(
+                                                amount: amount,
+                                                orderId: (widget.orderId ?? widget.offlineOrderId).toString(),
+                                              );
+
+                                              // Clear amount field after transaction call
+                                              _rawAmount = 0;
+                                              amountController.text = '${TextConstants.currencySymbol}0.00';
+                                              _isAmountEntered = false;
+                                              return;  // Prevent calling API twice
+                                            }
+
+                                            // ⭐ For all other payment modes → normal flow
+                                            _callCreatePaymentAPI();
 
                                             _rawAmount = 0;
                                             amountController.text = '${TextConstants.currencySymbol}0.00';
                                             _isAmountEntered = false;
                                           },
-
-
 
                                           isLoading: isLoading,
                                         ),
@@ -2694,7 +2802,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             },
                           ),
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
-
                           _buildPaymentModeButton(
                             TextConstants.card,
                             Icons.credit_card,
@@ -2705,11 +2812,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 _resetAmount();
                               });
 
-                              _openSunmiSaleScreen(
-                                amount: balanceAmount,
-                                orderId: (widget.orderId ?? widget.offlineOrderId).toString(),
-                              );
-
+                              setState(() {
+                                _isAmountEntered = false;
+                              });
                             },
                           ),
 

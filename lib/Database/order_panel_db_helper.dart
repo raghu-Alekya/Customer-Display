@@ -1265,9 +1265,14 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         products[existingIndex] = {
           ...existing,
           'quantity': newQty,
-          'price': price,
           'is_ebt_eligible': mergedEbt,
+          // ⭐ DO NOT override price unless needed
+          'price': existing['price'],
         };
+
+// ⭐ Very important: STOP popup flow completely
+        print("🔁 SAME PRODUCT → Qty incremented. SKIPPING POPUP.");
+
 
       } else {
         print("🆕 ADDING NEW PRODUCT → $name");
@@ -1328,6 +1333,43 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   static Map<String, dynamic>? getFromCache(String sku) {
     return _inMemoryProductCache[sku.trim().toLowerCase()];
   }
+
+  static void removeFromCache(String sku) {
+    final key = sku.trim().toLowerCase();
+    if (_inMemoryProductCache.containsKey(key)) {
+      _inMemoryProductCache.remove(key);
+      print("🧹 MEMORY CACHE CLEARED for SKU → $key");
+    }
+  }
+
+  static bool existsInOrderBySku(int orderId, String sku) {
+    final box = Hive.box('offlineOrders');
+    final order = box.get(orderId.toString());
+
+    if (order == null || order["products"] == null) return false;
+
+    final normalized = sku.trim().toLowerCase();
+
+    for (final p in order["products"]) {
+      final storedSku = (p["sku"] ??
+          p["item_sku"] ??
+          p["product_sku"] ??
+          p["fast_key_item_sku"] ??
+          "")
+          .toString()
+          .trim()
+          .toLowerCase();
+
+      if (storedSku == normalized) {
+        return true;      // MATCH FOUND → PRODUCT ALREADY EXISTS
+      }
+    }
+
+    return false;          // NO MATCH
+  }
+
+
+
 
   Future<bool> orderHasItems(int orderId) async {
     try {

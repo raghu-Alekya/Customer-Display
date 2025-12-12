@@ -26,7 +26,7 @@ import android.widget.FrameLayout
 import org.json.JSONArray
 import java.text.NumberFormat
 import java.util.Locale
-import kotlin.math.absoluteValue
+import android.content.Intent
 
 class MainActivity : FlutterActivity() {
 
@@ -36,11 +36,15 @@ class MainActivity : FlutterActivity() {
     private var currentStoreName: String = ""
     private var currentStoreLogoUrl: String? = null
     private var currentStoreBaseUrl: String = ""
+    private val PAYMENT_CHANNEL = "sunmi_payment_channel"
+    private var saleResultCallback: MethodChannel.Result? = null
 
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         Log.d("CustomerDisplay", "🔧 configureFlutterEngine called")
+
+
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             Log.d("CustomerDisplay", "📢 MethodChannel call → method=${call.method}, args=${call.arguments}")
@@ -162,6 +166,42 @@ class MainActivity : FlutterActivity() {
                     result.notImplemented()
                 }
             }
+        }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PAYMENT_CHANNEL)
+            .setMethodCallHandler { call, result ->
+
+                if (call.method == "startSale") {
+
+                    val amount = call.argument<String>("amount")
+                    val orderId = call.argument<String>("orderId")
+
+                    val intent = Intent()
+                    intent.setClassName(
+                        "com.sunmi.payment.demo",
+                        "com.sunmi.payment.demo.page.trans.SaleActivity"
+                    )
+                    intent.putExtra("amount", amount)
+                    intent.putExtra("orderId", orderId)
+
+                    saleResultCallback = result
+
+                    startActivityForResult(intent, 9090)
+                } else {
+                    result.notImplemented()
+                }
+            }
+    }
+
+    // -----------------------------
+    // ⭐ GET RESULT FROM SaleActivity
+    // -----------------------------
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == 9090) {
+            val json = data?.getStringExtra("paymentResult") ?: "{}"
+            saleResultCallback?.success(json)
+            saleResultCallback = null
         }
     }
 

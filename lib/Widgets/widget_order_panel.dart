@@ -1035,7 +1035,48 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               image = product.images!.first.src ?? "";
             }
 
-            // ✅ Check variable product tag FIRST
+            // ------------------------------------------------------------
+// ⭐ SKIP POPUP IF PRODUCT ALREADY EXISTS IN ORDERPANEL
+// ------------------------------------------------------------
+            // ------------------------------------------------------------
+// ⭐ SKIP POPUP IF PRODUCT ALREADY EXISTS IN ORDERPANEL
+// ------------------------------------------------------------
+            final bool exists = OrderHelper.existsInOrderBySku(
+              activeOrderId,
+              productSku,
+            );
+
+            if (exists) {
+              print("🔁 SAME PRODUCT FOUND → SKIP POPUP & INCREMENT QTY");
+
+              await orderHelper.addItemToOrder(
+                productId,
+                productName,
+                image,
+                productPrice,
+                1,
+                productSku,
+                activeOrderId,
+                type: ItemType.product.value,
+                productId: productId,
+                variationId: -1,
+              );
+
+
+
+              await fetchOrderItems();
+              await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+
+              _isLoading = false;
+              if (mounted) setState(() {});
+              return; // 🚫 STOP HERE — POPUP NEVER OPENS
+            }
+
+
+
+// ------------------------------------------------------------
+// ⭐ VARIABLE PRICE PRODUCT CHECK
+// ------------------------------------------------------------
             final hasVariablePriceTag = (product.tags ?? []).any((tag) {
               final name = (tag.name ?? "").toLowerCase();
               final slug = (tag.slug ?? "").toLowerCase();
@@ -1043,24 +1084,29 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             });
 
             print("🧪 hasVariablePriceTag = $hasVariablePriceTag");
-
-// Debug loading state
             print("⏳ _isLoading before popup = $_isLoading");
 
+
+
+// ------------------------------------------------------------
+// ⭐ SHOW VARIABLE PRICE POPUP (ONLY FIRST TIME)
+// ------------------------------------------------------------
             if (hasVariablePriceTag) {
               print("💡 Triggering ManualPriceDialog for variable product");
+
               try {
                 final double? enteredPrice = await ManualPriceDialog.show(
                   context,
                   productName: productName,
-                  minPrice: productPrice, productImage: '',
+                  minPrice: productPrice,
+                  productImage: '',
                 );
 
                 print("💬 ManualPriceDialog returned → $enteredPrice");
 
                 if (enteredPrice == null) {
                   print("❌ User cancelled ManualPriceDialog");
-                  return; // user cancelled
+                  return;
                 }
 
                 print("✅ Adding variable product to order with price $enteredPrice");
@@ -1080,6 +1126,27 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                 print("🛒 Product added to order");
 
+                // / ⭐ FIX: MARK VARIABLE PRICE AS ALREADY ADDED
+// ------------------------------------------------------------
+                // ⭐ FIX: MARK VARIABLE PRICE AS ALREADY ADDED
+                final box = Hive.box('offlineOrders');
+                final orderKey = activeOrderId.toString();
+                final hiveOrder = Map<String, dynamic>.from(
+                  box.get(orderKey, defaultValue: {}),
+                );
+
+// Mark that popup has been shown once
+                hiveOrder["variable_price_added_$productId"] = true;
+
+// VERY IMPORTANT: Store the actual manual price user entered
+                hiveOrder["selected_price_$productId"] = enteredPrice;
+
+                await box.put(orderKey, hiveOrder);
+
+                print("💾 FIX APPLIED → Variable price flags saved for scanned product");
+                print("  → variable_price_added_$productId = true");
+                print("  → selected_price_$productId = $enteredPrice");
+
                 await fetchOrderItems();
                 await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
 
@@ -1091,9 +1158,14 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 print("⏳ _isLoading after popup = $_isLoading");
               }
 
-              return; // Stop further flow for this product
+              return; // STOP FURTHER EXECUTION
             }
 
+
+
+// ------------------------------------------------------------
+// ⭐ NORMAL PRODUCT FLOW
+// ------------------------------------------------------------
             print("➡ Not a variable product, continuing normal flow");
 
             // ---------------------------------------------------------------------------
@@ -2111,7 +2183,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
 
     // 🛒 DELETE PRODUCT
+    // 🛒 DELETE PRODUCT
     else {
+      int deletedProductId = -1;
+      String matchedSku = ""; // ⭐ Add this
+
       products.removeWhere((p) {
         final name1 = (p['name'] ??
             p['product_name'] ??
@@ -2119,18 +2195,80 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             '')
             .toString()
             .toLowerCase();
-        final name2 =
-        (orderItem['item_name'] ?? '').toString().toLowerCase();
 
-        final price1 =
-            double.tryParse(p['price']?.toString() ?? '0') ?? 0;
-        final price2 =
-            double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+        final name2 = (orderItem['item_name'] ?? '').toString().toLowerCase();
 
-        return name1 == name2 && price1 == price2;
+        final price1 = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
+        final price2 = double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+
+        final match = name1 == name2 && price1 == price2;
+
+        if (match) {
+          // Capture product_id
+          deletedProductId =
+              p['product_id'] ??
+                  p['id'] ??
+                  p['fast_key_product_id'] ??
+                  p['serverItemId'] ??
+                  -1;
+
+          // ⭐ Capture SKU BEFORE removing product
+          matchedSku = (p['sku'] ??
+              p['item_sku'] ??
+              p['product_sku'] ??
+              p['fast_key_item_sku'] ??
+              '')
+              .toString()
+              .toLowerCase()
+              .trim();
+        }
+
+        return match; // Now remove the product
       });
 
       offlineOrder['products'] = products;
+
+      // -------------------------------
+      // RESET VARIABLE PRICE FLAGS
+      // -------------------------------
+      if (deletedProductId != -1) {
+        offlineOrder.remove("variable_price_added_$deletedProductId");
+        offlineOrder.remove("selected_price_$deletedProductId");
+
+        print("🧹 Cleared variable price flags for product → $deletedProductId");
+      } else {
+        print("⚠️ Could not determine product_id for cleanup.");
+      }
+
+      // ---------------------------------
+      // CLEAN MEMORY & HIVE SKU CACHE
+      // ---------------------------------
+      if (matchedSku.isNotEmpty) {
+        print("🔍 Cleaning caches for SKU → $matchedSku");
+
+        try {
+          OrderHelper.removeFromCache(matchedSku);
+          print("🧠 In-memory product cache cleared → $matchedSku");
+        } catch (e) {
+          print("⚠️ Memory cache cleanup failed → $e");
+        }
+
+        try {
+          final productBox = Hive.box('productCache');
+          final cacheKey = "sku_$matchedSku";
+
+          if (productBox.containsKey(cacheKey)) {
+            await productBox.delete(cacheKey);
+            print("💽 HIVE productCache cleared → $cacheKey");
+          } else {
+            print("💽 No Hive cache entry found for $cacheKey");
+          }
+        } catch (e) {
+          print("⚠️ Hive cache cleanup failed → $e");
+        }
+      } else {
+        print("⚠️ SKU could not be extracted → Cannot clean cache.");
+      }
     }
 
     // 💾 Save updated order back to Hive
@@ -3080,19 +3218,19 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                                   crossAxisAlignment: CrossAxisAlignment.start,
                                                                   children: [
                                                                     Text(
-                                                                        displayName.length > 40
-                                                                            ? displayName.substring(0, 40) + "..."
-                                                                            : displayName,
-                                                                        maxLines: 1,
-                                                                        overflow: TextOverflow.ellipsis,
-                                                                        style: TextStyle(
-                                                                          fontSize: 12,
-                                                                          fontWeight: FontWeight.bold,
-                                                                          color: themeHelper.themeMode == ThemeMode.dark
-                                                                              ? ThemeNotifier.textDark
-                                                                              : ThemeNotifier.textLight,
-                                                                        ),
-                                                                        ),
+                                                                      displayName.length > 40
+                                                                          ? displayName.substring(0, 40) + "..."
+                                                                          : displayName,
+                                                                      maxLines: 1,
+                                                                      overflow: TextOverflow.ellipsis,
+                                                                      style: TextStyle(
+                                                                        fontSize: 12,
+                                                                        fontWeight: FontWeight.bold,
+                                                                        color: themeHelper.themeMode == ThemeMode.dark
+                                                                            ? ThemeNotifier.textDark
+                                                                            : ThemeNotifier.textLight,
+                                                                      ),
+                                                                    ),
                                                                     if (isVariant) ...[
                                                                       const SizedBox(height: 4),
                                                                       Icon(Icons.link, size: 15, color: Colors.red),
@@ -3938,3 +4076,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 //   );
 // }
 }
+
+// extension on Box {
+//   void clearCache() {}
+// }

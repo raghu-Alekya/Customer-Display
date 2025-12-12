@@ -495,23 +495,140 @@ class _TopBarState extends State<TopBar> {
                                                 t.name?.toLowerCase() == "variable"
                                             );
 
-                                            if (hasVariablePriceTag && !hasVariants) {
-                                              print("💰 Variable product detected → showing manual price popup");
+                                            // ----------------------------------------------------------------------
+// 🟦 STEP 1: Load products from order
+// ----------------------------------------------------------------------
+                                            List<Map<String, dynamic>> products = (rawOrder["products"] ?? [])
+                                                .map<Map<String, dynamic>>((i) => Map<String, dynamic>.from(i))
+                                                .toList();
 
-                                              // ✅ Use the static show method of your ManualPriceDialog widget
+                                            final String variableKey   = "variable_price_added_${product.id}";
+                                            final String savedPriceKey = "selected_price_${product.id}";
+
+// ----------------------------------------------------------------------
+// 🟦 STEP 2: GLOBAL FLAG → Was popup already shown earlier?
+// ----------------------------------------------------------------------
+                                            final bool popupAlreadyShown = rawOrder[variableKey] == true;
+
+                                            if (popupAlreadyShown) {
+                                              print("🟢 Popup already shown earlier → Skipping popup everywhere");
+
+                                              // Load saved manual price
+                                              final savedPrice = rawOrder[savedPriceKey] ?? productPrice;
+                                              final double manualPrice =
+                                                  double.tryParse(savedPrice.toString()) ?? productPrice;
+
+                                              finalPrice = manualPrice;
+
+                                              // Check if product already exists → increment qty
+                                              int existIndex = products.indexWhere((p) =>
+                                              p["product_id"].toString() == product.id.toString() &&
+                                                  (p["variation_id"]?.toString() ?? "-1") == "-1");
+
+                                              if (existIndex != -1) {
+                                                print("🟢 Exists in order → incrementing quantity");
+
+                                                var existing = products[existIndex];
+                                                int oldQty = int.tryParse(existing["quantity"].toString()) ?? 1;
+
+                                                existing["quantity"] = oldQty + 1;
+                                                existing["price"] = manualPrice;
+                                                existing["unit_price"] = manualPrice;
+                                                existing["sales_price"] = manualPrice;
+                                                existing["regular_price"] = manualPrice;
+                                                existing["timestamp"] = DateTime.now().millisecondsSinceEpoch;
+
+                                                products[existIndex] = existing;
+
+                                                rawOrder["products"] = products;
+                                                rawOrder["line_items"] = products;
+                                                await offlineBox.put(activeOrderId, rawOrder);
+
+                                                await orderHelper.loadData();
+                                                _removeOverlay();
+                                                _clearSearch();
+                                                setState(() => isAddingItemLoading = false);
+
+                                                widget.onProductSelected?.call(product);
+                                                return;
+                                              }
+
+                                              // not found → add new product directly using saved price
+                                              print("🆕 Product not found but popup shown → adding WITHOUT popup");
+                                              finalPrice = manualPrice;
+                                              // let simple-product add flow continue
+                                            }
+
+// ----------------------------------------------------------------------
+// 🟦 STEP 3: If product exists (but popup wasn't shown earlier)
+// ----------------------------------------------------------------------
+                                            int existIndex = products.indexWhere((p) =>
+                                            p["product_id"].toString() == product.id.toString() &&
+                                                (p["variation_id"]?.toString() ?? "-1") == "-1");
+
+                                            if (existIndex != -1) {
+                                              print("🟢 First add was normal but exists now → Skip popup & increase qty");
+
+                                              var existing = products[existIndex];
+
+                                              double existingPrice =
+                                                  double.tryParse(existing["unit_price"]?.toString() ??
+                                                      existing["price"]?.toString() ??
+                                                      "0") ??
+                                                      0;
+
+                                              int oldQty = int.tryParse(existing["quantity"].toString()) ?? 1;
+                                              int newQty = oldQty + 1;
+
+                                              existing["quantity"] = newQty;
+                                              existing["price"] = existingPrice;
+                                              existing["unit_price"] = existingPrice;
+                                              existing["sales_price"] = existingPrice;
+                                              existing["regular_price"] = existingPrice;
+                                              existing["timestamp"] = DateTime.now().millisecondsSinceEpoch;
+
+                                              products[existIndex] = existing;
+
+                                              rawOrder["products"] = products;
+                                              rawOrder["line_items"] = products;
+                                              await offlineBox.put(activeOrderId, rawOrder);
+
+                                              await orderHelper.loadData();
+                                              _removeOverlay();
+                                              _clearSearch();
+                                              setState(() => isAddingItemLoading = false);
+                                              widget.onProductSelected?.call(product);
+                                              return;
+                                            }
+
+// ----------------------------------------------------------------------
+// 🟥 STEP 4: Product NOT found → FIRST TIME variable-price popup
+// ----------------------------------------------------------------------
+                                            if (hasVariablePriceTag && !hasVariants) {
+                                              print("💰 Variable product → showing manual price popup for FIRST TIME");
+
                                               final enteredPrice = await ManualPriceDialog.show(
-                                                _context, // Use the parent context that is still valid
+                                                _context,
                                                 productName: product.name ?? "Product",
-                                                minPrice: productPrice, productImage: '',
+                                                minPrice: productPrice,
+                                                productImage: '',
                                               );
 
                                               if (enteredPrice == null) {
-                                                print("❌ Price entry cancelled → Product not added");
-                                                return; // Stop the flow if cashier cancels
+                                                print("❌ Cancelled → Not adding product");
+                                                return;
                                               }
 
                                               finalPrice = enteredPrice;
-                                              print("✅ Final price set by cashier: ₹$finalPrice");
+
+                                              // 🔥 SAVE FLAG + PRICE (so popup NEVER shows again)
+                                              rawOrder[variableKey] = true;
+                                              rawOrder[savedPriceKey] = finalPrice;
+
+                                              await offlineBox.put(activeOrderId, rawOrder);
+
+                                              print("💾 Saved $variableKey = true");
+                                              print("💾 Saved $savedPriceKey = $finalPrice");
                                             }
 
 
