@@ -40,6 +40,7 @@ import '../../Repositories/Payment/payment_repository.dart';
 import '../../Utilities/global_utility.dart';
 import '../../Utilities/responsive_layout.dart';
 import '../../Utilities/result_utility.dart';
+import '../../Utilities/svg_images_utility.dart';
 import '../../Widgets/scanner_guard.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_payment_dialog.dart';
@@ -49,7 +50,6 @@ import 'Settings/image_utils.dart';
 import 'Settings/printer_setup_screen.dart';
 import 'edit_product_screen.dart';
 import 'package:android_intent_plus/android_intent.dart';
-
 
 import 'package:thermal_printer/thermal_printer.dart';
 
@@ -105,6 +105,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   List<Map<String, dynamic>> orderItems = [];
   String selectedPaymentMethod = "";
   TextEditingController amountController = TextEditingController();
+  bool _paymentDialogShown = false;
+  bool get isOrderPending => orderStatus == 'pending';
+
 
   final PaymentBloc paymentBloc =
   PaymentBloc(PaymentRepository()); // Added PaymentBloc
@@ -248,6 +251,21 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         payByCash = (offlineOrder['payByCash'] as num?)?.toDouble() ?? 0.0;
         payByOther = (offlineOrder['payByOther'] as num?)?.toDouble() ?? 0.0;
 
+        if (offlineOrder.containsKey('ebtTotal') && offlineOrder['ebtTotal'] != null) {
+          ebtTotal = (offlineOrder['ebtTotal'] as num).toDouble();
+          print("🟩 Restored EBT from Hive = $ebtTotal");
+        } else {
+          print("⚠ No EBT found in Hive — keeping widget EBT = $ebtTotal");
+
+
+          print("🟩 Restored Pending Payment:");
+          print("   → payByCash = $payByCash");
+          print("   → payByOther = $payByOther");
+          print("   → ebtTotal = $ebtTotal");
+          print("   → Tender Amount = $tenderAmount");
+          print("   → Balance Amount = $balanceAmount");
+        }
+
         print("🟩 Restored Pending Payment:");
         print("   → payByCash = $payByCash");
         print("   → payByOther = $payByOther");
@@ -330,6 +348,62 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
   static const MethodChannel _paymentChannel =
   MethodChannel("sunmi_payment_channel");
+
+  Future<void> _openSunmiVoidScreen({
+    required double amount,
+    required String orderId,
+    required String originTransactionId,
+  }) async {
+    if (kDebugMode) {
+      print("🚫 Starting CARD VOID → amount=$amount, orderId=$orderId");
+    }
+
+    final result = await _paymentChannel.invokeMethod("startVoid", {
+      "amount": amount.toString(),
+      "orderId": orderId,
+      "originTransactionId": originTransactionId,
+    });
+
+    final data = jsonDecode(result);
+    final fullSunmi = jsonDecode(data["fullResponse"]);
+
+    final bool success = data["status"] == "SUCCESS";
+    final double voidedAmount =
+        double.tryParse(fullSunmi["processedAmount"] ?? "0") ?? 0.0;
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Card void failed")),
+      );
+      return;
+    }
+
+    // -------------------------------
+    // ✅ UPDATE FLUTTER TOTALS
+    // -------------------------------
+    payByCard = (payByCard - voidedAmount).clamp(0, double.infinity);
+    tenderAmount = (tenderAmount - voidedAmount).clamp(0, double.infinity);
+
+    balanceAmount =
+        (orderTotal - tenderAmount).clamp(0, double.infinity);
+
+    changeAmount = 0;
+
+    if (kDebugMode) {
+      print("✅ VOID SUCCESS");
+      print("payByCard = $payByCard");
+      print("tenderAmount = $tenderAmount");
+      print("balanceAmount = $balanceAmount");
+    }
+
+    setState(() {});
+
+    // -------------------------------
+    // ✅ CALL EXISTING VOID API
+    // -------------------------------
+    _handleVoidPayment(context, isPartial: true);
+  }
+
   Future<void> _openSunmiSaleScreen({
     required double amount,
     required String orderId,
@@ -407,27 +481,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     paymentBloc.createPayment(paymentRequest);
   }
-
-  void _showPaymentPopup(Map<String, dynamic> sunmi) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Sunmi Payment Result"),
-        content: SingleChildScrollView(
-          child: Text(
-            const JsonEncoder.withIndent("  ").convert(sunmi),
-          ),
-        ),
-        actions: [
-          TextButton(
-            child: const Text("OK"),
-            onPressed: () => Navigator.pop(context),
-          )
-        ],
-      ),
-    );
-  }
-
 
   Future<void> updateOfflineOrderRedeem(
       String orderId,
@@ -514,43 +567,47 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 
 
-  //Build #1.0.99: getPaymentsByOrderId API call for payment by cash and payment by other details
   void _fetchPaymentsByOrderId() {
-    if (kDebugMode) {
-      print("###### _fetchPaymentsByOrderId");
-    }
+    if (kDebugMode) print("###### _fetchPaymentsByOrderId");
+
     if (orderId != null) {
       setState(() {
         isSummaryLoading = true; // Show loader
       });
+
       paymentBloc.getPaymentsByOrderId(orderId!);
-      // Build #1.0.151: Fixed - too much of loading in order summary screen of order panel
+
       _paymentListSubscription?.cancel(); // Cancel any existing subscription
       _paymentListSubscription =
           paymentBloc.paymentsListStream.listen((response) {
             if (response.status == Status.COMPLETED) {
-              if (kDebugMode) {
-                print("###### _fetchPaymentsByOrderId Api call COMPLETED");
-              }
-              if (response.data!.isNotEmpty) {
-                // Build #1.0.175: check empty or not
-                orderStatus = response.data!.last.orderStatus ?? TextConstants.processing;
+              if (kDebugMode) print("###### _fetchPaymentsByOrderId Api call COMPLETED");
 
+              if (response.data!.isNotEmpty) {
+                orderStatus = response.data!.last.orderStatus ?? TextConstants.processing;
               }
+
+              // 🔹 Preserve current EBT value before processing
+              final currentEbt = ebtTotal;
+
               _processPaymentList(response.data!);
-            } else if (response.status == Status.ERROR) {
-              if (kDebugMode) {
-                print("Error fetching payments: ${response.message}");
+
+              // 🔹 Restore EBT if not updated by payments
+              if (ebtTotal == 0.0 && currentEbt > 0.0) {
+                ebtTotal = currentEbt;
+                if (kDebugMode) print("⭐ Preserved EBT after payment refresh = $ebtTotal");
               }
+
+            } else if (response.status == Status.ERROR) {
+              if (kDebugMode) print("Error fetching payments: ${response.message}");
             }
+
             setState(() {
               isSummaryLoading = false; // Hide loader
             });
           });
     } else {
-      if (kDebugMode) {
-        print("###### orderId is null");
-      }
+      if (kDebugMode) print("###### orderId is null");
     }
   }
   void _processPaymentList(List<PaymentListModel> payments) {
@@ -639,6 +696,26 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       print("⭐ Updated Balance: $balanceAmount");
       print("⭐ Updated Tender: $tenderAmount");
     }
+
+    // ---------------------------
+// 5️⃣ SHOW PAYMENT DIALOG WHEN FULLY PAID
+// ---------------------------
+    if (balanceAmount == 0 &&
+        !_paymentDialogShown &&
+        payments.isNotEmpty) {
+
+      _paymentDialogShown = true;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showPaymentDialog(
+          context,
+          tenderAmount,
+          changeAmount: changeAmount,
+          showChange: changeAmount > 0,
+        );
+      });
+    }
+
   }
 
 
@@ -765,9 +842,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
           final paymentData = paymentResponse.data!;
           paidAmount = amount;
-
-          _recalculateAfterPayment(amount);
-
           paymentId = paymentData.paymentId.toString();
           orderStatus =
               paymentData.orderStatus ?? TextConstants.processing;
@@ -825,23 +899,41 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           _order["paidAmount"] = tenderAmount;
           _order["tenderAmount"] = tenderAmount;
 
+          // ------------------------------------------------------
+          // ⭐ SAVE BALANCE + TENDER AMOUNT TO ORDER + HIVE
+          // ------------------------------------------------------
           try {
             final offlineBox = Hive.box('offlineOrders');
             final key = (orderId ?? 0).toString();
 
             if (offlineBox.containsKey(key)) {
-              final updated =
-              Map<String, dynamic>.from(offlineBox.get(key));
+              final updated = Map<String, dynamic>.from(offlineBox.get(key));
+
               updated["balanceAmount"] = balanceAmount;
               updated["paidAmount"] = tenderAmount;
               updated["tenderAmount"] = tenderAmount;
 
+              // ⭐ Add this line to store EBT
+              updated["ebtTotal"] = ebtTotal;
+
               offlineBox.put(key, updated);
+
+              print("✔ Hive updated → balance=$balanceAmount paid=$tenderAmount ebt=$ebtTotal");
+            } else {
+              // If order not in Hive yet, create it
+              offlineBox.put(key, {
+                "balanceAmount": balanceAmount,
+                "paidAmount": tenderAmount,
+                "tenderAmount": tenderAmount,
+                "payByCash": payByCash,
+                "payByOther": payByOther,
+                "ebtTotal": ebtTotal,   // ⭐ Add here too
+              });
+              print("✔ Hive created → balance=$balanceAmount paid=$tenderAmount ebt=$ebtTotal");
             }
           } catch (e) {
             print("⚠ Hive update error: $e");
           }
-
           amountController.clear();
 
           if (mounted) setState(() {});
@@ -1980,46 +2072,53 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           ),
                         ),
 
-                        // 🔻 Variant Icon Below Name
-                        if (isVariant) ...[
-                          const SizedBox(height: 3),
-                          Icon(
-                            Icons.link,
-                            size: 12,
-                            color: Colors.red,
-                          ),
-                        ],
-
-                        const SizedBox(height: 2),
-                        if (isEbtEligible) ...[
-                          const SizedBox(height: 3),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.green,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              "EBT",
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
+                        Row(
+                          children: [
+                            // 🔹 Price × Qty (not for payouts/custom/coupon)
+                            if (!isPayoutOrCoupon)
+                              Text(
+                                "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: themeHelper.themeMode == ThemeMode.dark
+                                      ? ThemeNotifier.textDark
+                                      : Colors.black87,
+                                ),
                               ),
-                            ),
-                          ),
-                        ],
-                        // 🔹 Price × Qty (not for payouts/custom/coupon)
-                        if (!isPayoutOrCoupon)
-                          Text(
-                            "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: themeHelper.themeMode == ThemeMode.dark
-                                  ? ThemeNotifier.textDark
-                                  : Colors.black87,
-                            ),
-                          ),
+
+                            // spacing after price
+                            if (!isPayoutOrCoupon) const SizedBox(width: 6),
+
+                            // 🟢 EBT Badge
+                            if (isEbtEligible)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.green,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  "EBT",
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+
+                            // spacing after EBT
+                            if (isEbtEligible) const SizedBox(width: 6),
+
+                            // 🔻 Variant Icon
+                            if (isVariant)
+                              SvgPicture.asset(
+                                SvgUtils.variationIcon,
+                                height: 10,
+                                width: 10,
+                              ),
+                          ],
+                        )
                       ],
                     ),
                   ),
@@ -2536,32 +2635,32 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                               balanceAmount)
                                               .map(
                                                 (amount) => GestureDetector(
-                                                    onTap: () {
-                                                      setState(() {
-                                                        double allowedAmount = balanceAmount;
+                                              onTap: () {
+                                                setState(() {
+                                                  double allowedAmount = balanceAmount;
 
-                                                        // --- EBT PAYMENT CASE ---
-                                                        if (selectedPaymentMethod == TextConstants.ebtText) {
-                                                          allowedAmount = min(balanceAmount, ebtTotal);
-                                                        }
+                                                  // --- EBT PAYMENT CASE ---
+                                                  if (selectedPaymentMethod == TextConstants.ebtText) {
+                                                    allowedAmount = min(balanceAmount, ebtTotal);
+                                                  }
 
-                                                        // --- CARD PAYMENT CASE ---
-                                                        else if (selectedPaymentMethod == TextConstants.card) {
-                                                          allowedAmount = balanceAmount;   // full remaining balance allowed
-                                                        }
+                                                  // --- CARD PAYMENT CASE ---
+                                                  else if (selectedPaymentMethod == TextConstants.card) {
+                                                    allowedAmount = balanceAmount;   // full remaining balance allowed
+                                                  }
 
-                                                        // UPDATE RAW AMOUNT
-                                                        _rawAmount = (allowedAmount * 100).toInt();
+                                                  // UPDATE RAW AMOUNT
+                                                  _rawAmount = (allowedAmount * 100).toInt();
 
-                                                        // UPDATE TEXT FIELD
-                                                        amountController.text =
-                                                        '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
+                                                  // UPDATE TEXT FIELD
+                                                  amountController.text =
+                                                  '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
 
-                                                        _amountErrorText = null;
-                                                        _isAmountEntered = true;
-                                                      });
-                                                    },
-                                                    child: _buildQuickAmountButton(
+                                                  _amountErrorText = null;
+                                                  _isAmountEntered = true;
+                                                });
+                                              },
+                                              child: _buildQuickAmountButton(
                                                   '${TextConstants.currencySymbol} ${amount.toStringAsFixed(2)}'),
                                             ),
                                           )
@@ -2581,49 +2680,49 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           getPaidAmount: () =>
                                           amountController.text,
                                           balanceAmount: balanceAmount,
-                                            onDigitPressed: (value) {
-                                              if (selectedPaymentMethod == TextConstants.ebtText) {
-                                                int maxAmount = (min(ebtTotal, balanceAmount) * 100).toInt();
+                                          onDigitPressed: (value) {
+                                            if (selectedPaymentMethod == TextConstants.ebtText) {
+                                              int maxAmount = (min(ebtTotal, balanceAmount) * 100).toInt();
 
-                                                int digit = value == '00'
-                                                    ? 0
-                                                    : int.tryParse(value) ?? 0;
+                                              int digit = value == '00'
+                                                  ? 0
+                                                  : int.tryParse(value) ?? 0;
 
-                                                int newAmount = value == '00'
-                                                    ? _rawAmount * 100
-                                                    : _rawAmount * 10 + digit;
+                                              int newAmount = value == '00'
+                                                  ? _rawAmount * 100
+                                                  : _rawAmount * 10 + digit;
 
+                                              if (newAmount > maxAmount) return;
+
+                                              _rawAmount = newAmount;
+                                            }
+
+                                            else {
+                                              // ---------- CARD LIMIT LOGIC ----------
+                                              int maxAmount = (balanceAmount * 100).toInt();
+
+                                              if (value == '00') {
+                                                int newAmount = _rawAmount * 100;
                                                 if (newAmount > maxAmount) return;
-
+                                                _rawAmount = newAmount;
+                                              } else {
+                                                int digit = int.tryParse(value) ?? 0;
+                                                int newAmount = _rawAmount * 10 + digit;
+                                                if (newAmount > maxAmount) return;
                                                 _rawAmount = newAmount;
                                               }
+                                            }
 
-                                              else {
-                                                // ---------- CARD LIMIT LOGIC ----------
-                                                int maxAmount = (balanceAmount * 100).toInt();
+                                            double displayValue = _rawAmount / 100.0;
+                                            amountController.text =
+                                            '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
-                                                if (value == '00') {
-                                                  int newAmount = _rawAmount * 100;
-                                                  if (newAmount > maxAmount) return;
-                                                  _rawAmount = newAmount;
-                                                } else {
-                                                  int digit = int.tryParse(value) ?? 0;
-                                                  int newAmount = _rawAmount * 10 + digit;
-                                                  if (newAmount > maxAmount) return;
-                                                  _rawAmount = newAmount;
-                                                }
-                                              }
+                                            setState(() {
+                                              _isAmountEntered = _rawAmount != 0;
+                                            });
+                                          },
 
-                                              double displayValue = _rawAmount / 100.0;
-                                              amountController.text =
-                                              '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
-
-                                              setState(() {
-                                                _isAmountEntered = _rawAmount != 0;
-                                              });
-                                            },
-
-                                            onClearPressed: () {
+                                          onClearPressed: () {
                                             _rawAmount = 0;
                                             amountController.text =
                                             '${TextConstants.currencySymbol}0.00';
@@ -3053,16 +3152,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               ),
 
                               const SizedBox(height: 20),
-
                               _buildCouponButton(
                                 TextConstants.coupon,
                                 "assets/coupon.png",
                                 isActive: redeemedValue == 0 &&
                                     !isPaymentStarted &&
-                                    !hasEbtItem,
+                                    !hasEbtItem &&
+                                    !isOrderPending,
                                 onTap: () {
-                                  if (hasEbtItem) return;  // block coupon
-                                  if (redeemedValue > 0 || isPaymentStarted) return;
+                                  if (hasEbtItem ||
+                                      redeemedValue > 0 ||
+                                      isPaymentStarted ||
+                                      isOrderPending) {
+                                    return;
+                                  }
                                   _openCouponPopup();
                                 },
                               ),
@@ -3930,7 +4033,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         status: PaymentStatus.partial,
         mode: PaymentMode.cash,
         amount: amount,
-        onVoid: () => showVoidExitConfirmation(context, true),
+        onVoid: () {
+          if (selectedPaymentMethod == TextConstants.card &&
+              paymentId != null &&
+              paymentId!.isNotEmpty) {
+
+            _openSunmiVoidScreen(
+              amount: payByCard,
+              orderId: orderId.toString(),
+              originTransactionId: paymentId!,
+            );
+          } else {
+            // Cash / EBT / Wallet → normal API void
+            showVoidExitConfirmation(context, true);
+          }
+        },
+
 
         /// pass true to change order status to pending, as this is partial payment , voided by user
         onNextPayment: () {
@@ -3996,7 +4114,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         mode: PaymentMode.cash,
         amount: amount,
         changeAmount: showChange ? changeAmount : null,
-        onVoid: () => showVoidExitConfirmation(context, true),
+        onVoid: () {
+          if (selectedPaymentMethod == TextConstants.card &&
+              paymentId != null &&
+              paymentId!.isNotEmpty) {
+
+            _openSunmiVoidScreen(
+              amount: payByCard,
+              orderId: orderId.toString(),
+              originTransactionId: paymentId!,
+            );
+          } else {
+            // Cash / EBT / Wallet → normal API void
+            showVoidExitConfirmation(context, true);
+          }
+        },
+
         onNoReceipt: () async {
           if (kDebugMode) print(">>> NoReceipt pressed");
           await _updateCustomerDisplayWelcome(storeInfo);

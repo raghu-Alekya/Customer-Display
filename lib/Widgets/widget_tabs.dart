@@ -276,7 +276,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       );
   }
 
-  //Build the top tabs
   Widget _buildTabs() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return ClipPath(
@@ -289,33 +288,45 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
           decoration: BoxDecoration(
             color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
                 .tabsBackground :Color(0xFFEAEDFF),
-            borderRadius: BorderRadius.circular(16.0),
+            // borderRadius: BorderRadius.circular(16.0),
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            //mainAxisAlignment: MainAxisAlignment.spaceAround,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _buildTab(
                 0,
                 SvgUtils.addDiscountIcon,
                 "Merchant \nDiscounts",
-                Color(0xFF007BFF),      // icon color
-                Color(0xFF007BFF),    // text color
+
+                const Color(0xFFFFFFFF), // default = white for logo
+                const Color(0xFFFFFFFF),// Foreground text color
+                // Color(0xFF007BFF),      // icon color
+                // Color(0xFF007BFF),    // text color
+                // color: isSelected
+                //     ? const Color(0xFFFFFFFF) // default = white
+                //     : Colors.blue,          // selected = blue
+
+                //themeHelper: themeHelper,
               ),
 
               const SizedBox(width: 10),
 
               if (_selectedTabIndex != 0 && _selectedTabIndex != 1)
-                Divider(height: 1, thickness: 1, indent: 10, endIndent: 10,
+                Divider(height: 1, thickness: 1, indent: 1, endIndent: 1,
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? Colors.black
-                        : Color(0xFFB6BFF9)),
+                        : Color(0xFF2B367F)),
 
               _buildTab(
-                1,
-                SvgUtils.cashbackIcon,
-                "Cashback",
-                Color(0xFF55CBCD),    // icon color
-                Color(0xFF55CBCD),     // text color
+                  1,
+                  SvgUtils.cashbackIcon,
+                  "Cashback",
+                  // Color(0xFF55CBCD),    // icon color
+                  // Color(0xFF55CBCD),     // text color
+                  const Color(0xFFFFFFFF), // default = white for logo
+                  const Color(0xFFFFFFFF)
+
               ),
 
               const SizedBox(width: 10),
@@ -327,11 +338,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                         : Color(0xFFB6BFF9)),
 
               _buildTab(
-                2,
-                SvgUtils.addCustomItemIcon,
-                "Custom\nItem",
-                Color(0xFF55709A),    // icon color
-                Color(0xFF55709A),   // text color
+                  2,
+                  SvgUtils.addCustomItemIcon,
+                  "Custom\nItem",
+                  // Color(0xFF55709A),    // icon color
+                  // Color(0xFF55709A),
+                  const Color(0xFFFFFFFF), // default = white for logo
+                  const Color(0xFFFFFFFF)
+
+
               ),
 
               const SizedBox(width: 10),
@@ -342,11 +357,13 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                     : Color(0xFFB6BFF9)),
 
               _buildTab(
-                3,
-                SvgUtils.addPayoutIcon,
-                "Payouts",
-                Color(0xFFD93535),    // icon color
-                Color(0xFFD93535),   // text color
+                  3,
+                  SvgUtils.addPayoutIcon,
+                  "Payouts",
+                  // Color(0xFFD93535),    // icon color
+                  // Color(0xFFD93535),   // text color
+                  const Color(0xFFFFFFFF), // default = white for logo
+                  const Color(0xFFFFFFFF)
               ),
             ],
           )
@@ -354,70 +371,93 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       ),
     );
   }
-
-  // Build individual tab
   Widget _buildTab(
       int index,
       String svgPath,
       String text,
       Color iconColor,
       Color textColor,
+
       ) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     bool isSelected = _selectedTabIndex == index;
 
     return Expanded(
       child: GestureDetector(
+
         onTap: () {
           setState(() {
             _selectedTabIndex = index;
             if (index != 2) _isEnteringItemPrice = false;
           });
         },
-        child: Container(
-          decoration: BoxDecoration(
-            color: isSelected
-                ? (themeHelper.themeMode == ThemeMode.dark
-                ? ThemeNotifier.primaryBackground
-                : Colors.white)
-                : (themeHelper.themeMode == ThemeMode.dark
-                ? ThemeNotifier.tabsBackground
-                : ThemeNotifier.tabsLightBackground),
-            borderRadius: BorderRadius.circular(16.0),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SvgPicture.asset(
-                svgPath,
-                height: 32,
-                width: 32,
-                colorFilter: ColorFilter.mode(
-                  isSelected ? iconColor : iconColor.withOpacity(0.8),
-                  BlendMode.srcIn,
-                ),
-              ),
-              const SizedBox(width: 5),
-              Padding(
-                padding: const EdgeInsets.only(right: 5, top: 3),
-                child: Text(
-                  text,
-                  style: TextStyle(
-                    color: isSelected
-                        ? textColor
-                        : textColor.withOpacity(0.8),
-                    fontSize: isSelected ? 18 : 16,
-                    fontWeight:
-                    isSelected ? FontWeight.bold : FontWeight.bold,
+        child: SizedBox( // 🔒 LOCK HEIGHT
+          //height: 80,
+          //width: 20,
+          // adjust if needed (same for all tabs)
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+
+              //   color: isSelected
+              //       ? (themeHelper.themeMode == ThemeMode.dark
+              //       ? ThemeNotifier.primaryBackground
+              //       : Colors.white) // this will set the card background
+              //       : (themeHelper.themeMode == ThemeMode.dark
+              //       ? ThemeNotifier.tabsBackground
+              //       : ThemeNotifier.tabsLightBackground),
+              //   borderRadius: BorderRadius.circular(16.0),
+              // ),//**8Raghu modified the code below, with blue cards when selected it shows white
+
+              color: isSelected
+                  ? const Color(0xFFB5BCDE)  // selected light color
+                  : const Color(0xFF2E657E),  // unselected blue
+              //borderRadius: BorderRadius.circular(2.0),
+              /// borderRadius: BorderRadius.circular(0), // REMOVE rounded corners for now
+            ),
+
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+
+              children: [
+
+                SvgPicture.asset(
+                  svgPath,
+                  height: 32,
+                  width: 32,
+                  colorFilter: ColorFilter.mode(
+                    isSelected ? iconColor : iconColor.withOpacity(0.8),
+                    BlendMode.srcIn,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 5),
+                //Padding(
+                // padding: const EdgeInsets.only(right: 8, top: 3),
+                //child:
+                Text(
+                  text,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    //color: isSelected
+                    //? textColor
+                    //: textColor.withOpacity(0.8),
+                    //fontSize: isSelected ? 18 : 16,
+                    color: textColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    // fontWeight:
+                    //isSelected ? FontWeight.bold : FontWeight.bold,
+                  ),
+                ),
+
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+
 
   Widget _buildTabContent() {
     switch (_selectedTabIndex) {
@@ -3063,7 +3103,7 @@ class TabSideClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
     Path path = Path();
-    double tabHeight = size.height / 4;
+    double tabHeight = size.height / 550;
     double selectedTabTop = selectedIndex * tabHeight;
     double selectedTabBottom = selectedTabTop + tabHeight;
     double curveRadius = 16.0; // Your specified curve radius
@@ -3089,7 +3129,7 @@ class TabSideClipper extends CustomClipper<Path> {
     path.lineTo(size.width - curveRadius, selectedTabBottom);
 
     // Bottom curve around selected tab
-    if (selectedIndex < 3) {
+    if (selectedIndex < 4) {
       // Smooth curve out of the tab indent
       path.quadraticBezierTo(
           size.width, selectedTabBottom,
@@ -3110,6 +3150,7 @@ class TabSideClipper extends CustomClipper<Path> {
   @override
   bool shouldReclip(CustomClipper<Path> oldClipper) => true;
 }
+
 
 class ContentSideClipper extends CustomClipper<Path> {
   final int selectedIndex;
