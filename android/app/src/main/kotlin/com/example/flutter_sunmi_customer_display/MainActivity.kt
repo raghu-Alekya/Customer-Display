@@ -1,5 +1,6 @@
 package com.example.flutter_sunmi_customer_display
 
+import android.app.Activity
 import android.app.Presentation
 import android.content.Context
 import android.hardware.display.DisplayManager
@@ -167,40 +168,74 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PAYMENT_CHANNEL)
-            .setMethodCallHandler { call, result ->
+        // ================= PAYMENT CHANNEL =================
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            PAYMENT_CHANNEL
+        ).setMethodCallHandler { call, result ->
 
-                if (call.method == "startSale") {
+            when (call.method) {
 
+                "startSale" -> {
                     val amount = call.argument<String>("amount")
                     val orderId = call.argument<String>("orderId")
 
-                    val intent = Intent()
-                    intent.setClassName(
-                        "com.sunmi.payment.demo",
-                        "com.sunmi.payment.demo.page.trans.SaleActivity"
-                    )
-                    intent.putExtra("amount", amount)
-                    intent.putExtra("orderId", orderId)
+                    val intent = Intent().apply {
+                        setClassName(
+                            "com.sunmi.payment.demo",
+                            "com.sunmi.payment.demo.page.trans.SaleActivity"
+                        )
+                        putExtra("amount", amount)
+                        putExtra("orderId", orderId)
+                    }
 
                     saleResultCallback = result
-
                     startActivityForResult(intent, 9090)
-                } else {
-                    result.notImplemented()
                 }
-            }
-    }
 
-    // -----------------------------
-    // ⭐ GET RESULT FROM SaleActivity
-    // -----------------------------
+                // ⭐ ADD THIS
+                "startVoid" -> {
+                    val amount = call.argument<String>("amount")
+                    val orderId = call.argument<String>("orderId")
+                    val originTransactionId =
+                        call.argument<String>("originTransactionId")
+
+                    val intent = Intent().apply {
+                        setClassName(
+                            "com.sunmi.payment.demo",
+                            "com.sunmi.payment.demo.page.trans.VoidActivity"
+                        )
+                        putExtra("amount", amount)
+                        putExtra("originOrderId", orderId)
+                        putExtra("originTransactionId", originTransactionId)
+                    }
+
+                    saleResultCallback = result
+                    startActivityForResult(intent, 9091)
+                }
+
+                else -> result.notImplemented()
+            }
+        }
+
+    }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
 
-        if (requestCode == 9090) {
-            val json = data?.getStringExtra("paymentResult") ?: "{}"
-            saleResultCallback?.success(json)
+        if (requestCode == 9090 || requestCode == 9091) {
+
+            if (resultCode == Activity.RESULT_OK) {
+                val paymentResult = data?.getStringExtra("paymentResult")
+
+                if (paymentResult != null) {
+                    saleResultCallback?.success(paymentResult)
+                } else {
+                    saleResultCallback?.error("NO_RESULT", "No payment result", null)
+                }
+            } else {
+                saleResultCallback?.error("CANCELLED", "Operation cancelled", null)
+            }
+
             saleResultCallback = null
         }
     }
