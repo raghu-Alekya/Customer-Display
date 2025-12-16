@@ -105,6 +105,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   bool _isFetchingInitialData = false; // Build #1.0.128: Added this flag to track if we're in the middle of initial fetch
   int _listVersion = 0;  // Build 1.0.214: Added this version counter
   double cashbackFee =0.0;
+  bool _scanLocked = false;
+  bool _ageVerificationActive=false;
 
   void _toggleSummary() {
     setState(() {
@@ -786,14 +788,45 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         useKeyDownEvent: Platform.isWindows,
         caseSensitive: true,
         onBarcodeScanned: (barcode) async {
-          if (ScannerGuard.isCouponPopupOpen) {
-            print("🔒 Coupon popup active → OrderPanel scanner ignored");
-            return;
-          }
+          //  ⛔ HARD BLOCK — prevents duplicate scans
+          if (_scanLocked || _ageVerificationActive) return;
 
+          final trimmedBarcode = barcode;
+
+          // ⛔ Ignore junk frames
+          if (trimmedBarcode.length < 6) return;
           try {
-            final trimmedBarcode = barcode.trim();
+            final trimmedBarcode = barcode;
             if (kDebugMode) print("🔹 Scanned → $trimmedBarcode");
+
+            final upper = trimmedBarcode.toUpperCase();
+
+            final bool isDriverLicense =
+                upper.contains("ANSI") ||
+                    upper.contains("DBB") ||
+                    upper.contains("DAQ") ||
+                    upper.contains("DL");
+
+            if (isDriverLicense) {
+
+              if (kDebugMode) {
+                print("🪪 Driver License detected → stopping product flow");
+                print("🪪 DRIVER LICENSE RAW BARCODE ↓↓↓");
+                print(trimmedBarcode); // ✅ FULL PDF417 DATA
+                print("🪪 DRIVER LICENSE RAW BARCODE ↑↑↑");
+              }
+              _ageVerificationActive = true;
+              _scanLocked = true;
+
+              // ⏳ Absorb trailing scanner frames
+              await Future.delayed(const Duration(milliseconds: 1200));
+
+              _ageVerificationActive = false;
+
+              // 🔥 VERY IMPORTANT — STOP HERE
+              return;
+            }
+
 
             if (!isOrderInForeground ||
                 trimmedBarcode.isEmpty ||
@@ -1015,9 +1048,18 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             // ---------------------------------------------------------------------------
             // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
             // ---------------------------------------------------------------------------
+            // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
             if (product == null) {
-              _isLoading = false;
-              if (mounted) setState(() {});
+              if (_scanLocked || _ageVerificationActive || isDriverLicense) {
+                if (kDebugMode) {
+                  print("🚫 Custom Item popup BLOCKED (DL / Age / Locked)");
+                }
+
+                _isLoading = false;
+                if (mounted) setState(() {});
+                return;
+              }
+
               await _openCustomItemDialog(context, trimmedBarcode);
               return;
             }
@@ -1035,163 +1077,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             if ((product.images ?? []).isNotEmpty) {
               image = product.images!.first.src ?? "";
             }
-
-            // ------------------------------------------------------------
-// ⭐ SKIP POPUP IF PRODUCT ALREADY EXISTS IN ORDERPANEL
-// ------------------------------------------------------------
-            // ------------------------------------------------------------
-// ⭐ SKIP POPUP IF PRODUCT ALREADY EXISTS IN ORDERPANEL
-// ------------------------------------------------------------
-            final bool exists = OrderHelper.existsInOrderBySku(
-              activeOrderId,
-              productSku,
-            );
-
-            if (exists) {
-              print("🔁 SAME PRODUCT FOUND → SKIP POPUP & INCREMENT QTY");
-
-              await orderHelper.addItemToOrder(
-                productId,
-                productName,
-                image,
-                productPrice,
-                1,
-                productSku,
-                activeOrderId,
-                type: ItemType.product.value,
-                productId: productId,
-                variationId: -1,
-              );
-
-
-
-              await fetchOrderItems();
-              await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
-
-              _isLoading = false;
-              if (mounted) setState(() {});
-              return; // 🚫 STOP HERE — POPUP NEVER OPENS
-            }
-
-
-
-// ------------------------------------------------------------
-// ⭐ VARIABLE PRICE PRODUCT CHECK
-// ------------------------------------------------------------
-            final hasVariablePriceTag = (product.tags ?? []).any((tag) {
-              final name = (tag.name ?? "").toLowerCase();
-              final slug = (tag.slug ?? "").toLowerCase();
-              return name.contains("variable product") || slug.contains("variable-product");
-            });
-
-            print("🧪 hasVariablePriceTag = $hasVariablePriceTag");
-            print("⏳ _isLoading before popup = $_isLoading");
-
-
-
-// ------------------------------------------------------------
-// ⭐ SHOW VARIABLE PRICE POPUP (ONLY FIRST TIME)
-// ------------------------------------------------------------
-            if (hasVariablePriceTag) {
-              print("💡 Triggering ManualPriceDialog for variable product");
-
-              try {
-                final double? enteredPrice = await ManualPriceDialog.show(
-                  context,
-                  productName: productName,
-                  minPrice: productPrice,
-                  productImage: '',
-                );
-
-                print("💬 ManualPriceDialog returned → $enteredPrice");
-
-                if (enteredPrice == null) {
-                  print("❌ User cancelled ManualPriceDialog");
-                  return;
-                }
-
-                print("✅ Adding variable product to order with price $enteredPrice");
-
-                await orderHelper.addItemToOrder(
-                  productId,
-                  productName,
-                  image,
-                  enteredPrice,
-                  1,
-                  productSku,
-                  activeOrderId,
-                  type: ItemType.product.value,
-                  productId: productId,
-                  variationId: -1,
-                );
-
-                print("🛒 Product added to order");
-
-                // / ⭐ FIX: MARK VARIABLE PRICE AS ALREADY ADDED
-// ------------------------------------------------------------
-                // ⭐ FIX: MARK VARIABLE PRICE AS ALREADY ADDED
-                final box = Hive.box('offlineOrders');
-                final orderKey = activeOrderId.toString();
-                final hiveOrder = Map<String, dynamic>.from(
-                  box.get(orderKey, defaultValue: {}),
-                );
-
-// Mark that popup has been shown once
-                hiveOrder["variable_price_added_$productId"] = true;
-
-// VERY IMPORTANT: Store the actual manual price user entered
-                hiveOrder["selected_price_$productId"] = enteredPrice;
-
-                await box.put(orderKey, hiveOrder);
-
-                print("💾 FIX APPLIED → Variable price flags saved for scanned product");
-                print("  → variable_price_added_$productId = true");
-                print("  → selected_price_$productId = $enteredPrice");
-
-                await fetchOrderItems();
-                await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
-
-                print("📊 Customer display updated");
-
-              } finally {
-                _isLoading = false;
-                if (mounted) setState(() {});
-                print("⏳ _isLoading after popup = $_isLoading");
-              }
-
-              return; // STOP FURTHER EXECUTION
-            }
-
-
-
-// ------------------------------------------------------------
-// ⭐ NORMAL PRODUCT FLOW
-// ------------------------------------------------------------
-            print("➡ Not a variable product, continuing normal flow");
-
-            // ---------------------------------------------------------------------------
-// ⭐ FINAL EBT ELIGIBILITY CHECK (NOW PRODUCT IS LOADED) ✅
-// ---------------------------------------------------------------------------
-            bool isEbtEligible = false;
-
-            try {
-              final tags = product?.tags ?? [];
-
-              isEbtEligible = tags.any((t) {
-                final name = (t.name ?? "").toLowerCase();
-                final slug = (t.slug ?? "").toLowerCase();
-
-                return name == "ebt" ||
-                    name == "ebt eligible" ||
-                    slug == "ebt" ||
-                    slug == "ebt-eligible";
-              });
-
-              print("💳 FINAL EBT Eligible? → $isEbtEligible (via product.tags)");
-            } catch (e) {
-              print("⚠ EBT eligibility error → $e");
-            }
-
 
             // ⭐ AGE RESTRICTION CHECK — ONE TIME PER ORDER (FINAL FIX)
             // ----------------------------------------------------------- */
@@ -1352,7 +1237,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         type: ItemType.product.value,
                         productId: id,
                         variationId: selected["id"],
-                        isEbtEligible: isEbtEligible,
                       );
                       await fetchOrderItems();
                       await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
@@ -1380,7 +1264,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               type: ItemType.product.value,
               productId: productId,
               variationId: -1,
-              isEbtEligible: isEbtEligible,
             );
 
             await fetchOrderItems();
@@ -1392,6 +1275,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             print("❌ Scan failed: $e\n$s");
             _isLoading = false;
             if (mounted) setState(() {});
+          }
+
+          finally {
+            // 🔓 ALWAYS UNLOCK HERE
+            await Future.delayed(const Duration(milliseconds: 800));
+            _scanLocked = false;
+
+            if (kDebugMode) {
+              print("🔓 Scanner unlocked (finally)");
+            }
           }
         },
 
