@@ -2323,9 +2323,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     try {
       final box = Hive.box('productCache');
 
-      print("--------------------------------------------------");
-      print("🔍 Searching TAX for Product ID: $productId");
-
       for (var key in box.keys) {
         if (!key.toString().startsWith("products_")) continue;
 
@@ -2339,50 +2336,32 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           orElse: () => null,
         );
 
-        if (product != null) {
-          print("✔ Product found in cache key: $key");
-          print("📦 Cached product JSON: $product");
+        if (product == null) continue;
 
-          // 1️⃣ WooCommerce tax structure
-          if (product['tax'] != null &&
-              product['tax']['tax_rates'] != null &&
-              product['tax']['tax_rates'] is List &&
-              product['tax']['tax_rates'].isNotEmpty) {
+        if (product['tax'] != null &&
+            product['tax']['tax_rates'] is List &&
+            product['tax']['tax_rates'].isNotEmpty) {
 
-            final rate = double.tryParse(
-                product['tax']['tax_rates'][0]['rate'].toString()
-            ) ?? 0.0;
+          double taxTotal = 0.0;
+          final double base = price * qty;
 
-            final itemTax = ((price * rate) / 100) * qty;
+          for (final tax in product['tax']['tax_rates']) {
+            final rate =
+                double.tryParse(tax['rate']?.toString() ?? '0') ?? 0.0;
 
-            print("🔥 TAX FOUND in tax_rates → rate: $rate%");
-            print("🔥 itemTax = price($price) × $rate% × qty($qty) = $itemTax");
+            final taxAmount = (base * rate) / 100;
 
-            return itemTax;
+            final roundedTax =
+            double.parse(taxAmount.toStringAsFixed(2));
+
+            taxTotal += roundedTax;
           }
 
-          // 2️⃣ If taxes[] exists
-          if (product['taxes'] != null && product['taxes'] is List) {
-            final t = double.tryParse(product['taxes'][0]['subtotal'].toString()) ?? 0.0;
-            print("✔ TAX from taxes[]: $t × qty = ${t * qty}");
-            return t * qty;
-          }
-
-          // 3️⃣ subtotal_tax exists
-          if (product['subtotal_tax'] != null) {
-            final t = double.tryParse(product['subtotal_tax'].toString()) ?? 0.0;
-            print("✔ TAX from subtotal_tax: $t × qty = ${t * qty}");
-            return t * qty;
-          }
-
-          print("⚠ No tax field detected for product: $productId");
-          return 0.0;
+          return taxTotal;
         }
       }
-
-      print("❌ Product $productId NOT FOUND in productCache");
     } catch (e) {
-      print("❌ ERROR while fetching tax → $e");
+      print("❌ Tax error → $e");
     }
 
     return 0.0;

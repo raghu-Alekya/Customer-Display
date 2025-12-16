@@ -397,18 +397,33 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
 
     setState(() {});
+    // --------------------------------------------------
+    // 5️⃣ OFFLINE DELETE (same as cash flow)
+    // --------------------------------------------------
+    if (widget.isOfflineSynced && widget.offlineOrderId != null) {
+      try {
+        final offlineId = widget.offlineOrderId!;
+        final box = Hive.box('offlineOrders');
+
+        if (box.containsKey(offlineId.toString())) {
+          await box.delete(offlineId.toString());
+        }
+
+        await orderHelper.deleteOrder(offlineId);
+      } catch (e) {
+        print("⚠ Failed deleting offline order: $e");
+      }
+    }
 
     // -------------------------------
     // ✅ CALL EXISTING VOID API
     // -------------------------------
     _handleVoidPayment(context, isPartial: true);
   }
-
   Future<void> _openSunmiSaleScreen({
     required double amount,
     required String orderId,
   }) async {
-
     final result = await _paymentChannel.invokeMethod("startSale", {
       "amount": amount.toString(),
       "orderId": orderId,
@@ -417,31 +432,104 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final data = jsonDecode(result);
     final fullSunmi = jsonDecode(data["fullResponse"]);
 
-    double paidAmount = double.tryParse(fullSunmi["processedAmount"] ?? "0") ?? 0.0;
+    double paidAmount =
+        double.tryParse(fullSunmi["processedAmount"] ?? "0") ?? 0.0;
 
-    // 1️⃣ Add to card total
+    // --------------------------------------------------
+    // 1️⃣ CARD TOTAL
+    // --------------------------------------------------
     payByCard += paidAmount;
-
-    // 2️⃣ Apply your balance logic
     selectedPaymentMethod = TextConstants.card;
-    _recalculateAfterPayment(paidAmount);
 
-    // 3️⃣ Increase tender
+    // --------------------------------------------------
+    // 2️⃣ BALANCE CALCULATION (same logic as API flow)
+    // --------------------------------------------------
+    final double previousBalance = balanceAmount;
+
+    if (paidAmount >= previousBalance) {
+      changeAmount = paidAmount - previousBalance;
+      balanceAmount = 0.0;
+    } else {
+      balanceAmount = previousBalance - paidAmount;
+      changeAmount = 0.0;
+    }
+
+    balanceAmount =
+        double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
+
+    // --------------------------------------------------
+    // 3️⃣ TENDER UPDATE
+    // --------------------------------------------------
     tenderAmount += paidAmount;
+
+    _order["balanceAmount"] = balanceAmount;
+    _order["paidAmount"] = tenderAmount;
+    _order["tenderAmount"] = tenderAmount;
 
     setState(() {});
 
-    // 4️⃣ Auto-create payment API entry
+    // --------------------------------------------------
+    // 4️⃣ AUTO CREATE PAYMENT ENTRY (SERVER)
+    // --------------------------------------------------
     _createPaymentFromSunmi(paidAmount, fullSunmi);
 
-    // -------------------------------
-    // ⭐ ADD THIS POPUP LOGIC HERE
-    // -------------------------------
+    // --------------------------------------------------
+    // 5️⃣ OFFLINE DELETE (same as cash flow)
+    // --------------------------------------------------
+    if (widget.isOfflineSynced && widget.offlineOrderId != null) {
+      try {
+        final offlineId = widget.offlineOrderId!;
+        final box = Hive.box('offlineOrders');
+
+        if (box.containsKey(offlineId.toString())) {
+          await box.delete(offlineId.toString());
+        }
+
+        await orderHelper.deleteOrder(offlineId);
+      } catch (e) {
+        print("⚠ Failed deleting offline order: $e");
+      }
+    }
+
+    // --------------------------------------------------
+    // 6️⃣ SAVE TO HIVE (balance + tender + ebt)
+    // --------------------------------------------------
+    try {
+      final offlineBox = Hive.box('offlineOrders');
+      final key = (this.orderId ?? 0).toString();
+
+      if (offlineBox.containsKey(key)) {
+        final updated =
+        Map<String, dynamic>.from(offlineBox.get(key));
+
+        updated["balanceAmount"] = balanceAmount;
+        updated["paidAmount"] = tenderAmount;
+        updated["tenderAmount"] = tenderAmount;
+        updated["ebtTotal"] = ebtTotal;
+
+        offlineBox.put(key, updated);
+      } else {
+        offlineBox.put(key, {
+          "balanceAmount": balanceAmount,
+          "paidAmount": tenderAmount,
+          "tenderAmount": tenderAmount,
+          "payByCard": payByCard,
+          "ebtTotal": ebtTotal,
+        });
+      }
+
+      print(
+          "✔ Hive updated → balance=$balanceAmount paid=$tenderAmount card=$payByCard");
+    } catch (e) {
+      print("⚠ Hive update error: $e");
+    }
+
+    // --------------------------------------------------
+    // 7️⃣ POPUPS
+    // --------------------------------------------------
     if (balanceAmount > 0) {
-      // Partial payment → show partial payment dialog
       _showPartialPaymentDialog(context, paidAmount);
     } else {
-      // Full card payment completed → show completed dialog
       _showPaymentDialog(
         context,
         paidAmount,
@@ -450,6 +538,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       );
     }
   }
+
 
   Future<void> _createPaymentFromSunmi(
       double amount,
@@ -642,7 +731,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     // ---------------------------
     // 2️⃣ Restore Base EBT
     // ---------------------------
-    double originalEbt = widget.ebtAmount;
+    double originalEbt = ebtTotal > 0 ? ebtTotal : widget.ebtAmount;
     double remainingEbt = originalEbt - ebtPaid;
 
     // ---------------------------
@@ -821,6 +910,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     StreamSubscription? subscription;
     subscription = paymentBloc.createPaymentStream.listen(
           (paymentResponse) async {
+
+
         if (kDebugMode) {
           print("Payment stream response: $paymentResponse");
         }
