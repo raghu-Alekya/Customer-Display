@@ -2772,37 +2772,28 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           amountController.text,
                                           balanceAmount: balanceAmount,
                                           onDigitPressed: (value) {
+                                            int digit = value == '00' ? 0 : int.tryParse(value) ?? 0;
+
+                                            int newAmount = value == '00'
+                                                ? _rawAmount * 100
+                                                : _rawAmount * 10 + digit;
+
+                                            // ---------------- LIMITS ----------------
+                                            int maxAmount;
+
                                             if (selectedPaymentMethod == TextConstants.ebtText) {
-                                              int maxAmount = (min(ebtTotal, balanceAmount) * 100).toInt();
-
-                                              int digit = value == '00'
-                                                  ? 0
-                                                  : int.tryParse(value) ?? 0;
-
-                                              int newAmount = value == '00'
-                                                  ? _rawAmount * 100
-                                                  : _rawAmount * 10 + digit;
-
-                                              if (newAmount > maxAmount) return;
-
-                                              _rawAmount = newAmount;
+                                              maxAmount = (min(ebtTotal, balanceAmount) * 100).toInt();
+                                            } else if (selectedPaymentMethod == TextConstants.card) {
+                                              maxAmount = (balanceAmount * 100).toInt();
+                                            } else {
+                                              maxAmount = 999999999;
                                             }
 
-                                            else {
-                                              // ---------- CARD LIMIT LOGIC ----------
-                                              int maxAmount = (balanceAmount * 100).toInt();
+                                            // ❗ Stop only if limit exceeded
+                                            if (newAmount > maxAmount) return;
 
-                                              if (value == '00') {
-                                                int newAmount = _rawAmount * 100;
-                                                if (newAmount > maxAmount) return;
-                                                _rawAmount = newAmount;
-                                              } else {
-                                                int digit = int.tryParse(value) ?? 0;
-                                                int newAmount = _rawAmount * 10 + digit;
-                                                if (newAmount > maxAmount) return;
-                                                _rawAmount = newAmount;
-                                              }
-                                            }
+                                            // ---------------- UPDATE ----------------
+                                            _rawAmount = newAmount;
 
                                             double displayValue = _rawAmount / 100.0;
                                             amountController.text =
@@ -2843,7 +2834,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                                             double amount = double.tryParse(cleanAmount) ?? 0.0;
 
-                                            // ❗ Block when amount = 0 (except netPayable = 0)
                                             if (amount == 0.0 && computedNetPayable > 0) {
                                               setState(() {
                                                 _amountErrorText = TextConstants.amountValidation;
@@ -2853,7 +2843,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                                             _amountErrorText = null;
 
-                                            // ⭐ ONLY HERE → check payment mode
                                             if (selectedPaymentMethod == TextConstants.card) {
                                               print("💳 Opening Sunmi ONLY after Pay click");
 
@@ -2861,15 +2850,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                 amount: amount,
                                                 orderId: (widget.orderId ?? widget.offlineOrderId).toString(),
                                               );
-
-                                              // Clear amount field after transaction call
                                               _rawAmount = 0;
                                               amountController.text = '${TextConstants.currencySymbol}0.00';
                                               _isAmountEntered = false;
-                                              return;  // Prevent calling API twice
+                                              return;
                                             }
 
-                                            // ⭐ For all other payment modes → normal flow
                                             _callCreatePaymentAPI();
 
                                             _rawAmount = 0;
@@ -3002,22 +2988,29 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           _buildPaymentModeButton(
                             TextConstants.card,
                             Icons.credit_card,
-                            isSelected: selectedPaymentMethod == TextConstants.card,
-                            onTap: () {
-                              setState(() {
-                                selectedPaymentMethod = TextConstants.card;
-                                double allowedAmount = balanceAmount;
-
-                                _rawAmount = (allowedAmount * 100).toInt();
-
-                                amountController.text =
-                                '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
-
-                                _amountErrorText = null;
-                                _isAmountEntered = true;
-                              });
-                            },
+                            isSelected: false,
+                            onTap: null, // ✅ disabled
                           ),
+
+                          // _buildPaymentModeButton(
+                          //   TextConstants.card,
+                          //   Icons.credit_card,
+                          //   isSelected: selectedPaymentMethod == TextConstants.card,
+                          //   onTap: () {
+                          //     setState(() {
+                          //       selectedPaymentMethod = TextConstants.card;
+                          //       double allowedAmount = balanceAmount;
+                          //
+                          //       _rawAmount = (allowedAmount * 100).toInt();
+                          //
+                          //       amountController.text =
+                          //       '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
+                          //
+                          //       _amountErrorText = null;
+                          //       _isAmountEntered = true;
+                          //     });
+                          //   },
+                          // ),
 
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
 
@@ -3782,7 +3775,70 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       return sortedAmounts.take(5).toList();
     }
   }
-
+  //
+  // Widget _buildPaymentModeButton(
+  //     String label,
+  //     IconData icon, {
+  //       bool isSelected = false,
+  //       VoidCallback? onTap,
+  //     }) {
+  //   final themeHelper = Provider.of<ThemeNotifier>(context);
+  //
+  //   return GestureDetector(
+  //     onTap: onTap, // ← FIX: This enables clicking
+  //     child: Container(
+  //       width: ResponsiveLayout.getWidth(168),
+  //       height: ResponsiveLayout.getHeight(64),
+  //       padding: ResponsiveLayout.getResponsivePadding(vertical: 10),
+  //       margin: EdgeInsets.symmetric(vertical: 2),
+  //       decoration: BoxDecoration(
+  //         color: isSelected
+  //             ? Colors.red.shade100
+  //             : themeHelper.themeMode == ThemeMode.dark
+  //             ? ThemeNotifier.primaryBackground
+  //             : Colors.white,
+  //         borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(5)),
+  //         border: isSelected
+  //             ? Border.all(color: Colors.red.shade300)
+  //             : Border.all(
+  //           color: themeHelper.themeMode == ThemeMode.dark
+  //               ? ThemeNotifier.borderColor
+  //               : Colors.grey.shade200,
+  //         ),
+  //         boxShadow: [
+  //           BoxShadow(
+  //             color: Colors.grey.withOpacity(0.1),
+  //             spreadRadius: 1,
+  //             blurRadius: 2,
+  //             offset: const Offset(0, 1),
+  //           ),
+  //         ],
+  //       ),
+  //       child: Row(
+  //         mainAxisAlignment: MainAxisAlignment.center,
+  //         children: [
+  //           Icon(
+  //             icon,
+  //             color: isSelected ? Colors.red : Colors.grey,
+  //             size: ResponsiveLayout.getIconSize(32),
+  //           ),
+  //           SizedBox(width: ResponsiveLayout.getWidth(8)),
+  //           Text(
+  //             label,
+  //             style: TextStyle(
+  //               color: isSelected ? Colors.red : Colors.grey,
+  //               fontFamily: 'Montserrat',
+  //               fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+  //               fontSize: isSelected
+  //                   ? ResponsiveLayout.getFontSize(18)
+  //                   : ResponsiveLayout.getFontSize(16),
+  //             ),
+  //           ),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
   Widget _buildPaymentModeButton(
       String label,
       IconData icon, {
@@ -3790,58 +3846,62 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         VoidCallback? onTap,
       }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
+    final bool isDisabled = onTap == null;
 
     return GestureDetector(
-      onTap: onTap, // ← FIX: This enables clicking
-      child: Container(
-        width: ResponsiveLayout.getWidth(168),
-        height: ResponsiveLayout.getHeight(64),
-        padding: ResponsiveLayout.getResponsivePadding(vertical: 10),
-        margin: EdgeInsets.symmetric(vertical: 2),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? Colors.red.shade100
-              : themeHelper.themeMode == ThemeMode.dark
-              ? ThemeNotifier.primaryBackground
-              : Colors.white,
-          borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(5)),
-          border: isSelected
-              ? Border.all(color: Colors.red.shade300)
-              : Border.all(
-            color: themeHelper.themeMode == ThemeMode.dark
-                ? ThemeNotifier.borderColor
-                : Colors.grey.shade200,
+      onTap: onTap,
+      child: Opacity(
+        opacity: isDisabled ? 0.5 : 1, // 👈 visual disabled effect
+        child: Container(
+          width: ResponsiveLayout.getWidth(168),
+          height: ResponsiveLayout.getHeight(64),
+          padding: ResponsiveLayout.getResponsivePadding(vertical: 10),
+          margin: const EdgeInsets.symmetric(vertical: 2),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? Colors.red.shade100
+                : themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.primaryBackground
+                : Colors.white,
+            borderRadius: BorderRadius.circular(
+              ResponsiveLayout.getRadius(5),
+            ),
+            border: Border.all(
+              color: isSelected
+                  ? Colors.red.shade300
+                  : Colors.grey.shade300,
+            ),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.1),
-              spreadRadius: 1,
-              blurRadius: 2,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.red : Colors.grey,
-              size: ResponsiveLayout.getIconSize(32),
-            ),
-            SizedBox(width: ResponsiveLayout.getWidth(8)),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.red : Colors.grey,
-                fontFamily: 'Montserrat',
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                fontSize: isSelected
-                    ? ResponsiveLayout.getFontSize(18)
-                    : ResponsiveLayout.getFontSize(16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                color: isDisabled
+                    ? Colors.grey.shade400
+                    : isSelected
+                    ? Colors.red
+                    : Colors.grey,
+                size: ResponsiveLayout.getIconSize(32),
               ),
-            ),
-          ],
+              SizedBox(width: ResponsiveLayout.getWidth(8)),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isDisabled
+                      ? Colors.grey.shade400
+                      : isSelected
+                      ? Colors.red
+                      : Colors.grey,
+                  fontFamily: 'Montserrat',
+                  fontWeight:
+                  isSelected ? FontWeight.bold : FontWeight.w500,
+                  fontSize: ResponsiveLayout.getFontSize(
+                      isSelected ? 18 : 16),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

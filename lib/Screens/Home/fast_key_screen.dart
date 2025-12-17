@@ -2473,6 +2473,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                   child: Column(
                     children: [
                       CategoryList(
+                        scrollController: _scrollController,
                         isHorizontal: true,
                         isLoading: isTabsLoading,
                         isAddButtonEnabled: true,

@@ -176,6 +176,8 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import '../../Blocs/Orders/order_bloc.dart';
 import '../../Blocs/Search/product_search_bloc.dart';
@@ -188,6 +190,7 @@ import '../../Models/Orders/orders_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
 import '../../Repositories/Orders/order_repository.dart';
 import '../../Repositories/Search/product_search_repository.dart';
+import '../../Utilities/responsive_layout.dart';
 import '../../Widgets/widget_logs_toast.dart';
 import '../../Widgets/widget_category_list.dart';
 import '../../Widgets/widget_nested_grid_layout.dart';
@@ -235,6 +238,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
   int? _selectedCategoryIndex;
   int? _editingCategoryIndex;
   int? _selectedSubCategoryIndex;
+  final ScrollController _categoryScrollController = ScrollController();
+
 
   List<Map<String, dynamic>> categoryProducts = [];
   int? selectedItemIndex;
@@ -247,6 +252,99 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
   StreamSubscription? _updateOrderSubscription;
   late OrderBloc orderBloc;
   int _refreshCounter = 0; //Build #1.0.170: Added: Counter to trigger RightOrderPanel refresh only when needed
+  bool _isAutoLoading = false;
+  void _showAutoLoadingDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final dialogBg = isDark ? const Color(0xFF1A1C2A) : Colors.white;
+    final cardBg = isDark ? const Color(0xFF404355) : const Color(0xFFF2F4F7);
+
+    final textPrimary = isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final textSecondary = isDark ? Colors.white70 : Colors.grey;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return WillPopScope(
+          onWillPop: () async => false,
+          child: Dialog(
+            backgroundColor: dialogBg,
+            insetPadding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isDark
+                          ? const Color(0xFF3B1F1F)
+                          : const Color(0xFFFFEDED),
+                    ),
+                    child: const Icon(
+                      Icons.info_outline_rounded,
+                      size: 34,
+                      color: Color(0xFFE74C3C),
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // ⏳ LOADER
+                  const SizedBox(
+                    height: 34,
+                    width: 34,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      color: Color(0xFFE74C3C),
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  Text(
+                    "Loading Categories",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: textPrimary,
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // 📄 MESSAGE (same secondary text style)
+                  Text(
+                    "Please wait while we prepare items.\nDo not perform any action.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+
+  void _hideAutoLoadingDialog() {
+    if (Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+  }
+
 
   @override
   void initState() {
@@ -278,6 +376,44 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
       _loadLastSelectedCategory();
     }
   }
+  Future<void> _autoTapAllCategories() async {
+    if (categories.isEmpty) return;
+
+    setState(() => _isAutoLoading = true);
+    _showAutoLoadingDialog(); // ✅ SHOW POPUP
+
+    for (int i = 0; i < categories.length; i++) {
+      if (!mounted) return;
+
+      // ✅ AUTO SCROLL TO CATEGORY
+      _scrollToCategory(i);
+
+      // allow scroll animation
+      await Future.delayed(const Duration(milliseconds: 250));
+
+      if (kDebugMode) {
+        print("🚀 Auto tapping category → ${categories[i].name}");
+      }
+
+      // ✅ AUTO TAP
+      _onCategoryTapped(i);
+
+      // wait for API + shimmer
+      await Future.delayed(const Duration(milliseconds: 600));
+
+      while (isLoadingNestedContent) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+    }
+
+    if (kDebugMode) {
+      print("✅ Auto load completed");
+    }
+
+    _hideAutoLoadingDialog(); // ✅ CLOSE POPUP
+    setState(() => _isAutoLoading = false);
+  }
+
 
   Future<void> _loadLastSelectedCategory() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -293,6 +429,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
         isShowingSubCategories = true;
       });
       await _loadSubCategories(categories[_selectedCategoryIndex!].id); // Build #1.0.166: added await to complete
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToCategory(lastSelectedIndex);
+      });
     } else if (categories.isNotEmpty) {
       setState(() {
         _selectedCategoryIndex = 0;
@@ -306,6 +445,36 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
       await _loadSubCategories(categories[0].id); // Build #1.0.166: added await to complete
     }
   }
+  void _scrollToCategory(int index) {
+    if (!_categoryScrollController.hasClients) return;
+
+    final scrollPosition = _categoryScrollController.position;
+
+    // ✅ REAL ITEM WIDTH (must match widget)
+    final double itemWidth = ResponsiveLayout.getHeight(80) + 10; // 80 + padding
+
+    // ✅ Center item instead of left aligning
+    final double screenWidth = MediaQuery.of(context).size.width;
+    double targetOffset =
+        (index * itemWidth) - (screenWidth / 2) + (itemWidth / 2);
+
+    // ✅ Clamp to valid scroll range (VERY IMPORTANT)
+    targetOffset = targetOffset.clamp(
+      scrollPosition.minScrollExtent,
+      scrollPosition.maxScrollExtent,
+    );
+
+    if (kDebugMode) {
+      print("📜 Scroll → index=$index offset=$targetOffset");
+    }
+
+    _categoryScrollController.animateTo(
+      targetOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
 
   Future<void> _saveLastSelectedCategory(int index) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -313,31 +482,54 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
   }
 
   // Load top-level categories (parentId = 0) once
-  Future<void> _loadTopLevelCategories() async { // Build #1.0.27
+  Future<void> _loadTopLevelCategories() async {
     setState(() {
-      isLoadingNestedContent = true; //Build #1.0.126: Added this line to show shimmer from starting
+      isLoadingNestedContent = true;
     });
+
     _categoryBloc.fetchCategories(0);
+
     await for (var response in _categoryBloc.categoriesStream) {
       if (response.status == Status.COMPLETED && response.data != null) {
         setState(() {
           categories = response.data!.categories;
           isLoading = false;
+          isLoadingNestedContent = false;
         });
-        // After loading categories, apply the last selected category
-        // Build #1.0.166: Only after top categories are loaded, load last selected
+
+        // ✅ CHECK HIVE PRODUCT CACHE
+        final bool shouldAutoTap = await _isProductCacheEmpty();
+
+        if (shouldAutoTap) {
+          if (kDebugMode) {
+            print("🚀 Product cache EMPTY → auto tapping all categories");
+          }
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _autoTapAllCategories();
+          });
+        } else {
+          if (kDebugMode) {
+            print("✅ Product cache exists → skipping auto tap");
+          }
+        }
+
+        // Load last selected category normally
         if (categories.isNotEmpty) {
           await _loadLastSelectedCategory();
         }
-        break; // Break after loading top-level categories
-      } else if (response.status == Status.ERROR) {
-        //Build #1.0.179
+
+        break;
+      }
+
+      if (response.status == Status.ERROR) {
         if (response.message!.contains('Unauthorised')) {
-          if (kDebugMode) {
-            print("Unauthorised : response.message ${response.message!}");
-          }
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LoginScreen()));
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => LoginScreen()),
+          );
         }
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Unauthorised. Session is expired on this device."),
@@ -345,12 +537,14 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
             duration: Duration(seconds: 2),
           ),
         );
+
         if (kDebugMode) {
-          print("CategoriesScreen: Error loading top-level categories: ${response.message}");
+          print("CategoriesScreen error: ${response.message}");
         }
       }
     }
   }
+
 
   // Load subcategories for a specific parent category
   Future<void> _loadSubCategories(int parentId) async {
@@ -497,6 +691,20 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
 
     _saveLastSelectedCategory(index);
     _loadSubCategories(categories[index].id);
+  }
+  Future<bool> _isProductCacheEmpty() async {
+    final productBox = Hive.box(productBoxName);
+
+    // Only count product cache entries
+    final productKeys = productBox.keys.where(
+          (key) => key.toString().startsWith('products_'),
+    );
+
+    if (kDebugMode) {
+      print("🧠 Hive product cache count: ${productKeys.length}");
+    }
+
+    return productKeys.isEmpty;
   }
 
   void _onSubCategoryTapped(int index) { //Build #1.0.34: updated code for navigation path issues
@@ -972,6 +1180,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
                         categories: categoryListItems,
                         selectedIndex: _selectedCategoryIndex,
                         editingIndex: _editingCategoryIndex,
+                        scrollController: _categoryScrollController,
                         onAddButtonPressed: null,
                         onCategoryTapped: _onCategoryTapped,
                         // In CategoriesScreen.dart, update the onReorder callback in the CategoryList widget

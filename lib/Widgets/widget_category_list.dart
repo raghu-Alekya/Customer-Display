@@ -908,6 +908,9 @@ class CategoryList extends StatelessWidget {
   final Function(int)? onEditButtonPressed; //Build 1.1.36
   final Function(int)? onReorderStarted;
   final Function()? onDismissEditMode;
+  final ScrollController scrollController;
+
+
 
   const CategoryList({
     super.key,
@@ -923,6 +926,7 @@ class CategoryList extends StatelessWidget {
     this.onEditButtonPressed,
     this.onDismissEditMode,
     this.onReorderStarted,
+    required this.scrollController,
   });
 
   Widget _buildImage(String imagePath, BuildContext context) {
@@ -1626,7 +1630,7 @@ class CategoryList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ScrollController scrollController = ScrollController();
+    //final ScrollController scrollController = ScrollController();
     // bool showLeftArrow = false;
     // bool showRightArrow = true;
 

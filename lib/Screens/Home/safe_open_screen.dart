@@ -25,6 +25,7 @@ import '../../Widgets/widget_age_verification_popup_dialog.dart';
 import '../../Widgets/widget_alert_popup_dialogs.dart';
 import '../../Widgets/widget_topbar.dart';
 import '../../Widgets/widget_navigation_bar.dart' as custom_widgets;
+import 'categories_screen.dart';
 
 class SafeOpenScreen extends StatefulWidget {
   final int? lastSelectedIndex;
@@ -812,7 +813,7 @@ class _SafeOpenScreenState extends State<SafeOpenScreen> with LayoutSelectionMix
                                                           context,
                                                           MaterialPageRoute(
                                                               builder: (context) =>
-                                                                  FastKeyScreen()));
+                                                                  CategoriesScreen()));
                                                     }
                                                   } else {
                                                     if (response.status ==

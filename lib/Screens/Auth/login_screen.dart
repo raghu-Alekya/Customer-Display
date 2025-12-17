@@ -23,6 +23,7 @@ import '../../Repositories/Auth/logout_repository.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_loading.dart';
 import '../../screens/Home/shift_open_close_balance.dart';
+import '../Home/categories_screen.dart';
 import '../Home/fast_key_screen.dart';
 import '../../Widgets/widget_error.dart';
 
@@ -274,7 +275,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         if (shiftId != null && snapshot.data?.data?.shiftId != null) { // Build #1.0.154: Updated -> shift_id checking null or not in login response
                                           Navigator.pushReplacement(
                                               context,
-                                              MaterialPageRoute(builder: (context) => const FastKeyScreen()));
+                                              MaterialPageRoute(builder: (context) => const CategoriesScreen()));
                                         }else{
                                           Navigator.pushReplacement(
                                             context,
