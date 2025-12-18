@@ -787,46 +787,515 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         // Ensured loader is shown during API calls and hidden afterward.
         useKeyDownEvent: Platform.isWindows,
         caseSensitive: true,
+//         onBarcodeScanned: (barcode) async {
+//           //  ⛔ HARD BLOCK — prevents duplicate scans
+//           if (_scanLocked || _ageVerificationActive) return;
+//
+//           final trimmedBarcode = barcode;
+//
+//           // ⛔ Ignore junk frames
+//           if (trimmedBarcode.length < 6) return;
+//           try {
+//             final trimmedBarcode = barcode;
+//             if (kDebugMode) print("🔹 Scanned → $trimmedBarcode");
+//
+//             final upper = trimmedBarcode.toUpperCase();
+//
+//             final bool isDriverLicense =
+//                 upper.contains("ANSI") ||
+//                     upper.contains("DBB") ||
+//                     upper.contains("DAQ") ||
+//                     upper.contains("DL");
+//
+//             if (isDriverLicense) {
+//
+//               if (kDebugMode) {
+//                 print("🪪 Driver License detected → stopping product flow");
+//                 print("🪪 DRIVER LICENSE RAW BARCODE ↓↓↓");
+//                 print(trimmedBarcode); // ✅ FULL PDF417 DATA
+//                 print("🪪 DRIVER LICENSE RAW BARCODE ↑↑↑");
+//               }
+//               _ageVerificationActive = true;
+//               _scanLocked = true;
+//
+//               // ⏳ Absorb trailing scanner frames
+//               await Future.delayed(const Duration(milliseconds: 1200));
+//
+//               _ageVerificationActive = false;
+//
+//               // 🔥 VERY IMPORTANT — STOP HERE
+//               return;
+//             }
+//
+//
+//             if (!isOrderInForeground ||
+//                 trimmedBarcode.isEmpty ||
+//                 _isLoading ||
+//                 _isCustomItemLoading) return;
+//
+//             _isLoading = true;
+//             if (mounted) setState(() {});
+//
+//             final orderHelper = OrderHelper();
+//             final activeOrderId = orderHelper.activeOrderId;
+//
+//             if (activeOrderId == null) {
+//               await OrderPopupHelper.showNoOrderPopup(context);
+//               return;
+//             }
+//
+//
+//             final productBox = Hive.box('productCache');
+//             final cacheKey = "sku_${trimmedBarcode.toLowerCase()}";
+//
+//             SKU.ProductBySkuResponse? product;
+//             bool foundOffline = false;
+//
+//             // ---------------------------------------------------------------------------
+//             // 1️⃣ MEMORY CACHE
+//             // ---------------------------------------------------------------------------
+// // 1️⃣ MEMORY CACHE
+// // ---------------------------------------------------------------------------
+//             try {
+//               final memoryData = OrderHelper.getFromCache(trimmedBarcode);
+//
+//               if (memoryData != null) {
+//                 if (kDebugMode) {
+//                   print("💾 MEMORY CACHE HIT");
+//                   print("💾 memoryData (raw) → $memoryData");
+//                   try {
+//                     print("💾 memoryData (json) → ${jsonEncode(memoryData)}");
+//                   } catch (_) {
+//                     print("💾 memoryData NOT JSON serializable");
+//                   }
+//                 }
+//
+//                 Map<String, dynamic> productMap;
+//
+//                 // Case A → stored as {products:[{...}]}
+//                 if (memoryData is Map &&
+//                     memoryData["products"] is List &&
+//                     memoryData["products"].isNotEmpty) {
+//                   productMap = Map<String, dynamic>.from(memoryData["products"][0]);
+//                 }
+//                 // Case B → stored as flat map
+//                 else {
+//                   productMap = Map<String, dynamic>.from(memoryData);
+//                 }
+//
+//                 if (kDebugMode) {
+//                   print("💾 Extracted productMap from memory → $productMap");
+//                   try {
+//                     print("💾 productMap JSON → ${jsonEncode(productMap)}");
+//                   } catch (_) {
+//                     print("💾 productMap not JSON encodable");
+//                   }
+//                   // ⭐⭐⭐ ADD THESE THREE ⭐⭐⭐
+//                   print("🖼 MEMORY productMap['images'] → ${productMap['images']}");
+//
+//                   if (productMap['images'] is List && productMap['images'].isNotEmpty) {
+//                     print("🖼 MEMORY image src → ${productMap['images'][0]['src']}");
+//                   } else {
+//                     print("🖼 MEMORY image src → NONE");
+//                   }
+//                 }
+//
+//                 product = SKU.ProductBySkuResponse.fromJson(productMap);
+//                 foundOffline = true;
+//
+//                 if (kDebugMode) {
+//                   print("🧠 MEMORY → PRODUCT → name=${product?.name}, price=${product?.price}, sku=${product?.sku}");
+//                 }
+//               }
+//             } catch (e, s) {
+//               print("❌ MEMORY CACHE ERROR → $e");
+//               print("📌 STACKTRACE → $s");
+//             }
+//
+// // ---------------------------------------------------------------------------
+// // 2️⃣ PRODUCT CACHE (Custom Items + Normal SKU)
+// // ---------------------------------------------------------------------------
+//             try {
+//               if (product == null) {
+//                 final cached = productBox.get(cacheKey);
+//
+//                 if (cached != null) {
+//                   if (kDebugMode) {
+//                     print("💽 HIVE productCache[$cacheKey] RAW → $cached");
+//                     try {
+//                       print("💽 HIVE JSON → ${jsonEncode(cached)}");
+//                     } catch (_) {
+//                       print("💽 HIVE map not JSON encodable");
+//                     }
+//                   }
+//
+//                   List<dynamic> items = [];
+//
+//                   if (cached is Map && cached["products"] is List) {
+//                     items = cached["products"];
+//                   }
+//
+//                   if (items.isNotEmpty) {
+//                     final productMap = Map<String, dynamic>.from(items[0]);
+//
+//                     if (kDebugMode) {
+//                       print("💽 Extracted productMap from Hive → $productMap");
+//                       try {
+//                         print("💽 productMap JSON → ${jsonEncode(productMap)}");
+//                       } catch (_) {
+//                         print("💽 productMap not JSON encodable");
+//                       }
+//                     }
+//
+//                     product = SKU.ProductBySkuResponse.fromJson(productMap);
+//                     foundOffline = true;
+//
+//                     if (kDebugMode) {
+//                       print("🟢 productCache → PRODUCT → name=${product?.name}, price=${product?.price}");
+//                     }
+//                   }
+//                 }
+//               }
+//             } catch (e, s) {
+//               print("❌ PRODUCT CACHE ERROR → $e");
+//               print("📌 STACKTRACE → $s");
+//             }
+//
+//             // ---------------------------------------------------------------------------
+//             // 3️⃣ CUSTOM ITEM → Increment quantity if already in order
+//             // ---------------------------------------------------------------------------
+//             try {
+//               final offlineBox = Hive.box('offlineOrders');
+//               final raw = offlineBox.get(activeOrderId.toString());
+//
+//               if (raw != null) {
+//                 List<Map<String, dynamic>> orderProducts =
+//                 List<Map<String, dynamic>>.from(raw["products"] ?? []);
+//
+//                 final existingIndex = orderProducts
+//                     .indexWhere((p) => normalizeSku(p["sku"]) == trimmedBarcode);
+//
+//                 if (existingIndex != -1) {
+//                   if (kDebugMode) print("🔼 Custom item found → incrementing");
+//
+//                   orderProducts[existingIndex]["quantity"] =
+//                       (orderProducts[existingIndex]["quantity"] ?? 1) + 1;
+//
+//                   await offlineBox.put(activeOrderId.toString(), {
+//                     ...raw,
+//                     "products": orderProducts,
+//                   });
+//
+//                   await fetchOrderItems();
+//                   await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+//
+//
+//                   _isLoading = false;
+//                   if (mounted) setState(() {});
+//                   return;
+//                 }
+//               }
+//             } catch (e) {
+//               print("⚠ Offline custom increment error: $e");
+//             }
+//
+//             // ---------------------------------------------------------------------------
+//             // 4️⃣ FULL LIST CACHE
+//             // ---------------------------------------------------------------------------
+//             try {
+//               if (product == null) {
+//                 final allData = productBox.get("all_products_list");
+//
+//                 if (allData is List) {
+//                   for (var item in allData) {
+//                     final p =
+//                     SKU.ProductBySkuResponse.fromJson({"products": [deepCast(item)]});
+//                     if ((p.sku ?? "").toLowerCase() == trimmedBarcode.toLowerCase()) {
+//                       product = p;
+//                       foundOffline = true;
+//                       break;
+//                     }
+//                   }
+//                 }
+//               }
+//             } catch (e) {
+//               if (kDebugMode) print("⚠ full list error: $e");
+//             }
+//
+//             // ---------------------------------------------------------------------------
+//             // 5️⃣ ONLINE API FETCH
+//             // ---------------------------------------------------------------------------
+//             if (product == null) {
+//               try {
+//                 final products =
+//                 await ProductRepository().fetchProductBySku(trimmedBarcode);
+//
+//                 if (products.isNotEmpty) {
+//                   product = products.first;
+//
+//                   await productBox.put(cacheKey, {
+//                     "products": products.map((p) => deepCast(p.toJson())).toList(),
+//                     "timestamp": DateTime.now().toIso8601String(),
+//                   });
+//
+//                   if (kDebugMode) print("🌐 Online fetch → ${product?.name}");
+//                 }
+//               } catch (e) {
+//                 print("📴 API error: $e");
+//               }
+//             }
+//
+//             // ---------------------------------------------------------------------------
+//             // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
+//             // ---------------------------------------------------------------------------
+//             // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
+//             if (product == null) {
+//               if (_scanLocked || _ageVerificationActive || isDriverLicense) {
+//                 if (kDebugMode) {
+//                   print("🚫 Custom Item popup BLOCKED (DL / Age / Locked)");
+//                 }
+//
+//                 _isLoading = false;
+//                 if (mounted) setState(() {});
+//                 return;
+//               }
+//
+//               await _openCustomItemDialog(context, trimmedBarcode);
+//               return;
+//             }
+//
+//             // ---------------------------------------------------------------------------
+//             // 7️⃣ EXTRACT PRODUCT DATA
+//             // ---------------------------------------------------------------------------
+//             final productId = product.id ?? -1;
+//             final productName = product.name ?? "Unnamed Product";
+//             final productSku = product.sku ?? trimmedBarcode;
+//             final productPrice =
+//                 double.tryParse(product.price?.toString() ?? "0") ?? 0;
+//
+//             String image = "";
+//             if ((product.images ?? []).isNotEmpty) {
+//               image = product.images!.first.src ?? "";
+//             }
+//
+//             // ⭐ AGE RESTRICTION CHECK — ONE TIME PER ORDER (FINAL FIX)
+//             // ----------------------------------------------------------- */
+//
+//             if (kDebugMode) {
+//               print("\n---------------- AGE CHECK START ----------------");
+//               print("Product Scanned: ID=${product.id}, Name=${product.name}");
+//             }
+//
+// // ======================================================
+// // 1️⃣ INIT
+// // ======================================================
+//             bool isRestricted = false;
+//             int minimumAge = 0;
+//
+// // ======================================================
+// // 2️⃣ CHECK METADATA
+// // ======================================================
+//             for (final m in (product.metaData ?? [])) {
+//               final key = (m.key ?? "");
+//               final val = (m.value ?? "");
+//
+//               if (key == "age_restricted") {
+//                 if (val == "1" || val == "true") {
+//                   isRestricted = true;
+//                 }
+//
+//                 final int? parsedAge = int.tryParse(val);
+//                 if (parsedAge != null && parsedAge > 0) {
+//                   minimumAge = parsedAge;
+//                   isRestricted = true;
+//                 }
+//               }
+//             }
+//
+// // ======================================================
+// // 3️⃣ CHECK TAGS
+// // ======================================================
+//             for (final tag in (product.tags ?? [])) {
+//               final name = (tag.name ?? "").toLowerCase();
+//               final slug = (tag.slug ?? "").toLowerCase();
+//
+//               if (name.contains("alcohol") || slug.contains("alcohol")) {
+//                 isRestricted = true;
+//               }
+//
+//               final bool looksAgeTag =
+//                   name.contains("18+") ||
+//                       name.contains("21+") ||
+//                       slug.contains("18+") ||
+//                       slug.contains("21+") ||
+//                       name.contains("age") ||
+//                       slug.contains("age") ||
+//                       name.contains("restricted") ||
+//                       slug.contains("restricted");
+//
+//               if (looksAgeTag) {
+//                 final cleaned = slug.replaceAll(RegExp(r"[^0-9]"), "");
+//                 final int? parsedAge = int.tryParse(cleaned);
+//
+//                 if (parsedAge != null && parsedAge > 0) {
+//                   minimumAge = parsedAge;
+//                   isRestricted = true;
+//                 }
+//               }
+//             }
+//
+// // ======================================================
+// // 4️⃣ GET ORDER HIVE DATA
+// // ======================================================
+//             final hiveBox = Hive.box('offlineOrders');
+//             final orderKey = orderHelper.activeOrderId.toString();
+//
+//             final Map<String, dynamic> hiveOrder = Map<String, dynamic>.from(
+//               hiveBox.get(orderKey, defaultValue: {}),
+//             );
+//
+//             final bool alreadyVerified =
+//                 hiveOrder["age_verified"] == true ||
+//                     hiveOrder["age_verified"] == 1 ||
+//                     hiveOrder["age_verified"]?.toString().toLowerCase() == "true";
+//
+//             if (kDebugMode) print("Already verified? → $alreadyVerified");
+//
+// // ======================================================
+// // 5️⃣ SKIP ENTIRE AGE FLOW IF ALREADY VERIFIED
+// // ======================================================
+//             if (alreadyVerified) {
+//               if (kDebugMode) print("✔ Age already verified → skipping popup.");
+//             } else if (isRestricted) {
+//               // FIRST TIME ONLY → SHOW POPUP THROUGH PROVIDER
+//               if (kDebugMode) print("🔔 Showing Age Verification Popup (FIRST TIME)");
+//
+//               final prov = AgeVerificationProvider();
+//               final bool ok = await prov.ageRestrictedProduct(context, product);
+//
+//               // User failed age verification
+//               if (!ok) {
+//                 _isLoading = false;
+//                 if (mounted) setState(() {});
+//                 _scaffoldMessenger.showSnackBar(
+//                   const SnackBar(
+//                     content: Text("❌ Age verification failed"),
+//                     backgroundColor: Colors.red,
+//                   ),
+//                 );
+//                 return;
+//               }
+//
+//               // SUCCESS → SAVE FLAG
+//               hiveOrder["age_verified"] = true;
+//               await hiveBox.put(orderKey, hiveOrder);
+//
+//               if (kDebugMode) print("💾 Saved age_verified = TRUE for order $orderKey");
+//             } else {
+//               if (kDebugMode) print("✔ Product is NOT age restricted.");
+//             }
+//
+//             if (kDebugMode) print("---------------- AGE CHECK END ----------------\n");
+//
+//
+//             // ---------------------------------------------------------------------------
+//             // 8️⃣ VARIATIONS FLOW
+//             // =====================================================================
+//             if ((product.variations ?? []).isNotEmpty) {
+//               final id = product.id ?? -1;
+//               productBloc.fetchProductVariations(id);
+//
+//               final response = await productBloc.variationStream
+//                   .firstWhere((r) => r.status == Status.COMPLETED);
+//
+//               if (response.data != null && response.data!.isNotEmpty) {
+//                 final variants = response.data!.map((v) {
+//                   return {
+//                     "id": v.id ?? -1,
+//                     "name": v.name ?? productName,
+//                     "price": v.price ?? "0",
+//                     "image": v.image?.src ?? "",
+//                     "sku": v.sku ?? "",
+//                   };
+//                 }).toList();
+//
+//                 await showDialog(
+//                   context: context,
+//                   barrierDismissible: false,
+//                   builder: (_) => VariantsDialog(
+//                     title: productName,
+//                     variations: variants,
+//                     onAddVariant: (selected, qty) async {
+//                       await orderHelper.addItemToOrder(
+//                         selected["id"],
+//                         selected["name"],
+//                         selected["image"],
+//                         double.tryParse(selected["price"].toString()) ?? 0,
+//                         qty,
+//                         selected["sku"],
+//                         activeOrderId,
+//                         type: ItemType.product.value,
+//                         productId: id,
+//                         variationId: selected["id"],
+//                       );
+//                       await fetchOrderItems();
+//                       await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+//                     },
+//                   ),
+//                 );
+//
+//                 _isLoading = false;
+//                 if (mounted) setState(() {});
+//                 return;
+//               }
+//             }
+//
+//             // ---------------------------------------------------------------------------
+//             // 9️⃣ ADD ITEM TO ORDER
+//             // ---------------------------------------------------------------------------
+//             await orderHelper.addItemToOrder(
+//               productId,
+//               productName,
+//               image,
+//               productPrice,
+//               1,
+//               productSku,
+//               activeOrderId,
+//               type: ItemType.product.value,
+//               productId: productId,
+//               variationId: -1,
+//             );
+//
+//             await fetchOrderItems();
+//             await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+//
+//             _isLoading = false;
+//             if (mounted) setState(() {});
+//           } catch (e, s) {
+//             print("❌ Scan failed: $e\n$s");
+//             _isLoading = false;
+//             if (mounted) setState(() {});
+//           }
+//
+//           finally {
+//             // 🔓 ALWAYS UNLOCK HERE
+//             await Future.delayed(const Duration(milliseconds: 800));
+//             _scanLocked = false;
+//
+//             if (kDebugMode) {
+//               print("🔓 Scanner unlocked (finally)");
+//             }
+//           }
+//         },
         onBarcodeScanned: (barcode) async {
-          //  ⛔ HARD BLOCK — prevents duplicate scans
-          if (_scanLocked || _ageVerificationActive) return;
+          if (ScannerGuard.isCouponPopupOpen) {
+            print("🔒 Coupon popup active → OrderPanel scanner ignored");
+            return;
+          }
 
-          final trimmedBarcode = barcode;
-
-          // ⛔ Ignore junk frames
-          if (trimmedBarcode.length < 6) return;
           try {
-            final trimmedBarcode = barcode;
+            final trimmedBarcode = barcode.trim();
             if (kDebugMode) print("🔹 Scanned → $trimmedBarcode");
-
-            final upper = trimmedBarcode.toUpperCase();
-
-            final bool isDriverLicense =
-                upper.contains("ANSI") ||
-                    upper.contains("DBB") ||
-                    upper.contains("DAQ") ||
-                    upper.contains("DL");
-
-            if (isDriverLicense) {
-
-              if (kDebugMode) {
-                print("🪪 Driver License detected → stopping product flow");
-                print("🪪 DRIVER LICENSE RAW BARCODE ↓↓↓");
-                print(trimmedBarcode); // ✅ FULL PDF417 DATA
-                print("🪪 DRIVER LICENSE RAW BARCODE ↑↑↑");
-              }
-              _ageVerificationActive = true;
-              _scanLocked = true;
-
-              // ⏳ Absorb trailing scanner frames
-              await Future.delayed(const Duration(milliseconds: 1200));
-
-              _ageVerificationActive = false;
-
-              // 🔥 VERY IMPORTANT — STOP HERE
-              return;
-            }
-
 
             if (!isOrderInForeground ||
                 trimmedBarcode.isEmpty ||
@@ -1048,18 +1517,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             // ---------------------------------------------------------------------------
             // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
             // ---------------------------------------------------------------------------
-            // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
             if (product == null) {
-              if (_scanLocked || _ageVerificationActive || isDriverLicense) {
-                if (kDebugMode) {
-                  print("🚫 Custom Item popup BLOCKED (DL / Age / Locked)");
-                }
-
-                _isLoading = false;
-                if (mounted) setState(() {});
-                return;
-              }
-
+              _isLoading = false;
+              if (mounted) setState(() {});
               await _openCustomItemDialog(context, trimmedBarcode);
               return;
             }
@@ -1077,6 +1537,164 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             if ((product.images ?? []).isNotEmpty) {
               image = product.images!.first.src ?? "";
             }
+
+            // ------------------------------------------------------------
+// ⭐ SKIP POPUP IF PRODUCT ALREADY EXISTS IN ORDERPANEL
+// ------------------------------------------------------------
+            // ------------------------------------------------------------
+// ⭐ SKIP POPUP IF PRODUCT ALREADY EXISTS IN ORDERPANEL
+// ------------------------------------------------------------
+            final bool exists = OrderHelper.existsInOrderBySku(
+              activeOrderId,
+              productSku,
+            );
+
+            if (exists) {
+              print("🔁 SAME PRODUCT FOUND → SKIP POPUP & INCREMENT QTY");
+
+              await orderHelper.addItemToOrder(
+                productId,
+                productName,
+                image,
+                productPrice,
+                1,
+                productSku,
+                activeOrderId,
+                type: ItemType.product.value,
+                productId: productId,
+                variationId: -1,
+              );
+
+
+
+              await fetchOrderItems();
+              await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+
+              _isLoading = false;
+              if (mounted) setState(() {});
+              return; // 🚫 STOP HERE — POPUP NEVER OPENS
+            }
+
+
+
+// ------------------------------------------------------------
+// ⭐ VARIABLE PRICE PRODUCT CHECK
+// ------------------------------------------------------------
+            final hasVariablePriceTag = (product.tags ?? []).any((tag) {
+              final name = (tag.name ?? "").toLowerCase();
+              final slug = (tag.slug ?? "").toLowerCase();
+              return name.contains("variable product") || slug.contains("variable-product");
+            });
+
+            print("🧪 hasVariablePriceTag = $hasVariablePriceTag");
+            print("⏳ _isLoading before popup = $_isLoading");
+
+
+
+// ------------------------------------------------------------
+// ⭐ SHOW VARIABLE PRICE POPUP (ONLY FIRST TIME)
+// ------------------------------------------------------------
+            if (hasVariablePriceTag) {
+              print("💡 Triggering ManualPriceDialog for variable product");
+
+              try {
+                final double? enteredPrice = await ManualPriceDialog.show(
+                  context,
+                  productName: productName,
+                  productImage: image,
+                  minPrice: productPrice,
+                );
+
+
+                print("💬 ManualPriceDialog returned → $enteredPrice");
+
+                if (enteredPrice == null) {
+                  print("❌ User cancelled ManualPriceDialog");
+                  return;
+                }
+
+                print("✅ Adding variable product to order with price $enteredPrice");
+
+                await orderHelper.addItemToOrder(
+                  productId,
+                  productName,
+                  image,
+                  enteredPrice,
+                  1,
+                  productSku,
+                  activeOrderId,
+                  type: ItemType.product.value,
+                  productId: productId,
+                  variationId: -1,
+                );
+
+                print("🛒 Product added to order");
+
+                // / ⭐ FIX: MARK VARIABLE PRICE AS ALREADY ADDED
+// ------------------------------------------------------------
+                // ⭐ FIX: MARK VARIABLE PRICE AS ALREADY ADDED
+                final box = Hive.box('offlineOrders');
+                final orderKey = activeOrderId.toString();
+                final hiveOrder = Map<String, dynamic>.from(
+                  box.get(orderKey, defaultValue: {}),
+                );
+
+// Mark that popup has been shown once
+                hiveOrder["variable_price_added_$productId"] = true;
+
+// VERY IMPORTANT: Store the actual manual price user entered
+                hiveOrder["selected_price_$productId"] = enteredPrice;
+
+                await box.put(orderKey, hiveOrder);
+
+                print("💾 FIX APPLIED → Variable price flags saved for scanned product");
+                print("  → variable_price_added_$productId = true");
+                print("  → selected_price_$productId = $enteredPrice");
+
+                await fetchOrderItems();
+                await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+
+                print("📊 Customer display updated");
+
+              } finally {
+                _isLoading = false;
+                if (mounted) setState(() {});
+                print("⏳ _isLoading after popup = $_isLoading");
+              }
+
+              return; // STOP FURTHER EXECUTION
+            }
+
+
+
+// ------------------------------------------------------------
+// ⭐ NORMAL PRODUCT FLOW
+// ------------------------------------------------------------
+            print("➡ Not a variable product, continuing normal flow");
+
+            // ---------------------------------------------------------------------------
+// ⭐ FINAL EBT ELIGIBILITY CHECK (NOW PRODUCT IS LOADED) ✅
+// ---------------------------------------------------------------------------
+            bool isEbtEligible = false;
+
+            try {
+              final tags = product?.tags ?? [];
+
+              isEbtEligible = tags.any((t) {
+                final name = (t.name ?? "").toLowerCase();
+                final slug = (t.slug ?? "").toLowerCase();
+
+                return name == "ebt" ||
+                    name == "ebt eligible" ||
+                    slug == "ebt" ||
+                    slug == "ebt-eligible";
+              });
+
+              print("💳 FINAL EBT Eligible? → $isEbtEligible (via product.tags)");
+            } catch (e) {
+              print("⚠ EBT eligibility error → $e");
+            }
+
 
             // ⭐ AGE RESTRICTION CHECK — ONE TIME PER ORDER (FINAL FIX)
             // ----------------------------------------------------------- */
@@ -1237,6 +1855,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         type: ItemType.product.value,
                         productId: id,
                         variationId: selected["id"],
+                        isEbtEligible: isEbtEligible,
                       );
                       await fetchOrderItems();
                       await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
@@ -1264,6 +1883,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               type: ItemType.product.value,
               productId: productId,
               variationId: -1,
+              isEbtEligible: isEbtEligible,
             );
 
             await fetchOrderItems();
@@ -1275,16 +1895,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             print("❌ Scan failed: $e\n$s");
             _isLoading = false;
             if (mounted) setState(() {});
-          }
-
-          finally {
-            // 🔓 ALWAYS UNLOCK HERE
-            await Future.delayed(const Duration(milliseconds: 800));
-            _scanLocked = false;
-
-            if (kDebugMode) {
-              print("🔓 Scanner unlocked (finally)");
-            }
           }
         },
 
@@ -3672,6 +4282,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                                   final syncedEbt =
                                       double.tryParse(syncResult["ebt_total"]?.toString() ?? "0") ?? 0.0;
+                                  final syncedDiscountAmount =
+                                      double.tryParse(syncResult["discount_amount"]?.toString() ?? "0") ?? 0.0;
+
+                                  print("💳 Synced EBT Eligible Total = $syncedEbt");
+                                  print("🏷 Synced Discount Amount = $syncedDiscountAmount");
 
                                   print("💳 Synced EBT Eligible Total = $syncedEbt");
 
@@ -3695,6 +4310,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                       updatedOrder["tax"] = syncedTax;
                                       updatedOrder["cashback_fee"] = syncedCashback;
                                       updatedOrder["ebt_total"] = syncedEbt;    // ⭐ SAVE EBT
+                                      updatedOrder["discount_amount"] = syncedDiscountAmount;
 
                                       // Save Local key
                                       await box.put(localKey, updatedOrder);
@@ -3722,6 +4338,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                             final double ebtAmount =
                             (box.get(hiveKey)?["ebt_total"] ?? 0.0).toDouble();
+                            final double discountAmount =
+                            (box.get(hiveKey)?["discount_amount"] ?? 0.0).toDouble();
+
+                            print("📤 Passing Discount to Summary Screen = $discountAmount");
+
 
                             print("📤 Passing EBT to Summary Screen = $ebtAmount");
 
@@ -3742,6 +4363,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   offlineOrderId: orderHelper.activeOrderId,
                                   cashbackFee: cashbackFee,
                                   ebtAmount: ebtAmount,
+                                  discountAmount: discountAmount,
                                 ),
                               ),
                             );

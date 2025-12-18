@@ -70,6 +70,7 @@ class OrderSummaryScreen extends StatefulWidget {
   final double cashbackFee;
   final double ?balanceamount;
   final double ebtAmount;   // ✅ NEW
+  final double discountAmount;
 
 
   const OrderSummaryScreen({
@@ -88,6 +89,7 @@ class OrderSummaryScreen extends StatefulWidget {
     this.offlineOrderId,
     super.key,
     this.balanceamount,
+    required this.discountAmount,
   });
 
   @override
@@ -218,6 +220,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     _displayDate = widget.formattedDate;
     _displayTime = widget.formattedTime;
     cashbackFee = widget.cashbackFee;
+    discountValue = widget.discountAmount;
+
+    print("🏷 q = $discountValue");
+
 
     print("💳 EBT Total in Summary Screen = $ebtTotal");
 

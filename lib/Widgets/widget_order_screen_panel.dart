@@ -2111,7 +2111,17 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                 return !isNonProduct;
                               }).toList();
                             }
+                            final box = Hive.box('offlineOrders');
 
+// Prefer server order id if exists, else offline id
+                            final hiveKey = orderHelper.activeOrderId.toString();
+
+                            final double discountAmount =
+                            (box.get(hiveKey)?["discount_amount"] ?? 0.0).toDouble();
+
+                            if (kDebugMode) {
+                              print("🏷 Passing Discount Amount = $discountAmount");
+                            }
 
                             final filteredItems = visibleLineItems(orderItems);
 
@@ -2130,6 +2140,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                   orderId: orderHelper.activeOrderId,
                                   cashbackFee: cashbackFee,
                                   ebtAmount: ebtAmount,
+                                  discountAmount: discountAmount,
                                 ),
                               ),
                             );

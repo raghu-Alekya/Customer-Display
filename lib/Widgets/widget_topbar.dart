@@ -190,6 +190,19 @@ class _TopBarState extends State<TopBar> {
     super.dispose();
   }
 
+  String _getProductImage(dynamic product) {
+    try {
+      // Woo / API style: images: [{ src: "..."}]
+      if (product.images != null && product.images!.isNotEmpty) {
+        final img = product.images!.first;
+        if (img is String && img.isNotEmpty) return img;
+        if (img is Map && img["src"] != null) return img["src"].toString();
+      }
+    } catch (_) {}
+    return ""; // fallback → dialog handles default asset
+  }
+
+
   // This method creates a semi-transparent overlay with a centered CircularProgressIndicator to indicate loading during API calls.
   // It reuses _overlayEntry to manage the overlay, ensuring only one overlay is shown at a time.
   void _showLoaderOverlay() {
@@ -601,17 +614,23 @@ class _TopBarState extends State<TopBar> {
                                               return;
                                             }
 
+
 // ----------------------------------------------------------------------
+// 🟥 STEP 4: Product NOT found → FIRST TIME variable-price popup
+// ----------------------------------------------------------------------
+                                            // ----------------------------------------------------------------------
 // 🟥 STEP 4: Product NOT found → FIRST TIME variable-price popup
 // ----------------------------------------------------------------------
                                             if (hasVariablePriceTag && !hasVariants) {
                                               print("💰 Variable product → showing manual price popup for FIRST TIME");
 
+                                              final String productImage = _getProductImage(product);
+
                                               final enteredPrice = await ManualPriceDialog.show(
                                                 _context,
                                                 productName: product.name ?? "Product",
+                                                productImage: productImage, // ✅ REAL IMAGE
                                                 minPrice: productPrice,
-                                                productImage: '',
                                               );
 
                                               if (enteredPrice == null) {

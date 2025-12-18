@@ -486,21 +486,29 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
         CustomerDisplayHelper.updateCustomerDisplay(
             int.tryParse(localOrderId) ?? serverOrderId);
-
-        // ---------------------------------------------------------
-// ⭐ Extract EBT Eligible Total from Woo response
+// ---------------------------------------------------------
+// ⭐ Extract values from Woo meta (EBT + Discount)
 // ---------------------------------------------------------
         double ebtTotal = 0.0;
+        double discountAmount = 0.0;
 
-        final metaList = decoded["meta_data"] as List? ?? [];
+        final List metaList = decoded["meta_data"] as List? ?? [];
+
         for (final meta in metaList) {
-          if ((meta["key"] ?? "") == "_pinaka_ebt_eligible_total") {
-            ebtTotal = double.tryParse(meta["value"].toString()) ?? 0.0;
-            break;
+          final key = meta["key"]?.toString();
+
+          if (key == "_pinaka_ebt_eligible_total") {
+            ebtTotal = double.tryParse(meta["value"]?.toString() ?? "0") ?? 0.0;
+          }
+
+          if (key == "_discount_amount") {
+            discountAmount = double.tryParse(meta["value"]?.toString() ?? "0") ?? 0.0;
           }
         }
 
         print("🔵 EBT extracted from Woo → $ebtTotal");
+        print("🏷 Discount extracted from Woo → $discountAmount");
+
 
 // ---------------------------------------------------------
 // ⭐ Return all values including EBT
@@ -511,6 +519,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           "total": wooTotal,
           "cashback_fee": cashbackFee,
           "ebt_total": ebtTotal,       // ✅ ADD THIS
+          "discount_amount": discountAmount,
         };
 
       }

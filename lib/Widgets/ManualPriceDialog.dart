@@ -24,11 +24,12 @@ class ManualPriceDialog extends StatefulWidget {
       barrierDismissible: false,
       builder: (_) => ManualPriceDialog(
         productName: productName,
-        productImage: "assets/Bubbas_logo.png",
+        productImage: productImage,
         quantity: quantity,
       ),
     );
   }
+
 
   @override
   State<ManualPriceDialog> createState() => _ManualPriceDialogState();
@@ -87,13 +88,29 @@ class _ManualPriceDialogState extends State<ManualPriceDialog> {
                       // PRODUCT IMAGE
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.asset(
+                        child: widget.productImage.isNotEmpty &&
+                            (widget.productImage.startsWith("http") ||
+                                widget.productImage.startsWith("https"))
+                            ? Image.network(
                           widget.productImage,
+                          width: 75,
+                          height: 75,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Image.asset(
+                            "assets/Bubbas_logo.png",
+                            width: 75,
+                            height: 75,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                            : Image.asset(
+                          "assets/Bubbas_logo.png",
                           width: 75,
                           height: 75,
                           fit: BoxFit.cover,
                         ),
                       ),
+
 
                       const SizedBox(width: 16),
 
