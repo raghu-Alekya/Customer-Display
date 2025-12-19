@@ -73,6 +73,7 @@ class OrderSummaryScreen extends StatefulWidget {
   final double discountAmount;
 
 
+
   const OrderSummaryScreen({
     required this.formattedDate,
     required this.formattedTime,
@@ -90,6 +91,7 @@ class OrderSummaryScreen extends StatefulWidget {
     super.key,
     this.balanceamount,
     required this.discountAmount,
+
   });
 
   @override
@@ -544,13 +546,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       );
     }
   }
-
-
   Future<void> _createPaymentFromSunmi(
       double amount,
       Map<String, dynamic> sunmi,
       ) async {
-
     final String datetime =
     DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
@@ -558,7 +557,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       title: "Card",
       orderId: orderId ?? 0,
       amount: amount,
-      paymentMethod: TextConstants.card,   // ⭐ correct method
+      paymentMethod: TextConstants.card,
       shiftId: shiftId,
       vendorId: vendorId,
       userId: userId ?? 0,
@@ -574,8 +573,58 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       }),
     );
 
+    // 🔹 REQUEST LOG
+    print("🟡 ================= SUNMI PAYMENT REQUEST =================");
+    print(paymentRequest);
+    print("🟡 =========================================================");
+
     paymentBloc.createPayment(paymentRequest);
+
+    StreamSubscription? subscription;
+    subscription = paymentBloc.createPaymentStream.listen((paymentResponse) {
+      print("");
+      print("🟢 ================= SUNMI PAYMENT FULL RESPONSE =================");
+
+      // 🔹 STATUS
+      print("STATUS → ${paymentResponse.status}");
+
+      // 🔹 RAW RESPONSE OBJECT
+      print("RAW RESPONSE OBJECT → $paymentResponse");
+
+      // 🔹 ERROR CASE
+      if (paymentResponse.status == Status.ERROR) {
+        print("❌ ERROR MESSAGE → ${paymentResponse.message}");
+        print("❌ ERROR DATA → ${paymentResponse.data}");
+        print("🟢 ===============================================================");
+        subscription?.cancel();
+        return;
+      }
+
+      // 🔹 SUCCESS CASE
+      if (paymentResponse.status == Status.COMPLETED &&
+          paymentResponse.data != null) {
+        final data = paymentResponse.data!;
+
+        print("✅ MESSAGE → ${data.message}");
+        print("✅ PAYMENT ID → ${data.paymentId}");
+        print("✅ ORDER ID → ${data.orderId}");
+        print("✅ ORDER STATUS → ${data.orderStatus}");
+
+        // 🔹 PRINT COMPLETE DATA MAP (IF AVAILABLE)
+        try {
+          print("📦 FULL DATA JSON ↓↓↓");
+          print(jsonEncode(data.toJson()));
+        } catch (e) {
+          print("⚠ toJson() not available, printing object only");
+          print(data);
+        }
+      }
+
+      print("🟢 ===============================================================");
+      subscription?.cancel();
+    });
   }
+
 
   Future<void> updateOfflineOrderRedeem(
       String orderId,
@@ -2047,7 +2096,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       });
     }
   }
-
   Widget _buildOrderItem(int index) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final orderItem = orderItems[index];
@@ -2060,13 +2108,19 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 orderItem['variation_name'].toString().trim().isNotEmpty) ||
             (orderItem['variation_id'] != null &&
                 orderItem['variation_id'] != 0);
-    final bool isEbtEligible = orderItem['is_ebt_eligible'] == true;
 
+    final bool isEbtEligible = orderItem['is_ebt_eligible'] == true;
 
     final String itemName = orderItem['item_name']?.toString() ?? '';
     final double itemPrice = (orderItem['item_price'] ?? 0).toDouble();
     final int itemCount = (orderItem['items_count'] ?? 0).toInt();
-    final double itemSumPrice = (orderItem['item_sum_price'] ?? 0).toDouble();
+    final double originalTotal =
+    (orderItem['item_sum_price'] ?? 0).toDouble();
+    final double autoDiscount =
+    (orderItem['auto_discount'] ?? 0).toDouble();
+
+    final double finalItemTotal = originalTotal - autoDiscount;
+
     final String itemImage = orderItem['item_image']?.toString() ?? '';
 
     final bool isPayout = itemType.contains(TextConstants.payoutText);
@@ -2074,52 +2128,38 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final bool isCustomItem = itemType.contains(TextConstants.customItemText);
     final bool isCashback = itemType.contains("cashback");
 
-    final bool isPayoutOrCoupon =
-        isPayout || isCoupon || isCashback;
+    final bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+
     if (kDebugMode) {
-      print("🧩 Building Order Item #$index → $itemName | $itemType");
+      print(
+        "🧩 Summary Item → $itemName | original=$originalTotal | autoDiscount=$autoDiscount | final=$finalItemTotal",
+      );
     }
 
-    /// ✅ Select image based on item type
+    /// 🖼 Image selection
     Widget imageWidget;
     if (isPayout) {
-      imageWidget = SvgPicture.asset(
-        'assets/svg/payout.svg', // 👈 your existing payout icon path
-        fit: BoxFit.contain,
-      );
+      imageWidget = SvgPicture.asset('assets/svg/payout.svg');
     } else if (isCoupon) {
-      imageWidget = SvgPicture.asset(
-        'assets/svg/coupon.svg', // 👈 coupon icon
-        fit: BoxFit.contain,
-      );
+      imageWidget = SvgPicture.asset('assets/svg/coupon.svg');
     } else if (isCustomItem) {
-      // Custom item MUST show PNG
-      imageWidget = Image.asset(
-        'assets/custom.png',
-        fit: BoxFit.cover,
-      );
+      imageWidget = Image.asset('assets/custom.png', fit: BoxFit.cover);
     } else if (itemImage.startsWith('http')) {
-      // HTTP product image
       imageWidget = Image.network(
         itemImage,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) =>
-            Image.asset('assets/custom.png'), // PNG fallback instead of SVG
+        errorBuilder: (_, __, ___) =>
+            Image.asset('assets/custom.png'),
       );
     } else if (itemImage.startsWith('assets/')) {
-      // Local asset image (.png / .jpg)
       imageWidget = Image.asset(
         itemImage,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) =>
-            Image.asset('assets/custom.png'), // fallback PNG
+        errorBuilder: (_, __, ___) =>
+            Image.asset('assets/custom.png'),
       );
     } else {
-      // Final fallback
-      imageWidget = Image.asset(
-        'assets/custom.png',
-        fit: BoxFit.cover,
-      );
+      imageWidget = Image.asset('assets/custom.png');
     }
 
     return Padding(
@@ -2128,13 +2168,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         height: MediaQuery.of(context).size.height * 0.097,
         child: Row(
           children: [
-            // 🖼️ Image Section
+            // 🖼 Image
             Container(
               width: 42,
               height: 42,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
-                color: Colors.transparent,
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
@@ -2148,101 +2187,325 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // 🔹 Item Name
+                  Text(
+                    itemName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.textDark
+                          : ThemeNotifier.textLight,
+                    ),
+                  ),
+
+                  const SizedBox(height: 2),
+
+                  Row(
+                    children: [
+                      if (!isPayoutOrCoupon)
                         Text(
-                          itemName,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                          "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
                           style: TextStyle(
                             fontSize: 13,
-                            fontWeight: FontWeight.bold,
                             color: themeHelper.themeMode == ThemeMode.dark
                                 ? ThemeNotifier.textDark
-                                : ThemeNotifier.textLight,
+                                : Colors.black87,
                           ),
                         ),
 
-                        Row(
-                          children: [
-                            // 🔹 Price × Qty (not for payouts/custom/coupon)
-                            if (!isPayoutOrCoupon)
-                              Text(
-                                "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: themeHelper.themeMode == ThemeMode.dark
-                                      ? ThemeNotifier.textDark
-                                      : Colors.black87,
-                                ),
-                              ),
+                      if (!isPayoutOrCoupon) const SizedBox(width: 6),
 
-                            // spacing after price
-                            if (!isPayoutOrCoupon) const SizedBox(width: 6),
+                      if (isEbtEligible)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            "EBT",
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
 
-                            // 🟢 EBT Badge
-                            if (isEbtEligible)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.green,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  "EBT",
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-
-                            // spacing after EBT
-                            if (isEbtEligible) const SizedBox(width: 6),
-
-                            // 🔻 Variant Icon
-                            if (isVariant)
-                              SvgPicture.asset(
-                                SvgUtils.variationIcon,
-                                height: 10,
-                                width: 10,
-                              ),
-                          ],
-                        )
+                      if (isVariant) ...[
+                        const SizedBox(width: 6),
+                        SvgPicture.asset(
+                          SvgUtils.variationIcon,
+                          height: 10,
+                          width: 10,
+                        ),
                       ],
-                    ),
+                    ],
                   ),
+
+                  /// 🟢 AUTO DISCOUNT LINE
+                  if (autoDiscount > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        "Auto Discount: -${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.red,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
 
-            // 💰 Right-side total
-            Text(
-              isCoupon || isPayout
-                  ? "-${TextConstants.currencySymbol}${itemSumPrice.abs().toStringAsFixed(2)}"
-                  : "${TextConstants.currencySymbol}${itemSumPrice.toStringAsFixed(2)}",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: isCoupon || isPayout
-                    ? Colors.red
-                    : themeHelper.themeMode == ThemeMode.dark
-                    ? ThemeNotifier.textDark
-                    : ThemeNotifier.textLight,
-              ),
+            // 💰 Final Price
+            Builder(
+              builder: (context) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+
+                    /// 🔴 ORIGINAL PRICE (STRIKE THROUGH)
+                    if (autoDiscount > 0 && !isPayoutOrCoupon)
+                      Text(
+                        "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                          decoration: TextDecoration.lineThrough,
+                        ),
+                      ),
+
+                    /// 🟢 FINAL PRICE
+                    Text(
+                      isCoupon || isPayout
+                          ? "-${TextConstants.currencySymbol}${originalTotal.abs().toStringAsFixed(2)}"
+                          : "${TextConstants.currencySymbol}${finalItemTotal.toStringAsFixed(2)}",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: isCoupon || isPayout
+                            ? Colors.red
+                            : themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.textDark
+                            : ThemeNotifier.textLight,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
+
           ],
         ),
       ),
     );
   }
+
+
+  // Widget _buildOrderItem(int index) {
+  //   final themeHelper = Provider.of<ThemeNotifier>(context);
+  //   final orderItem = orderItems[index];
+  //   final itemType = orderItem['item_type']?.toString().toLowerCase() ?? '';
+  //
+  //   final bool isVariant =
+  //       (orderItem['is_variant'] == true) ||
+  //           (itemType == 'variant') ||
+  //           (orderItem['variation_name'] != null &&
+  //               orderItem['variation_name'].toString().trim().isNotEmpty) ||
+  //           (orderItem['variation_id'] != null &&
+  //               orderItem['variation_id'] != 0);
+  //   final bool isEbtEligible = orderItem['is_ebt_eligible'] == true;
+  //
+  //
+  //   final String itemName = orderItem['item_name']?.toString() ?? '';
+  //   final double itemPrice = (orderItem['item_price'] ?? 0).toDouble();
+  //   final int itemCount = (orderItem['items_count'] ?? 0).toInt();
+  //   final double itemSumPrice = (orderItem['item_sum_price'] ?? 0).toDouble();
+  //   final String itemImage = orderItem['item_image']?.toString() ?? '';
+  //
+  //   final bool isPayout = itemType.contains(TextConstants.payoutText);
+  //   final bool isCoupon = itemType.contains(TextConstants.couponText);
+  //   final bool isCustomItem = itemType.contains(TextConstants.customItemText);
+  //   final bool isCashback = itemType.contains("cashback");
+  //
+  //   final bool isPayoutOrCoupon =
+  //       isPayout || isCoupon || isCashback;
+  //   if (kDebugMode) {
+  //     print("🧩 Building Order Item #$index → $itemName | $itemType");
+  //   }
+  //
+  //   /// ✅ Select image based on item type
+  //   Widget imageWidget;
+  //   if (isPayout) {
+  //     imageWidget = SvgPicture.asset(
+  //       'assets/svg/payout.svg', // 👈 your existing payout icon path
+  //       fit: BoxFit.contain,
+  //     );
+  //   } else if (isCoupon) {
+  //     imageWidget = SvgPicture.asset(
+  //       'assets/svg/coupon.svg', // 👈 coupon icon
+  //       fit: BoxFit.contain,
+  //     );
+  //   } else if (isCustomItem) {
+  //     // Custom item MUST show PNG
+  //     imageWidget = Image.asset(
+  //       'assets/custom.png',
+  //       fit: BoxFit.cover,
+  //     );
+  //   } else if (itemImage.startsWith('http')) {
+  //     // HTTP product image
+  //     imageWidget = Image.network(
+  //       itemImage,
+  //       fit: BoxFit.cover,
+  //       errorBuilder: (context, error, stackTrace) =>
+  //           Image.asset('assets/custom.png'), // PNG fallback instead of SVG
+  //     );
+  //   } else if (itemImage.startsWith('assets/')) {
+  //     // Local asset image (.png / .jpg)
+  //     imageWidget = Image.asset(
+  //       itemImage,
+  //       fit: BoxFit.cover,
+  //       errorBuilder: (context, error, stackTrace) =>
+  //           Image.asset('assets/custom.png'), // fallback PNG
+  //     );
+  //   } else {
+  //     // Final fallback
+  //     imageWidget = Image.asset(
+  //       'assets/custom.png',
+  //       fit: BoxFit.cover,
+  //     );
+  //   }
+  //
+  //   return Padding(
+  //     padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 12),
+  //     child: SizedBox(
+  //       height: MediaQuery.of(context).size.height * 0.097,
+  //       child: Row(
+  //         children: [
+  //           // 🖼️ Image Section
+  //           Container(
+  //             width: 42,
+  //             height: 42,
+  //             decoration: BoxDecoration(
+  //               borderRadius: BorderRadius.circular(8),
+  //               color: Colors.transparent,
+  //             ),
+  //             child: ClipRRect(
+  //               borderRadius: BorderRadius.circular(8),
+  //               child: imageWidget,
+  //             ),
+  //           ),
+  //
+  //           const SizedBox(width: 12),
+  //
+  //           // 🧾 Details
+  //           Expanded(
+  //             child: Column(
+  //               crossAxisAlignment: CrossAxisAlignment.start,
+  //               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+  //               children: [
+  //                 Expanded(
+  //                   child: Column(
+  //                     crossAxisAlignment: CrossAxisAlignment.start,
+  //                     mainAxisAlignment: MainAxisAlignment.center,
+  //                     children: [
+  //                       // 🔹 Item Name
+  //                       Text(
+  //                         itemName,
+  //                         maxLines: 2,
+  //                         overflow: TextOverflow.ellipsis,
+  //                         style: TextStyle(
+  //                           fontSize: 13,
+  //                           fontWeight: FontWeight.bold,
+  //                           color: themeHelper.themeMode == ThemeMode.dark
+  //                               ? ThemeNotifier.textDark
+  //                               : ThemeNotifier.textLight,
+  //                         ),
+  //                       ),
+  //
+  //                       Row(
+  //                         children: [
+  //                           // 🔹 Price × Qty (not for payouts/custom/coupon)
+  //                           if (!isPayoutOrCoupon)
+  //                             Text(
+  //                               "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
+  //                               style: TextStyle(
+  //                                 fontSize: 13,
+  //                                 color: themeHelper.themeMode == ThemeMode.dark
+  //                                     ? ThemeNotifier.textDark
+  //                                     : Colors.black87,
+  //                               ),
+  //                             ),
+  //
+  //                           // spacing after price
+  //                           if (!isPayoutOrCoupon) const SizedBox(width: 6),
+  //
+  //                           // 🟢 EBT Badge
+  //                           if (isEbtEligible)
+  //                             Container(
+  //                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+  //                               decoration: BoxDecoration(
+  //                                 color: Colors.green,
+  //                                 borderRadius: BorderRadius.circular(4),
+  //                               ),
+  //                               child: const Text(
+  //                                 "EBT",
+  //                                 style: TextStyle(
+  //                                   fontSize: 10,
+  //                                   color: Colors.white,
+  //                                   fontWeight: FontWeight.bold,
+  //                                 ),
+  //                               ),
+  //                             ),
+  //
+  //                           // spacing after EBT
+  //                           if (isEbtEligible) const SizedBox(width: 6),
+  //
+  //                           // 🔻 Variant Icon
+  //                           if (isVariant)
+  //                             SvgPicture.asset(
+  //                               SvgUtils.variationIcon,
+  //                               height: 10,
+  //                               width: 10,
+  //                             ),
+  //                         ],
+  //                       )
+  //                     ],
+  //                   ),
+  //                 ),
+  //               ],
+  //             ),
+  //           ),
+  //
+  //           // 💰 Right-side total
+  //           Text(
+  //             isCoupon || isPayout
+  //                 ? "-${TextConstants.currencySymbol}${itemSumPrice.abs().toStringAsFixed(2)}"
+  //                 : "${TextConstants.currencySymbol}${itemSumPrice.toStringAsFixed(2)}",
+  //             style: TextStyle(
+  //               fontWeight: FontWeight.bold,
+  //               fontSize: 16,
+  //               color: isCoupon || isPayout
+  //                   ? Colors.red
+  //                   : themeHelper.themeMode == ThemeMode.dark
+  //                   ? ThemeNotifier.textDark
+  //                   : ThemeNotifier.textLight,
+  //             ),
+  //           ),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
 
   FontWeight labelFontWeight = FontWeight.w500;
   FontWeight amountFontWeight = FontWeight.w600;
@@ -2991,32 +3254,32 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             },
                           ),
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
-                          _buildPaymentModeButton(
-                            TextConstants.card,
-                            Icons.credit_card,
-                            isSelected: false,
-                            onTap: null, // ✅ disabled
-                          ),
-
                           // _buildPaymentModeButton(
                           //   TextConstants.card,
                           //   Icons.credit_card,
-                          //   isSelected: selectedPaymentMethod == TextConstants.card,
-                          //   onTap: () {
-                          //     setState(() {
-                          //       selectedPaymentMethod = TextConstants.card;
-                          //       double allowedAmount = balanceAmount;
-                          //
-                          //       _rawAmount = (allowedAmount * 100).toInt();
-                          //
-                          //       amountController.text =
-                          //       '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
-                          //
-                          //       _amountErrorText = null;
-                          //       _isAmountEntered = true;
-                          //     });
-                          //   },
+                          //   isSelected: false,
+                          //   onTap: null, // ✅ disabled
                           // ),
+
+                          _buildPaymentModeButton(
+                            TextConstants.card,
+                            Icons.credit_card,
+                            isSelected: selectedPaymentMethod == TextConstants.card,
+                            onTap: () {
+                              setState(() {
+                                selectedPaymentMethod = TextConstants.card;
+                                double allowedAmount = balanceAmount;
+
+                                _rawAmount = (allowedAmount * 100).toInt();
+
+                                amountController.text =
+                                '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
+
+                                _amountErrorText = null;
+                                _isAmountEntered = true;
+                              });
+                            },
+                          ),
 
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
 
