@@ -72,8 +72,6 @@ class OrderSummaryScreen extends StatefulWidget {
   final double ebtAmount;   // ✅ NEW
   final double discountAmount;
 
-
-
   const OrderSummaryScreen({
     required this.formattedDate,
     required this.formattedTime,
@@ -3282,18 +3280,24 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           ),
 
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
-
                           _buildPaymentModeButton(
                             TextConstants.wallet,
                             Icons.account_balance_wallet,
                             isSelected: selectedPaymentMethod == TextConstants.wallet,
-                            onTap: () {
+                            onTap: () async {
                               setState(() {
                                 selectedPaymentMethod = TextConstants.wallet;
-                                _resetAmount();
                               });
+
+                              // 🔥 FORCE OPEN VOID SCREEN WITH DUMMY DATA
+                              await _openSunmiVoidScreen(
+                                amount: 10.00,                    // dummy amount
+                                orderId: "24268",                 // dummy order id
+                                originTransactionId: "27192773",  // dummy txn id
+                              );
                             },
                           ),
+
 
                           SizedBox(height: ResponsiveLayout.getHeight(10)),
 
@@ -4340,8 +4344,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         Navigator.of(context).pop(); // Close the dialog
       }
       subscription?.cancel();
-    });
-  }
+      });
+    }
 
   // Build #1.0.175: New method for void order API call
   void _handleVoidOrder(BuildContext context) {
@@ -4453,23 +4457,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         status: PaymentStatus.partial,
         mode: PaymentMode.cash,
         amount: amount,
-        onVoid: () {
-          if (selectedPaymentMethod == TextConstants.card &&
-              paymentId != null &&
-              paymentId!.isNotEmpty) {
-
-            _openSunmiVoidScreen(
-              amount: payByCard,
-              orderId: orderId.toString(),
-              originTransactionId: paymentId!,
-            );
-          } else {
-            // Cash / EBT / Wallet → normal API void
-            showVoidExitConfirmation(context, true);
-          }
-        },
-
-
+        onVoid: () => showVoidExitConfirmation(context, true),
         /// pass true to change order status to pending, as this is partial payment , voided by user
         onNextPayment: () {
           if (kDebugMode) {
@@ -4535,19 +4523,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         amount: amount,
         changeAmount: showChange ? changeAmount : null,
         onVoid: () {
-          if (selectedPaymentMethod == TextConstants.card &&
-              paymentId != null &&
-              paymentId!.isNotEmpty) {
-
-            _openSunmiVoidScreen(
-              amount: payByCard,
-              orderId: orderId.toString(),
-              originTransactionId: paymentId!,
-            );
-          } else {
-            // Cash / EBT / Wallet → normal API void
-            showVoidExitConfirmation(context, true);
-          }
+          Navigator.of(context).pop();
+          showVoidExitConfirmation(context, true);
         },
 
         onNoReceipt: () async {
@@ -4598,7 +4575,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
-
   Future<Map<String, dynamic>?> loadPrinterData() async {
     var printerDB = await PrinterDBHelper().getPrinterFromDB();
     if (printerDB.isEmpty) {
@@ -5412,7 +5388,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     // });
   }
 
-  // Build #1.0.49: _showVoidExitConfirmation
   // Build #1.0.175: Modified _showVoidExitConfirmation to handle partial and complete void scenarios
   void showVoidExitConfirmation(BuildContext context, bool isPartial) {
     // DEBUG: Log void confirmation details

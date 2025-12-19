@@ -193,26 +193,22 @@ class MainActivity : FlutterActivity() {
                     startActivityForResult(intent, 9090)
                 }
 
-                // ⭐ ADD THIS
                 "startVoid" -> {
-                    val amount = call.argument<String>("amount")
-                    val orderId = call.argument<String>("orderId")
-                    val originTransactionId =
-                        call.argument<String>("originTransactionId")
-
+                    // 🔥 IGNORE incoming args – force dummy values
                     val intent = Intent().apply {
                         setClassName(
                             "com.sunmi.payment.demo",
                             "com.sunmi.payment.demo.page.trans.VoidActivity"
                         )
-                        putExtra("amount", amount)
-                        putExtra("originOrderId", orderId)
-                        putExtra("originTransactionId", originTransactionId)
+                        putExtra("amount", "10.00")
+                        putExtra("originOrderId", "24268")
+                        putExtra("originTransactionId", "27192773")
                     }
 
                     saleResultCallback = result
                     startActivityForResult(intent, 9091)
                 }
+
 
                 else -> result.notImplemented()
             }
