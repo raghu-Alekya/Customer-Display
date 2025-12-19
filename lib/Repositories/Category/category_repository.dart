@@ -152,6 +152,23 @@ class CategoryRepository {
       final taxStatus = product["tax_status"] ?? "taxable";
       final taxClass = product["tax_class"] ?? "";
 
+      final metaDiscountAuto = product["meta_data"]?.firstWhere(
+            (m) => m["key"] == "_pinaka_discount_amount_auto_apply",
+        orElse: () => {"value": "no"},
+      )["value"];
+
+      final metaDiscountAmount = product["meta_data"]?.firstWhere(
+            (m) => m["key"] == "_discount_amount",
+        orElse: () => {"value": 0},
+      )["value"];
+
+      final double discountAmount =
+          double.tryParse(metaDiscountAmount.toString()) ?? 0.0;
+
+      final bool autoApplyDiscount =
+          metaDiscountAuto.toString().toLowerCase() == "yes";
+
+
       bool hasAgeRestriction = false;
       int minAge = 0;
 
@@ -190,6 +207,9 @@ class CategoryRepository {
 
         /// 🔥 ADD THIS
         "is_ebt_eligible": isEbtEligible,
+
+        "auto_discount_enabled": autoApplyDiscount,
+        "discount_amount": discountAmount,
       };
 
     }).toList();
@@ -228,6 +248,8 @@ class CategoryRepository {
     }
 
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+
 
 
 // Continue existing flow

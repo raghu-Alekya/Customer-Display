@@ -2576,6 +2576,46 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
   }
 
+  double getProductDiscountFromHive(int productId, int qty) {
+    try {
+      final box = Hive.box('productCache');
+
+      for (var key in box.keys) {
+        if (!key.toString().startsWith("products_")) continue;
+
+        final cached = box.get(key);
+        if (cached == null) continue;
+
+        final List products = json.decode(cached['data']);
+
+        final product = products.firstWhere(
+              (p) => p['fast_key_product_id'] == productId ||
+              p['id'] == productId,
+          orElse: () => null,
+        );
+
+        if (product == null) continue;
+
+        final bool enabled = product['auto_discount_enabled'] == true;
+        final double discount =
+            double.tryParse(product['discount_amount']?.toString() ?? '0') ?? 0.0;
+
+        if (!enabled || discount <= 0) return 0.0;
+
+        final totalDiscount = discount * qty;
+
+        print("💸 PRODUCT DISCOUNT → ID:$productId | ₹$discount × $qty = ₹$totalDiscount");
+
+        return totalDiscount;
+      }
+    } catch (e) {
+      print("❌ Discount error → $e");
+    }
+
+    return 0.0;
+  }
+
+
   int totalItems = 0;
   Future<void> deleteOfflineItem(Map<String, dynamic> orderItem) async {
     if (orderHelper.activeOrderId == null) return;
@@ -2822,9 +2862,22 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
   }
 
-  double getProductTaxFromHive(int productId, double price, int qty) {
+  double getProductTaxFromHive(
+      int productId,
+      double price,
+      int qty,
+      ) {
     try {
       final box = Hive.box('productCache');
+
+      // 🔹 get auto discount FIRST
+      final double autoDiscount = getProductDiscountFromHive(productId, qty);
+
+      final double originalTotal = price * qty;
+
+      // ✅ discounted base (never negative)
+      final double taxableBase =
+      (originalTotal - autoDiscount).clamp(0.0, double.infinity);
 
       for (var key in box.keys) {
         if (!key.toString().startsWith("products_")) continue;
@@ -2846,29 +2899,26 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             product['tax']['tax_rates'].isNotEmpty) {
 
           double taxTotal = 0.0;
-          final double base = price * qty;
 
           for (final tax in product['tax']['tax_rates']) {
             final rate =
                 double.tryParse(tax['rate']?.toString() ?? '0') ?? 0.0;
 
-            final taxAmount = (base * rate) / 100;
+            final taxAmount = (taxableBase * rate) / 100;
 
-            final roundedTax =
-            double.parse(taxAmount.toStringAsFixed(2));
-
-            taxTotal += roundedTax;
+            taxTotal += double.parse(taxAmount.toStringAsFixed(2));
           }
 
           return taxTotal;
         }
       }
     } catch (e) {
-      print("❌ Tax error → $e");
+      print("❌ Tax error (discounted base) → $e");
     }
 
     return 0.0;
   }
+
 
 
 // Current Order UI
@@ -2892,6 +2942,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     // Fetch discount and tax for the active order
     double orderDiscount = 0.0;
     double merchantDiscount = 0.0;
+    double autoProductDiscount = 0.0;
     double orderTax = 0.0;
     num grossTotal = 0.0;
     // Get Items Gross Total
@@ -3017,8 +3068,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
             final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
             final itemTax = getProductTaxFromHive(productId, price, qty);
+            final itemDiscount = getProductDiscountFromHive(productId, qty);
+            item['auto_discount_per_unit'] =
+            qty > 0 ? itemDiscount / qty : 0.0;
+            item['auto_discount_total'] = itemDiscount;
+
 
             orderTax += itemTax;
+            autoProductDiscount += itemDiscount;
+
             print("🧾 ORDER PANEL ITEM → "
                 "Name: ${item['name']} | "
                 "Qty: $qty | "
@@ -3034,6 +3092,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               'item_type': itemType,
               'item_tax': itemTax,
               'is_ebt_eligible': item['is_ebt_eligible'] == true,
+              'auto_discount': itemDiscount,
+              'original_total': price * qty,
             };
 
           }),
@@ -3077,12 +3137,20 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           return sum + qty;
         });
 
-        // 🧮 Calculate totals
-        double productTotal = offlineProducts.fold<double>(0, (sum, item) {
-          final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+        double productTotal = 0.0;
+
+        for (final item in offlineProducts) {
+          final productId = item['product_id'] ?? item['id'];
           final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-          return sum + (price * qty);
-        });
+
+          final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+          final itemDiscount = getProductDiscountFromHive(productId, qty);
+
+          final originalTotal = price * qty;
+          final discountedTotal = originalTotal - itemDiscount;
+
+          productTotal += discountedTotal;
+        }
 
         double payoutTotal = offlinePayouts.fold<double>(0, (sum, payout) {
           return sum + (double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0);
@@ -3118,6 +3186,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           updatedOrder['order_tax'] = orderTax;
           updatedOrder['net_total'] = netTotal;
           updatedOrder['net_payable'] = netPayable;
+          updatedOrder['autoProductDiscount'] = autoProductDiscount;
+
 
           offlineBox.put(orderHelper.activeOrderId.toString(), updatedOrder);
           print("💾 Saved latest totals into offlineOrders Hive");
@@ -3714,10 +3784,23 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                                                             : ThemeNotifier.textLight,
                                                                       ),
                                                                     ),
-                                                                    if (isVariant) ...[
-                                                                      const SizedBox(height: 4),
-                                                                      Icon(Icons.link, size: 15, color: Colors.red),
-                                                                    ],
+                                                                    if ((orderItem['auto_discount'] ?? 0) > 0)
+                                                                      Padding(
+                                                                        padding: const EdgeInsets.only(top: 2),
+                                                                        child: Text(
+                                                                          "Auto Discount: -${TextConstants.currencySymbol}${orderItem['auto_discount'].toStringAsFixed(2)}",
+                                                                          style: const TextStyle(
+                                                                            fontSize: 11,
+                                                                            color: Colors.red,
+                                                                            fontWeight: FontWeight.w600,
+                                                                          ),
+                                                                        ),
+                                                                      ),
+
+                                                                    // if (isVariant) ...[
+                                                                    //   const SizedBox(height: 4),
+                                                                    //   Icon(Icons.link, size: 15, color: Colors.red),
+                                                                    // ],
 
                                                                     // ⭐ ADD EBT TAG HERE
                                                                     // if (isEbtEligible) ...[
@@ -3848,28 +3931,61 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                       //     style: TextStyle(color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.blueGrey, fontSize: 14),
                                       //   ),
                                       SizedBox(width: 20,),
-                                      Text(
-                                        isPayout
-                                            ? "-${TextConstants.currencySymbol}${(
-                                            ((orderItem['items_count'] ?? orderItem['quantity'] ?? orderItem[AppDBConst.itemCount] ?? 1) *
-                                                ((orderItem['item_price'] ?? orderItem['price'] ?? orderItem[AppDBConst.itemPrice] ?? 0).abs()))
-                                        ).toStringAsFixed(2)}"
-                                            : "${TextConstants.currencySymbol}${(
-                                            ((orderItem['items_count'] ?? orderItem['quantity'] ?? orderItem[AppDBConst.itemCount] ?? 1) *
-                                                (isCoupon
-                                                    ? (orderItem['item_price'] ?? orderItem['price'] ?? orderItem[AppDBConst.itemPrice] ?? 0).abs()
-                                                    : (orderItem['item_price'] ?? orderItem['price'] ?? orderItem[AppDBConst.itemSalesPrice] ?? orderItem[AppDBConst.itemRegularPrice] ?? orderItem[AppDBConst.itemUnitPrice] ?? 0)))
-                                        ).toStringAsFixed(2)}",
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          color: isPayout || isCoupon
-                                              ? Colors.red
-                                              : themeHelper.themeMode == ThemeMode.dark
-                                              ? ThemeNotifier.textDark
-                                              : ThemeNotifier.textLight,
-                                        ),
+                                      SizedBox(width: 20),
+
+                                      Builder(
+                                        builder: (context) {
+                                          final int qty =
+                                          (orderItem['items_count'] ??
+                                              orderItem['quantity'] ??
+                                              orderItem[AppDBConst.itemCount] ??
+                                              1);
+
+                                          final double originalTotal =
+                                          (orderItem['original_total'] ??
+                                              ((orderItem['item_price'] ?? orderItem['price'] ?? 0) * qty))
+                                              .toDouble();
+
+                                          final double discount =
+                                          (orderItem['auto_discount'] ?? 0).toDouble();
+
+                                          final double finalTotal = originalTotal - discount;
+
+                                          return Column(
+                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                            children: [
+
+                                              /// 🔴 ORIGINAL PRICE (STRIKE)
+                                              if (discount > 0)
+                                                Text(
+                                                  "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey,
+                                                    decoration: TextDecoration.lineThrough,
+                                                  ),
+                                                ),
+
+                                              /// 🟢 FINAL PRICE (AFTER DISCOUNT)
+                                              Text(
+                                                isPayout
+                                                    ? "-${TextConstants.currencySymbol}${finalTotal.toStringAsFixed(2)}"
+                                                    : "${TextConstants.currencySymbol}${finalTotal.toStringAsFixed(2)}",
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isPayout || isCoupon
+                                                      ? Colors.red
+                                                      : themeHelper.themeMode == ThemeMode.dark
+                                                      ? ThemeNotifier.textDark
+                                                      : ThemeNotifier.textLight,
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        },
                                       ),
+
                                     ],
                                   ),
                                 ),
@@ -4364,6 +4480,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   cashbackFee: cashbackFee,
                                   ebtAmount: ebtAmount,
                                   discountAmount: discountAmount,
+
                                 ),
                               ),
                             );

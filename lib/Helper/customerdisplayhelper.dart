@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:hive/hive.dart';
 import '../services/CustomerDisplayService.dart';
 
@@ -20,6 +22,7 @@ class CustomerDisplayHelper {
     );
   }
 
+
   static Future<void> updateCustomerDisplay(int serverOrderId) async {
     try {
       print("🟡 [CD] START updateCustomerDisplay → serverOrderId=$serverOrderId");
@@ -40,6 +43,42 @@ class CustomerDisplayHelper {
       final wooOrderId = data["wooOrderId"];
 
       print("🟣 [CD] Woo Order ID fetched from Hive → $wooOrderId");
+
+
+      double _getAutoDiscountPerUnit(int productId, int qty) {
+        try {
+          final box = Hive.box('productCache');
+
+          for (var key in box.keys) {
+            if (!key.toString().startsWith("products_")) continue;
+
+            final cached = box.get(key);
+            if (cached == null) continue;
+
+            final List products = json.decode(cached['data']);
+
+            final product = products.firstWhere(
+                  (p) =>
+              p['fast_key_product_id'] == productId ||
+                  p['id'] == productId,
+              orElse: () => null,
+            );
+
+            if (product == null) continue;
+
+            final bool enabled = product['auto_discount_enabled'] == true;
+            final double discount =
+                double.tryParse(product['discount_amount']?.toString() ?? '0') ?? 0.0;
+
+            if (!enabled || discount <= 0 || qty <= 0) return 0.0;
+
+            return discount; // 👈 per-unit discount
+          }
+        } catch (e) {
+          print("❌ [CD] Auto discount error → $e");
+        }
+        return 0.0;
+      }
 
 
       print("🔶🔶🔶 RAW HIVE ORDER DATA (FULL DUMP) 🔶🔶🔶");
@@ -143,20 +182,32 @@ class CustomerDisplayHelper {
       // ------------------ BUILD PARSED ITEMS LIST ------------------
       final parsedItems = [
         ...products.map((item) {
-          final qty = (item["quantity"] ?? 1);
+          final qty = int.tryParse(item["quantity"]?.toString() ?? "1") ?? 1;
+          final productId = item["product_id"] ?? item["id"];
           final unitPrice = _getUnitPrice(item);
+
+          final autoDiscountPerUnit =
+          _getAutoDiscountPerUnit(productId, qty);
+
+          final finalUnitPrice =
+          (unitPrice - autoDiscountPerUnit).clamp(0, double.infinity);
+
+          print(
+              "🧪 [CD ITEM] ${item['name']} | unit=$unitPrice | auto/unit=$autoDiscountPerUnit | final=$finalUnitPrice"
+          );
 
           return {
             "name": item["name"] ?? "",
-            "qty": (qty is num ? qty.toDouble() : 1.0),
-            // 👇 send per-unit price OR total? depends on display logic
-            // If your display multiplies price * qty, this MUST be unit price
-            "price": unitPrice,
+            "qty": qty.toDouble(),
+            "price": finalUnitPrice,           // ✅ DISCOUNTED PRICE
+            "original_price": unitPrice,       // ✅ STRIKE PRICE (optional)
+            "auto_discount": autoDiscountPerUnit,
             "image": item["image"] ?? "",
           };
         }),
 
-        ...payouts.map((p) => {
+
+    ...payouts.map((p) => {
           "name": "Payout",
           "qty": 1.0,
           "price": (p["amount"] ?? 0).toDouble(),
@@ -172,12 +223,20 @@ class CustomerDisplayHelper {
       ];
 
       // ------------------ TOTALS ------------------
-      double productTotal = products.fold(0, (sum, p) {
-        final qty = (p["quantity"] ?? 1);
+      double productTotal = products.fold(0.0, (sum, p) {
+        final qty = int.tryParse(p["quantity"]?.toString() ?? "1") ?? 1;
+        final productId = p["product_id"] ?? p["id"];
+
         final unitPrice = _getUnitPrice(p);
-        final q = qty is num ? qty.toDouble() : 1.0;
-        return sum + unitPrice * q;
+        final autoDiscountPerUnit =
+        _getAutoDiscountPerUnit(productId, qty);
+
+        final finalUnit =
+        (unitPrice - autoDiscountPerUnit).clamp(0, double.infinity);
+
+        return sum + (finalUnit * qty);
       });
+
 
       double payoutTotal =
       payouts.fold(0, (sum, p) => sum + (p["amount"] ?? 0).toDouble());
@@ -227,8 +286,11 @@ class CustomerDisplayHelper {
 
 
       // ------------------ PUSH TO CUSTOMER DISPLAY ------------------
+      final int safeOrderId =
+          int.tryParse(wooOrderId?.toString() ?? "") ?? serverOrderId;
+
       await CustomerDisplayService.showCustomerData(
-        orderId: wooOrderId ?? serverOrderId,
+        orderId: safeOrderId,
         items: parsedItems,
         grossTotal: grossTotal,
         discount: orderDiscount,
@@ -241,6 +303,7 @@ class CustomerDisplayHelper {
         cashbackFee: cashbackFee,
         loyaltyContact: loyaltyContact,
       );
+
 
       print("✅ [CD] Completed updateCustomerDisplay → $serverOrderId");
     } catch (e, s) {
