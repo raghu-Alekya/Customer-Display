@@ -194,15 +194,31 @@ class MainActivity : FlutterActivity() {
                 }
 
                 "startVoid" -> {
-                    // 🔥 IGNORE incoming args – force dummy values
+                    val amount = call.argument<String>("amount")
+                    val originOrderId = call.argument<String>("originOrderId")
+                    val originTransactionId = call.argument<String>("originTransactionId")
+                    val deviceId = call.argument<String>("deviceID") // ⭐ ADD THIS
+
+                    Log.d(
+                        "SunmiVoid",
+                        "➡ startVoid → amount=$amount, originOrderId=$originOrderId, originTxn=$originTransactionId, deviceID=$deviceId"
+                    )
+
+                    if (deviceId.isNullOrEmpty()) {
+                        result.error("NO_DEVICE_ID", "Missing deviceID for Sunmi void", null)
+                        return@setMethodCallHandler
+                    }
+
+
                     val intent = Intent().apply {
                         setClassName(
                             "com.sunmi.payment.demo",
                             "com.sunmi.payment.demo.page.trans.VoidActivity"
                         )
-                        putExtra("amount", "10.00")
-                        putExtra("originOrderId", "24268")
-                        putExtra("originTransactionId", "27192773")
+                        putExtra("amount", amount)
+                        putExtra("originOrderId", originOrderId)
+                        putExtra("originTransactionId", originTransactionId)
+                        putExtra("deviceID", deviceId) // ⭐ CRITICAL
                     }
 
                     saleResultCallback = result
