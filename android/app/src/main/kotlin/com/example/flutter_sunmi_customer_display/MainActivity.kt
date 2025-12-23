@@ -197,18 +197,17 @@ class MainActivity : FlutterActivity() {
                     val amount = call.argument<String>("amount")
                     val originOrderId = call.argument<String>("originOrderId")
                     val originTransactionId = call.argument<String>("originTransactionId")
-                    val deviceId = call.argument<String>("deviceID") // ⭐ ADD THIS
 
                     Log.d(
                         "SunmiVoid",
-                        "➡ startVoid → amount=$amount, originOrderId=$originOrderId, originTxn=$originTransactionId, deviceID=$deviceId"
+                        "➡ startVoid → amount=$amount, originOrderId=$originOrderId, originTxn=$originTransactionId"
                     )
 
-                    if (deviceId.isNullOrEmpty()) {
-                        result.error("NO_DEVICE_ID", "Missing deviceID for Sunmi void", null)
+                    // ✅ Basic validation only
+                    if (originOrderId.isNullOrEmpty() || originTransactionId.isNullOrEmpty()) {
+                        result.error("INVALID_ARGS", "Missing origin order or transaction ID", null)
                         return@setMethodCallHandler
                     }
-
 
                     val intent = Intent().apply {
                         setClassName(
@@ -218,7 +217,6 @@ class MainActivity : FlutterActivity() {
                         putExtra("amount", amount)
                         putExtra("originOrderId", originOrderId)
                         putExtra("originTransactionId", originTransactionId)
-                        putExtra("deviceID", deviceId) // ⭐ CRITICAL
                     }
 
                     saleResultCallback = result

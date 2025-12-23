@@ -3032,26 +3032,34 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         orderItems = [
           // ---------------------- Products ----------------------
           ...offlineProducts.map((item) {
-            final itemType = (item['item_type'] ?? item['type'] ?? '').toString().toLowerCase();
+            final itemType =
+            (item['item_type'] ?? item['type'] ?? '')
+                .toString()
+                .toLowerCase();
 
-            final isCustom     = itemType.contains("custom");
-            final isPayout     = itemType.contains("payout");
-            final isCashback   = itemType.contains("cashback");
-            final isCoupon     = itemType.contains("coupon");
+            final isCustom   = itemType.contains("custom");
+            final isPayout   = itemType.contains("payout");
+            final isCashback = itemType.contains("cashback");
+            final isCoupon   = itemType.contains("coupon");
+
+            // ---------------- CUSTOM / NON-PRODUCT ITEMS ----------------
             if (isCustom || isPayout || isCashback || isCoupon) {
               final name = item['name'] ??
                   item['custom_item_name'] ??
-                  item['item_name'] ?? "Item";
+                  item['item_name'] ??
+                  "Item";
 
               final price = double.tryParse(
                   item['price']?.toString() ??
                       item['amount']?.toString() ??
-                      item['custom_item_price']?.toString() ?? "0"
+                      item['custom_item_price']?.toString() ??
+                      "0"
               ) ?? 0.0;
 
               final qty = int.tryParse(
                   item['quantity']?.toString() ??
-                      item['items_count']?.toString() ?? "1"
+                      item['items_count']?.toString() ??
+                      "1"
               ) ?? 1;
 
               return {
@@ -3064,15 +3072,29 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 'item_tax': 0.0,
               };
             }
-            final productId = item['product_id'] ?? item['id'];
-            final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-            final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-            final itemTax = getProductTaxFromHive(productId, price, qty);
-            final itemDiscount = getProductDiscountFromHive(productId, qty);
+
+            // ---------------- REAL PRODUCTS ONLY ----------------
+            final qty =
+                int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+
+            final price =
+                double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+
+            double itemTax = 0.0;
+            double itemDiscount = 0.0;
+
+            final String productIdStr =
+                (item['product_id'] ?? item['id'])?.toString() ?? '';
+
+            final int productId =
+                int.tryParse(productIdStr) ?? 0;
+
+            itemTax = getProductTaxFromHive(productId, price, qty);
+            itemDiscount = getProductDiscountFromHive(productId, qty);
+
             item['auto_discount_per_unit'] =
             qty > 0 ? itemDiscount / qty : 0.0;
             item['auto_discount_total'] = itemDiscount;
-
 
             orderTax += itemTax;
             autoProductDiscount += itemDiscount;
@@ -3095,8 +3117,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               'auto_discount': itemDiscount,
               'original_total': price * qty,
             };
-
           }),
+
 
           // ---------------------- Payouts ----------------------
           ...offlinePayouts.map((payout) {
@@ -3140,17 +3162,35 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         double productTotal = 0.0;
 
         for (final item in offlineProducts) {
-          final productId = item['product_id'] ?? item['id'];
-          final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+          final itemType =
+          (item['item_type'] ?? item['type'] ?? '')
+              .toString()
+              .toLowerCase();
 
-          final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-          final itemDiscount = getProductDiscountFromHive(productId, qty);
+          final bool isCustom = itemType.contains("custom");
 
-          final originalTotal = price * qty;
-          final discountedTotal = originalTotal - itemDiscount;
+          final qty =
+              int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
 
-          productTotal += discountedTotal;
+          final price =
+              double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+
+          double itemDiscount = 0.0;
+
+          // 🔐 Only real products have product_id
+          if (!isCustom) {
+            final String productIdStr =
+                (item['product_id'] ?? item['id'])?.toString() ?? '';
+
+            final int productId =
+                int.tryParse(productIdStr) ?? 0;
+
+            itemDiscount = getProductDiscountFromHive(productId, qty);
+          }
+
+          productTotal += (price * qty) - itemDiscount;
         }
+
 
         double payoutTotal = offlinePayouts.fold<double>(0, (sum, payout) {
           return sum + (double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0);

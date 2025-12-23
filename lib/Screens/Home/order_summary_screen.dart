@@ -484,11 +484,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final result = await _paymentChannel.invokeMethod("startVoid", {
       "amount": amount.toString(),
       "originOrderId": orderId,
-
       "originTransactionId": originTransactionId,
-      "deviceID": _lastPayment!.sunmiDeviceId,
     });
-
 
     final data = jsonDecode(result);
     final fullSunmi = jsonDecode(data["fullResponse"]);
@@ -1372,7 +1369,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                   onTap: () {
                                     _selectPaymentMethod(
                                       TextConstants.card,
-                                      autoFillAmount: true,
+                                      //autoFillAmount: true,
                                       maxAllowedAmount: balanceAmount,
                                     );
                                     _handlePay();
@@ -1390,13 +1387,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                   onTap: () {
                                     _selectPaymentMethod(
                                       TextConstants.wallet,
-                                      autoFillAmount: true,
+                                      //autoFillAmount: true,
                                       maxAllowedAmount: balanceAmount,
                                     );
                                     _handlePay();
                                   },
                                 ),
-
 
                                 _buildPaymentModeButton(
                                   TextConstants.ebtText,
@@ -1416,7 +1412,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                                     _selectPaymentMethod(
                                       TextConstants.ebtText,
-                                      autoFillAmount: true,
+                                      //autoFillAmount: true,
                                       maxAllowedAmount: allowed,
                                     );
 
@@ -1540,6 +1536,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
+  void _showCouponAppliedSnackBar(BuildContext context) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Coupon already applied. Remove coupon to go back.",
+          ),
+          duration: Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
 
   Widget _buildNavigationBar() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -1590,7 +1600,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           // Back button
           InkWell(
             borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
-            onTap: () => _showExitPaymentConfirmation(context),
+
+            onTap: () {
+              if (discount > 0) {
+                _showCouponAppliedSnackBar(context);
+                return;
+              }
+
+              _showExitPaymentConfirmation(context);
+            },
+
             child: Container(
               height: 35,
               width: ResponsiveLayout.getWidth(90),
@@ -2087,42 +2106,45 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Order ID Label
-                  Text(
-                    '${TextConstants.orderId}: ',
-                    style: TextStyle(
-                      color: theme.brightness == Brightness.dark
-                          ? Colors.white70
-                          : Colors.black,
-                      fontWeight: FontWeight.bold,
-                      fontSize: ResponsiveLayout.getFontSize(16),
-                    ),
-                  ),
-
-                  // Order ID Value
-                  Text(
-                    '# $orderId',
-                    style: TextStyle(
-                      color: theme.brightness == Brightness.dark
-                          ? Colors.white
-                          : Colors.red,
-                      fontWeight: FontWeight.bold,
-                      fontSize: ResponsiveLayout.getFontSize(16),
-                    ),
-                  ),
-
-                  // Space after Order ID
-                  SizedBox(width: ResponsiveLayout.getWidth(50)),
-
-                  // Date Section
+                  /// LEFT — Order ID
                   Row(
+                    children: [
+                      Text(
+                        '${TextConstants.orderId}: ',
+                        style: TextStyle(
+                          color: theme.brightness == Brightness.dark
+                              ? Colors.white70
+                              : Colors.black,
+                          fontWeight: FontWeight.bold,
+                          fontSize: ResponsiveLayout.getFontSize(16),
+                        ),
+                      ),
+                      Text(
+                        '# $orderId',
+                        style: TextStyle(
+                          color: theme.brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.red,
+                          fontWeight: FontWeight.bold,
+                          fontSize: ResponsiveLayout.getFontSize(16),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  /// PUSH RIGHT CONTENT TO END
+                  const Spacer(),
+
+                  /// RIGHT — Date + Time
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Icon(
                         Icons.calendar_month_rounded,
-                        size: ResponsiveLayout.getIconSize(24),
+                        size: ResponsiveLayout.getIconSize(20),
                         color: const Color(0xFF007BFF),
                       ),
-                      SizedBox(width: ResponsiveLayout.getWidth(4)),
+                      const SizedBox(width: 6),
                       Text(
                         _displayDate,
                         style: TextStyle(
@@ -2131,31 +2153,19 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                    ],
-                  ),
 
-                  // Space before divider
-                  SizedBox(width: ResponsiveLayout.getWidth(2)),
+                      const SizedBox(width: 8),
 
-                  // Vertical Divider
-                  Container(
-                    height: ResponsiveLayout.getHeight(20),
-                    width: ResponsiveLayout.getWidth(1),
-                    color: Colors.grey.shade400,
-                  ),
+                      /// Divider
+                      Container(
+                        height: ResponsiveLayout.getHeight(16),
+                        width: 1,
+                        color: Colors.grey.shade400,
+                      ),
 
-                  // Space after divider
-                  SizedBox(width: ResponsiveLayout.getWidth(2)),
+                      const SizedBox(width: 8),
 
-                  // Time Section
-                  Row(
-                    children: [
-                      // Icon(
-                      //   Icons.access_time,
-                      //   size: ResponsiveLayout.getIconSize(24),
-                      //   color: const Color(0xFF007BFF),
-                      // ),
-                      // SizedBox(width: ResponsiveLayout.getWidth(4)),
+                      /// Time
                       Text(
                         _displayTime,
                         style: TextStyle(
@@ -2171,20 +2181,23 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
               Container(
                 height: 30,
-                margin: EdgeInsets.symmetric(
-                  horizontal: ResponsiveLayout.getPadding(1),
+                margin: EdgeInsets.fromLTRB(
+                  ResponsiveLayout.getPadding(2),
+                  ResponsiveLayout.getPadding(5),
+                  ResponsiveLayout.getPadding(2),
+                  0,
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFE6464),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(4),
                 ),
                 child:Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     // Item Name
                     Expanded(
-                      flex: 3,
+                      flex: 2,
                       child: Text(
                         "Item Name",
                         style: TextStyle(
@@ -2200,7 +2213,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                     // Unit
                     Expanded(
-                      flex: 2,
+                      flex: 1,
                       child: Text(
                         "Unit",
                         style: TextStyle(
@@ -2906,15 +2919,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   Widget _buildOrderItem(int index) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final orderItem = orderItems[index];
-    final itemType = orderItem['item_type']?.toString().toLowerCase() ?? '';
+
+    final String itemType =
+        orderItem['item_type']?.toString().toLowerCase() ?? '';
 
     final bool isVariant =
         (orderItem['is_variant'] == true) ||
             (itemType == 'variant') ||
-            (orderItem['variation_name'] != null &&
-                orderItem['variation_name'].toString().trim().isNotEmpty) ||
-            (orderItem['variation_id'] != null &&
-                orderItem['variation_id'] != 0);
+            (orderItem['variation_name']?.toString().trim().isNotEmpty ?? false) ||
+            ((orderItem['variation_id'] ?? 0) != 0);
 
     final bool isEbtEligible = orderItem['is_ebt_eligible'] == true;
 
@@ -2928,218 +2941,166 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     final double finalItemTotal = originalTotal - autoDiscount;
 
-    final String itemImage = orderItem['item_image']?.toString() ?? '';
-
     final bool isPayout = itemType.contains(TextConstants.payoutText);
     final bool isCoupon = itemType.contains(TextConstants.couponText);
-    final bool isCustomItem = itemType.contains(TextConstants.customItemText);
     final bool isCashback = itemType.contains("cashback");
-
     final bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
 
-    if (kDebugMode) {
-      print(
-        "🧩 Summary Item → $itemName | original=$originalTotal | autoDiscount=$autoDiscount | final=$finalItemTotal",
-      );
-    }
-
-    /// 🖼 Image selection
-    Widget imageWidget;
-    if (isPayout) {
-      imageWidget = SvgPicture.asset('assets/svg/payout.svg');
-    } else if (isCoupon) {
-      imageWidget = SvgPicture.asset('assets/svg/coupon.svg');
-    } else if (isCustomItem) {
-      imageWidget = Image.asset('assets/custom.png', fit: BoxFit.cover);
-    } else if (itemImage.startsWith('http')) {
-      imageWidget = Image.network(
-        itemImage,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            Image.asset('assets/custom.png'),
-      );
-    } else if (itemImage.startsWith('assets/')) {
-      imageWidget = Image.asset(
-        itemImage,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            Image.asset('assets/custom.png'),
-      );
-    } else {
-      imageWidget = Image.asset('assets/custom.png');
-    }
-
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.097,
+        height: 40, // ✅ REQUIRED HEIGHT
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 🖼 Image
-            // Container(
-            //   width: 42,
-            //   height: 42,
-            //   decoration: BoxDecoration(
-            //     borderRadius: BorderRadius.circular(8),
-            //   ),
-            //   child: ClipRRect(
-            //     borderRadius: BorderRadius.circular(8),
-            //     child: imageWidget,
-            //   ),
-            // ),
 
-            const SizedBox(width: 12),
-
-            // 🧾 Details
+            /// LEFT + CENTER COLUMN
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // 🔹 Item Name (fixed width)
-                      SizedBox(
-                        width: 180, // 👈 adjust as needed
-                        child: Text(
-                          itemName.length > 30
-                              ? '${itemName.substring(0, 30)}...'
-                              : itemName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: themeHelper.themeMode == ThemeMode.dark
-                                ? ThemeNotifier.textDark
-                                : ThemeNotifier.textLight,
-                          ),
-                        ),
-                      ),
 
-                      const SizedBox(width: 32),
-
-                      // 🔹 Price × Quantity
-                      Text(
-                        "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: themeHelper.themeMode == ThemeMode.dark
-                              ? ThemeNotifier.textDark
-                              : Colors.black87,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 2),
-
-                  Row(
-                    children: [
-                      // if (!isPayoutOrCoupon)
-                      //   Text(
-                      //     "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
-                      //     style: TextStyle(
-                      //       fontSize: 13,
-                      //       color: themeHelper.themeMode == ThemeMode.dark
-                      //           ? ThemeNotifier.textDark
-                      //           : Colors.black87,
-                      //     ),
-                      //   ),
-
-                      if (!isPayoutOrCoupon) const SizedBox(width: 6),
-
-                      if (isEbtEligible)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            "EBT",
+                  /// ROW 1 — NAME + QTY
+                  SizedBox(
+                    height: 16,
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 180,
+                          child: Text(
+                            itemName.length > 30
+                                ? '${itemName.substring(0, 30)}...'
+                                : itemName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.white,
+                              fontSize: 12.5,
+                              height: 1.0,
                               fontWeight: FontWeight.bold,
+                              color: themeHelper.themeMode == ThemeMode.dark
+                                  ? ThemeNotifier.textDark
+                                  : ThemeNotifier.textLight,
                             ),
                           ),
                         ),
-
-                      if (isVariant) ...[
-                        const SizedBox(width: 6),
-                        SvgPicture.asset(
-                          SvgUtils.variationIcon,
-                          height: 10,
-                          width: 10,
+                        const SizedBox(width: 8),
+                        Text(
+                          "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
+                          style: TextStyle(
+                            fontSize: 14,
+                            height: 1.0,
+                            fontWeight: FontWeight.bold,
+                            color: themeHelper.themeMode == ThemeMode.dark
+                                ? ThemeNotifier.textDark
+                                : Colors.black87,
+                          ),
                         ),
                       ],
-                    ],
+                    ),
                   ),
 
-                  /// 🟢 AUTO DISCOUNT LINE
+                  /// ROW 2 — EBT / VARIANT (ONLY IF PRESENT)
+                  if (isEbtEligible || isVariant)
+                    SizedBox(
+                      height: 12,
+                      child: Row(
+                        children: [
+                          if (isEbtEligible)
+                            Container(
+                              padding:
+                              const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: const Text(
+                                "EBT",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  height: 1.0,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          if (isVariant) ...[
+                            const SizedBox(width: 5),
+                            SvgPicture.asset(
+                              SvgUtils.variationIcon,
+                              height: 8,
+                              width: 8,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                  /// ROW 3 — AUTO DISCOUNT (ONLY IF PRESENT)
                   if (autoDiscount > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
+                    SizedBox(
+                      height: 12,
                       child: Text(
                         "Auto Discount: -${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
                         style: const TextStyle(
-                          fontSize: 11,
+                          fontSize: 12,
+                          height: 1.0,
                           color: Colors.red,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
+
                 ],
               ),
             ),
 
-            // 💰 Final Price
-            Builder(
-              builder: (context) {
-                return SizedBox(
-                  width: 52, // 👈 same as old code
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start, // 👈 START immediately
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
+            /// RIGHT PRICE COLUMN (LOCKED)
+            SizedBox(
+              width: 50,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
 
-                      /// 🔴 ORIGINAL PRICE (STRIKE THROUGH)
-                      if (autoDiscount > 0 && !isPayoutOrCoupon)
-                        Text(
-                          "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
-                          textAlign: TextAlign.left,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                            decoration: TextDecoration.lineThrough,
-                          ),
-                        ),
-
-                      /// 🟢 FINAL PRICE
-                      Text(
-                        isCoupon || isPayout
-                            ? "-${TextConstants.currencySymbol}${originalTotal.abs().toStringAsFixed(2)}"
-                            : "${TextConstants.currencySymbol}${finalItemTotal.toStringAsFixed(2)}",
-                        textAlign: TextAlign.left, // 👈 starts immediately
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                          color: isCoupon || isPayout
-                              ? Colors.red
-                              : themeHelper.themeMode == ThemeMode.dark
-                              ? ThemeNotifier.textDark
-                              : ThemeNotifier.textLight,
-                        ),
+                  /// ROW 1 — FINAL PRICE
+                  SizedBox(
+                    height: 16,
+                    child: Text(
+                      isCoupon || isPayout
+                          ? "-${TextConstants.currencySymbol}${originalTotal.abs().toStringAsFixed(2)}"
+                          : "${TextConstants.currencySymbol}${finalItemTotal.toStringAsFixed(2)}",
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.0,
+                        fontWeight: FontWeight.bold,
+                        color: isCoupon || isPayout
+                            ? Colors.red
+                            : themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.textDark
+                            : ThemeNotifier.textLight,
                       ),
-                    ],
+                    ),
                   ),
-                );
-              },
-            )
 
+                  /// ROW 2 — STRIKED PRICE
+                  SizedBox(
+                    height: 12,
+                    child: (autoDiscount > 0 && !isPayoutOrCoupon)
+                        ? Text(
+                      "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
+                      style: const TextStyle(
+                        fontSize: 9.5,
+                        height: 1.0,
+                        color: Colors.grey,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    )
+                        : const SizedBox.shrink(),
+                  ),
+
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -3791,10 +3752,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                 ),
                                                 alignment: Alignment.center,
                                                 child: Text(
-                                                  "Enter The Amount",
+                                                  "Tender Amount",
                                                   style: TextStyle(
                                                     fontSize: ResponsiveLayout.getFontSize(18),
-                                                    fontWeight: FontWeight.w500,
+                                                    fontWeight: FontWeight.bold,
                                                     color: themeHelper.themeMode == ThemeMode.dark
                                                         ? ThemeNotifier.textDark.withOpacity(0.7)
                                                         : Color(0xFFFE6464),
@@ -5130,14 +5091,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               left: 0,
               right: 0,
               child: Container(
-                height: ResponsiveLayout.getHeight(10), // make it taller
+                height: ResponsiveLayout.getHeight(5), // make it taller
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
                       Colors.white.withOpacity(0.6),
-                      Colors.white.withOpacity(0.0),
+                      Colors.white.withOpacity(0.4),
                     ],
                   ),
                   borderRadius: const BorderRadius.only(
