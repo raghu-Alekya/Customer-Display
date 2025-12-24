@@ -1246,12 +1246,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             _showPartialPaymentDialog(context, amount);
           } else {
             _fetchPaymentsByOrderId();
-            _showPaymentDialog(
-              context,
-              amount,
-              changeAmount: changeAmount,
-              showChange: changeAmount > 0,
-            );
+            // _showPaymentDialog(
+            //   context,
+            //   amount,
+            //   changeAmount: changeAmount,
+            //   showChange: changeAmount > 0,
+            // );
           }
 
           subscription?.cancel();
@@ -2934,12 +2934,31 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final String itemName = orderItem['item_name']?.toString() ?? '';
     final double itemPrice = (orderItem['item_price'] ?? 0).toDouble();
     final int itemCount = (orderItem['items_count'] ?? 0).toInt();
+
     final double originalTotal =
     (orderItem['item_sum_price'] ?? 0).toDouble();
-    final double autoDiscount =
-    (orderItem['auto_discount'] ?? 0).toDouble();
 
-    final double finalItemTotal = originalTotal - autoDiscount;
+    /// -------------------------------
+    /// ✅ DISCOUNT SEPARATION
+    /// -------------------------------
+    final bool isComboDiscount =
+        orderItem['discount_type'] == 'combo';
+
+    final double comboDiscount =
+    isComboDiscount
+        ? (orderItem['auto_discount'] ?? 0).toDouble()
+        : 0.0;
+
+    final double autoDiscount =
+    !isComboDiscount
+        ? (orderItem['auto_discount'] ?? 0).toDouble()
+        : 0.0;
+
+    /// -------------------------------
+    /// ✅ FINAL PRICE
+    /// -------------------------------
+    final double finalItemTotal =
+        originalTotal - autoDiscount - comboDiscount;
 
     final bool isPayout = itemType.contains(TextConstants.payoutText);
     final bool isCoupon = itemType.contains(TextConstants.couponText);
@@ -2949,7 +2968,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       child: SizedBox(
-        height: 40, // ✅ REQUIRED HEIGHT
+        height: 40,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2999,16 +3018,17 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     ),
                   ),
 
-                  /// ROW 2 — EBT / VARIANT (ONLY IF PRESENT)
-                  if (isEbtEligible || isVariant)
+                  /// ROW 2 — EBT / VARIANT / COMBO
+                  if (isEbtEligible || isVariant || isComboDiscount)
                     SizedBox(
                       height: 12,
                       child: Row(
                         children: [
+
                           if (isEbtEligible)
                             Container(
-                              padding:
-                              const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 5, vertical: 1),
                               decoration: BoxDecoration(
                                 color: Colors.green,
                                 borderRadius: BorderRadius.circular(3),
@@ -3017,12 +3037,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 "EBT",
                                 style: TextStyle(
                                   fontSize: 10,
-                                  height: 1.0,
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
+
                           if (isVariant) ...[
                             const SizedBox(width: 5),
                             SvgPicture.asset(
@@ -3031,12 +3051,33 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               width: 8,
                             ),
                           ],
+
+                          /// ⭐ COMBO BADGE
+                          if (isComboDiscount) ...[
+                            const SizedBox(width: 5),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.orange,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: const Text(
+                                "MM",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
 
-                  /// ROW 3 — AUTO DISCOUNT (ONLY IF PRESENT)
-                  if (autoDiscount > 0)
+                  /// ROW 3 — AUTO DISCOUNT (ONLY AUTO)
+                  if (autoDiscount > 0 && !isPayoutOrCoupon)
                     SizedBox(
                       height: 12,
                       child: Text(
@@ -3050,18 +3091,32 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       ),
                     ),
 
+                  /// OPTIONAL — COMBO DISCOUNT TEXT
+                  if (comboDiscount > 0 && !isPayoutOrCoupon)
+                    SizedBox(
+                      height: 12,
+                      child: Text(
+                        "Combo Discount: -${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}",
+                        style: const TextStyle(
+                          fontSize: 12,
+                          height: 1.0,
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
 
-            /// RIGHT PRICE COLUMN (LOCKED)
+            /// RIGHT PRICE COLUMN
             SizedBox(
-              width: 50,
+              width: 55,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
 
-                  /// ROW 1 — FINAL PRICE
+                  /// FINAL PRICE
                   SizedBox(
                     height: 16,
                     child: Text(
@@ -3081,10 +3136,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     ),
                   ),
 
-                  /// ROW 2 — STRIKED PRICE
+                  /// STRIKED PRICE
                   SizedBox(
                     height: 12,
-                    child: (autoDiscount > 0 && !isPayoutOrCoupon)
+                    child: ((autoDiscount > 0 || comboDiscount > 0) &&
+                        !isPayoutOrCoupon)
                         ? Text(
                       "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
                       style: const TextStyle(
@@ -5486,7 +5542,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         amount: amount,
         changeAmount: showChange ? changeAmount : null,
         onVoid: () {
-          Navigator.of(context).pop();
+          // Navigator.of(context).pop();
           showVoidExitConfirmation(context, true);
         },
 
@@ -6370,7 +6426,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         },
 
         onVoidConfirm: () async {
-          Navigator.of(dialogContext).pop(); // ✅ ALWAYS CLOSE FIRST
+          // Navigator.of(dialogContext).pop(); // ✅ ALWAYS CLOSE FIRST
 
           if (_lastPayment == null) {
             ScaffoldMessenger.of(context).showSnackBar(

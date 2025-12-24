@@ -520,6 +520,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           "cashback_fee": cashbackFee,
           "ebt_total": ebtTotal,       // ✅ ADD THIS
           "discount_amount": discountAmount,
+          "line_items": decoded["line_items"],
         };
 
       }
@@ -731,22 +732,35 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   }
 
 
-  Future<Map<String, dynamic>> syncOfflineDeletedOrders(List<Map<String, dynamic>> orders) async {
+  Future<Map<String, dynamic>> syncOfflineDeletedOrders(
+      List<Map<String, dynamic>> orders) async {
+
     final String url =
         "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.deleteofflineorders}";
 
-    List<Map<String, dynamic>> formattedOrders = [];
+    final List<Map<String, dynamic>> formattedOrders = [];
 
-    for (var order in orders) {
+    for (final order in orders) {
       final List<Map<String, dynamic>> lineItems = [];
       final List<Map<String, dynamic>> feeLines = [];
 
       final products = (order["products"] ?? []) as List;
 
+      final String clientOrderId =
+      (order["order_id"] ??
+          order["client_order_id"] ??
+          order["local_order_id"] ??
+          "").toString();
+
+      if (clientOrderId.isEmpty) {
+        throw Exception("❌ client_order_id is missing");
+      }
+
+
       // ---------------------------------------------------------
-      // ⭐ LINE ITEMS (PRODUCTS + CUSTOM ITEMS)
+      // ⭐ PRODUCTS (NORMAL + CUSTOM)
       // ---------------------------------------------------------
-      for (var raw in products) {
+      for (final raw in products) {
         final item = Map<String, dynamic>.from(raw);
 
         final double price =
@@ -766,20 +780,17 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         pidRaw == null ? null : int.tryParse(pidRaw.toString());
 
         if (pid == null || pid == 0) {
-          // ⭐ CUSTOM ITEM
+          // CUSTOM ITEM
           lineItems.add({
             "name": item["name"] ?? "Custom Item",
             "quantity": qty,
-            "sku": item["sku"] ?? "",
             "price": price.toStringAsFixed(2),
             "tax_status": "taxable",
-            "tax_class": "",
             "type": "custom"
           });
           continue;
         }
 
-        // ⭐ NORMAL PRODUCT
         lineItems.add({
           "product_id": pid,
           "name": item["name"] ?? "",
@@ -792,11 +803,9 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       // ---------------------------------------------------------
       // ⭐ PAYOUTS
       // ---------------------------------------------------------
-      final payouts = (order["payouts"] ?? []) as List? ?? [];
-      for (final p in payouts) {
+      for (final p in (order["payouts"] ?? [])) {
         final double amount =
             double.tryParse(p["amount"]?.toString() ?? "0") ?? 0.0;
-
         final int? pid =
         int.tryParse(p["payout_product_id"]?.toString() ?? "");
 
@@ -818,32 +827,24 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       }
 
       // ---------------------------------------------------------
-      // ⭐ CASHBACKS
+      // ⭐ CASHBACKS (ALWAYS LINE ITEM IF PID EXISTS)
       // ---------------------------------------------------------
-      // ---------------------------------------------------------
-// ⭐ CASHBACKS (always line_item if product_id exists)
-// ---------------------------------------------------------
-      final cashbacks = (order["cashbacks"] ?? []) as List? ?? [];
-      for (final c in cashbacks) {
+      for (final c in (order["cashbacks"] ?? [])) {
         final double amount =
             double.tryParse(c["amount"]?.toString() ?? "0") ?? 0.0;
 
-        // Try all possible product ID keys used in your database
-        final dynamic cashbackPidRaw =
+        final dynamic pidRaw =
             c["cashback_product_id"] ??
                 c["product_id"] ??
                 c["id"] ??
-                c["cashbackProductId"] ??
-                c["cashback_productID"];
+                c["cashbackProductId"];
 
         final int? pid =
-        cashbackPidRaw == null ? null : int.tryParse(cashbackPidRaw.toString());
+        pidRaw == null ? null : int.tryParse(pidRaw.toString());
 
-        // Fallback name if missing
         final String name = c["product_name"] ?? "Cashback";
 
         if (pid != null && pid > 0) {
-          // ⭐ Cashback must be sent as line_item
           lineItems.add({
             "product_id": pid,
             "name": name,
@@ -851,29 +852,25 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             "subtotal": amount.toStringAsFixed(2),
             "total": amount.toStringAsFixed(2),
           });
-          print("🟢 Cashback sent as LINE ITEM → product_id: $pid");
         } else {
-          // Only fallback if product_id truly missing
           feeLines.add({
             "name": name,
             "tax_status": "none",
             "total": amount.toStringAsFixed(2),
           });
-          print("🟡 Cashback missing product_id → sent as FEE LINE");
         }
       }
 
       // ---------------------------------------------------------
       // ⭐ MERCHANT DISCOUNT
       // ---------------------------------------------------------
-      final discount = double.tryParse(order["merchantDiscount"]?.toString() ?? "0") ?? 0.0;
+      final discount =
+          double.tryParse(order["merchantDiscount"]?.toString() ?? "0") ?? 0.0;
       final ids = (order["merchantDiscountIds"] ?? []).cast<int>();
 
       if (discount > 0 && ids.isNotEmpty) {
-        final int pid = ids.first;
-
         lineItems.add({
-          "product_id": pid,
+          "product_id": ids.first,
           "name": "Discount",
           "quantity": 1,
           "subtotal": (-discount).toStringAsFixed(2),
@@ -884,65 +881,51 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       }
 
       // ---------------------------------------------------------
-      // ⭐ META DATA
-      // ---------------------------------------------------------
-      final metaData = [
-        {"key": "pos_device_id", "value": order["device_id"] ?? ""},
-        {"key": "pos_placed_by", "value": order["user_name"] ?? ""},
-        {"key": "shift_id", "value": order["shift_id"]?.toString() ?? ""},
-      ];
-
-      // ---------------------------------------------------------
-      // ⭐ PAYMENT BLOCK (required)
-      // ---------------------------------------------------------
-      final payment = {
-        "method": "cash",
-        "paid": false,
-        "transaction_id": "deleted_${order["order_id"]}"
-      };
-
-      // ---------------------------------------------------------
-      // ⭐ BUILD FINAL ORDER PAYLOAD
+      // ⭐ META + PAYMENT
       // ---------------------------------------------------------
       formattedOrders.add({
-        "client_order_id": order["client_order_id"].toString(),
+        "client_order_id": clientOrderId,
+        "status": "canceled",
+        "set_paid": false,
         "payment_method": "cash",
         "payment_method_title": "POS-CASH",
-        "set_paid": false,
-        "wps_cart_points": "",
-        "status": "canceled",
-        "currency": null,
-        "customer_id": null,
-        "customer_note": "",
-        "parent_id": null,
-        "meta_data": metaData,
-        "fee_lines": feeLines,
         "line_items": lineItems,
+        "fee_lines": feeLines,
         "tax_lines": [],
-        "payment": payment,
+        "meta_data": [
+          {"key": "pos_device_id", "value": order["device_id"] ?? ""},
+          {"key": "pos_placed_by", "value": order["user_name"] ?? ""},
+          {"key": "shift_id", "value": order["shift_id"]?.toString() ?? ""},
+          {
+            "key": "offline_woo_order_id",
+            "value": order["woo_order_id"] ??
+                order["wooOrderId"] ??
+                ""
+          },
+        ],
+        "payment": {
+          "method": "cash",
+          "paid": false,
+          "transaction_id": "deleted_${order["order_id"]}"
+        }
       });
     }
 
     final body = {"orders": formattedOrders};
 
     debugPrint(
-      "📤 FINAL DELETE SYNC PAYLOAD:\n${JsonEncoder.withIndent('  ').convert(body)}",
+      "📤 DELETE SYNC PAYLOAD:\n${JsonEncoder.withIndent('  ').convert(body)}",
       wrapWidth: 9000,
     );
 
-
     try {
-      final response = await _helper.post(url, body, true, validateMarchentUrl: true);
+      final response =
+      await _helper.post(url, body, true, validateMarchentUrl: true);
 
-      // -------------------------------
-      // ⭐ Extract Woo Order ID
-      // -------------------------------
-      int? wooOrderId;
-      try {
-        final decoded = jsonDecode(response);
-        final result = decoded["results"]?[0];
-        wooOrderId = result?["order_id"];
-      } catch (_) {}
+      final decoded = jsonDecode(response);
+      final result = decoded["results"]?.first;
+
+      final int? wooOrderId = result?["order_id"];
 
       return {
         "success": true,
@@ -955,8 +938,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         "wooOrderId": null,
       };
     }
-
   }
+
 
   Future<dynamic> redeemLoyaltyPoints({
     required int orderId,

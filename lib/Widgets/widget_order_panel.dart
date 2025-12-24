@@ -4404,104 +4404,159 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                       ),
                       //Build 1.1.36: on pay tap calling updateOrderProducts api call
                       child: ElevatedButton(
-                        // Build 1.1.36: on pay tap calling updateOrderProducts api call
                         onPressed: orderItems.isNotEmpty
                             ? () async {
                           setState(() => _isPayBtnLoading = true);
 
                           try {
                             int? serverOrderId;
+                            List wooLineItems = [];
 
+                            // =======================================================
+                            // 🔹 SYNC OFFLINE ORDER → WOO
+                            // =======================================================
                             if (orderHelper.activeOrderId != null) {
                               final String orderId = orderHelper.activeOrderId.toString();
-
                               final rawOrder = getOfflineOrder(orderId);
 
                               if (rawOrder != null) {
-                                if (kDebugMode) print("🌀 Syncing offline order to server...");
+                                if (kDebugMode) {
+                                  print("🌀 Syncing offline order to server...");
+                                }
 
                                 final syncResult = await OrderRepository()
-                                    .syncSingleOfflineOrder(Map<String, dynamic>.from(rawOrder));
+                                    .syncSingleOfflineOrder(
+                                    Map<String, dynamic>.from(rawOrder));
 
                                 if (syncResult != null) {
                                   serverOrderId = syncResult["order_id"];
+                                  wooLineItems = syncResult["line_items"] ?? [];
 
                                   // -----------------------------
                                   // ✅ FETCH VALUES FROM SERVER
                                   // -----------------------------
-                                  final syncedTax =
-                                      double.tryParse(syncResult["tax"]?.toString() ?? "0") ?? 0.0;
+                                  orderTax = double.tryParse(
+                                      syncResult["tax"]?.toString() ?? "0") ??
+                                      0.0;
 
-                                  final syncedCashback =
-                                      double.tryParse(syncResult["cashback_fee"]?.toString() ?? "0") ??
-                                          0.0;
+                                  cashbackFee = double.tryParse(
+                                      syncResult["cashback_fee"]?.toString() ?? "0") ??
+                                      0.0;
 
-                                  final syncedEbt =
-                                      double.tryParse(syncResult["ebt_total"]?.toString() ?? "0") ?? 0.0;
-                                  final syncedDiscountAmount =
-                                      double.tryParse(syncResult["discount_amount"]?.toString() ?? "0") ?? 0.0;
+                                  final syncedEbt = double.tryParse(
+                                      syncResult["ebt_total"]?.toString() ?? "0") ??
+                                      0.0;
 
-                                  print("💳 Synced EBT Eligible Total = $syncedEbt");
-                                  print("🏷 Synced Discount Amount = $syncedDiscountAmount");
+                                  final syncedDiscountAmount = double.tryParse(
+                                      syncResult["discount_amount"]?.toString() ?? "0") ??
+                                      0.0;
 
-                                  print("💳 Synced EBT Eligible Total = $syncedEbt");
+                                  // -----------------------------
+                                  // ✅ SAVE TO HIVE
+                                  // -----------------------------
+                                  final box = Hive.box('offlineOrders');
+                                  final localKey = orderHelper.activeOrderId.toString();
+                                  final wooKey = serverOrderId.toString();
 
+                                  final existing = box.get(localKey);
+                                  if (existing != null) {
+                                    final updated = Map<String, dynamic>.from(existing);
+                                    updated["wooOrderId"] = wooKey;
+                                    updated["tax"] = orderTax;
+                                    updated["cashback_fee"] = cashbackFee;
+                                    updated["ebt_total"] = syncedEbt;
+                                    updated["discount_amount"] = syncedDiscountAmount;
 
-                                  print("💳 Synced EBT Eligible Total = $syncedEbt");
-
-                                  if (serverOrderId != null) {
-                                    final box = Hive.box('offlineOrders');
-                                    final localKey = orderHelper.activeOrderId.toString();
-                                    final wooKey = serverOrderId.toString();
-
-                                    final existing = box.get(localKey);
-
-                                    if (existing != null) {
-                                      final updatedOrder = Map<String, dynamic>.from(existing);
-
-                                      // ---------------------------------------
-                                      // ✅ UPDATE LOCAL HIVE RECORD
-                                      // ---------------------------------------
-                                      updatedOrder["wooOrderId"] = wooKey;
-                                      updatedOrder["tax"] = syncedTax;
-                                      updatedOrder["cashback_fee"] = syncedCashback;
-                                      updatedOrder["ebt_total"] = syncedEbt;    // ⭐ SAVE EBT
-                                      updatedOrder["discount_amount"] = syncedDiscountAmount;
-
-                                      // Save Local key
-                                      await box.put(localKey, updatedOrder);
-
-                                      // Save Woo key
-                                      await box.put(wooKey, updatedOrder);
-
-                                      print("💾 Saved TAX=$syncedTax Cashback=$syncedCashback EBT=$syncedEbt");
-                                    }
+                                    await box.put(localKey, updated);
+                                    await box.put(wooKey, updated);
                                   }
-
-                                  // Update local variables
-                                  orderTax = syncedTax;
-                                  cashbackFee = syncedCashback;
                                 }
                               }
                             }
+// =======================================================
+// ⭐ MAP COMBO / AUTO DISCOUNT FROM WOO → UI ITEMS
+// =======================================================
+                            for (final item in orderItems) {
+                              final int localPid =
+                                  int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
 
-                            // -------------------------------------------
-                            // ⭐ PASS EBT TOTAL TO ORDER SUMMARY SCREEN
-                            // -------------------------------------------
+                              final String name =
+                                  item['item_name']?.toString().trim() ?? '';
+
+                              print("🔍 UI ITEM → pid=$localPid | name=$name");
+
+                              final wooItem = wooLineItems.firstWhere(
+                                    (w) {
+                                  final int wooPid =
+                                      int.tryParse(w['product_id']?.toString() ?? '0') ?? 0;
+
+                                  print("   ↔ Compare with WOO → pid=$wooPid | name=${w['name']}");
+
+                                  return (localPid > 0 && wooPid == localPid) ||
+                                      w['name']?.toString().trim() == name;
+                                },
+                                orElse: () => null,
+                              );
+
+                              if (wooItem == null) {
+                                print("❌ NO WOO MATCH FOUND for $name");
+                                continue;
+                              }
+
+                              print("✅ MATCH FOUND → ${wooItem['name']}");
+
+                              final List meta = wooItem['meta_data'] ?? [];
+
+                              print("📦 META DATA:");
+                              for (final m in meta) {
+                                print("   • ${m['key']} => ${m['value']}");
+                              }
+
+                              double comboDiscount = 0.0;
+                              bool isCombo = false;
+
+                              for (final m in meta) {
+                                if (m['key'] == 'Discount Type' &&
+                                    m['value'] == 'Combo Discount') {
+                                  isCombo = true;
+                                  print("🎯 Combo Discount detected");
+                                }
+
+                                if (m['key'] == 'Discount Applied') {
+                                  comboDiscount =
+                                      double.tryParse(m['value']?.toString() ?? '0') ?? 0.0;
+                                  print("💰 Combo Discount Amount = $comboDiscount");
+                                }
+                              }
+
+                              if (isCombo && comboDiscount > 0) {
+                                print("🔥 APPLYING COMBO → $name | discount=$comboDiscount");
+
+                                item['auto_discount'] = comboDiscount;
+                                item['discount_type'] = 'combo';
+                                item['discount_source'] = 'woo';
+                              } else {
+                                print("⚠️ Combo NOT applied → isCombo=$isCombo | amount=$comboDiscount");
+                              }
+                            }
+
+                            // =======================================================
+                            // 🔹 LOAD VALUES FOR SUMMARY
+                            // =======================================================
                             final box = Hive.box('offlineOrders');
                             final hiveKey =
-                            (serverOrderId?.toString() ?? orderHelper.activeOrderId.toString());
+                                serverOrderId?.toString() ??
+                                    orderHelper.activeOrderId.toString();
 
                             final double ebtAmount =
                             (box.get(hiveKey)?["ebt_total"] ?? 0.0).toDouble();
+
                             final double discountAmount =
                             (box.get(hiveKey)?["discount_amount"] ?? 0.0).toDouble();
 
-                            print("📤 Passing Discount to Summary Screen = $discountAmount");
-
-
-                            print("📤 Passing EBT to Summary Screen = $ebtAmount");
-
+                            // =======================================================
+                            // 🔹 NAVIGATE TO SUMMARY
+                            // =======================================================
                             final result = await Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -4520,7 +4575,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   cashbackFee: cashbackFee,
                                   ebtAmount: ebtAmount,
                                   discountAmount: discountAmount,
-
                                 ),
                               ),
                             );
@@ -4531,10 +4585,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 fetchOrdersData();
                               });
                             }
-                          } catch (e) {
+                          } catch (e, s) {
                             print("❌ Error syncing order: $e");
+                            print(s);
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text("Failed to sync order: $e")),
+                              SnackBar(content: Text("Failed to sync order")),
                             );
                           } finally {
                             setState(() => _isPayBtnLoading = false);
@@ -4542,7 +4597,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         }
                             : null,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: orderItems.isNotEmpty ? const Color(0xFFFF6B6B) : Colors.grey,
+                          backgroundColor:
+                          orderItems.isNotEmpty ? const Color(0xFFFF6B6B) : Colors.grey,
                           foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
@@ -4551,12 +4607,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         ),
                         child: _isPayBtnLoading
                             ? const CircularProgressIndicator(color: Colors.white)
-                            : Text(
+                            : const Text(
                           "Check Out",
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                         ),
                       ),
 
