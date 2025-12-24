@@ -321,34 +321,11 @@ class _VariantsDialogState extends State<VariantsDialog> with SingleTickerProvid
                               }
                             });
                             if (selectedIndex != null) {
-                              setState(() {
-                                _isLoading = true;
-                              });
-
-                              // ✅ Call the callback to add the variant to order
-                              await widget.onAddVariant?.call(
-                                  widget.variations[selectedIndex!], variantQuantities[selectedIndex!]!);
-
+                              await widget.onAddVariant?.call(widget.variations[selectedIndex!], variantQuantities[selectedIndex!]!);
                               if (kDebugMode) {
-                                print("✅ [VariantsDialog] Variant added successfully, closing popup...");
-                              }
-
-                              // ✅ Close popup with animation
-                              await closeDialog();
-
-                              if (mounted) {
-                                setState(() {
-                                  _isLoading = false;
-                                });
-                              }
-                            } else {
-                              if (mounted) {
-                                setState(() {
-                                  _isLoading = false;
-                                });
+                                print("VariantsDialog - Added variant: ${widget.variations[selectedIndex!]['name']}, Quantity: ${variantQuantities[selectedIndex!]}");
                               }
                             }
-
                             if (mounted) {
                               setState(() {
                                 _isLoading = false;
