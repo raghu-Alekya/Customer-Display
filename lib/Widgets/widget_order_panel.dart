@@ -1288,14 +1288,46 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 //           }
 //         },
         onBarcodeScanned: (barcode) async {
-          if (ScannerGuard.isCouponPopupOpen) {
-            print("🔒 Coupon popup active → OrderPanel scanner ignored");
-            return;
-          }
+          //  ⛔ HARD BLOCK — prevents duplicate scans
+          if (_scanLocked) return;
 
+
+          final trimmedBarcode = barcode;
+
+          // ⛔ Ignore junk frames
+          if (trimmedBarcode.length < 6) return;
           try {
-            final trimmedBarcode = barcode.trim();
+            final trimmedBarcode = barcode;
             if (kDebugMode) print("🔹 Scanned → $trimmedBarcode");
+
+            final upper = trimmedBarcode.toUpperCase();
+
+            final bool isDriverLicense =
+                upper.contains("ANSI") ||
+                    upper.contains("DBB") ||
+                    upper.contains("DAQ") ||
+                    upper.contains("DL");
+
+            if (isDriverLicense) {
+
+              if (kDebugMode) {
+                print("🪪 Driver License detected → stopping product flow");
+                print("🪪 DRIVER LICENSE RAW BARCODE ↓↓↓");
+                print(trimmedBarcode); // ✅ FULL PDF417 DATA
+                print("🪪 DRIVER LICENSE RAW BARCODE ↑↑↑");
+              }
+              _ageVerificationActive = true;
+              _scanLocked = true;
+
+              // ⏳ Absorb trailing scanner frames
+              await Future.delayed(const Duration(milliseconds: 1200));
+
+              _ageVerificationActive = false;
+
+              // 🔥 VERY IMPORTANT — STOP HERE
+              return;
+            }
+
 
             if (!isOrderInForeground ||
                 trimmedBarcode.isEmpty ||
@@ -1345,8 +1377,22 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 if (memoryData is Map &&
                     memoryData["products"] is List &&
                     memoryData["products"].isNotEmpty) {
+
                   productMap = Map<String, dynamic>.from(memoryData["products"][0]);
+
+                  // 🔐 Restore meta_data safely
+                  if (productMap["meta_data"] is List) {
+                    productMap["meta_data"] =
+                    List<Map<String, dynamic>>.from(productMap["meta_data"]);
+                  }
+
+                  // 🔐 Restore tags safely
+                  if (productMap["tags"] is List) {
+                    productMap["tags"] =
+                    List<Map<String, dynamic>>.from(productMap["tags"]);
+                  }
                 }
+
                 // Case B → stored as flat map
                 else {
                   productMap = Map<String, dynamic>.from(memoryData);
@@ -1503,9 +1549,27 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                   product = products.first;
 
                   await productBox.put(cacheKey, {
-                    "products": products.map((p) => deepCast(p.toJson())).toList(),
-                    "timestamp": DateTime.now().toIso8601String(),
+                    "products": products.map((p) {
+                      final map = p.toJson();
+
+                      // 🔥 FIX: Persist tags
+                      map["tags"] = p.tags?.map((t) => {
+                        "id": t.id,
+                        "name": t.name,
+                        "slug": t.slug,
+                      }).toList();
+
+                      // 🔥 Also persist meta_data if present
+                      map["meta_data"] = p.metaData?.map((m) => {
+                        "key": m.key,
+                        "value": m.value,
+                      }).toList();
+
+                      return map;
+                    }).toList(),
                   });
+
+
 
                   if (kDebugMode) print("🌐 Online fetch → ${product?.name}");
                 }
@@ -1517,9 +1581,18 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             // ---------------------------------------------------------------------------
             // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
             // ---------------------------------------------------------------------------
+            // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
             if (product == null) {
-              _isLoading = false;
-              if (mounted) setState(() {});
+              if (_scanLocked || _ageVerificationActive || isDriverLicense) {
+                if (kDebugMode) {
+                  print("🚫 Custom Item popup BLOCKED (DL / Age / Locked)");
+                }
+
+                _isLoading = false;
+                if (mounted) setState(() {});
+                return;
+              }
+
               await _openCustomItemDialog(context, trimmedBarcode);
               return;
             }
@@ -1533,16 +1606,47 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             final productPrice =
                 double.tryParse(product.price?.toString() ?? "0") ?? 0;
 
+// 🖼 Image
             String image = "";
             if ((product.images ?? []).isNotEmpty) {
               image = product.images!.first.src ?? "";
             }
 
-            // ------------------------------------------------------------
-// ⭐ SKIP POPUP IF PRODUCT ALREADY EXISTS IN ORDERPANEL
-// ------------------------------------------------------------
-            // ------------------------------------------------------------
-// ⭐ SKIP POPUP IF PRODUCT ALREADY EXISTS IN ORDERPANEL
+// 🧠 Metadata & Tags
+            final metaData = product.metaData ?? [];
+            final tags = product.tags ?? [];
+
+            if (kDebugMode) {
+              debugPrint("──────── PRODUCT DEBUG ────────");
+              debugPrint("ID        : $productId");
+              debugPrint("Name      : $productName");
+              debugPrint("SKU       : $productSku");
+              debugPrint("Price     : $productPrice");
+              debugPrint("Image     : $image");
+
+              // 🧠 META DATA
+              if (metaData.isNotEmpty) {
+                debugPrint("📦 META DATA:");
+                for (final m in metaData) {
+                  debugPrint("  • ${m.key} = ${m.value}");
+                }
+              } else {
+                debugPrint("📦 META DATA: none");
+              }
+
+              // 🏷 TAGS
+              if (tags.isNotEmpty) {
+                debugPrint("🏷 TAGS:");
+                for (final tag in tags) {
+                  debugPrint("  • ${tag.name ?? tag.slug ?? tag.id}");
+                }
+              } else {
+                debugPrint("🏷 TAGS: none");
+              }
+
+              debugPrint("──────────────────────────────");
+            }
+            // SKIP POPUP IF PRODUCT ALREADY EXISTS IN ORDERPANEL
 // ------------------------------------------------------------
             final bool exists = OrderHelper.existsInOrderBySku(
               activeOrderId,
@@ -1575,10 +1679,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               return; // 🚫 STOP HERE — POPUP NEVER OPENS
             }
 
-
-
-// ------------------------------------------------------------
-// ⭐ VARIABLE PRICE PRODUCT CHECK
+            // VARIABLE PRICE PRODUCT CHECK
 // ------------------------------------------------------------
             final hasVariablePriceTag = (product.tags ?? []).any((tag) {
               final name = (tag.name ?? "").toLowerCase();
@@ -1696,43 +1797,51 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             }
 
 
-            // ⭐ AGE RESTRICTION CHECK — ONE TIME PER ORDER (FINAL FIX)
-            // ----------------------------------------------------------- */
+            // ======================================================
+// ⭐ AGE RESTRICTION CHECK — FINAL STABLE VERSION
+// ======================================================
 
             if (kDebugMode) {
               print("\n---------------- AGE CHECK START ----------------");
               print("Product Scanned: ID=${product.id}, Name=${product.name}");
             }
 
-// ======================================================
+// ------------------------------------------------------
 // 1️⃣ INIT
-// ======================================================
+// ------------------------------------------------------
             bool isRestricted = false;
             int minimumAge = 0;
 
-// ======================================================
-// 2️⃣ CHECK METADATA
-// ======================================================
-            for (final m in (product.metaData ?? [])) {
-              final key = (m.key ?? "");
-              final val = (m.value ?? "");
+// ------------------------------------------------------
+// 2️⃣ CHECK PRODUCT METADATA
+// ------------------------------------------------------
+            for (final meta in (product.metaData ?? [])) {
+              final key = (meta.key ?? "").toLowerCase().trim();
+              final rawValue = (meta.value ?? "").toString().toLowerCase().trim();
 
-              if (key == "age_restricted") {
-                if (val == "1" || val == "true") {
-                  isRestricted = true;
-                }
+              // Only process relevant keys
+              if (!(key.contains("age") || key.contains("age_restricted"))) continue;
 
-                final int? parsedAge = int.tryParse(val);
-                if (parsedAge != null && parsedAge > 0) {
+              // Case 1: Boolean restriction (true / yes / 1)
+              if (rawValue == "true" || rawValue == "yes" || rawValue == "1") {
+                isRestricted = true;
+                continue;
+              }
+
+              // Case 2: Extract numeric age (18, 21, etc.)
+              final match = RegExp(r'\d+').firstMatch(rawValue);
+              if (match != null) {
+                final parsedAge = int.tryParse(match.group(0)!);
+                if (parsedAge != null && parsedAge > minimumAge) {
                   minimumAge = parsedAge;
                   isRestricted = true;
                 }
               }
             }
 
-// ======================================================
-// 3️⃣ CHECK TAGS
-// ======================================================
+// ------------------------------------------------------
+// 3️⃣ CHECK PRODUCT TAGS (Backup Validation)
+// ------------------------------------------------------
             for (final tag in (product.tags ?? [])) {
               final name = (tag.name ?? "").toLowerCase();
               final slug = (tag.slug ?? "").toLowerCase();
@@ -1741,80 +1850,76 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 isRestricted = true;
               }
 
-              final bool looksAgeTag =
+              final hasAge =
                   name.contains("18+") ||
                       name.contains("21+") ||
+                      name.contains("age") ||
                       slug.contains("18+") ||
                       slug.contains("21+") ||
-                      name.contains("age") ||
-                      slug.contains("age") ||
-                      name.contains("restricted") ||
-                      slug.contains("restricted");
+                      slug.contains("age");
 
-              if (looksAgeTag) {
-                final cleaned = slug.replaceAll(RegExp(r"[^0-9]"), "");
-                final int? parsedAge = int.tryParse(cleaned);
-
-                if (parsedAge != null && parsedAge > 0) {
-                  minimumAge = parsedAge;
-                  isRestricted = true;
+              if (hasAge) {
+                final match = RegExp(r'\d+').firstMatch(name + slug);
+                if (match != null) {
+                  final parsedAge = int.tryParse(match.group(0)!);
+                  if (parsedAge != null && parsedAge > minimumAge) {
+                    minimumAge = parsedAge;
+                    isRestricted = true;
+                  }
                 }
               }
             }
 
-// ======================================================
-// 4️⃣ GET ORDER HIVE DATA
-// ======================================================
+// ------------------------------------------------------
+// 4️⃣ LOAD ORDER DATA (Hive)
+// ------------------------------------------------------
             final hiveBox = Hive.box('offlineOrders');
             final orderKey = orderHelper.activeOrderId.toString();
 
-            final Map<String, dynamic> hiveOrder = Map<String, dynamic>.from(
-              hiveBox.get(orderKey, defaultValue: {}),
-            );
+// Ensure order exists
+            if (!hiveBox.containsKey(orderKey)) {
+              await hiveBox.put(orderKey, {
+                "age_verified": false,
+              });
+            }
 
+            final Map<String, dynamic> hiveOrder =
+            Map<String, dynamic>.from(hiveBox.get(orderKey));
+
+// ------------------------------------------------------
+// 5️⃣ CHECK IF ALREADY VERIFIED
+// ------------------------------------------------------
             final bool alreadyVerified =
                 hiveOrder["age_verified"] == true ||
                     hiveOrder["age_verified"] == 1 ||
                     hiveOrder["age_verified"]?.toString().toLowerCase() == "true";
 
-            if (kDebugMode) print("Already verified? → $alreadyVerified");
-
-// ======================================================
-// 5️⃣ SKIP ENTIRE AGE FLOW IF ALREADY VERIFIED
-// ======================================================
-            if (alreadyVerified) {
-              if (kDebugMode) print("✔ Age already verified → skipping popup.");
-            } else if (isRestricted) {
-              // FIRST TIME ONLY → SHOW POPUP THROUGH PROVIDER
-              if (kDebugMode) print("🔔 Showing Age Verification Popup (FIRST TIME)");
-
-              final prov = AgeVerificationProvider();
-              final bool ok = await prov.ageRestrictedProduct(context, product);
-
-              // User failed age verification
-              if (!ok) {
-                _isLoading = false;
-                if (mounted) setState(() {});
-                _scaffoldMessenger.showSnackBar(
-                  const SnackBar(
-                    content: Text("❌ Age verification failed"),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-
-              // SUCCESS → SAVE FLAG
-              hiveOrder["age_verified"] = true;
-              await hiveBox.put(orderKey, hiveOrder);
-
-              if (kDebugMode) print("💾 Saved age_verified = TRUE for order $orderKey");
-            } else {
-              if (kDebugMode) print("✔ Product is NOT age restricted.");
+            if (kDebugMode) {
+              print("Age restricted: $isRestricted");
+              print("Minimum age   : $minimumAge");
+              print("Already verified: $alreadyVerified");
             }
 
-            if (kDebugMode) print("---------------- AGE CHECK END ----------------\n");
+// ------------------------------------------------------
+// 6️⃣ SHOW AGE VERIFICATION (ONCE)
+// ------------------------------------------------------
+            if (isRestricted && !alreadyVerified) {
+              final verified = await AgeVerificationProvider()
+                  .ageRestrictedProduct(context, product);
 
+              if (!verified) {
+                return; // stop item add
+              }
+
+              // Mark verified for this order
+              hiveOrder["age_verified"] = true;
+              await hiveBox.put(orderKey, hiveOrder);
+            }
+
+
+            if (kDebugMode) {
+              print("---------------- AGE CHECK END ----------------\n");
+            }
 
             // ---------------------------------------------------------------------------
             // 8️⃣ VARIATIONS FLOW
@@ -1840,7 +1945,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 await showDialog(
                   context: context,
                   barrierDismissible: false,
-                  builder: (_) => VariantsDialog(
+                  builder: (dialogContext) => VariantsDialog(
                     title: productName,
                     variations: variants,
                     onAddVariant: (selected, qty) async {
@@ -1855,10 +1960,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         type: ItemType.product.value,
                         productId: id,
                         variationId: selected["id"],
-                        isEbtEligible: isEbtEligible,
                       );
+
                       await fetchOrderItems();
                       await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+
+                      // ✅ CLOSE POPUP AFTER ADD
+                      Navigator.of(dialogContext).pop();
                     },
                   ),
                 );
@@ -1896,8 +2004,17 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             _isLoading = false;
             if (mounted) setState(() {});
           }
-        },
 
+          finally {
+            // 🔓 ALWAYS UNLOCK HERE
+            await Future.delayed(const Duration(milliseconds: 800));
+            _scanLocked = false;
+
+            if (kDebugMode) {
+              print("🔓 Scanner unlocked (finally)");
+            }
+          }
+        },
 
         child: Stack(
           children: [
@@ -3284,59 +3401,87 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         Column(
           children: [
             Container(
-              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground: null,
-              padding: const EdgeInsets.fromLTRB(10, 5, 16, 5),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.primaryBackground
+                  : null,
+              padding: const EdgeInsets.fromLTRB(10, 6, 16, 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+
+                  // 🔹 TOP TEXT
                   if (orderHelper.activeOrderId != null)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SvgPicture.asset(
-                          'assets/svg/calendar.svg',
-                          width: 20,
-                          height: 20,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white
-                              : Colors.black, // or your light mode color
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          displayDate,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color:
-                            Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white
-                                : Colors.black,
-                          ),
-                        ),
-                        const SizedBox(width: 132),
-                        SvgPicture.asset(
-                          'assets/svg/clock.svg',
-                          width: 20,
-                          height: 20,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white
-                              : Colors.black,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          displayTime,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color:
-                            Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white
-                                : Colors.black,
-                          ),
-                        ),
-                      ],
+                    Text(
+                      "All updated discounts will be reflected after checkout.",
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : const Color(0xFF1878DE),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
+
+                  const SizedBox(height: 6),
+
+                  // 🔹 BOTTOM ROW (DATE LEFT, TIME RIGHT)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+
+                      // 📅 DATE (LEFT)
+                      Row(
+                        children: [
+                          SvgPicture.asset(
+                            'assets/svg/calendar.svg',
+                            width: 20,
+                            height: 20,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white
+                                : Colors.black,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            displayDate,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white
+                                  : Colors.black,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      // ⏰ TIME (RIGHT)
+                      Row(
+                        children: [
+                          SvgPicture.asset(
+                            'assets/svg/clock.svg',
+                            width: 20,
+                            height: 20,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white
+                                : Colors.black,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            displayTime,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white
+                                  : Colors.black,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -4473,72 +4618,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 }
                               }
                             }
-// =======================================================
-// ⭐ MAP COMBO / AUTO DISCOUNT FROM WOO → UI ITEMS
-// =======================================================
-                            for (final item in orderItems) {
-                              final int localPid =
-                                  int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
 
-                              final String name =
-                                  item['item_name']?.toString().trim() ?? '';
-
-                              print("🔍 UI ITEM → pid=$localPid | name=$name");
-
-                              final wooItem = wooLineItems.firstWhere(
-                                    (w) {
-                                  final int wooPid =
-                                      int.tryParse(w['product_id']?.toString() ?? '0') ?? 0;
-
-                                  print("   ↔ Compare with WOO → pid=$wooPid | name=${w['name']}");
-
-                                  return (localPid > 0 && wooPid == localPid) ||
-                                      w['name']?.toString().trim() == name;
-                                },
-                                orElse: () => null,
-                              );
-
-                              if (wooItem == null) {
-                                print("❌ NO WOO MATCH FOUND for $name");
-                                continue;
-                              }
-
-                              print("✅ MATCH FOUND → ${wooItem['name']}");
-
-                              final List meta = wooItem['meta_data'] ?? [];
-
-                              print("📦 META DATA:");
-                              for (final m in meta) {
-                                print("   • ${m['key']} => ${m['value']}");
-                              }
-
-                              double comboDiscount = 0.0;
-                              bool isCombo = false;
-
-                              for (final m in meta) {
-                                if (m['key'] == 'Discount Type' &&
-                                    m['value'] == 'Combo Discount') {
-                                  isCombo = true;
-                                  print("🎯 Combo Discount detected");
-                                }
-
-                                if (m['key'] == 'Discount Applied') {
-                                  comboDiscount =
-                                      double.tryParse(m['value']?.toString() ?? '0') ?? 0.0;
-                                  print("💰 Combo Discount Amount = $comboDiscount");
-                                }
-                              }
-
-                              if (isCombo && comboDiscount > 0) {
-                                print("🔥 APPLYING COMBO → $name | discount=$comboDiscount");
-
-                                item['auto_discount'] = comboDiscount;
-                                item['discount_type'] = 'combo';
-                                item['discount_source'] = 'woo';
-                              } else {
-                                print("⚠️ Combo NOT applied → isCombo=$isCombo | amount=$comboDiscount");
-                              }
-                            }
 
                             // =======================================================
                             // 🔹 LOAD VALUES FOR SUMMARY
@@ -4553,6 +4633,98 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                             final double discountAmount =
                             (box.get(hiveKey)?["discount_amount"] ?? 0.0).toDouble();
+// =======================================================
+// ⭐ MAP AUTO / COMBO / MULTIPACK DISCOUNT FROM WOO → UI ITEMS
+// =======================================================
+                            for (final item in orderItems) {
+                              final int localPid =
+                                  int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
+
+                              final String name =
+                                  item['item_name']?.toString().trim() ?? '';
+
+                              final wooItem = wooLineItems.firstWhere(
+                                    (w) {
+                                  final int wooPid =
+                                      int.tryParse(w['product_id']?.toString() ?? '0') ?? 0;
+
+                                  return (localPid > 0 && wooPid == localPid) ||
+                                      w['name']?.toString().trim() == name;
+                                },
+                                orElse: () => null,
+                              );
+
+                              if (wooItem == null) continue;
+
+                              final List meta = wooItem['meta_data'] ?? [];
+
+                              bool isCombo = false;
+                              bool isMultipack = false;
+
+                              double comboDiscount = 0.0;
+                              double multipackDiscount = 0.0;
+
+                              for (final m in meta) {
+                                // ---------- COMBO ----------
+                                if (m['key'] == 'Discount Type' &&
+                                    m['value'] == 'Combo Discount') {
+                                  isCombo = true;
+                                }
+
+                                if (m['key'] == 'Discount Applied') {
+                                  comboDiscount =
+                                      double.tryParse(m['value']?.toString() ?? '0') ?? 0.0;
+                                }
+
+                                // ---------- MULTIPACK ----------
+                                if (m['key'] == '_pinaka_multipack_applied' &&
+                                    m['value'] == 'yes') {
+                                  isMultipack = true;
+                                }
+
+                                if (m['key'] == '_pinaka_multipack_product_discount') {
+                                  multipackDiscount =
+                                      double.tryParse(m['value']?.toString() ?? '0') ?? 0.0;
+                                }
+                              }
+
+                              // ---------- APPLY PRIORITY ----------
+                              if (isCombo && comboDiscount > 0) {
+                                item['auto_discount'] = comboDiscount;
+                                item['discount_type'] = 'combo';
+                                item['discount_source'] = 'woo';
+                              } else if (isMultipack && multipackDiscount > 0) {
+                                item['auto_discount'] = multipackDiscount;
+                                item['discount_type'] = 'multipack';
+                                item['discount_source'] = 'woo';
+                              }
+                            }
+
+// =======================================================
+// ⭐ CALCULATE TOTAL AUTO DISCOUNT (COMBO + MULTIPACK)
+// =======================================================
+                            double totalAutoDiscount = 0.0;
+
+                            for (final item in orderItems) {
+                              final double d = double.tryParse(
+                                  item['auto_discount']?.toString() ?? '0') ?? 0.0;
+
+                              if ((item['discount_type'] == 'combo' ||
+                                  item['discount_type'] == 'multipack') &&
+                                  d > 0) {
+                                totalAutoDiscount += d;
+                              }
+                            }
+
+                            if (kDebugMode) {
+                              print("🧮 TOTAL AUTO DISCOUNT = $totalAutoDiscount");
+                            }
+
+                            final double grossAfterDiscount =
+                                grossTotal.toDouble() - totalAutoDiscount;
+
+                            final double safeGrossAfterDiscount =
+                            grossAfterDiscount < 0 ? 0 : grossAfterDiscount;
 
                             // =======================================================
                             // 🔹 NAVIGATE TO SUMMARY
@@ -4564,7 +4736,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   formattedDate: displayDate,
                                   formattedTime: displayTime,
                                   orderItems: orderItems,
-                                  grossTotal: grossTotal.toDouble(),
+                                  grossTotal: safeGrossAfterDiscount,
                                   orderDiscount: orderDiscount,
                                   merchantDiscount: merchantDiscount,
                                   orderTax: orderTax,

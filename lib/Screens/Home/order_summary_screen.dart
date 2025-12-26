@@ -1600,16 +1600,18 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           // Back button
           InkWell(
             borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
-
             onTap: () {
+              final bool hasPartialPayment = tenderAmount > 0 && balanceAmount > 0;
+              if (hasPartialPayment) {
+                _showExitPaymentConfirmation(context);
+                return;
+              }
               if (discount > 0) {
                 _showCouponAppliedSnackBar(context);
                 return;
               }
-
               _showExitPaymentConfirmation(context);
             },
-
             child: Container(
               height: 35,
               width: ResponsiveLayout.getWidth(90),
@@ -2938,27 +2940,36 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final double originalTotal =
     (orderItem['item_sum_price'] ?? 0).toDouble();
 
-    /// -------------------------------
-    /// ✅ DISCOUNT SEPARATION
-    /// -------------------------------
-    final bool isComboDiscount =
-        orderItem['discount_type'] == 'combo';
-
-    final double comboDiscount =
-    isComboDiscount
-        ? (orderItem['auto_discount'] ?? 0).toDouble()
-        : 0.0;
+    // --------------------------------------------------
+    // ✅ DISCOUNT EXTRACTION
+    // --------------------------------------------------
+    final String discountType =
+        orderItem['discount_type']?.toString() ?? '';
 
     final double autoDiscount =
-    !isComboDiscount
+    discountType.isEmpty || discountType == 'auto'
         ? (orderItem['auto_discount'] ?? 0).toDouble()
         : 0.0;
 
-    /// -------------------------------
-    /// ✅ FINAL PRICE
-    /// -------------------------------
+    final double comboDiscount =
+    discountType == 'combo'
+        ? (orderItem['auto_discount'] ?? 0).toDouble()
+        : 0.0;
+
+    final double multipackDiscount =
+    discountType == 'multipack'
+        ? (orderItem['auto_discount'] ?? 0).toDouble()
+        : 0.0;
+
+    final bool isComboDiscount = comboDiscount > 0;
+    final bool isMultipackDiscount = multipackDiscount > 0;
+    final bool hasAutoDiscount = autoDiscount > 0;
+
+    // --------------------------------------------------
+    // ✅ FINAL PRICE
+    // --------------------------------------------------
     final double finalItemTotal =
-        originalTotal - autoDiscount - comboDiscount;
+        originalTotal - autoDiscount - comboDiscount - multipackDiscount;
 
     final bool isPayout = itemType.contains(TextConstants.payoutText);
     final bool isCoupon = itemType.contains(TextConstants.couponText);
@@ -3018,8 +3029,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     ),
                   ),
 
-                  /// ROW 2 — EBT / VARIANT / COMBO
-                  if (isEbtEligible || isVariant || isComboDiscount)
+                  /// ROW 2 — BADGES
+                  if (isEbtEligible ||
+                      isVariant ||
+                      isComboDiscount ||
+                      isMultipackDiscount)
                     SizedBox(
                       height: 12,
                       child: Row(
@@ -3052,32 +3066,21 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             ),
                           ],
 
-                          /// ⭐ COMBO BADGE
                           if (isComboDiscount) ...[
                             const SizedBox(width: 5),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: Colors.orange,
-                                borderRadius: BorderRadius.circular(3),
-                              ),
-                              child: const Text(
-                                "MM",
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
+                            _discountBadge("MM", Colors.orange),
+                          ],
+
+                          if (isMultipackDiscount) ...[
+                            const SizedBox(width: 5),
+                            _discountBadge("MP", Colors.blue),
                           ],
                         ],
                       ),
                     ),
 
-                  /// ROW 3 — AUTO DISCOUNT (ONLY AUTO)
-                  if (autoDiscount > 0 && !isPayoutOrCoupon)
+                  /// ROW 3 — AUTO DISCOUNT
+                  if (hasAutoDiscount && !isPayoutOrCoupon)
                     SizedBox(
                       height: 12,
                       child: Text(
@@ -3091,8 +3094,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       ),
                     ),
 
-                  /// OPTIONAL — COMBO DISCOUNT TEXT
-                  if (comboDiscount > 0 && !isPayoutOrCoupon)
+                  /// ROW 4 — COMBO DISCOUNT
+                  if (isComboDiscount && !isPayoutOrCoupon)
                     SizedBox(
                       height: 12,
                       child: Text(
@@ -3101,6 +3104,21 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           fontSize: 12,
                           height: 1.0,
                           color: Colors.orange,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+
+                  /// ROW 5 — MULTIPACK DISCOUNT
+                  if (isMultipackDiscount && !isPayoutOrCoupon)
+                    SizedBox(
+                      height: 12,
+                      child: Text(
+                        "Multipack Discount: -${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}",
+                        style: const TextStyle(
+                          fontSize: 12,
+                          height: 1.0,
+                          color: Colors.blue,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -3136,10 +3154,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     ),
                   ),
 
-                  /// STRIKED PRICE
+                  /// STRIKED ORIGINAL
                   SizedBox(
                     height: 12,
-                    child: ((autoDiscount > 0 || comboDiscount > 0) &&
+                    child: ((hasAutoDiscount ||
+                        isComboDiscount ||
+                        isMultipackDiscount) &&
                         !isPayoutOrCoupon)
                         ? Text(
                       "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
@@ -3162,6 +3182,27 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
+
+  /// 🔹 Reusable badge widget
+  Widget _discountBadge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 10,
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+
   // Widget _buildOrderItem(int index) {
   //   final themeHelper = Provider.of<ThemeNotifier>(context);
   //   final orderItem = orderItems[index];

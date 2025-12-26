@@ -30,33 +30,43 @@ class ManualPriceDialog extends StatefulWidget {
     );
   }
 
-
   @override
   State<ManualPriceDialog> createState() => _ManualPriceDialogState();
 }
 
 class _ManualPriceDialogState extends State<ManualPriceDialog> {
-  String enteredPrice = "";
+  /// Store value in cents (POS standard)
+  int _amountInCents = 0;
 
-  void _onKeyTap(String value) {
-    setState(() => enteredPrice += value);
+  // ---------------- LOGIC ----------------
+
+  void _onKeyTap(String digit) {
+    setState(() {
+      if (_amountInCents < 99999999) {
+        _amountInCents = (_amountInCents * 10) + int.parse(digit);
+      }
+    });
   }
 
   void _clear() {
-    setState(() => enteredPrice = "");
+    setState(() => _amountInCents = 0);
   }
 
   void _submit() {
-    if (enteredPrice.isNotEmpty) {
-      Navigator.pop(context, double.tryParse(enteredPrice));
+    if (_amountInCents > 0) {
+      Navigator.pop(context, _amountInCents / 100);
     }
   }
-  @override
 
+  String get formattedPrice =>
+      (_amountInCents / 100).toStringAsFixed(2);
+
+  // ---------------- UI ----------------
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // ------ COLORS FOR BOTH THEMES ------
     final dialogBg = isDark ? const Color(0xFF1A1C2A) : Colors.white;
     final cardBg = isDark ? const Color(0xFF2B2D3C) : const Color(0xFFF2F4F7);
 
@@ -81,95 +91,68 @@ class _ManualPriceDialogState extends State<ManualPriceDialog> {
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
               child: Column(
                 children: [
-                  // ---------------- PRODUCT ROW ----------------
+                  // ---------------- PRODUCT ----------------
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // PRODUCT IMAGE
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: widget.productImage.isNotEmpty &&
-                            (widget.productImage.startsWith("http") ||
-                                widget.productImage.startsWith("https"))
+                        child: widget.productImage.startsWith("http")
                             ? Image.network(
                           widget.productImage,
                           width: 75,
                           height: 75,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Image.asset(
-                            "assets/Bubbas_logo.png",
-                            width: 75,
-                            height: 75,
-                            fit: BoxFit.cover,
-                          ),
+                          errorBuilder: (_, __, ___) =>
+                              Image.asset("assets/custom.png",
+                                  width: 75, height: 75),
                         )
-                            : Image.asset(
-                          "assets/Bubbas_logo.png",
-                          width: 75,
-                          height: 75,
-                          fit: BoxFit.cover,
-                        ),
+                            : Image.asset("assets/custom.png",
+                            width: 75, height: 75),
                       ),
-
-
                       const SizedBox(width: 16),
-
-                      // PRODUCT NAME + QTY
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(
-                              widget.productName,
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w600,
-                                color: textPrimary,
-                              ),
-                            ),
+                            Text(widget.productName,
+                                style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w600,
+                                    color: textPrimary)),
                             const SizedBox(height: 4),
-                            Text(
-                              "(${widget.quantity} Pieces)",
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: textSecondary,
-                              ),
-                            ),
+                            Text("(${widget.quantity} Pieces)",
+                                style: TextStyle(
+                                    fontSize: 11, color: textSecondary)),
                           ],
                         ),
                       ),
                     ],
                   ),
 
-
                   const SizedBox(height: 15),
 
-                  // ---------------- Label ----------------
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: Text(
-                      "Enter Price",
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: textPrimary,
-                      ),
-                    ),
+                    child: Text("Enter Price",
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: textPrimary)),
                   ),
 
                   const SizedBox(height: 10),
 
-                  // ---------------- TEXT FIELD ----------------
+                  // ---------------- PRICE FIELD ----------------
                   SizedBox(
                     height: 44,
                     child: TextField(
                       readOnly: true,
-                      controller: TextEditingController(text: enteredPrice),
-                      style: TextStyle(color: textPrimary, fontSize: 16),
+                      controller:
+                      TextEditingController(text: formattedPrice),
+                      textAlign: TextAlign.right,
+                      style:
+                      TextStyle(color: textPrimary, fontSize: 18),
                       decoration: InputDecoration(
-                        hintText: "This product requires a custom price.",
-                        hintStyle: TextStyle(color: textSecondary),
                         filled: true,
                         fillColor: cardBg,
                         contentPadding:
@@ -177,8 +160,9 @@ class _ManualPriceDialogState extends State<ManualPriceDialog> {
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                           borderSide: BorderSide(
-                              color:
-                              isDark ? Colors.white12 : const Color(0xFFCBD3E1)),
+                              color: isDark
+                                  ? Colors.white12
+                                  : const Color(0xFFCBD3E1)),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -194,7 +178,6 @@ class _ManualPriceDialogState extends State<ManualPriceDialog> {
                   // ---------------- KEYPAD ----------------
                   Expanded(
                     child: GridView.builder(
-                      padding: EdgeInsets.zero,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: 12,
                       gridDelegate:
@@ -206,12 +189,10 @@ class _ManualPriceDialogState extends State<ManualPriceDialog> {
                       ),
                       itemBuilder: (context, index) {
                         if (index == 9) {
-                          return _buildKey(
-                            "Clear",
-                            onTap: _clear,
-                            bgColor: clearBg,
-                            textColor: clearTextColor,
-                          );
+                          return _buildKey("Clear",
+                              onTap: _clear,
+                              bgColor: clearBg,
+                              textColor: clearTextColor);
                         } else if (index == 10) {
                           return _buildKey("0",
                               onTap: () => _onKeyTap("0"),
@@ -223,12 +204,11 @@ class _ManualPriceDialogState extends State<ManualPriceDialog> {
                               bgColor: addBg,
                               textColor: addText);
                         } else {
-                          return _buildKey(
-                            "${index + 1}",
-                            onTap: () => _onKeyTap("${index + 1}"),
-                            bgColor: cardBg,
-                            textColor: textPrimary,
-                          );
+                          final digit = "${index + 1}";
+                          return _buildKey(digit,
+                              onTap: () => _onKeyTap(digit),
+                              bgColor: cardBg,
+                              textColor: textPrimary);
                         }
                       },
                     ),
@@ -237,7 +217,7 @@ class _ManualPriceDialogState extends State<ManualPriceDialog> {
               ),
             ),
 
-            // CLOSE BUTTON
+            // CLOSE
             Positioned(
               top: 14,
               right: 14,
@@ -245,11 +225,11 @@ class _ManualPriceDialogState extends State<ManualPriceDialog> {
                 onTap: () => Navigator.pop(context),
                 child: Container(
                   padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFFE74C3C),
-                  ),
-                  child: const Icon(Icons.close, color: Colors.white, size: 17),
+                  decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFFE74C3C)),
+                  child:
+                  const Icon(Icons.close, size: 17, color: Colors.white),
                 ),
               ),
             ),
@@ -259,13 +239,12 @@ class _ManualPriceDialogState extends State<ManualPriceDialog> {
     );
   }
 
-
-  // ---------------- BUTTON WIDGET -------------------
+  // ---------------- BUTTON ----------------
   Widget _buildKey(
       String label, {
         required VoidCallback onTap,
-        Color bgColor = const Color(0xFFF2F4F7),
-        Color textColor = const Color(0xFF1A1A1A),
+        required Color bgColor,
+        required Color textColor,
       }) {
     return GestureDetector(
       onTap: onTap,
@@ -275,14 +254,11 @@ class _ManualPriceDialogState extends State<ManualPriceDialog> {
           color: bgColor,
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            color: textColor,
-          ),
-        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: textColor)),
       ),
     );
   }

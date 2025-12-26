@@ -1803,6 +1803,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
   int? _editingCategoryIndex;
   int? _selectedSubCategoryIndex;
   final ScrollController _categoryScrollController = ScrollController();
+  bool _hasAutoTappedOnce = false;
 
 
   List<Map<String, dynamic>> categoryProducts = [];
@@ -1947,104 +1948,88 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
     }
   }
   Future<void> _autoTapAllCategories() async {
-    if (categories.isEmpty) return;
+    if (categories.isEmpty || _hasAutoTappedOnce) return;
+
+    _hasAutoTappedOnce = true;
 
     setState(() => _isAutoLoading = true);
-    _showAutoLoadingDialog(); // ✅ SHOW POPUP
+    _showAutoLoadingDialog();
 
     for (int i = 0; i < categories.length; i++) {
-      if (!mounted) return;
+      if (!mounted) break;
 
-      // ✅ AUTO SCROLL TO CATEGORY
       _scrollToCategory(i);
-
-      // allow scroll animation
       await Future.delayed(const Duration(milliseconds: 250));
 
       if (kDebugMode) {
         print("🚀 Auto tapping category → ${categories[i].name}");
       }
 
-      // ✅ AUTO TAP
       _onCategoryTapped(i);
 
-      // wait for API + shimmer
-      await Future.delayed(const Duration(milliseconds: 600));
-
+      // Wait until shimmer/API completes
       while (isLoadingNestedContent) {
         await Future.delayed(const Duration(milliseconds: 100));
       }
+
+      await Future.delayed(const Duration(milliseconds: 300));
     }
+
+    _hideAutoLoadingDialog();
+    setState(() => _isAutoLoading = false);
 
     if (kDebugMode) {
       print("✅ Auto load completed");
     }
-
-    _hideAutoLoadingDialog(); // ✅ CLOSE POPUP
-    setState(() => _isAutoLoading = false);
   }
 
 
   Future<void> _loadLastSelectedCategory() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    int? lastSelectedIndex = prefs.getInt('lastSelectedCategoryIndex');
+    final prefs = await SharedPreferences.getInstance();
+    final int? index = prefs.getInt('lastSelectedCategoryIndex');
 
-    if (lastSelectedIndex != null && lastSelectedIndex >= 0 && lastSelectedIndex < categories.length) {
-      setState(() {
-        _selectedCategoryIndex = lastSelectedIndex;
-        // Start with just the category name
-        navigationPath = [categories[_selectedCategoryIndex!].name];
-        categoryHierarchy = [0, categories[_selectedCategoryIndex!].id];
-        currentCategoryLevel = 1;
-        isShowingSubCategories = true;
-      });
-      await _loadSubCategories(categories[_selectedCategoryIndex!].id); // Build #1.0.166: added await to complete
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToCategory(lastSelectedIndex);
-      });
-    } else if (categories.isNotEmpty) {
-      setState(() {
-        _selectedCategoryIndex = 0;
-        // Start with just the category name
-        navigationPath = [categories[0].name];
-        categoryHierarchy = [0, categories[0].id];
-        currentCategoryLevel = 1;
-        isShowingSubCategories = true;
-      });
-      await prefs.setInt('lastSelectedCategoryIndex', 0);
-      await _loadSubCategories(categories[0].id); // Build #1.0.166: added await to complete
-    }
+    final int safeIndex =
+    (index != null && index >= 0 && index < categories.length) ? index : 0;
+
+    setState(() {
+      _selectedCategoryIndex = safeIndex;
+      navigationPath = [categories[safeIndex].name];
+      categoryHierarchy = [0, categories[safeIndex].id];
+      currentCategoryLevel = 1;
+      isShowingSubCategories = true;
+      isLoadingNestedContent = true;
+    });
+
+    await _loadSubCategories(categories[safeIndex].id);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToCategory(safeIndex);
+    });
+
+    await prefs.setInt('lastSelectedCategoryIndex', safeIndex);
   }
+
   void _scrollToCategory(int index) {
     if (!_categoryScrollController.hasClients) return;
 
-    final scrollPosition = _categoryScrollController.position;
-
-    // ✅ REAL ITEM WIDTH (must match widget)
-    final double itemWidth = ResponsiveLayout.getHeight(80) + 10; // 80 + padding
-
-    // ✅ Center item instead of left aligning
+    final position = _categoryScrollController.position;
+    final double itemWidth = ResponsiveLayout.getHeight(80) + 10;
     final double screenWidth = MediaQuery.of(context).size.width;
-    double targetOffset =
+
+    double offset =
         (index * itemWidth) - (screenWidth / 2) + (itemWidth / 2);
 
-    // ✅ Clamp to valid scroll range (VERY IMPORTANT)
-    targetOffset = targetOffset.clamp(
-      scrollPosition.minScrollExtent,
-      scrollPosition.maxScrollExtent,
+    offset = offset.clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
     );
 
-    if (kDebugMode) {
-      print("📜 Scroll → index=$index offset=$targetOffset");
-    }
-
     _categoryScrollController.animateTo(
-      targetOffset,
+      offset,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
   }
-
 
   Future<void> _saveLastSelectedCategory(int index) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -2054,97 +2039,78 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
   // Load top-level categories (parentId = 0) once
   Future<void> _loadTopLevelCategories() async {
     setState(() {
+      isLoading = true;
       isLoadingNestedContent = true;
     });
 
     _categoryBloc.fetchCategories(0);
 
-    await for (var response in _categoryBloc.categoriesStream) {
+    await for (final response in _categoryBloc.categoriesStream) {
+      if (!mounted) break;
+
       if (response.status == Status.COMPLETED && response.data != null) {
+        categories = response.data!.categories;
+
         setState(() {
-          categories = response.data!.categories;
           isLoading = false;
           isLoadingNestedContent = false;
         });
 
-        // ✅ CHECK HIVE PRODUCT CACHE
-        final bool shouldAutoTap = await _isProductCacheEmpty();
+        final bool isProductCacheEmpty = await _isProductCacheEmpty();
 
-        if (shouldAutoTap) {
-          if (kDebugMode) {
-            print("🚀 Product cache EMPTY → auto tapping all categories");
-          }
-
+        if (isProductCacheEmpty) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _autoTapAllCategories();
           });
         } else {
-          if (kDebugMode) {
-            print("✅ Product cache exists → skipping auto tap");
-          }
-        }
-
-        // Load last selected category normally
-        if (categories.isNotEmpty) {
           await _loadLastSelectedCategory();
         }
-
         break;
       }
 
       if (response.status == Status.ERROR) {
-        if (response.message!.contains('Unauthorised')) {
+        setState(() {
+          isLoading = false;
+          isLoadingNestedContent = false;
+        });
+
+        if (response.message?.contains("Unauthorised") ?? false) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => LoginScreen()),
           );
         }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Unauthorised. Session is expired on this device."),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
-          ),
-        );
-
-        if (kDebugMode) {
-          print("CategoriesScreen error: ${response.message}");
-        }
+        break;
       }
     }
   }
 
 
-  // Load subcategories for a specific parent category
   Future<void> _loadSubCategories(int parentId) async {
-    // setState(() {
-    //   isLoadingNestedContent = true; // no need from here above _loadTopLevelCategories added
-    // });
     _categoryBloc.fetchCategories(parentId);
-    await for (var response in _categoryBloc.categoriesStream) {
+
+    await for (final response in _categoryBloc.categoriesStream) {
+      if (!mounted) break;
+
       if (response.status == Status.COMPLETED && response.data != null) {
-        if (kDebugMode) {
-          print("#### DEBUG 200: ${response.data!.categories.length}");
-        }
         setState(() {
           subCategories = response.data!.categories;
           isShowingSubCategories = true;
           categoryProducts.clear();
           _selectedSubCategoryIndex = null;
-          isLoadingNestedContent = false; // Hide shimmer when data is loaded
+          isLoadingNestedContent = false;
         });
-        if(Misc.enableCategoryProductWithSubCategoryList || subCategories.isEmpty){
+
+        if (Misc.enableCategoryProductWithSubCategoryList ||
+            subCategories.isEmpty) {
           _loadProductsByCategory(parentId);
         }
-        break; // Break after loading subcategories
-      } else if (response.status == Status.ERROR) {
-        setState(() {
-          isLoadingNestedContent = false; // Hide shimmer on error
-        });
-        if (kDebugMode) {
-          print("CategoriesScreen: Error loading subcategories: ${response.message}");
-        }
+        break;
+      }
+
+      if (response.status == Status.ERROR) {
+        setState(() => isLoadingNestedContent = false);
+        break;
       }
     }
   }
@@ -2152,130 +2118,94 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
   Future<void> _loadProductsByCategory(int categoryId) async {
     setState(() {
       isLoadingNestedContent = true;
-      categoryProducts.clear(); // Clear existing products to prevent duplicates
+      categoryProducts.clear();
     });
 
     _categoryBloc.fetchProductsByCategory(categoryId);
-    await for (var response in _categoryBloc.productsStream) {
+
+    await for (final response in _categoryBloc.productsStream) {
+      if (!mounted) break;
+
       if (response.status == Status.COMPLETED && response.data != null) {
+        final Map<int, Map<String, dynamic>> uniqueProducts = {};
+
+        for (final product in response.data!.products) {
+          final tags = (product.tags ?? [])
+              .map((t) => {
+            "id": t.id,
+            "name": t.name?.toLowerCase() ?? "",
+            "slug": t.slug?.toLowerCase() ?? "",
+          })
+              .toList();
+
+          final ageTag = tags.firstWhere(
+                (t) =>
+            t["name"] == TextConstants.age_restricted ||
+                t["slug"] == TextConstants.age_restricted,
+            orElse: () => {},
+          );
+
+          final int minAge =
+              int.tryParse(ageTag["slug"]?.toString() ?? "0") ?? 0;
+
+          uniqueProducts[product.id] = {
+            'fast_key_product_id': product.id,
+            'fast_key_item_name': product.name,
+            'fast_key_item_image':
+            product.images.isNotEmpty ? product.images.first : '',
+            'fast_key_item_price': product.price,
+            'fast_key_item_sku': product.sku ?? '',
+            'fast_key_item_min_age': minAge,
+            'has_age_restriction': minAge > 0,
+            'fast_key_item_tags': tags,
+            'variations': product.variations,
+            'type': product.type,
+          };
+        }
+
         setState(() {
-          // Deduplicate products by id
-          final uniqueProducts = <int, Map<String, dynamic>>{};
-          for (var product in response.data!.products) {
-
-            // ✅ STEP 1: Normalize ALL TAGS (DECLARE FIRST)
-            final List<Map<String, dynamic>> normalizedTags =
-            (product.tags ?? []).map((t) {
-              return {
-                "id": t.id,
-                "name": t.name?.toLowerCase() ?? "",
-                "slug": t.slug?.toLowerCase() ?? "",
-              };
-            }).toList();
-            if (kDebugMode) {
-              print("🏷 NORMALIZED TAGS → productId=${product.id}");
-              print(const JsonEncoder.withIndent('  ').convert(normalizedTags));
-            }
-
-
-            // ✅ STEP 2: Age restriction detection using normalized tags
-            final ageTag = normalizedTags.firstWhere(
-                  (t) =>
-              t["name"] == TextConstants.age_restricted ||
-                  t["slug"] == TextConstants.age_restricted,
-              orElse: () => {},
-            );
-
-            final int minAge =
-                int.tryParse(ageTag["slug"]?.toString() ?? "0") ?? 0;
-
-            final bool hasAgeRestriction = minAge > 0;
-
-            if (kDebugMode) {
-              print(
-                "CategoriesScreen: hasAgeRestriction=$hasAgeRestriction, minAge=$minAge, tags=$normalizedTags",
-              );
-            }
-
-            // ✅ STEP 3: Assign product data
-            uniqueProducts[product.id] = {
-              'fast_key_product_id': product.id,
-              'fast_key_item_name': product.name,
-              'fast_key_item_image':
-              product.images.isNotEmpty ? product.images.first : '',
-              'fast_key_item_price': product.price,
-              'fast_key_item_sku': product.sku ?? '',
-
-              // ✅ AGE
-              'fast_key_item_min_age': minAge,
-              'has_age_restriction': hasAgeRestriction,
-
-              // ✅ TAGS
-              'fast_key_item_tags': normalizedTags,
-
-              // ✅ VARIANTS
-              'variations': product.variations,
-              'type': product.type,
-            };
-          }
-
           categoryProducts = uniqueProducts.values.toList();
           reorderedIndices = List.filled(categoryProducts.length, null);
           isShowingSubCategories = false;
-          isLoadingNestedContent = false; // Hide shimmer when data is loaded
+          isLoadingNestedContent = false;
         });
         break;
-      } else if (response.status == Status.ERROR) {
-        setState(() {
-          isLoadingNestedContent = false; // Hide shimmer on error
-        });
-        if (kDebugMode) {
-          print("CategoriesScreen: Error loading products: ${response.message}");
-        }
+      }
+
+      if (response.status == Status.ERROR) {
+        setState(() => isLoadingNestedContent = false);
+        break;
       }
     }
   }
 
   void _onCategoryTapped(int index) {
-    // Prevent tapping the same category again
-    if (_selectedCategoryIndex == index) { // Build #1.0.254: Fixed - Disable double click on category tabs & fast key tabs
-      if (kDebugMode) {
-        print("### CategoriesScreen: Same category tapped, ignoring: $index");
-      }
-      return;
-    }
-    if (index < 0 || index >= categories.length) return; // Prevent RangeError
+    if (_selectedCategoryIndex == index ||
+        index < 0 ||
+        index >= categories.length) return;
+
     setState(() {
       _selectedCategoryIndex = index;
-      // Always show the category name first
-      navigationPath = [categories[index].name]; // Reset path with just category name
+      navigationPath = [categories[index].name];
       subCategories.clear();
       categoryProducts.clear();
       isShowingSubCategories = true;
-      categoryHierarchy = [0, categories[index].id]; // Reset hierarchy
+      categoryHierarchy = [0, categories[index].id];
       currentCategoryLevel = 1;
       _selectedSubCategoryIndex = null;
-      _editingCategoryIndex = null;
-      isLoadingNestedContent = true; // Add this line to show shimmer
+      isLoadingNestedContent = true;
     });
 
     _saveLastSelectedCategory(index);
     _loadSubCategories(categories[index].id);
   }
+
   Future<bool> _isProductCacheEmpty() async {
-    final productBox = Hive.box(productBoxName);
-
-    // Only count product cache entries
-    final productKeys = productBox.keys.where(
-          (key) => key.toString().startsWith('products_'),
-    );
-
-    if (kDebugMode) {
-      print("🧠 Hive product cache count: ${productKeys.length}");
-    }
-
-    return productKeys.isEmpty;
+    final box = Hive.box(productBoxName);
+    final keys = box.keys.where((k) => k.toString().startsWith('products_'));
+    return keys.isEmpty;
   }
+
 
   void _onSubCategoryTapped(int index) { //Build #1.0.34: updated code for navigation path issues
     if (index < 0 || index >= subCategories.length) return;

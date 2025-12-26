@@ -384,7 +384,7 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return Container(
       width: MediaQuery.of(context).size.width * 0.3,
-      height: MediaQuery.of(context).size.height * 0.220,
+      height: MediaQuery.of(context).size.height * 0.230,
       decoration: BoxDecoration(
         color: themeHelper.themeMode == ThemeMode.dark
             ? Color(0xFF1F1D2B) // outer dark background
@@ -443,7 +443,7 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
           SizedBox(height: 8),
           Container(
             width: MediaQuery.of(context).size.width * 0.280,
-            height: MediaQuery.of(context).size.height * 0.130,
+            height: MediaQuery.of(context).size.height * 0.135,
             decoration: BoxDecoration(
               color: themeHelper.themeMode == ThemeMode.dark
                   ? Color(0xFF273142)
