@@ -1291,7 +1291,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           if (ScannerGuard.isCouponPopupOpen) {
             print("🔒 Coupon popup active → OrderPanel scanner ignored");
             return;
-          }
+          }  
 
           try {
             final trimmedBarcode = barcode.trim();
