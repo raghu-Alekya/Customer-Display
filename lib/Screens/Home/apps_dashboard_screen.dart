@@ -159,48 +159,6 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
                     ),
                   ),
                 ),
-                // Expanded(
-                //   child: Padding(
-                //     padding: const EdgeInsets.all(8.0),
-                //     child: GridView.count(
-                //       crossAxisCount: 4,
-                //       childAspectRatio: 1 ,
-                //       crossAxisSpacing: 16.0,
-                //       mainAxisSpacing: 16.0,
-                //       children: [
-                //         _buildCard(
-                //           title: TextConstants.cashier,
-                //           icon: 'assets/svg/cashier.svg',
-                //           cardIndex: 0,
-                //           onTap: () {
-                //             Navigator.push(
-                //               context,
-                //               MaterialPageRoute(
-                //                 builder: (context) => ShiftHistoryDashboardScreen()  //Build #1.0.74
-                //               //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
-                //               ),
-                //             );
-                //           },
-                //         ),
-                //         _buildCard(
-                //           title: TextConstants.safeDrop,
-                //           icon: 'assets/svg/safe_drop.svg',
-                //           cardIndex: 1,
-                //           onTap: () {
-                //             Navigator.push(
-                //               context,
-                //               MaterialPageRoute(
-                //                 builder: (context) => SafeDropScreen(),
-                //               ),
-                //             );
-                //
-                //             // Handle Safe Drop tap
-                //           },
-                //         ),
-                //       ],
-                //     ),
-                //   ),
-                // ),
 
                 // Right Sidebar (Conditional)
                 if (sidebarPosition == SidebarPosition.right)
@@ -250,60 +208,3 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
     );
   }
 }
-
-//   Widget _buildCard({
-//     required String title,
-//     required String icon,
-//     required VoidCallback onTap,
-//     required int cardIndex,
-//   }) {
-//     final themeHelper = Provider.of<ThemeNotifier>(context);
-//     return Material(
-//       elevation: 2,
-//       borderRadius: BorderRadius.circular(12),
-//       color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : null,
-//       child: InkWell(
-//         onTap: onTap,
-//         borderRadius: BorderRadius.circular(12),
-//         //splashColor: Colors.blue.withValues(alpha: 0.3),
-//         highlightColor: Colors.blue.withValues(alpha: 0.3),
-//         child: Container(
-//           decoration: BoxDecoration(
-//             borderRadius: BorderRadius.circular(18),
-//             color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : null,
-//           ),
-//           child: Column(
-//             children: [
-//               Expanded(
-//                 child: Container(
-//                   decoration: BoxDecoration(
-//                     color: Color(0xFFECF7FF),
-//                     borderRadius: BorderRadius.only(
-//                       topLeft: Radius.circular(18),
-//                       topRight: Radius.circular(18),
-//                     ),
-//                   ),
-//                   width: double.infinity,
-//                   child: SvgPicture.asset(
-//                     icon,
-//                     fit: BoxFit.contain,
-//                   ),
-//                 ),
-//               ),
-//               Padding(
-//                 padding: const EdgeInsets.all(25.0),
-//                 child: Text(
-//                   title,
-//                   style: const TextStyle(
-//                     fontSize: 20,
-//                     fontWeight: FontWeight.bold,
-//                   ),
-//                 ),
-//               ),
-//             ],
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-// }

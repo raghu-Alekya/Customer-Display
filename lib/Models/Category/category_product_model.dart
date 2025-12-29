@@ -1,119 +1,131 @@
 import 'category_model.dart';
+import 'category_model.dart';
 
-class CategoryProduct { // Build #1.0.157: Updated model with extra values
+class CategoryProduct {
   final int id;
   final String name;
-  final String slug;
-  final String dateCreated;
-  final String dateModified;
-  final String status;
-  final String description;
-  final String shortDescription;
   final String sku;
-  final String price;
+  final double price;
   final String regularPrice;
   final String salePrice;
-  final String? dateOnSaleFrom;
-  final String? dateOnSaleTo;
-  final bool onSale;
-  final bool purchasable;
-  final int stockQuantity;
-  final String stockStatus;
-  final String backorders;
-  final bool backordersAllowed;
-  final String lowStockAmount;
-  final String weight;
-  final Dimensions dimensions;
-  final List<CategoryModel>? categories;
+
+  final List<CategoryModel> categories;
+  final List<Tags> tags;
   final List<String> images;
   final List<Attribute> attributes;
-  final List<Tags>? tags;
   final List<Map<String, dynamic>> metaData;
-  final String permalink;
   final List<int> variations;
   final String type;
+  final ProductTax? tax;
 
   CategoryProduct({
     required this.id,
     required this.name,
-    required this.slug,
-    required this.dateCreated,
-    required this.dateModified,
-    required this.status,
-    required this.description,
-    required this.shortDescription,
     required this.sku,
     required this.price,
     required this.regularPrice,
     required this.salePrice,
-    this.dateOnSaleFrom,
-    this.dateOnSaleTo,
-    required this.onSale,
-    required this.purchasable,
-    required this.stockQuantity,
-    required this.stockStatus,
-    required this.backorders,
-    required this.backordersAllowed,
-    required this.lowStockAmount,
-    required this.weight,
-    required this.dimensions,
     required this.categories,
+    required this.tags,
     required this.images,
     required this.attributes,
-    this.tags,
     required this.metaData,
-    required this.permalink,
     required this.variations,
     required this.type,
+    this.tax,
   });
+
+  static double _parsePrice(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String && value.isNotEmpty) {
+      return double.tryParse(value) ?? 0.0;
+    }
+    return 0.0;
+  }
 
   factory CategoryProduct.fromJson(Map<String, dynamic> json) {
     return CategoryProduct(
       id: json['id'] ?? 0,
       name: json['name'] ?? '',
-      slug: json['slug'] ?? '',
-      dateCreated: json['date_created'] ?? '',
-      dateModified: json['date_modified'] ?? '',
-      status: json['status'] ?? '',
-      description: json['description'] ?? '',
-      shortDescription: json['short_description'] ?? '',
       sku: json['sku'] ?? '',
-      price: json['price'] ?? '0',
+      price: _parsePrice(json['price']),
       regularPrice: json['regular_price'] ?? '',
       salePrice: json['sale_price'] ?? '',
-      dateOnSaleFrom: json['date_on_sale_from'],
-      dateOnSaleTo: json['date_on_sale_to'],
-      onSale: json['on_sale'] ?? false,
-      purchasable: json['purchasable'] ?? false,
-      stockQuantity: json['stock_quantity'] ?? 0,
-      stockStatus: json['stock_status'] ?? '',
-      backorders: json['backorders'] ?? '',
-      backordersAllowed: json['backorders_allowed'] ?? false,
-      lowStockAmount: json['low_stock_amount'] ?? '',
-      weight: json['weight'] ?? '',
-      dimensions: Dimensions.fromJson(json['dimensions'] ?? {}),
-      categories: json['categories'] != null
-          ? List<CategoryModel>.from(json['categories'].map((x) => CategoryModel.fromJson(x)))
-          : null,
-      images: List<String>.from(
-          (json['images'] as List?)?.map((img) => img.toString()) ?? []),
-      attributes: json['attributes'] != null
-          ? List<Attribute>.from(json['attributes'].map((x) => Attribute.fromJson(x)))
-          : [],
-      tags: json['tags'] != null
-          ? List<Tags>.from(json['tags'].map((x) => Tags.fromJson(x)))
-          : null,
-      metaData: json['meta_data'] != null
-          ? List<Map<String, dynamic>>.from(json['meta_data'].map((x) => Map<String, dynamic>.from(x)))
-          : [],
-      permalink: json['permalink'] ?? '',
-      variations: json['variations'] != null
-          ? List<int>.from(json['variations'].map((x) => x))
-          : [],
-      type: json['type'] ?? '',
+      categories: (json['categories'] as List? ?? [])
+          .map((e) => CategoryModel.fromJson(e))
+          .toList(),
+      tags: (json['tags'] as List? ?? [])
+          .map((e) => Tags.fromJson(e))
+          .toList(),
+      attributes: (json['attributes'] as List? ?? [])
+          .map((e) => Attribute.fromJson(e))
+          .toList(),
+      metaData: (json['meta_data'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(),
+      images: (json['images'] as List? ?? [])
+          .map((e) {
+        if (e is Map<String, dynamic>) {
+          return e['src']?.toString() ?? '';
+        } else if (e is String) {
+          return e;
+        }
+        return '';
+      })
+          .where((e) => e.isNotEmpty)
+          .toList(),
+      variations: (json['variations'] as List? ?? [])
+          .map((e) => int.tryParse(e.toString()) ?? 0)
+          .where((e) => e != 0)
+          .toList(),
+      type: json['type'] ?? 'simple',
+      tax: json['tax'] != null ? ProductTax.fromJson(json['tax']) : null,
     );
   }
 }
+class ProductTax {
+  final bool taxable;
+  final String taxClass;
+  final String taxStatus;
+  final List<TaxRate> taxRates;
+
+  ProductTax({
+    required this.taxable,
+    required this.taxClass,
+    required this.taxStatus,
+    required this.taxRates,
+  });
+
+  factory ProductTax.fromJson(Map<String, dynamic> json) {
+    return ProductTax(
+      taxable: json['taxable'] ?? false,
+      taxClass: json['tax_class'] ?? '',
+      taxStatus: json['tax_status'] ?? '',
+      taxRates: (json['tax_rates'] as List? ?? [])
+          .map((e) => TaxRate.fromJson(e))
+          .toList(),
+    );
+  }
+}
+
+class TaxRate {
+  final double rate;
+  final String label;
+
+  TaxRate({
+    required this.rate,
+    required this.label,
+  });
+
+  factory TaxRate.fromJson(Map<String, dynamic> json) {
+    return TaxRate(
+      rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
+      label: json['label'] ?? '',
+    );
+  }
+}
+
 
 class Dimensions {
   final String length;

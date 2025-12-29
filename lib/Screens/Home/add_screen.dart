@@ -62,46 +62,6 @@ class _AddScreenState extends State<AddScreen> with LayoutSelectionMixin {
       }
       _refreshCounter++; //Build #1.0.170: Increment to signal refresh, causing didUpdateWidget to load with loader
     });
-
-    // // Build #1.0.256: Stop stopwatch and add to steps only if enabled
-    // if (Misc.enableUILogMessages && refreshUIStopwatch != null) {
-    //   refreshUIStopwatch?.stop();
-    //   globalProcessSteps.add(
-    //     ProcessStep(
-    //       name: TextConstants.refreshDBUITime,
-    //       timeTaken: refreshUIStopwatch!.elapsedMilliseconds / 1000.0,
-    //     ),
-    //   );
-    //   if (kDebugMode) {
-    //     print("Add Product to Order completed in ${globalProcessSteps.last.timeTaken}s");
-    //   }
-    // }
-    // /// Show Toast
-    // if (Misc.enableUILogMessages && globalProcessSteps.isNotEmpty) {
-    //   if (Navigator.canPop(context)) { // Build #1.0.197: Fixed [SCRUM - 345] -> Screen blackout when adding item to cart
-    //     Navigator.pop(context);
-    //   }
-    //   if (kDebugMode) {
-    //     print("VariationPopup - Showing toast with process timings: ${globalProcessSteps.map((s) => '${s.name}: ${s.timeTaken}s').toList()}");
-    //   }
-    //   showDialog(
-    //     context: context,
-    //     barrierDismissible: false,
-    //     builder: (dialogContext) {
-    //       return LogsToast(
-    //         steps: globalProcessSteps,
-    //         onClose: () {
-    //           if (kDebugMode) {
-    //             print("VariationPopup - Toast closed by user");
-    //           }
-    //           // Clear global steps when toast is closed
-    //           globalProcessSteps.clear();
-    //           Navigator.of(dialogContext).pop();
-    //         },
-    //       );
-    //     },
-    //   );
-    // }
   }
 
   @override
@@ -145,33 +105,11 @@ class _AddScreenState extends State<AddScreen> with LayoutSelectionMixin {
 
                 final serverOrderId = orderHelper.activeOrderId;
                 final dbOrderId = orderHelper.activeOrderId;
-                ///Build #1.0.128: No need to check this condition
-                // if (dbOrderId == null) {
-                //   if (kDebugMode) print("No active order selected");
-                //   ScaffoldMessenger.of(context).showSnackBar(
-                //     const SnackBar(
-                //       content: Text("No active order selected"),
-                //       backgroundColor: Colors.red,
-                //       duration: Duration(seconds: 2),
-                //     ),
-                //   );
-                //   return;
-                // }
 
                 try {
                   //  if (serverOrderId != null) { ///Build #1.0.128: No need to check this condition
                   if (kDebugMode) print("#### AddScreen serverOrderId");
                   _refreshOrderList();
-                  // } else {
-                  //   ScaffoldMessenger.of(context).showSnackBar(
-                  //     SnackBar(
-                  //       content: Text("Item '${product.name}' did not added to order. OrderId not found."),
-                  //       backgroundColor: Colors.green,
-                  //       duration: const Duration(seconds: 2),
-                  //     ),
-                  //   );
-                  //   _refreshOrderList();
-                  // }
                 } catch (e, s) {
                   if (kDebugMode) print("Exception in onProductSelected: $e, Stack: $s");
                   ScaffoldMessenger.of(context).showSnackBar(

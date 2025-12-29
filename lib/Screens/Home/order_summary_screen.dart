@@ -958,20 +958,29 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     double otherTotal = 0.0;
     double ebtPaid = 0.0;
 
-    if (kDebugMode) print("🔍 PROCESSING PAYMENTS (${payments.length})");
+    if (kDebugMode) {
+      print("======================================");
+      print("🔍 PROCESSING PAYMENTS (${payments.length})");
+    }
 
+    // =====================================================
     // 1️⃣ ACCUMULATE NON-VOIDED PAYMENTS
+    // =====================================================
     for (final payment in payments) {
       final amount = double.tryParse(payment.amount) ?? 0.0;
 
       if (payment.voidStatus) {
-        if (kDebugMode) print("⛔ Skipping void payment: ${payment.paymentMethod}");
-        continue; // ignore voided payments
+        if (kDebugMode) {
+          print("⛔ Skipping VOID payment: ${payment.paymentMethod} | $amount");
+        }
+        continue;
       }
 
       if (payment.paymentMethod == TextConstants.ebtText) {
         ebtPaid += amount;
-        if (kDebugMode) print("✅ Counting EBT payment: $amount → EBT Paid: $ebtPaid");
+        if (kDebugMode) {
+          print("🥗 EBT PAID +$amount → Total EBT Paid = $ebtPaid");
+        }
       } else if (payment.paymentMethod == TextConstants.cash) {
         cashTotal += amount;
       } else {
@@ -979,38 +988,72 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       }
     }
 
-    // 2️⃣ BASE EBT → always use originalEbt from Hive
+    // =====================================================
+    // 2️⃣ LOAD OFFLINE ORDER + REDEEM INFO FROM HIVE
+    // =====================================================
     final box = Hive.box('offlineOrders');
     final key = (orderId ?? 0).toString();
+
     final existing = box.containsKey(key)
         ? Map<String, dynamic>.from(box.get(key))
         : <String, dynamic>{};
 
-    final double originalEbt = (existing["originalEbt"] ?? ebtTotal).toDouble();
+    final double originalEbt =
+    (existing["originalEbt"] ?? ebtTotal).toDouble();
     existing["originalEbt"] ??= originalEbt;
 
-    // 3️⃣ REMAINING EBT = originalEbt - ebtPaid (ignore voids)
-    final double remainingEbt = (originalEbt - ebtPaid).clamp(0.0, originalEbt);
+    final double redeemedValue =
+    (existing["redeemed_value"] ?? 0).toDouble();
+    final int redeemedPoints =
+    (existing["redeemed_points"] ?? 0);
 
-    // 4️⃣ NON-EBT PAYMENTS
-    final double nonEbtOrderValue = (orderTotal - originalEbt).clamp(0.0, orderTotal);
+    if (kDebugMode) {
+      print("🎁 REDEEM INFO");
+      print("   ➤ Redeemed Value  = $redeemedValue");
+      print("   ➤ Redeemed Points = $redeemedPoints");
+    }
+
+    // =====================================================
+    // 3️⃣ APPLY REDEEM BEFORE PAYMENTS
+    // =====================================================
+    final double payableAfterRedeem =
+    (orderTotal - redeemedValue).clamp(0.0, orderTotal);
+
+    // =====================================================
+    // 4️⃣ EBT CALCULATION (VOID SAFE)
+    // =====================================================
+    final double remainingEbt =
+    (originalEbt - ebtPaid).clamp(0.0, originalEbt);
+
+    // =====================================================
+    // 5️⃣ NON-EBT PAYMENT OVERFLOW TO EBT
+    // =====================================================
+    final double nonEbtOrderValue =
+    (payableAfterRedeem - originalEbt).clamp(0.0, payableAfterRedeem);
+
     final double nonEbtPaid = cashTotal + otherTotal;
 
-    // 5️⃣ OVERFLOW TO EBT (if any)
-    final double overflowToEbt = nonEbtPaid > nonEbtOrderValue
+    final double overflowToEbt =
+    nonEbtPaid > nonEbtOrderValue
         ? nonEbtPaid - nonEbtOrderValue
         : 0.0;
 
-    // 6️⃣ FINAL REMAINING EBT
-    final double finalRemainingEbt = (remainingEbt - overflowToEbt).clamp(0.0, originalEbt);
+    final double finalRemainingEbt =
+    (remainingEbt - overflowToEbt).clamp(0.0, originalEbt);
 
-    // 7️⃣ TOTAL PAID
-    final double totalPaid = cashTotal + otherTotal + ebtPaid;
+    // =====================================================
+    // 6️⃣ TOTAL PAID & FINAL BALANCE
+    // =====================================================
+    final double totalPaid =
+        cashTotal + otherTotal + ebtPaid;
 
-    // 8️⃣ ORDER BALANCE
-    final double newBalance = (orderTotal - totalPaid).clamp(0.0, double.infinity);
+    final double newBalance =
+    (payableAfterRedeem - totalPaid)
+        .clamp(0.0, double.infinity);
 
-    // 9️⃣ UPDATE STATE
+    // =====================================================
+    // 7️⃣ UPDATE UI STATE
+    // =====================================================
     setState(() {
       payByCash = cashTotal;
       payByOther = otherTotal;
@@ -1019,25 +1062,37 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ebtTotal = finalRemainingEbt;
       tenderAmount = totalPaid;
       balanceAmount = newBalance;
-      changeAmount = newBalance < 0 ? newBalance.abs() : 0;
+      changeAmount = 0.0;
       _paymentDialogShown = false;
     });
 
-    // 10️⃣ SAVE TO HIVE
+    // =====================================================
+    // 8️⃣ SAVE BACK TO HIVE
+    // =====================================================
     existing["remainingEbt"] = finalRemainingEbt;
     box.put(key, existing);
 
+    // =====================================================
+    // 9️⃣ DEBUG SUMMARY
+    // =====================================================
     if (kDebugMode) {
       print("📊 PAYMENT SUMMARY");
-      print("🟢 Original EBT      = $originalEbt");
-      print("🥗 EBT Paid         = $ebtPaid");
-      print("🟢 Remaining EBT     = $finalRemainingEbt");
-      print("💵 Cash Paid         = $cashTotal");
-      print("💳 Other Paid        = $otherTotal");
-      print("💰 Total Paid        = $totalPaid");
-      print("⚖ Balance Amount     = $newBalance");
+      print("🟢 Order Total          = $orderTotal");
+      print("🎁 Redeemed Value       = $redeemedValue");
+      print("🧾 Payable After Redeem = $payableAfterRedeem");
+      print("🥗 Original EBT         = $originalEbt");
+      print("🥗 EBT Paid             = $ebtPaid");
+      print("🥗 Remaining EBT        = $finalRemainingEbt");
+      print("💵 Cash Paid            = $cashTotal");
+      print("💳 Other Paid           = $otherTotal");
+      print("💰 Total Paid           = $totalPaid");
+      print("⚖ FINAL BALANCE         = $balanceAmount");
+      print("======================================");
     }
+
+    // =====================================================
     // 🔔 PAYMENT COMPLETE DIALOG
+    // =====================================================
     if (balanceAmount == 0 && payments.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showPaymentDialog(
@@ -1048,8 +1103,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         );
       });
     }
-
   }
+
 
   // void fetchOrderItems() async {
   //   // TODO: Implement actual data fetching from database
@@ -1427,7 +1482,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             children: [
                               _buildPaymentModeButton(
                                 TextConstants.cash,
-                                Icons.money,
+                                Image.asset(
+                                  'assets/cash.png',
+                                  width: ResponsiveLayout.getIconSize(24),
+                                  height: ResponsiveLayout.getIconSize(24),
+                                  fit: BoxFit.contain,
+                                ),
                                 gradient: const LinearGradient(
                                   colors: [Color(0xFF9CCD7B), Color(0xFF9CCD7B)],
                                 ),
@@ -1441,7 +1501,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                               _buildPaymentModeButton(
                                 TextConstants.card,
-                                Icons.credit_card,
+                                Image.asset(
+                                  'assets/card.png',
+                                  width: ResponsiveLayout.getIconSize(24),
+                                  height: ResponsiveLayout.getIconSize(24),
+                                  fit: BoxFit.contain,
+                                ),
                                 gradient: const LinearGradient(
                                   colors: [Color(0xFFA484C8), Color(0xFFA484C8)],
                                 ),
@@ -1459,7 +1524,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                               _buildPaymentModeButton(
                                 TextConstants.wallet,
-                                Icons.account_balance_wallet,
+                                Image.asset(
+                                  'assets/wallet.png',
+                                  width: ResponsiveLayout.getIconSize(24),
+                                  height: ResponsiveLayout.getIconSize(24),
+                                  fit: BoxFit.contain,
+                                ),
                                 gradient: const LinearGradient(
                                   colors: [Color(0xFFCCB985), Color(0xFFCCB985)],
                                 ),
@@ -1477,7 +1547,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                               _buildPaymentModeButton(
                                 TextConstants.ebtText,
-                                Icons.payment,
+                                Image.asset(
+                                  'assets/ebt.png',
+                                  width: ResponsiveLayout.getIconSize(24),
+                                  height: ResponsiveLayout.getIconSize(24),
+                                  fit: BoxFit.contain,
+                                ),
                                 gradient: const LinearGradient(
                                   colors: [Color(0xFF84A2CB), Color(0xFF84A2CB)],
                                 ),
@@ -1842,23 +1917,44 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 return TextField(
                                   controller: mobileController,
                                   keyboardType: TextInputType.emailAddress,
-                                  maxLength: 50,
+
+                                  inputFormatters: [
+                                    TextInputFormatter.withFunction((oldValue, newValue) {
+                                      final text = newValue.text;
+
+                                      // If input is only digits → Mobile number
+                                      if (RegExp(r'^\d*$').hasMatch(text)) {
+                                        if (text.length > 10) {
+                                          return oldValue; // block extra digits
+                                        }
+                                      }
+                                      // Otherwise → Email
+                                      else {
+                                        if (text.length > 50) {
+                                          return oldValue; // block extra characters
+                                        }
+                                      }
+
+                                      return newValue;
+                                    }),
+                                  ],
+
                                   onChanged: (value) {
-                                    innerSetState(() {});
                                     setState(() {
-                                      isPhoneValid =
-                                          RegExp(r'^[0-9]{10}$').hasMatch(value);
+                                      isPhoneValid = RegExp(r'^[0-9]{10}$').hasMatch(value);
                                       isEmailValid = RegExp(
-                                        r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$",
+                                        r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
                                       ).hasMatch(value);
                                     });
                                   },
-                                  decoration: InputDecoration(
-                                    counterText: '',
+
+                                  decoration: const InputDecoration(
                                     hintText: 'Add Mobile No or Email',
                                     border: InputBorder.none,
                                     isCollapsed: true,
+                                    counterText: '',
                                   ),
+
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w500,
@@ -1867,6 +1963,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                         : const Color(0xFF313131),
                                   ),
                                 );
+
                               },
                             ),
                           ),
@@ -1880,11 +1977,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                 // ---------------- ADD / CANCEL BUTTON (SAME LOGIC) ----------------
                 InkWell(
-                  onTap: isPaymentDone
+                  onTap: (isPaymentDone || redeemedValue > 0 ||
+                      (!(isPhoneValid || isEmailValid) && !showCustomerInput))
                       ? null
                       : () async {
                     // ---------- CANCEL ----------
                     if (showCustomerInput) {
+                      // Only allow cancel if not disabled
+                      if (isPaymentDone || redeemedValue > 0) return;
+
                       setState(() {
                         mobileController.clear();
                         showCustomerInput = false;
@@ -1907,14 +2008,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                       final localOrderId = widget.offlineOrderId;
                       if (localOrderId != null) {
-                        await CustomerDisplayHelper
-                            .updateCustomerDisplay(localOrderId);
+                        await CustomerDisplayHelper.updateCustomerDisplay(localOrderId);
                       }
                       return;
                     }
 
-                    // ---------- VALIDATION ----------
-                    if (!(isPhoneValid || isEmailValid) || redeemedValue > 0) return;
+                    // ---------- ADD ----------
+                    if (!(isPhoneValid || isEmailValid)) return;
 
                     setState(() => isAddLoading = true);
 
@@ -1922,18 +2022,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     final orderId = widget.orderId ?? 0;
 
                     try {
-                      final rawResponse =
-                      await orderBloc.addLoyaltyPoints(
+                      final rawResponse = await orderBloc.addLoyaltyPoints(
                         orderId: orderId,
                         contact: contact,
                       );
 
                       final result = jsonDecode(rawResponse);
                       final data = result["data"];
-                      final pts = int.tryParse(
-                        data["available_points"].toString(),
-                      ) ??
-                          0;
+                      final pts = int.tryParse(data["available_points"].toString()) ?? 0;
 
                       setState(() {
                         loyaltyData = data;
@@ -1956,15 +2052,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                       final localOrderId = widget.offlineOrderId;
                       if (localOrderId != null) {
-                        await CustomerDisplayHelper
-                            .updateCustomerDisplay(localOrderId);
+                        await CustomerDisplayHelper.updateCustomerDisplay(localOrderId);
                       }
 
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content:
-                            Text("Loyalty Points Added Successfully!"),
+                            content: Text("Loyalty Points Added Successfully!"),
                             backgroundColor: Colors.green,
                           ),
                         );
@@ -1973,8 +2067,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text(
-                                "Failed to add loyalty points. Please try again."),
+                            content: Text("Failed to add loyalty points. Please try again."),
                             backgroundColor: Colors.red,
                           ),
                         );
@@ -1988,9 +2081,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     width: 126,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: isPaymentDone ||
-                          redeemedValue > 0 ||
-                          !(isPhoneValid || isEmailValid)
+                      color: isPaymentDone || redeemedValue > 0 ||
+                          (!(isPhoneValid || isEmailValid) && !showCustomerInput)
                           ? Colors.grey.shade400
                           : showCustomerInput
                           ? Colors.red
@@ -2015,7 +2107,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       ),
                     ),
                   ),
-                ),
+                )
+
               ],
             ),
           ),
@@ -3968,7 +4061,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                               // 🔹 RIGHT: AMOUNT CONTAINER
                                               Container(
                                                 height: ResponsiveLayout.getHeight(55),
-                                                width: ResponsiveLayout.getWidth(335), // 👈 control width
+                                                width: ResponsiveLayout.getWidth(355), // 👈 control width
                                                 decoration: BoxDecoration(
                                                   color: themeHelper.themeMode == ThemeMode.dark
                                                       ? const Color(0xFF393B46) // Dark mode bg (from ShapeDecoration)
@@ -4354,77 +4447,142 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               children: [
                                 // Net Payable
                                 Container(
-                                  padding: const EdgeInsets.all(6),
+                                  padding: const EdgeInsets.only(
+                                    top: 6,
+                                    right: 6,
+                                    bottom: 6,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: themeHelper.themeMode == ThemeMode.dark
                                         ? const Color(0xFF091B34) // dark background
-                                        : const Color(0xFFF4FCF7), // light mode original
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: themeHelper.themeMode == ThemeMode.dark
-                                          ? const Color(0xFF091B34) // dark mode border
-                                          : const Color(0xFF3EAE4C), // light mode border
-                                      width: 1,
+                                        : const Color(0xFFF4FCF7), // light mode background
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border(
+                                      top: BorderSide(
+                                        color: themeHelper.themeMode == ThemeMode.dark
+                                            ? const Color(0xFF091B34)
+                                            : const Color(0xFF3EAE4C),
+                                        width: 1,
+                                      ),
+                                      right: BorderSide(
+                                        color: themeHelper.themeMode == ThemeMode.dark
+                                            ? const Color(0xFF091B34)
+                                            : const Color(0xFF3EAE4C),
+                                        width: 1,
+                                      ),
+                                      bottom: BorderSide(
+                                        color: themeHelper.themeMode == ThemeMode.dark
+                                            ? const Color(0xFF091B34)
+                                            : const Color(0xFF3EAE4C),
+                                        width: 1,
+                                      ),
+                                      left: BorderSide.none, // 🚫 no left border
                                     ),
                                   ),
                                   child: _buildAmountDisplay(
                                     TextConstants.netPayable,
                                     '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                                    leftBarColor: const Color(0xFF3EAE4C),
                                     amountColor: themeHelper.themeMode == ThemeMode.dark
                                         ? Colors.white
                                         : Colors.black,
                                   ),
                                 ),
-                                SizedBox(height: ResponsiveLayout.getHeight(8)),
+
+                                SizedBox(height: ResponsiveLayout.getHeight(15)),
+
 
                                 // Balance Amount
                                 Container(
-                                  padding: const EdgeInsets.all(6),
+                                  padding: const EdgeInsets.only(
+                                    top: 6,
+                                    right: 6,
+                                    bottom: 6,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: themeHelper.themeMode == ThemeMode.dark
-                                        ? const Color(0xFF091B34) // dark mode background
+                                        ? const Color(0xFF091B34)
                                         : const Color(0xFFFCF4F4),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: themeHelper.themeMode == ThemeMode.dark
-                                          ? const Color(0xFF091B34) // dark border
-                                          : const Color(0xFFE85C43),
-                                      width: 1,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border(
+                                      top: BorderSide(
+                                        color: themeHelper.themeMode == ThemeMode.dark
+                                            ? const Color(0xFF091B34)
+                                            : const Color(0xFFE85C43),
+                                        width: 1,
+                                      ),
+                                      right: BorderSide(
+                                        color: themeHelper.themeMode == ThemeMode.dark
+                                            ? const Color(0xFF091B34)
+                                            : const Color(0xFFE85C43),
+                                        width: 1,
+                                      ),
+                                      bottom: BorderSide(
+                                        color: themeHelper.themeMode == ThemeMode.dark
+                                            ? const Color(0xFF091B34)
+                                            : const Color(0xFFE85C43),
+                                        width: 1,
+                                      ),
+                                      left: BorderSide.none, // 🚫 no left border
                                     ),
                                   ),
                                   child: _buildAmountDisplay(
                                     TextConstants.balanceAmount,
                                     '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
+                                    leftBarColor: const Color(0xFFE85C43),
                                     amountColor: themeHelper.themeMode == ThemeMode.dark
                                         ? Colors.white
                                         : Colors.black,
                                   ),
                                 ),
-                                SizedBox(height: ResponsiveLayout.getHeight(8)),
+
+                                SizedBox(height: ResponsiveLayout.getHeight(15)),
+
 
                                 // EBT Amount
                                 Container(
-                                  padding: const EdgeInsets.all(6),
+                                  padding: const EdgeInsets.only(
+                                    top: 6,
+                                    right: 6,
+                                    bottom: 6,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: themeHelper.themeMode == ThemeMode.dark
-                                        ? const Color(0xFF091B34) // dark mode background
+                                        ? const Color(0xFF091B34)
                                         : const Color(0xFFF4F7FC),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: themeHelper.themeMode == ThemeMode.dark
-                                          ? const Color(0xFF091B34) // dark mode border
-                                          : const Color(0xFF3B7DDD),
-                                      width: 1,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border(
+                                      top: BorderSide(
+                                        color: themeHelper.themeMode == ThemeMode.dark
+                                            ? const Color(0xFF091B34)
+                                            : const Color(0xFF3B7DDD),
+                                        width: 1,
+                                      ),
+                                      right: BorderSide(
+                                        color: themeHelper.themeMode == ThemeMode.dark
+                                            ? const Color(0xFF091B34)
+                                            : const Color(0xFF3B7DDD),
+                                        width: 1,
+                                      ),
+                                      bottom: BorderSide(
+                                        color: themeHelper.themeMode == ThemeMode.dark
+                                            ? const Color(0xFF091B34)
+                                            : const Color(0xFF3B7DDD),
+                                        width: 1,
+                                      ),
+                                      left: BorderSide.none, // 🚫 no left border
                                     ),
                                   ),
                                   child: _buildAmountDisplay(
                                     TextConstants.EBTAmount,
                                     '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
+                                    leftBarColor: const Color(0xFF3B7DDD),
                                     amountColor: themeHelper.themeMode == ThemeMode.dark
                                         ? Colors.white
                                         : Colors.black,
                                   ),
                                 ),
+
                               ],
                             ),
                           )
@@ -4763,9 +4921,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         width: 368,
         padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? Color(0xFF1ABC9C) : Colors.grey,
+          color: isActive ? Color(0xFFFFFFFF): Colors.grey.shade200,
           // 🔹 Grey if disabled
           borderRadius: BorderRadius.circular(6),
+          // ✅ BORDER COLOR
+          border: Border.all(
+            color: isActive
+                ? const Color(0xFFEB910E) // darker green border
+                : Colors.grey,   // disabled border
+            width: 1,
+          ),
           boxShadow: const [
             BoxShadow(
               color: Color(0x3F000000),
@@ -4780,30 +4945,33 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w900,
-                color: Colors.white,
+                color: isActive
+                    ? const Color(0xFFEB910E) // darker green border
+                    : Colors.grey,
               ),
             ),
-            const SizedBox(width: 20),
+            const SizedBox(width: 15),
             Container(
               padding: const EdgeInsets.all(6), // controls circle size
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white, // white circle
+                color: isActive
+                    ? const Color(0xFFEB910E) // darker green border
+                    : Colors.grey,// white circle
               ),
-              child: ColorFiltered(
-                colorFilter: const ColorFilter.mode(
-                  Colors.grey, // grey icon
-                  BlendMode.srcIn,
-                ),
-                child: Image.asset(
-                  iconPath,
-                  width: 18, // slightly smaller icon
-                  height: 18,
-                ),
+              child: Image.asset(
+                'assets/couponsicon.png',
+                width: 18,
+                height: 18,
+                color: isActive
+                    ?  Colors.white // darker green border
+                    : Colors.white,
+                fit: BoxFit.contain,
               ),
+
             ),
 
           ],
@@ -5114,54 +5282,78 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       setState(() => isSummaryLoading = false);
     }
   }
-
   Widget _buildAmountDisplay(
       String label,
       String amount, {
+        required Color leftBarColor,
         Color? amountColor = Colors.black,
       }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
-    var size = MediaQuery.of(context).size;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: ResponsiveLayout.getFontSize(14),
-            color: themeHelper.themeMode == ThemeMode.dark
-                ? Colors.white // dark mode text
-                : Colors.black, // light mode text
 
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-
-        SizedBox(height: ResponsiveLayout.getHeight(5)),
-        Container(
-          width: MediaQuery.of(context).size.width * 0.145,
-          height: ResponsiveLayout.getHeight(44),
-          alignment: Alignment.centerLeft,
-          // padding: EdgeInsets.only(left: 10),
-          // decoration: BoxDecoration(
-          //   color: themeHelper.themeMode == ThemeMode.dark
-          //       ? ThemeNotifier.secondaryBackground
-          //       : Colors.white,
-          //   borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
-          // ),
-          child: Text(
-            amount,
-            style: TextStyle(
-              fontSize: ResponsiveLayout.getFontSize(20),
-              fontWeight: FontWeight.w600,
-              color: amountColor,
+    return Container(
+      width: MediaQuery.of(context).size.width * 0.245, // fixed width
+      height: ResponsiveLayout.getHeight(68),           // fixed height
+      alignment: Alignment.centerLeft,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // 🔴 LEFT INDICATOR BAR (VERTICALLY CENTERED)
+          Container(
+            width: 4,
+            height: ResponsiveLayout.getHeight(48), // slightly taller for visual effect
+            decoration: BoxDecoration(
+              color: leftBarColor,
+              borderRadius: const BorderRadius.only(
+                topRight: Radius.circular(8),
+                bottomRight: Radius.circular(8),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: leftBarColor.withOpacity(0.45),
+                  blurRadius: 8,
+                  offset: const Offset(1, 2),
+                ),
+              ],
             ),
           ),
-        ),
-      ],
+
+          const SizedBox(width: 12),
+
+          // 📄 TEXT CONTENT
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: ResponsiveLayout.getFontSize(14),
+                  fontWeight: FontWeight.w500,
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? Colors.white
+                      : const Color(0xFF333333),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                amount,
+                style: TextStyle(
+                  fontSize: ResponsiveLayout.getFontSize(24),
+                  fontWeight: FontWeight.w700,
+                  color: amountColor ??
+                      (themeHelper.themeMode == ThemeMode.dark
+                          ? Colors.white
+                          : const Color(0xFF222222)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
+
+
 
   // Widget _buildQuickAmountButton(String amount, {bool isHighlighted = false}) {
   //   return GestureDetector(
@@ -5347,10 +5539,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   //   );
   Widget _buildPaymentModeButton(
       String label,
-      IconData icon, {
+      Widget iconWidget, { // ✅ changed
         required LinearGradient gradient,
         required Color borderColor,
-        required Color iconColor, // we will use this only for icon
+        Color? iconColor, // optional now
         VoidCallback? onTap,
       }) {
     return GestureDetector(
@@ -5368,25 +5560,18 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               color: Color(0x3F000000),
               blurRadius: 4,
               offset: Offset(2, 4),
-              spreadRadius: 0,
             ),
           ],
         ),
         child: Stack(
           children: [
-            // Glossy effect overlay
+            // Glossy overlay
             Positioned(
               top: 0,
               left: 0,
               right: 0,
               child: Container(
                 height: ResponsiveLayout.getHeight(5),
-                decoration: const BoxDecoration(
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(5),
-                    topRight: Radius.circular(5),
-                  ),
-                ),
               ),
             ),
 
@@ -5395,11 +5580,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Text first - always white
+                  // Label
                   Text(
                     label,
                     style: TextStyle(
-                      color: Colors.white, // text always white
+                      color: Colors.white,
                       fontFamily: 'Montserrat',
                       fontWeight: FontWeight.bold,
                       fontSize: ResponsiveLayout.getFontSize(16),
@@ -5407,18 +5592,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   ),
                   SizedBox(width: ResponsiveLayout.getWidth(34)),
 
-                  // Icon inside white circle, color matches borderColor
+                  // ✅ Image/Icon inside white circle
                   Container(
-                    padding: const EdgeInsets.all(5), // adjust circle size
+                    padding: const EdgeInsets.all(5),
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
                       color: Colors.white,
                     ),
-                    child: Icon(
-                      icon,
-                      color: borderColor, // icon matches border color
-                      size: ResponsiveLayout.getIconSize(24),
-                    ),
+                    child: iconWidget,
                   ),
                 ],
               ),
@@ -5428,7 +5609,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
-
 
   Widget _buildPaymentOptionButton(
       String title,
@@ -5443,8 +5623,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         width: 368,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? Color(0xFF2459E1) : Colors.grey.shade200,
+          color: isActive ? Colors.white : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: isActive
+                ? const Color(0xFF817ACC) // darker green border
+                : Colors.grey,   // disabled border
+            width: 1,
+          ),
           boxShadow: const [
             BoxShadow(
               color: Color(0x3F000000),
@@ -5462,26 +5648,24 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
-                color: isActive ? Colors.white : Colors.grey,
+                color: isActive ? Color(0xFF817ACC) : Colors.grey,
               ),
             ),
-            const SizedBox(width: 20),
+            const SizedBox(width: 15),
             Container(
-              padding: const EdgeInsets.all(6), // circle size
-              decoration: const BoxDecoration(
+              padding: EdgeInsets.all(6), // circle size
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white, // white circle background
+                color: isActive ? Color(0xFF817ACC) : Colors.grey, // white circle background
               ),
-              child: ColorFiltered(
-                colorFilter: (title == TextConstants.redeemPoints && isActive)
-                    ? const ColorFilter.mode(Colors.white, BlendMode.srcIn)
-                    : const ColorFilter.mode(Colors.grey, BlendMode.srcIn),
-                child: Image.asset(
-                  iconPath,
-                  width: 18, // smaller icon inside circle
-                  height: 18,
-                ),
+              child: Image.asset(
+                'assets/redeempoints.png',
+                width: 18,
+                height: 18,
+                color: isActive ? Colors.white : Colors.white,
+                fit: BoxFit.contain,
               ),
+
             ),
 
           ],
