@@ -6006,6 +6006,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   //       break;
   //   }
   // }
+
   Future _printTicket({bool manual = false}) async {
     final ticket = await _printerSettings.getTicket();
     final result = await _printerSettings.printTicket(bytes, ticket);

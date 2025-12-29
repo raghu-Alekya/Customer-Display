@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:core';
 import 'dart:io';
 import 'package:dotted_line/dotted_line.dart';
+import 'package:enum_to_string/enum_to_string.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,6 +19,7 @@ import 'package:pinaka_pos/Widgets/widget_order_panel.dart';
 import 'package:pinaka_pos/Widgets/widget_order_status.dart';
 import 'package:pinaka_pos/Widgets/widget_alert_popup_dialogs.dart';
 import 'package:provider/provider.dart';
+import 'package:thermal_printer/thermal_printer.dart' show PrinterType;
 import '../Blocs/Orders/order_bloc.dart';
 import '../Blocs/Payment/payment_bloc.dart';
 import '../Blocs/Search/product_search_bloc.dart';
@@ -120,6 +122,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
   double servicecharges = 0.0;
   double tax = 0.0; // AddED tax variable
   final _printerSettings =  PrinterSettings();
+
+  final PrinterDBHelper _printerDBHelper = PrinterDBHelper();
+
   List<int> bytes = [];
 
   void _toggleSummary() {
@@ -2817,53 +2822,162 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
   }
 
-  Future _printTicket() async{
-    final ticket =  await _printerSettings.getTicket();
-    final result = await _printerSettings.printTicket(bytes, ticket);
+  // Future _printTicket() async{
+  //   final ticket =  await _printerSettings.getTicket();
+  //   final result = await _printerSettings.printTicket(bytes, ticket);
+  //
+  //   if (kDebugMode) {
+  //     print(">>>> PrintTicket result $result");
+  //   }
+  //   switch (result) {
+  //     case Ok<BluetoothPrinter>():
+  //     // BluetoothPrinter printer = result.value;
+  //       break;
+  //     case Error<BluetoothPrinter>():
+  //       WidgetsBinding.instance.addPostFrameCallback((_) { // Build #1.0.16
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //           SnackBar(
+  //             content: Text(
+  //               result.error.getMessage,
+  //               style: const TextStyle(color: Colors.red),
+  //             ),
+  //             backgroundColor: Colors.black, //  Black background
+  //             duration: const Duration(seconds: 3),
+  //           ),
+  //         );
+  //         /// call printer setup screen
+  //         if (kDebugMode) {
+  //           print("call printer setup screen");
+  //         }
+  //         Navigator.push(context, MaterialPageRoute(
+  //           builder: (context) => PrinterSetup(),
+  //         )).then((result) {
+  //           if (result == TextConstants.refresh) { // Build #1.0.175: added TextConstants
+  //             _printerSettings.loadPrinter();
+  //             setState(() {
+  //               // Update state to refresh the UI
+  //               if (kDebugMode) {
+  //                 print("SettingScreen - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
+  //               }
+  //               if(!Misc.disablePrinter) {
+  //                 _printTicket();
+  //               }
+  //             });
+  //           }
+  //         });
+  //       });
+  //       break;
+  //   }
+  // }
 
-    if (kDebugMode) {
-      print(">>>> PrintTicket result $result");
+  // Future _printTicket() async {
+  //   // 1️⃣ Get ticket generator
+  //   final ticket = await _printerSettings.getTicket();
+  //
+  //   // 2️⃣ Load all stored printers from DB
+  //   final allPrinters =await _printerDBHelper.getPrinterFromDB();;
+  //
+  //   // final printerDB = await _printerDBHelper.getPrinterFromDB();
+  //
+  //   if (allPrinters.isEmpty) {
+  //     if (kDebugMode) print("No printers found in DB.");
+  //     return;
+  //   }
+  //
+  //   // 3️⃣ Print debug info for all printers
+  //   if (kDebugMode) print("All stored printers:");
+  //   for (var i = 0; i < allPrinters.length; i++) {
+  //     final p = allPrinters[i];
+  //     if (kDebugMode) {
+  //       print(
+  //           "Printer [$i]: Name=${p[AppDBConst.printerDeviceName]}, VendorId=${p[AppDBConst.printerVendorId]}, ProductId=${p[AppDBConst.printerProductId]}, Type=${p[AppDBConst.printerType]}");
+  //     }
+  //   }
+  //
+  //   // 4️⃣ Loop through all printers and print the ticket
+  //   for (var p in allPrinters) {
+  //     BluetoothPrinter printer = BluetoothPrinter();
+  //     printer.id = p[AppDBConst.printerId];
+  //     printer.deviceName = p[AppDBConst.printerDeviceName];
+  //     printer.productId = p[AppDBConst.printerProductId];
+  //     printer.vendorId = p[AppDBConst.printerVendorId];
+  //     printer.address = p[AppDBConst.printerProductId] ?? "";
+  //     printer.typePrinter = EnumToString.fromString(
+  //         PrinterType.values, p[AppDBConst.printerType]) ?? PrinterType.usb;
+  //
+  //     _printerSettings.selectedPrinter = printer; // temporarily assign printer
+  //     final result = await _printerSettings.printTicket(bytes, ticket);
+  //     if (kDebugMode) print("Printed to ${printer.deviceName} → Result: $result");
+  //   }
+  //
+  //   // 5️⃣ Handle errors / navigate to printer setup if needed (optional)
+  //   // You can still use your existing switch-case for Error handling here
+  // }
+
+
+  Future _printTicket() async {
+    //  Get ticket generator
+    final ticket = await _printerSettings.getTicket();
+
+    //  Load all stored printers from DB
+    final allPrinters = await _printerDBHelper.getPrinterFromDB();
+
+    if (allPrinters.isEmpty) {
+      if (kDebugMode) print(" No printers found in DB.");
+      return;
     }
-    switch (result) {
-      case Ok<BluetoothPrinter>():
-      // BluetoothPrinter printer = result.value;
-        break;
-      case Error<BluetoothPrinter>():
-        WidgetsBinding.instance.addPostFrameCallback((_) { // Build #1.0.16
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                result.error.getMessage,
-                style: const TextStyle(color: Colors.red),
-              ),
-              backgroundColor: Colors.black, // ✅ Black background
-              duration: const Duration(seconds: 3),
-            ),
-          );
-          /// call printer setup screen
-          if (kDebugMode) {
-            print("call printer setup screen");
-          }
-          Navigator.push(context, MaterialPageRoute(
-            builder: (context) => PrinterSetup(),
-          )).then((result) {
-            if (result == TextConstants.refresh) { // Build #1.0.175: added TextConstants
-              _printerSettings.loadPrinter();
-              setState(() {
-                // Update state to refresh the UI
-                if (kDebugMode) {
-                  print("SettingScreen - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
-                }
-                if(!Misc.disablePrinter) {
-                  _printTicket();
-                }
-              });
-            }
-          });
-        });
-        break;
+
+    //  Debug: show all printers
+    if (kDebugMode) {
+      print(" Total printers found: ${allPrinters.length}");
+      for (var i = 0; i < allPrinters.length; i++) {
+        final p = allPrinters[i];
+        print(
+          "Printer [$i] → "
+              "Name=${p[AppDBConst.printerDeviceName]}, "
+              "VendorId=${p[AppDBConst.printerVendorId]}, "
+              "ProductId=${p[AppDBConst.printerProductId]}, "
+              "Type=${p[AppDBConst.printerType]}",
+        );
+      }
+    }
+
+    //  Print counter (dice count )
+    int printCount = 0;
+
+    //  Loop through all printers and print
+    for (var p in allPrinters) {
+      BluetoothPrinter printer = BluetoothPrinter()
+        ..id = p[AppDBConst.printerId]
+        ..deviceName = p[AppDBConst.printerDeviceName]
+        ..productId = p[AppDBConst.printerProductId]
+        ..vendorId = p[AppDBConst.printerVendorId]
+        ..address = p[AppDBConst.printerProductId] ?? ""
+        ..typePrinter = EnumToString.fromString(
+          PrinterType.values,
+          p[AppDBConst.printerType],
+        ) ??
+            PrinterType.usb;
+
+      _printerSettings.selectedPrinter = printer;
+
+      final result = await _printerSettings.printTicket(bytes, ticket);
+
+      if (result == true || result == "success") {
+        printCount++;
+      }
+
+      if (kDebugMode) {
+        print(" Printed to ${printer.deviceName} → Result: $result");
+      }
+    }
+
+    // Final result: how many times printed
+    if (kDebugMode) {
+      print(" Ticket printed $printCount time(s)");
     }
   }
+
 
   void _handleError(String message, {bool isPayout = false, bool isCoupon = false, bool isCustomItem = false}) async {
     if (!mounted) return; // Check if widget is still mounted

@@ -88,7 +88,7 @@ class SearchProduct {
         }
         _productBloc.productSink.add(APIResponse.error(TextConstants.retryText));
         _productBloc.productController.close();
-      } else if (event.status == Status.COMPLETED) { // #Build 1.1.97: Fixed Issue -> subscription screen is coming every first time even user have byPassSubscription is true
+      } else if (event.status == Status.COMPLETED) {
         final products = event.data!;
         _productList.clear();
         if (kDebugMode) {
