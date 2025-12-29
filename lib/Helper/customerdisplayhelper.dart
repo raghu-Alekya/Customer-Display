@@ -199,8 +199,8 @@ class CustomerDisplayHelper {
           return {
             "name": item["name"] ?? "",
             "qty": qty.toDouble(),
-            "price": finalUnitPrice,           // ✅ DISCOUNTED PRICE
-            "original_price": unitPrice,       // ✅ STRIKE PRICE (optional)
+            "price": unitPrice,
+            "original_price": unitPrice,
             "auto_discount": autoDiscountPerUnit,
             "image": item["image"] ?? "",
           };

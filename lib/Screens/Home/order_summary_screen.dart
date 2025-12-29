@@ -288,7 +288,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       _isAmountEntered = _rawAmount > 0;
     });
   }
-
   void _handlePay() {
     final cleanAmount = amountController.text
         .replaceAll(TextConstants.currencySymbol, '')
@@ -296,8 +295,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     final double amount = double.tryParse(cleanAmount) ?? 0.0;
 
-    // ❌ Validation
-    if (amount == 0.0 && computedNetPayable > 0) {
+    // Convert to cents to avoid floating point issues
+    final int enteredCents = (amount * 100).round();
+    final int ebtCents = (ebtTotal * 100).round();
+
+    // ❌ Basic validation
+    if (enteredCents <= 0 && computedNetPayable > 0) {
       setState(() {
         _amountErrorText = TextConstants.amountValidation;
       });
@@ -306,7 +309,27 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     _amountErrorText = null;
 
-    // ⭐ CARD → Sunmi ONLY HERE
+    // ⭐ EBT validation
+    if (selectedPaymentMethod == TextConstants.ebtText) {
+      // ❌ No EBT balance
+      if (ebtCents <= 0) {
+        setState(() {
+          _amountErrorText = "No EBT balance available";
+        });
+        return;
+      }
+
+      // ❌ Amount exceeds EBT balance (even by 1 cent)
+      if (enteredCents > ebtCents) {
+        setState(() {
+          _amountErrorText =
+          "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
+        });
+        return;
+      }
+    }
+
+    // ⭐ CARD → Sunmi ONLY
     if (selectedPaymentMethod == TextConstants.card) {
       _openSunmiSaleScreen(
         amount: amount,
@@ -317,9 +340,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
 
     // ⭐ Wallet / Cash / EBT → API
-    _callCreatePaymentAPI();
+    _callCreatePaymentAPI(); // uses validated amount
     _resetAmountAfterPay();
   }
+
   void _resetAmountAfterPay() {
     _rawAmount = 0;
     amountController.text = '${TextConstants.currencySymbol}0.00';
@@ -869,59 +893,85 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   void _fetchPaymentsByOrderId() {
     if (kDebugMode) print("###### _fetchPaymentsByOrderId");
 
-    if (orderId != null) {
-      setState(() {
-        isSummaryLoading = true; // Show loader
-      });
+    if (orderId == null) {
+      if (kDebugMode) print("###### orderId is null");
+      return;
+    }
 
-      paymentBloc.getPaymentsByOrderId(orderId!);
+    // ================================
+    // 📦 RESTORE EBT FROM HIVE FIRST
+    // ================================
+    try {
+      final box = Hive.box('offlineOrders');
+      final key = (orderId ?? 0).toString();
 
-      _paymentListSubscription?.cancel(); // Cancel any existing subscription
-      _paymentListSubscription =
-          paymentBloc.paymentsListStream.listen((response) {
-            if (response.status == Status.COMPLETED) {
-              if (kDebugMode) print("###### _fetchPaymentsByOrderId Api call COMPLETED");
+      if (box.containsKey(key)) {
+        final stored = Map<String, dynamic>.from(box.get(key));
 
-              if (response.data!.isNotEmpty) {
-                orderStatus = response.data!.last.orderStatus ?? TextConstants.processing;
-              }
+        if (stored["ebtTotal"] != null) {
+          ebtTotal = (stored["ebtTotal"] as num).toDouble();
 
-              // 🔹 Preserve current EBT value before processing
-              final currentEbt = ebtTotal;
+          if (kDebugMode) {
+            print("📦 Loaded EBT from Hive = $ebtTotal");
+          }
+        }
+      }
+    } catch (e) {
+      print("⚠ Failed loading EBT from Hive: $e");
+    }
 
-              _processPaymentList(response.data!);
+    setState(() {
+      isSummaryLoading = true;
+    });
 
-              // 🔹 Restore EBT if not updated by payments
-              if (ebtTotal == 0.0 && currentEbt > 0.0) {
-                ebtTotal = currentEbt;
-                if (kDebugMode) print("⭐ Preserved EBT after payment refresh = $ebtTotal");
-              }
+    paymentBloc.getPaymentsByOrderId(orderId!);
 
-            } else if (response.status == Status.ERROR) {
-              if (kDebugMode) print("Error fetching payments: ${response.message}");
+    _paymentListSubscription?.cancel();
+    _paymentListSubscription =
+        paymentBloc.paymentsListStream.listen((response) {
+
+          if (response.status == Status.COMPLETED) {
+            if (kDebugMode) {
+              print("###### _fetchPaymentsByOrderId Api call COMPLETED");
             }
 
-            setState(() {
-              isSummaryLoading = false; // Hide loader
-            });
+            if (response.data!.isNotEmpty) {
+              orderStatus =
+                  response.data!.last.orderStatus ?? TextConstants.processing;
+            }
+
+            _processPaymentList(response.data!);
+
+          } else if (response.status == Status.ERROR) {
+            if (kDebugMode) {
+              print("Error fetching payments: ${response.message}");
+            }
+          }
+
+          setState(() {
+            isSummaryLoading = false;
           });
-    } else {
-      if (kDebugMode) print("###### orderId is null");
-    }
+        });
   }
   void _processPaymentList(List<PaymentListModel> payments) {
     double cashTotal = 0.0;
     double otherTotal = 0.0;
     double ebtPaid = 0.0;
 
-    // 1️⃣ Accumulate NON-VOIDED payments
-    for (final payment in payments) {
-      if (payment.voidStatus) continue;
+    if (kDebugMode) print("🔍 PROCESSING PAYMENTS (${payments.length})");
 
+    // 1️⃣ ACCUMULATE NON-VOIDED PAYMENTS
+    for (final payment in payments) {
       final amount = double.tryParse(payment.amount) ?? 0.0;
+
+      if (payment.voidStatus) {
+        if (kDebugMode) print("⛔ Skipping void payment: ${payment.paymentMethod}");
+        continue; // ignore voided payments
+      }
 
       if (payment.paymentMethod == TextConstants.ebtText) {
         ebtPaid += amount;
+        if (kDebugMode) print("✅ Counting EBT payment: $amount → EBT Paid: $ebtPaid");
       } else if (payment.paymentMethod == TextConstants.cash) {
         cashTotal += amount;
       } else {
@@ -929,50 +979,65 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       }
     }
 
-    // 2️⃣ ALWAYS use BASE EBT from widget (never state)
-    final double baseEbt = widget.ebtAmount;
+    // 2️⃣ BASE EBT → always use originalEbt from Hive
+    final box = Hive.box('offlineOrders');
+    final key = (orderId ?? 0).toString();
+    final existing = box.containsKey(key)
+        ? Map<String, dynamic>.from(box.get(key))
+        : <String, dynamic>{};
 
-    // 3️⃣ Compute effective total
-    final double effectiveOrderTotal = orderTotal - redeemedValue;
+    final double originalEbt = (existing["originalEbt"] ?? ebtTotal).toDouble();
+    existing["originalEbt"] ??= originalEbt;
 
-    // 4️⃣ Non-EBT logic
-    final double nonEbtAllowed = effectiveOrderTotal - baseEbt;
+    // 3️⃣ REMAINING EBT = originalEbt - ebtPaid (ignore voids)
+    final double remainingEbt = (originalEbt - ebtPaid).clamp(0.0, originalEbt);
+
+    // 4️⃣ NON-EBT PAYMENTS
+    final double nonEbtOrderValue = (orderTotal - originalEbt).clamp(0.0, orderTotal);
     final double nonEbtPaid = cashTotal + otherTotal;
 
-    double remainingEbt = baseEbt - ebtPaid;
+    // 5️⃣ OVERFLOW TO EBT (if any)
+    final double overflowToEbt = nonEbtPaid > nonEbtOrderValue
+        ? nonEbtPaid - nonEbtOrderValue
+        : 0.0;
 
-    if (nonEbtPaid > nonEbtAllowed) {
-      remainingEbt -= (nonEbtPaid - nonEbtAllowed);
-    }
+    // 6️⃣ FINAL REMAINING EBT
+    final double finalRemainingEbt = (remainingEbt - overflowToEbt).clamp(0.0, originalEbt);
 
-    remainingEbt = remainingEbt.clamp(0.0, baseEbt);
-
-    // 5️⃣ Final totals
+    // 7️⃣ TOTAL PAID
     final double totalPaid = cashTotal + otherTotal + ebtPaid;
-    final double newBalance = effectiveOrderTotal - totalPaid;
 
+    // 8️⃣ ORDER BALANCE
+    final double newBalance = (orderTotal - totalPaid).clamp(0.0, double.infinity);
+
+    // 9️⃣ UPDATE STATE
     setState(() {
       payByCash = cashTotal;
       payByOther = otherTotal;
       payByEbt = ebtPaid;
 
-      ebtTotal = remainingEbt;
+      ebtTotal = finalRemainingEbt;
       tenderAmount = totalPaid;
-
-      balanceAmount = newBalance > 0 ? newBalance : 0;
+      balanceAmount = newBalance;
       changeAmount = newBalance < 0 ? newBalance.abs() : 0;
-
-      // 🔥 REQUIRED FOR MULTIPLE VOIDS
       _paymentDialogShown = false;
     });
 
-    if (kDebugMode) {
-      print("EBT Remaining = $ebtTotal");
-      print("Balance = $balanceAmount");
-      print("Tender = $tenderAmount");
-    }
+    // 10️⃣ SAVE TO HIVE
+    existing["remainingEbt"] = finalRemainingEbt;
+    box.put(key, existing);
 
-    // 6️⃣ Show dialog again if fully paid
+    if (kDebugMode) {
+      print("📊 PAYMENT SUMMARY");
+      print("🟢 Original EBT      = $originalEbt");
+      print("🥗 EBT Paid         = $ebtPaid");
+      print("🟢 Remaining EBT     = $finalRemainingEbt");
+      print("💵 Cash Paid         = $cashTotal");
+      print("💳 Other Paid        = $otherTotal");
+      print("💰 Total Paid        = $totalPaid");
+      print("⚖ Balance Amount     = $newBalance");
+    }
+    // 🔔 PAYMENT COMPLETE DIALOG
     if (balanceAmount == 0 && payments.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showPaymentDialog(
@@ -983,6 +1048,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         );
       });
     }
+
   }
 
   // void fetchOrderItems() async {
@@ -1310,119 +1376,142 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             top: 0,
                             bottom: 8,
                           ),
-
                           padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: themeHelper.themeMode == ThemeMode.dark
-                                ? ThemeNotifier.secondaryBackground
-                                : Colors.white, // background
+                          decoration: themeHelper.themeMode == ThemeMode.dark
+                              ? ShapeDecoration(
+                            color: const Color(0xFF1F1D2B), // dark background
+                            shape: RoundedRectangleBorder(
+                              // side: BorderSide(
+                              //   width: 0,
+                              //   color: Colors.black.withOpacity(0.20),
+                              // ),
+                              borderRadius: BorderRadius.only(
+                                bottomLeft: Radius.circular(ResponsiveLayout.getRadius(10)),
+                                bottomRight: Radius.circular(ResponsiveLayout.getRadius(10)),
+                              ),
+                            ),
+                          )
+                              : BoxDecoration(
+                            color: Colors.white, // light background
                             borderRadius: BorderRadius.only(
                               bottomLeft: Radius.circular(ResponsiveLayout.getRadius(10)),
                               bottomRight: Radius.circular(ResponsiveLayout.getRadius(10)),
                             ),
                           ),
                           child: Container(
-                            margin: EdgeInsets.fromLTRB(0,0,0,8),
-
-                            // 🔹 Inner frame around buttons
+                            margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
+                              color: themeHelper.themeMode == ThemeMode.dark
+                                  ? const Color(0xFF303136) // dark mode background
+                                  : Colors.white,           // light mode background
                               border: Border.all(
-                                color:  Colors.grey, // inner frame color
-                                width: 1,
+                                color: themeHelper.themeMode == ThemeMode.dark
+                                    ?Color(0xFF303136)    // optional darker border for dark mode
+                                    : const Color(0xFFEDF2F9),
+                                width: 2,
                               ),
                               borderRadius: BorderRadius.circular(8),
-                              boxShadow: const [
+                              boxShadow: [
                                 BoxShadow(
-                                  color: Colors.white,
+                                  color: themeHelper.themeMode == ThemeMode.dark
+                                      ? Colors.black.withOpacity(0.3) // subtle shadow in dark mode
+                                      : Colors.white,
                                   blurRadius: 8,
-                                  offset: Offset(2, 4),
+                                  offset: const Offset(2, 4),
                                   spreadRadius: 0,
                                 ),
                               ],
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                _buildPaymentModeButton(
-                                  TextConstants.cash,
-                                  Icons.money,
-                                  gradient: const LinearGradient(
-                                    colors: [Color(0xFF2E7D32), Color(0xFF185028)],
-                                  ),
-                                  borderColor: const Color(0xFF185028),
-                                  iconColor: Colors.white,
-                                  onTap: () {
-                                    _selectPaymentMethod(TextConstants.cash);
-                                    _handlePay();
-                                  },
+                            ),                            child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _buildPaymentModeButton(
+                                TextConstants.cash,
+                                Icons.money,
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF9CCD7B), Color(0xFF9CCD7B)],
                                 ),
+                                borderColor: const Color(0xFF9CCD7B),
+                                iconColor: Color(0xFF9CCD7B),
+                                onTap: () {
+                                  _selectPaymentMethod(TextConstants.cash);
+                                  _handlePay();
+                                },
+                              ),
 
-                                _buildPaymentModeButton(
-                                  TextConstants.card,
-                                  Icons.credit_card,
-                                  gradient: const LinearGradient(
-                                    colors: [Color(0xFF4F8BD6), Color(0xFF306EB4)],
-                                  ),
-                                  borderColor: const Color(0xFF306EB4),
-                                  iconColor: Colors.white,
-                                  onTap: () {
-                                    _selectPaymentMethod(
-                                      TextConstants.card,
-                                      //autoFillAmount: true,
-                                      maxAllowedAmount: balanceAmount,
-                                    );
-                                    _handlePay();
-                                  },
+                              _buildPaymentModeButton(
+                                TextConstants.card,
+                                Icons.credit_card,
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFFA484C8), Color(0xFFA484C8)],
                                 ),
+                                borderColor: const Color(0xFFA484C8),
+                                iconColor: Color(0xFFA484C8),
+                                onTap: () {
+                                  _selectPaymentMethod(
+                                    TextConstants.card,
+                                    //autoFillAmount: true,
+                                    maxAllowedAmount: balanceAmount,
+                                  );
+                                  _handlePay();
+                                },
+                              ),
 
-                                _buildPaymentModeButton(
-                                  TextConstants.wallet,
-                                  Icons.account_balance_wallet,
-                                  gradient: const LinearGradient(
-                                    colors: [Color(0xFFFFE082), Color(0xFFE2C240)],
-                                  ),
-                                  borderColor: const Color(0xFFE2C240),
-                                  iconColor: Colors.white,
-                                  onTap: () {
-                                    _selectPaymentMethod(
-                                      TextConstants.wallet,
-                                      //autoFillAmount: true,
-                                      maxAllowedAmount: balanceAmount,
-                                    );
-                                    _handlePay();
-                                  },
+                              _buildPaymentModeButton(
+                                TextConstants.wallet,
+                                Icons.account_balance_wallet,
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFFCCB985), Color(0xFFCCB985)],
                                 ),
+                                borderColor: const Color(0xFFCCB985),
+                                iconColor: Color(0xFFCCB985),
+                                onTap: () {
+                                  _selectPaymentMethod(
+                                    TextConstants.wallet,
+                                    //autoFillAmount: true,
+                                    maxAllowedAmount: balanceAmount,
+                                  );
+                                  _handlePay();
+                                },
+                              ),
 
-                                _buildPaymentModeButton(
-                                  TextConstants.ebtText,
-                                  Icons.payment,
-                                  gradient: const LinearGradient(
-                                    colors: [Color(0xFF64B5F6), Color(0xFF2196F3)],
-                                  ),
-                                  borderColor: const Color(0xFF2196F3),
-                                  iconColor: Colors.white,
-                                  onTap: () {
-                                    if (ebtTotal <= 0) {
-                                      setState(() => _amountErrorText = "No EBT balance available");
-                                      return;
-                                    }
-
-                                    final allowed = min(ebtTotal, balanceAmount);
-
-                                    _selectPaymentMethod(
-                                      TextConstants.ebtText,
-                                      //autoFillAmount: true,
-                                      maxAllowedAmount: allowed,
-                                    );
-
-                                    _handlePay();
-                                  },
+                              _buildPaymentModeButton(
+                                TextConstants.ebtText,
+                                Icons.payment,
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF84A2CB), Color(0xFF84A2CB)],
                                 ),
+                                borderColor: const Color(0xFF84A2CB),
+                                iconColor: Colors.white,
+                                onTap: () {
+                                  // 1️⃣ Check if there is any EBT left
+                                  if (ebtTotal <= 0) {
+                                    setState(() => _amountErrorText = "No EBT balance available");
+                                    return;
+                                  }
+
+                                  // 2️⃣ Determine the maximum allowed amount
+                                  final allowedAmount = balanceAmount.clamp(0.0, ebtTotal);
+
+                                  if (allowedAmount <= 0) {
+                                    setState(() => _amountErrorText = "Cannot pay with EBT, balance is zero");
+                                    return;
+                                  }
+
+                                  // 3️⃣ Select EBT payment method with the allowed amount
+                                  _selectPaymentMethod(
+                                    TextConstants.ebtText,
+                                    maxAllowedAmount: allowedAmount,
+                                  );
+
+                                  // 4️⃣ Trigger the payment process
+                                  _handlePay();
+                                },
+                              ),
 
 
-                              ],
-                            ),
+                            ],
+                          ),
                           ),
                         )
 
@@ -1613,13 +1702,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               _showExitPaymentConfirmation(context);
             },
             child: Container(
-              height: 35,
+              height: 40,
               width: ResponsiveLayout.getWidth(90),
               padding: EdgeInsets.all(ResponsiveLayout.getPadding(5)),
               decoration: BoxDecoration(
                 color: themeHelper.themeMode == ThemeMode.dark
                     ? ThemeNotifier.secondaryBackground
-                    : Colors.black,
+                    : Color(0xFF46566F),
                 borderRadius:
                 BorderRadius.circular(ResponsiveLayout.getRadius(8)),
                 boxShadow: [
@@ -1635,19 +1724,19 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 children: [
                   Container(
                       alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white,
-                          border: Border.all(
-                              color: themeHelper.themeMode == ThemeMode.dark
-                                  ? ThemeNotifier.secondaryBackground
-                                  : Colors.black12)),
+                      // decoration: BoxDecoration(
+                      //     shape: BoxShape.circle,
+                      //     color: Colors.white,
+                      //     border: Border.all(
+                      //         color: themeHelper.themeMode == ThemeMode.dark
+                      //             ? ThemeNotifier.secondaryBackground
+                      //             : Colors.black12)),
                       child: Icon(
-                        Icons.chevron_left_rounded,
+                        Icons.arrow_back,
                         size: 18,
                         color: themeHelper.themeMode == ThemeMode.dark
-                            ? ThemeNotifier.textLight
-                            : Colors.black,
+                            ? Colors.white
+                            : Colors.white,
                       )),
                   // BackButton(
                   //   style: ButtonStyle(
@@ -1712,7 +1801,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     ),
                     decoration: BoxDecoration(
                       color: Theme.of(context).brightness == Brightness.dark
-                          ? const Color(0xFF1F2A44)
+                          ? const Color(0xFF40424F)
                           : const Color(0xFFE5EFFF),
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -2115,7 +2204,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         '${TextConstants.orderId}: ',
                         style: TextStyle(
                           color: theme.brightness == Brightness.dark
-                              ? Colors.white70
+                              ? Colors.white
                               : Colors.black,
                           fontWeight: FontWeight.bold,
                           fontSize: ResponsiveLayout.getFontSize(16),
@@ -2144,14 +2233,19 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       Icon(
                         Icons.calendar_month_rounded,
                         size: ResponsiveLayout.getIconSize(20),
-                        color: const Color(0xFF007BFF),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white      // Dark mode color
+                            : const Color(0xFF4C5F7D), // Light mode color
                       ),
+
                       const SizedBox(width: 6),
                       Text(
                         _displayDate,
                         style: TextStyle(
                           fontSize: ResponsiveLayout.getFontSize(13),
-                          color: Colors.grey.shade800,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.grey.shade800,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -2162,7 +2256,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       Container(
                         height: ResponsiveLayout.getHeight(16),
                         width: 1,
-                        color: Colors.grey.shade400,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white54 // slightly lighter for dark mode
+                            : Colors.grey.shade400,
                       ),
 
                       const SizedBox(width: 8),
@@ -2172,10 +2268,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         _displayTime,
                         style: TextStyle(
                           fontSize: ResponsiveLayout.getFontSize(13),
-                          color: Colors.grey.shade800,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.grey.shade800,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
+
                     ],
                   ),
                 ],
@@ -2206,7 +2305,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           fontWeight: FontWeight.bold,
                           fontSize: ResponsiveLayout.getFontSize(14), // SAME
                           color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
+                              ? Colors.white
                               : Colors.white,
                         ),
                         textAlign: TextAlign.left,
@@ -2222,7 +2321,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           fontWeight: FontWeight.bold,
                           fontSize: ResponsiveLayout.getFontSize(14),
                           color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
+                              ? Colors.white
                               : Colors.white,
                         ),
                         textAlign: TextAlign.right,
@@ -2238,7 +2337,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           fontWeight: FontWeight.bold,
                           fontSize: ResponsiveLayout.getFontSize(14), // SAME
                           color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
+                              ? Colors.white
                               : Colors.white,
                         ),
                         textAlign: TextAlign.right,
@@ -3775,7 +3874,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                   decoration: BoxDecoration(
                                     color:
                                     themeHelper.themeMode == ThemeMode.dark
-                                        ? ThemeNotifier.secondaryBackground
+                                        ? Color(0xFF1F1D2B)
                                         : Colors.white,
                                     borderRadius: BorderRadius.circular(
                                         ResponsiveLayout.getRadius(8)),
@@ -3828,24 +3927,30 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                 ),
                                                 decoration: BoxDecoration(
                                                   color: themeHelper.themeMode == ThemeMode.dark
-                                                      ? ThemeNotifier.paymentEntryContainerColor
-                                                      : Colors.white,
-                                                  borderRadius: BorderRadius.only(
-                                                    topLeft: Radius.circular(ResponsiveLayout.getRadius(6)),
-                                                    bottomLeft: Radius.circular(ResponsiveLayout.getRadius(6)),
+                                                      ? const Color(0xFF4C5F7D)
+                                                      : const Color(0xFF4C5F7D), // Light mode color
+
+                                                  borderRadius: const BorderRadius.only(
+                                                    topLeft: Radius.circular(10),
+                                                    bottomLeft: Radius.circular(10),
                                                   ),
-                                                  border: Border.all(
-                                                    color: Color(0xFFFFEBEB), // 🔴 red border only for text
-                                                  ),
-                                                  boxShadow: [
+
+                                                  // 🔴 Border only in dark mode
+                                                  // border: themeHelper.themeMode == ThemeMode.dark
+                                                  //     ? Border.all(
+                                                  //   color: const Color(0xFFFFEBEB),
+                                                  // )
+                                                  //     : null,
+
+                                                  // 🌫 Shadow in BOTH modes
+                                                  boxShadow: const [
                                                     BoxShadow(
-                                                      color: Color(0x3F000000),
+                                                      color: Color(0x3F000000), // 25% black
                                                       blurRadius: 4,
                                                       offset: Offset(2, 4),
                                                       spreadRadius: 0,
                                                     ),
                                                   ],
-
                                                 ),
                                                 alignment: Alignment.center,
                                                 child: Text(
@@ -3855,23 +3960,26 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                     fontWeight: FontWeight.bold,
                                                     color: themeHelper.themeMode == ThemeMode.dark
                                                         ? ThemeNotifier.textDark.withOpacity(0.7)
-                                                        : Color(0xFFFE6464),
+                                                        : Colors.white,
                                                   ),
                                                 ),
                                               ),
 
                                               // 🔹 RIGHT: AMOUNT CONTAINER
                                               Container(
-                                                height: ResponsiveLayout.getHeight(53),
-                                                width: ResponsiveLayout.getWidth(310), // 👈 control width
+                                                height: ResponsiveLayout.getHeight(55),
+                                                width: ResponsiveLayout.getWidth(335), // 👈 control width
                                                 decoration: BoxDecoration(
                                                   color: themeHelper.themeMode == ThemeMode.dark
-                                                      ? ThemeNotifier.paymentEntryContainerColor
-                                                      : Colors.white,
+                                                      ? const Color(0xFF393B46) // Dark mode bg (from ShapeDecoration)
+                                                      : const Color(0xFFF9F9F9), // Light mode bg
+
                                                   borderRadius: BorderRadius.only(
                                                     topRight: Radius.circular(ResponsiveLayout.getRadius(6)),
                                                     bottomRight: Radius.circular(ResponsiveLayout.getRadius(6)),
                                                   ),
+
+                                                  // 🔴 Border (kept from your existing logic)
                                                   border: Border.all(
                                                     color: _amountErrorText != null
                                                         ? Colors.red
@@ -3879,16 +3987,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                         ? ThemeNotifier.borderColor
                                                         : Colors.grey.shade300,
                                                   ),
+
+                                                  // 🌫 Mode-specific shadows
                                                   boxShadow: [
                                                     BoxShadow(
-                                                      color: Color(0x3F000000),
-                                                      blurRadius: 4,
-                                                      offset: Offset(2, 4),
+                                                      color: themeHelper.themeMode == ThemeMode.dark
+                                                          ? const Color(0x51181818) // Dark mode shadow
+                                                          : const Color(0x51000000), // Light mode shadow
+                                                      blurRadius: 10,
+                                                      offset: themeHelper.themeMode == ThemeMode.dark
+                                                          ? const Offset(0, 1)
+                                                          : const Offset(0, 2),
                                                       spreadRadius: 0,
                                                     ),
                                                   ],
-
                                                 ),
+
                                                 child: TextField(
                                                   controller: amountController,
                                                   keyboardType:
@@ -4192,14 +4306,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       padding: EdgeInsets.all(ResponsiveLayout.getPadding(8)),
                       decoration: BoxDecoration(
                         color: themeHelper.themeMode == ThemeMode.dark
-                            ? ThemeNotifier.secondaryBackground
+                            ? const Color(0xFF303136)
                             : Colors.white,
-                        borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                        borderRadius: BorderRadius.circular(
+                          ResponsiveLayout.getRadius(8),
+                        ),
+                        border: Border.all(
+                          color: const Color(0x2E4C5F7D), // #4C5F7D2E
+                          width: 2, // adjust as needed
+                        ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black12,
+                            color: themeHelper.themeMode == ThemeMode.dark
+                                ? Colors.black.withOpacity(0.3)
+                                : Colors.black12,
                             blurRadius: 4,
-                            offset: Offset(0, 2),
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
@@ -4209,52 +4331,104 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         children: [
                           // Net Payable
                           Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFF7ED),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFFFFCF8A), width: 1),
-                            ),
-                            child: _buildAmountDisplay(
-                              TextConstants.netPayable,
-                              '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
-                              amountColor: themeHelper.themeMode == ThemeMode.dark
-                                  ? ThemeNotifier.textDark
-                                  : Colors.black,
-                            ),
-                          ),
-                          SizedBox(height: ResponsiveLayout.getHeight(8)),
+                            width: double.infinity,
+                            padding: EdgeInsets.all(ResponsiveLayout.getPadding(8)),
+                            // decoration: BoxDecoration(
+                            //   color: themeHelper.themeMode == ThemeMode.dark
+                            //       ? ThemeNotifier.secondaryBackground // dark mode main container
+                            //       : Colors.white, // light mode main container
+                            //   borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                            //   boxShadow: [
+                            //     BoxShadow(
+                            //       color: themeHelper.themeMode == ThemeMode.dark
+                            //           ? Colors.black.withOpacity(0.3) // subtle shadow in dark mode
+                            //           : Colors.black12, // light mode
+                            //       blurRadius: 4,
+                            //       offset: const Offset(0, 2),
+                            //     ),
+                            //   ],
+                            // ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                // Net Payable
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: themeHelper.themeMode == ThemeMode.dark
+                                        ? const Color(0xFF091B34) // dark background
+                                        : const Color(0xFFF4FCF7), // light mode original
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: themeHelper.themeMode == ThemeMode.dark
+                                          ? const Color(0xFF091B34) // dark mode border
+                                          : const Color(0xFF3EAE4C), // light mode border
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: _buildAmountDisplay(
+                                    TextConstants.netPayable,
+                                    '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                                    amountColor: themeHelper.themeMode == ThemeMode.dark
+                                        ? Colors.white
+                                        : Colors.black,
+                                  ),
+                                ),
+                                SizedBox(height: ResponsiveLayout.getHeight(8)),
 
-                          // Balance Amount
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFC9D8F5),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFF386EDA), width: 1),
-                            ),
-                            child: _buildAmountDisplay(
-                              TextConstants.balanceAmount,
-                              '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
-                              amountColor: Colors.black,
-                            ),
-                          ),
-                          SizedBox(height: ResponsiveLayout.getHeight(8)),
+                                // Balance Amount
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: themeHelper.themeMode == ThemeMode.dark
+                                        ? const Color(0xFF091B34) // dark mode background
+                                        : const Color(0xFFFCF4F4),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: themeHelper.themeMode == ThemeMode.dark
+                                          ? const Color(0xFF091B34) // dark border
+                                          : const Color(0xFFE85C43),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: _buildAmountDisplay(
+                                    TextConstants.balanceAmount,
+                                    '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
+                                    amountColor: themeHelper.themeMode == ThemeMode.dark
+                                        ? Colors.white
+                                        : Colors.black,
+                                  ),
+                                ),
+                                SizedBox(height: ResponsiveLayout.getHeight(8)),
 
-                          // EBT Amount
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE8F5E9),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFF48AA06), width: 1),
+                                // EBT Amount
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: themeHelper.themeMode == ThemeMode.dark
+                                        ? const Color(0xFF091B34) // dark mode background
+                                        : const Color(0xFFF4F7FC),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: themeHelper.themeMode == ThemeMode.dark
+                                          ? const Color(0xFF091B34) // dark mode border
+                                          : const Color(0xFF3B7DDD),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: _buildAmountDisplay(
+                                    TextConstants.EBTAmount,
+                                    '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
+                                    amountColor: themeHelper.themeMode == ThemeMode.dark
+                                        ? Colors.white
+                                        : Colors.black,
+                                  ),
+                                ),
+                              ],
                             ),
-                            child: _buildAmountDisplay(
-                              TextConstants.EBTAmount,
-                              '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
-                              amountColor: Colors.black,
-                            ),
-                          ),
+                          )
+
                         ],
                       ),
                     ),
@@ -4357,13 +4531,28 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       width: double.infinity,
                       padding:
                       EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                      // decoration: BoxDecoration(
-                      //   color: themeHelper.themeMode == ThemeMode.dark
-                      //       ? ThemeNotifier.secondaryBackground
-                      //       : Colors.white,
-                      //   borderRadius: BorderRadius.circular(
-                      //       ResponsiveLayout.getRadius(5)),
-                      // ),
+                      decoration: BoxDecoration(
+                        color: themeHelper.themeMode == ThemeMode.dark
+                            ? const Color(0xFF303136)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(
+                          ResponsiveLayout.getRadius(8),
+                        ),
+                        border: Border.all(
+                          color: const Color(0x2E4C5F7D), // #4C5F7D2E
+                          width: 1.5, // adjust as needed
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: themeHelper.themeMode == ThemeMode.dark
+                                ? Colors.black.withOpacity(0.3)
+                                : Colors.black12,
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
@@ -4528,7 +4717,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                               ),
 
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 10),
                               _buildCouponButton(
                                 TextConstants.coupon,
                                 "assets/coupon.png",
@@ -4570,7 +4759,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return InkWell(
       onTap: isActive ? onTap : null, //  Disable tap
       child: Container(
-        height: 45,
+        height: 50,
         width: 368,
         padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 8),
         decoration: BoxDecoration(
@@ -4589,12 +4778,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         ),
         child: Row(
           children: [
-            ColorFiltered(
-              colorFilter:
-              const ColorFilter.mode(Colors.white, BlendMode.srcIn),
-              child: Image.asset(iconPath, width: 25, height: 25),
-            ),
-            const SizedBox(width: 2),
             Text(
               title,
               style: const TextStyle(
@@ -4603,6 +4786,26 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 color: Colors.white,
               ),
             ),
+            const SizedBox(width: 20),
+            Container(
+              padding: const EdgeInsets.all(6), // controls circle size
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white, // white circle
+              ),
+              child: ColorFiltered(
+                colorFilter: const ColorFilter.mode(
+                  Colors.grey, // grey icon
+                  BlendMode.srcIn,
+                ),
+                child: Image.asset(
+                  iconPath,
+                  width: 18, // slightly smaller icon
+                  height: 18,
+                ),
+              ),
+            ),
+
           ],
         ),
       ),
@@ -4926,21 +5129,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         Text(
           label,
           style: TextStyle(
-            fontSize: ResponsiveLayout.getFontSize(18),
-            color: () {
-              switch (label) {
-                case TextConstants.netPayable:
-                  return const Color(0xFFFF9800); // Orange
-                case TextConstants.balanceAmount:
-                  return Color(0xFF386EDA);
-                case TextConstants.EBTAmount:
-                  return Color(0xFF48AA06);
-                default:
-                  return themeHelper.themeMode == ThemeMode.dark
-                      ? ThemeNotifier.textDark
-                      : Colors.black54;
-              }
-            }(),
+            fontSize: ResponsiveLayout.getFontSize(14),
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? Colors.white // dark mode text
+                : Colors.black, // light mode text
+
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -4948,7 +5141,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         SizedBox(height: ResponsiveLayout.getHeight(5)),
         Container(
           width: MediaQuery.of(context).size.width * 0.145,
-          height: ResponsiveLayout.getHeight(45),
+          height: ResponsiveLayout.getHeight(44),
           alignment: Alignment.centerLeft,
           // padding: EdgeInsets.only(left: 10),
           // decoration: BoxDecoration(
@@ -5152,13 +5345,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   //       ),
   //     ),
   //   );
-  // }
   Widget _buildPaymentModeButton(
       String label,
       IconData icon, {
         required LinearGradient gradient,
         required Color borderColor,
-        required Color iconColor,
+        required Color iconColor, // we will use this only for icon
         VoidCallback? onTap,
       }) {
     return GestureDetector(
@@ -5188,39 +5380,44 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               left: 0,
               right: 0,
               child: Container(
-                height: ResponsiveLayout.getHeight(5), // make it taller
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.white.withOpacity(0.6),
-                      Colors.white.withOpacity(0.4),
-                    ],
-                  ),
-                  borderRadius: const BorderRadius.only(
+                height: ResponsiveLayout.getHeight(5),
+                decoration: const BoxDecoration(
+                  borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(5),
                     topRight: Radius.circular(5),
                   ),
                 ),
               ),
             ),
+
             // Main content
             Center(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(icon,
-                      color: iconColor,
-                      size: ResponsiveLayout.getIconSize(32)),
-                  SizedBox(width: ResponsiveLayout.getWidth(8)),
+                  // Text first - always white
                   Text(
                     label,
                     style: TextStyle(
-                      color: iconColor,
+                      color: Colors.white, // text always white
                       fontFamily: 'Montserrat',
                       fontWeight: FontWeight.bold,
                       fontSize: ResponsiveLayout.getFontSize(16),
+                    ),
+                  ),
+                  SizedBox(width: ResponsiveLayout.getWidth(34)),
+
+                  // Icon inside white circle, color matches borderColor
+                  Container(
+                    padding: const EdgeInsets.all(5), // adjust circle size
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                    ),
+                    child: Icon(
+                      icon,
+                      color: borderColor, // icon matches border color
+                      size: ResponsiveLayout.getIconSize(24),
                     ),
                   ),
                 ],
@@ -5232,6 +5429,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     );
   }
 
+
   Widget _buildPaymentOptionButton(
       String title,
       String iconPath, {
@@ -5241,7 +5439,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return InkWell(
       onTap: onTap,
       child: Container(
-        height: 45,
+        height: 50,
         width: 368,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
@@ -5259,13 +5457,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         ),
         child: Row(
           children: [
-            ColorFiltered(
-              colorFilter: (title == TextConstants.redeemPoints && isActive)
-                  ? const ColorFilter.mode(Colors.white, BlendMode.srcIn)
-                  : const ColorFilter.mode(Colors.grey, BlendMode.srcIn),
-              child: Image.asset(iconPath, width: 24, height: 24),
-            ),
-            const SizedBox(width: 8),
             Text(
               title,
               style: TextStyle(
@@ -5274,6 +5465,25 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 color: isActive ? Colors.white : Colors.grey,
               ),
             ),
+            const SizedBox(width: 20),
+            Container(
+              padding: const EdgeInsets.all(6), // circle size
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white, // white circle background
+              ),
+              child: ColorFiltered(
+                colorFilter: (title == TextConstants.redeemPoints && isActive)
+                    ? const ColorFilter.mode(Colors.white, BlendMode.srcIn)
+                    : const ColorFilter.mode(Colors.grey, BlendMode.srcIn),
+                child: Image.asset(
+                  iconPath,
+                  width: 18, // smaller icon inside circle
+                  height: 18,
+                ),
+              ),
+            ),
+
           ],
         ),
       ),

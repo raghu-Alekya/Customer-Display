@@ -67,7 +67,7 @@ class PaymentNumPad extends StatelessWidget {
                         onTap: () => onDigitPressed(e),
                       ),
                     ),
-                    _ClearKey(onTap: onClearPressed),
+                    _BackspaceKey(onTap: onDeletePressed),
                   ],
                 );
               },
@@ -94,10 +94,10 @@ class PaymentNumPad extends StatelessWidget {
                             vertical: 3,
                           ),
                           child: _QuickAmountKey(
-                            text: ' ${amount.toStringAsFixed(2)}',
-                            onTap: () =>
-                                onQuickAmountSelected(amount), // ✅ FIX
+                            text: '\$${amount.toStringAsFixed(2)}',
+                            onTap: () => onQuickAmountSelected(amount),
                           ),
+
                         ),
                       ),
                     )
@@ -106,11 +106,11 @@ class PaymentNumPad extends StatelessWidget {
                 ),
 
                 const SizedBox(height: 5),
-
                 /// BACKSPACE
                 Expanded(
                   flex: 1,
-                  child: _BackspaceKey(onTap: onDeletePressed),
+                  child: _ClearKey(onTap: onClearPressed),
+                  // child: _BackspaceKey(onTap: onDeletePressed),
                 ),
               ],
             ),
@@ -123,14 +123,31 @@ class PaymentNumPad extends StatelessWidget {
 
 /// ---------------- QUICK AMOUNT LOGIC ----------------
 List<double> _generate3QuickAmounts(double balance) {
-  final Set<double> values = {};
+  // Always start with the base balance
+  final List<double> values = [];
 
+  // First quick amount = exact balance
   values.add(balance);
+
+  // Second quick amount = ceiling of balance (rounded up)
   values.add(balance.ceilToDouble());
+
+  // Third quick amount = next nearest 10
   values.add(((balance / 10).ceil() * 10).toDouble());
 
-  return values.toList()..sort();
+  // In case there are duplicates, tweak slightly to ensure 3 unique values
+  for (int i = 0; i < values.length; i++) {
+    for (int j = i + 1; j < values.length; j++) {
+      if (values[i] == values[j]) {
+        values[j] += 1; // small adjustment to make it unique
+      }
+    }
+  }
+
+  values.sort();
+  return values;
 }
+
 
 /// ---------------- NUMBER KEY ----------------
 class _NumKey extends StatelessWidget {
@@ -144,32 +161,55 @@ class _NumKey extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.all(1.5),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFFDFD),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            width: 0.5,
-            color: const Color(0xFFFE6464),
-          ),
-          boxShadow: const [
+          color: isDarkMode ? const Color(0xFF303136) : const Color(0xFFEDF2F9),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            // Outer shadow
             BoxShadow(
-              color: Color(0x3F000000),
+              color: isDarkMode
+                  ? Colors.black.withOpacity(0.6)
+                  : Color(0xFFD9E6FF),
+              offset: const Offset(2, 2),
               blurRadius: 4,
-              offset: Offset(2, 4),
+            ),
+            BoxShadow(
+              color: isDarkMode
+                  ? Colors.grey.shade800
+                  : Colors.white,
+              offset: const Offset(-2, -2),
+              blurRadius: 4,
             ),
           ],
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDarkMode
+                ? [
+              const Color(0xFF3A3B40),
+              const Color(0xFF3A3B40),
+            ]
+                : [
+              const Color(0xFFEDF2F9),
+              const Color(0xFFEDF2F9),
+            ],
+          ),
         ),
         alignment: Alignment.center,
         child: Text(
           text,
-          style: const TextStyle(
-            fontSize: 24,
+          style: TextStyle(
+            fontSize: 28,
             fontWeight: FontWeight.w500,
-            color: Color(0xFF4C5F7D),
+            color: isDarkMode
+                ? Colors.white.withOpacity(0.9)
+                : const Color(0xFF0D3952).withOpacity(0.9),
           ),
         ),
       ),
@@ -189,40 +229,32 @@ class _QuickAmountKey extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: ShapeDecoration(
-          color: const Color(0xFFE1F8DC),
+          color: isDarkMode ? const Color(0xFF354C2E) : const Color(0xFFF4FFF1),
           shape: RoundedRectangleBorder(
-            side: const BorderSide(
-              width: 0.5,
-              color: Color(0xFF518C3A),
-            ),
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(10),
           ),
-          shadows: const [
-            BoxShadow(
-              color: Color(0x19000000),
-              blurRadius: 3,
-              offset: Offset(1, 3),
-            ),
-          ],
         ),
         alignment: Alignment.center,
         child: Text(
           text,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
-            color: Color(0xFF518C3A),
+            color: isDarkMode ? Colors.white : const Color(0xFF518C3A),
           ),
         ),
       ),
     );
   }
 }
+
 
 /// ---------------- CLEAR KEY ----------------
 class _ClearKey extends StatelessWidget {
@@ -232,38 +264,40 @@ class _ClearKey extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.all(1.5),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            width: 0.5,
-            color: const Color(0xFFFF4D20),
+        margin: const EdgeInsets.all(3),
+        decoration: ShapeDecoration(
+          color: isDarkMode ? const Color(0xFF872727) : const Color(0xFFFFE6E6),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
           ),
-          boxShadow: const [
+          shadows: const [
             BoxShadow(
-              color: Color(0x3F000000),
-              blurRadius: 4,
-              offset: Offset(2, 4),
-            ),
+              color: Color(0x19DA0606),
+              blurRadius: 19,
+              offset: Offset(-4, 1),
+              spreadRadius: 4,
+            )
           ],
         ),
         alignment: Alignment.center,
-        child: const Text(
+        child: Text(
           'C',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w500,
-            color: Color(0xFFFF4D20),
+            color: isDarkMode ? Colors.white : const Color(0xFFFF4D20),
           ),
         ),
       ),
     );
   }
 }
+
 
 /// ---------------- BACKSPACE KEY ----------------
 class _BackspaceKey extends StatelessWidget {
@@ -273,30 +307,51 @@ class _BackspaceKey extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.all(4),
+        margin: const EdgeInsets.all(1.5),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            width: 0.5,
-            color: const Color(0xFF7B4597),
-          ),
-          boxShadow: const [
+          color: isDarkMode ? const Color(0xFF303136) : const Color(0xFFEDF2F9),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            // Outer shadow
             BoxShadow(
-              color: Color(0x19000000),
+              color: isDarkMode
+                  ? Colors.black.withOpacity(0.6)
+                  : Color(0xFFD9E6FF),
+              offset: const Offset(2, 2),
               blurRadius: 4,
-              offset: Offset(4, 6),
+            ),
+            BoxShadow(
+              color: isDarkMode
+                  ? Colors.grey.shade800
+                  : Colors.white,
+              offset: const Offset(-2, -2),
+              blurRadius: 4,
             ),
           ],
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDarkMode
+                ? [
+              const Color(0xFF3A3B40),
+              const Color(0xFF3A3B40),
+            ]
+                : [
+              const Color(0xFFEDF2F9),
+              const Color(0xFFEDF2F9),
+            ],
+          ),
         ),
         alignment: Alignment.center,
-        child: const Icon(
+        child: Icon(
           Icons.backspace_outlined,
           size: 30,
-          color: Color(0xFF7B4597),
+          color: isDarkMode ? Colors.white : const Color(0xFF7B4597),
         ),
       ),
     );

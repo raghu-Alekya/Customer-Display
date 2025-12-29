@@ -1490,11 +1490,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 final existingIndex = orderProducts
                     .indexWhere((p) => normalizeSku(p["sku"]) == trimmedBarcode);
 
-                if (existingIndex != -1) {
-                  if (kDebugMode) print("🔼 Custom item found → incrementing");
-
-                  orderProducts[existingIndex]["quantity"] =
-                      (orderProducts[existingIndex]["quantity"] ?? 1) + 1;
+                // 🚫 DO NOT AUTO-INCREMENT IF PRODUCT HAS VARIANTS
+                if (existingIndex != -1 && (product?.variations?.isEmpty ?? true)) {
+                  // Only non-variant products reach here
+                  orderProducts[existingIndex]["quantity"] += 1;
 
                   await offlineBox.put(activeOrderId.toString(), {
                     ...raw,
@@ -1504,11 +1503,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                   await fetchOrderItems();
                   await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
 
-
                   _isLoading = false;
                   if (mounted) setState(() {});
                   return;
                 }
+
               }
             } catch (e) {
               print("⚠ Offline custom increment error: $e");
@@ -1653,8 +1652,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               productSku,
             );
 
-            if (exists) {
-              print("🔁 SAME PRODUCT FOUND → SKIP POPUP & INCREMENT QTY");
+            // 🔥 ONLY AUTO-INCREMENT NON-VARIANT PRODUCTS
+            if (exists && (product.variations ?? []).isEmpty) {
+              print("🔁 NON-VARIANT → Auto increment");
 
               await orderHelper.addItemToOrder(
                 productId,
@@ -1925,56 +1925,53 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             // 8️⃣ VARIATIONS FLOW
             // =====================================================================
             if ((product.variations ?? []).isNotEmpty) {
-              final id = product.id ?? -1;
-              productBloc.fetchProductVariations(id);
+
+              // 1️⃣ Fetch variants
+              productBloc.fetchProductVariations(product.id!);
 
               final response = await productBloc.variationStream
                   .firstWhere((r) => r.status == Status.COMPLETED);
 
-              if (response.data != null && response.data!.isNotEmpty) {
-                final variants = response.data!.map((v) {
-                  return {
-                    "id": v.id ?? -1,
-                    "name": v.name ?? productName,
-                    "price": v.price ?? "0",
-                    "image": v.image?.src ?? "",
-                    "sku": v.sku ?? "",
-                  };
-                }).toList();
+              if (response.data == null || response.data!.isEmpty) return;
 
-                await showDialog(
-                  context: context,
-                  barrierDismissible: false,
-                  builder: (dialogContext) => VariantsDialog(
-                    title: productName,
-                    variations: variants,
-                    onAddVariant: (selected, qty) async {
-                      await orderHelper.addItemToOrder(
-                        selected["id"],
-                        selected["name"],
-                        selected["image"],
-                        double.tryParse(selected["price"].toString()) ?? 0,
-                        qty,
-                        selected["sku"],
-                        activeOrderId,
-                        type: ItemType.product.value,
-                        productId: id,
-                        variationId: selected["id"],
-                      );
+              final variants = response.data!.map((v) => {
+                "id": v.id,
+                "name": v.name,
+                "price": v.price,
+                "image": v.image?.src,
+                "sku": v.sku,
+              }).toList();
 
-                      await fetchOrderItems();
-                      await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+              // 2️⃣ SHOW VARIANT POPUP (ALWAYS)
+              await showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => VariantsDialog(
+                  title: product?.name ?? "",
+                  variations: variants,
+                  onAddVariant: (selected, qty) async {
+                    await orderHelper.addItemToOrder(
+                      selected["id"],
+                      selected["name"],
+                      selected["image"],
+                      double.tryParse(selected["price"].toString()) ?? 0,
+                      qty,
+                      selected["sku"],
+                      activeOrderId,
+                      productId: product?.id,
+                      variationId: selected["id"],
+                    );
 
-                      // ✅ CLOSE POPUP AFTER ADD
-                      Navigator.of(dialogContext).pop();
-                    },
-                  ),
-                );
+                    Navigator.of(_).pop();
+                  },
+                ),
+              );
 
-                _isLoading = false;
-                if (mounted) setState(() {});
-                return;
-              }
+              // 🔥 THIS LINE IS CRITICAL
+              // ⛔ STOP EVERYTHING ELSE
+              _isLoading = false;
+              if (mounted) setState(() {});
+              return;
             }
 
             // ---------------------------------------------------------------------------
