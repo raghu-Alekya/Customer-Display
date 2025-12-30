@@ -64,6 +64,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   String _customItemName = "";
   String _customItemPrice = "";
   String _sku = "";
+  List<TaxModel> _taxList = [];
+  TaxModel? _selectedTax;
+  bool _isTaxLoading = false;
+
 
   // Tax slab options
   late List<String> _taxSlabOptions = [];
@@ -74,6 +78,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   // Payout value
   String _payoutAmount = "";
   double _maxCashbackLimit = 0.0;
+  late final OrderRepository _orderRepository;
+
 
 
   // Adding a separate state variable for selected tab
@@ -104,6 +110,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
   @override
   void initState() {
+    _orderRepository = OrderRepository();
     orderBloc = OrderBloc(OrderRepository()); // Build #1.0.53
     productBloc = ProductBloc(ProductRepository());
     super.initState();
@@ -119,12 +126,20 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     });
     _loadOrderData(); // Load order data on initialization
     _loadTaxSlabs();
+    _loadTaxes();
     // Initialize the selected tab index from widget
     _selectedTabIndex = widget.selectedTabIndex;
     // Add a listener to _customItemNameController to track changes in the text field
     _customItemNameController.addListener(() {
       setState(() {}); // Trigger a rebuild when the text changes
     });
+  }
+  Future<void> _loadTaxes() async {
+    setState(() => _isTaxLoading = true);
+
+    _taxList = await _orderRepository.getAllTaxes();
+
+    setState(() => _isTaxLoading = false);
   }
 
   @override
@@ -1485,88 +1500,83 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
   Widget _buildTaxDropdown() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(height: 5,),
+        const SizedBox(height: 5),
         Text(
           TextConstants.taxText,
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 14,
-            color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                .textDark : Color(0xFF1E2745),
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.textDark
+                : const Color(0xFF1E2745),
           ),
         ),
         const SizedBox(height: 5),
         Container(
-          alignment: Alignment.topLeft,
-          height: MediaQuery
-              .of(context)
-              .size
-              .height / 14,
-          width: MediaQuery
-              .of(context)
-              .size
-              .width * 0.2,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          height: MediaQuery.of(context).size.height / 14,
+          width: MediaQuery.of(context).size.width * 0.2,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
-              border: Border.all(
-                  color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                      .borderColor : Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(10),
-              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                  .paymentEntryContainerColor : null
+            border: Border.all(
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.borderColor
+                  : Colors.grey.shade300,
+            ),
+            borderRadius: BorderRadius.circular(10),
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.paymentEntryContainerColor
+                : null,
           ),
-          child: DropdownButtonFormField<String>(
-            value: _selectedTaxSlab.isEmpty ? null : _selectedTaxSlab,
+          child: _isTaxLoading
+              ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+              : DropdownButtonFormField<TaxModel>(
+            value: _selectedTax,
             isExpanded: true,
-            alignment: Alignment.centerLeft,
             dropdownColor: themeHelper.themeMode == ThemeMode.dark
                 ? ThemeNotifier.primaryBackground
                 : null,
-            //underline: const SizedBox(),
             icon: const Icon(Icons.keyboard_arrow_down),
-            items: _taxSlabOptions.map((String value) {
-              return DropdownMenuItem<String>(
-                value: value,
+            items: _taxList.map((tax) {
+              return DropdownMenuItem<TaxModel>(
+                value: tax,
                 child: Text(
-                  value,
-                  textAlign: TextAlign.start,
+                  tax.name, // ✅ DISPLAY NAME FROM API
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 14,
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? ThemeNotifier.textDark
-                        : Color(0xFF1E2745),
+                        : const Color(0xFF1E2745),
                   ),
                 ),
               );
             }).toList(),
-            onChanged: (newValue) {
+            onChanged: (value) {
               if (kDebugMode) {
-                print("##### _buildTaxDropdown onChanged: $newValue");
+                print("✅ Selected Tax: ${value?.name} | Rate: ${value?.rate}");
               }
               setState(() {
-                _selectedTaxSlab = newValue!;
+                _selectedTax = value;
               });
             },
-            decoration: InputDecoration(
-              contentPadding: const EdgeInsets.only(top: 0, bottom: 5),
-              // left + vertical center
+            decoration: const InputDecoration(
               border: InputBorder.none,
-              // No border at all
               enabledBorder: InputBorder.none,
               focusedBorder: InputBorder.none,
             ),
-            hint: Container(
-              //color: Colors.blue,
-                padding: EdgeInsets.only(bottom: 0),
-                child: Text(TextConstants.chooseTaxSlab,
-                  style: TextStyle(
-                      color: themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.textDark
-                          : Colors.grey, fontSize: 14),)),
+            hint: Text(
+              TextConstants.chooseTaxSlab,
+              style: TextStyle(
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.textDark
+                    : Colors.grey,
+                fontSize: 14,
+              ),
+            ),
           ),
         ),
       ],
@@ -2713,6 +2723,25 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       }
 
       // -----------------------------
+// TAX TAB SELECTION VALIDATION
+// -----------------------------
+      if (_selectedTax == null) {
+        if (kDebugMode) {
+          print("❌ [STEP 1E] Tax tab not selected");
+        }
+
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+          const SnackBar(
+            content: Text("Please select a tax slab before adding the item"),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+
+
+      // -----------------------------
       // TAX SLAB
       // -----------------------------
       if (kDebugMode) print("🟡 [STEP 3] TAX SLAB LOOKUP");
@@ -2724,25 +2753,44 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         print("   • Selected tax slab: $_selectedTaxSlab");
       }
 
+
+      // if (_selectedTaxSlab.isNotEmpty) {
+      //   final selectedTax = taxes.firstWhere(
+      //         (t) => t.name == _selectedTaxSlab,
+      //     orElse: () => taxes.isNotEmpty
+      //         ? taxes.first
+      //         : Tax(slug: "none", name: _selectedTaxSlab),
+      //   );
+      //
+      //   taxStatus =
+      //   selectedTax.slug.isNotEmpty ? TextConstants.taxable : "";
+      //   taxClass = selectedTax.slug;
+      //
+      //   if (kDebugMode) {
+      //     print("   • Resolved tax → status: '$taxStatus', class: '$taxClass'");
+      //   }
+      // }
+      // -----------------------------
+// TAX FROM API (FIXED)
+// -----------------------------
+      if (kDebugMode) print("🟡 [STEP 3] TAX FROM API");
+      double taxRate = 0.0;
       String taxStatus = "";
       String taxClass = "";
 
-      if (_selectedTaxSlab.isNotEmpty) {
-        final selectedTax = taxes.firstWhere(
-              (t) => t.name == _selectedTaxSlab,
-          orElse: () => taxes.isNotEmpty
-              ? taxes.first
-              : Tax(slug: "none", name: _selectedTaxSlab),
-        );
-
-        taxStatus =
-        selectedTax.slug.isNotEmpty ? TextConstants.taxable : "";
-        taxClass = selectedTax.slug;
-
-        if (kDebugMode) {
-          print("   • Resolved tax → status: '$taxStatus', class: '$taxClass'");
-        }
+      if (_selectedTax != null) {
+        taxStatus = TextConstants.taxable;
+        taxClass  = _selectedTax!.taxClass; // ✅ FROM API
+        taxRate   = _selectedTax!.rate;     // ✅ FROM API
       }
+
+      if (kDebugMode) {
+        print("   • Tax Status : $taxStatus");
+        print("   • Tax Class  : $taxClass");
+        print("   • Tax Rate   : $taxRate%");
+      }
+
+
 
       // -----------------------------
       // NORMALIZE SKU
@@ -2793,11 +2841,13 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
           "name": _customItemName.trim(),
           "price": double.parse(_customItemPrice),
           "sku": normalizedSku,
-          "tax_Status": taxStatus,
-          "tax_Class": taxClass,
+
+          // ✅ TAX (API BASED)
+          "tax_status": taxStatus,
+          "tax_class": taxClass,
+          "tax_rate": taxRate,
           "tags": [TextConstants.customItem],
           "quantity": 1,
-
           /// 🔥 FIXED IMAGE KEYS → MUST MATCH YOUR ORDER PANEL UI
           AppDBConst.itemImage: "assets/custom.png",
           "item_image": "assets/custom.png",
@@ -2845,8 +2895,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         "is_custom_item": true,
         "price": double.parse(_customItemPrice).toString(),
         "sku": normalizedSku,
-        "tax_Status": taxStatus,
-        "tax_Class": taxClass,
+
+        // ✅ TAX (API BASED)
+        "tax_status": taxStatus,
+        "tax_class": taxClass,
+        "tax_rate": taxRate,
         "variations": [],
 
         /// FIXED IMAGE KEYS

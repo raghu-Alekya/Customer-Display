@@ -2475,27 +2475,35 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     required double price,
     required int qty,
     required List<Tax> taxes,
+    double? taxRate, // ✅ optional direct rate
   }) {
     try {
-      // Find tax rate from your local tax list
-      final selected = taxes.firstWhere(
-            (t) => t.slug == taxClass,
-        orElse: () => Tax(slug: "", name: ""),
-      );
+      double rate = 0.0;
 
-      if (selected.slug.isEmpty) {
-        print("⚠ No tax class match → tax = 0.0");
-        return 0.0;
+      // 🟣 1️⃣ Custom item with direct rate
+      if (taxRate != null && taxRate > 0) {
+        rate = taxRate;
       }
+      // 🔵 2️⃣ Resolve from tax class
+      else {
+        final selected = taxes.firstWhere(
+              (t) => t.slug == taxClass,
+          orElse: () => Tax(slug: "", name: ""),
+        );
 
-      // Example: "gst_18" → extract "18"
-      final rateString = selected.slug.replaceAll(RegExp(r'[^0-9]'), "");
-      final rate = double.tryParse(rateString) ?? 0.0;
+        if (selected.slug.isEmpty) {
+          print("⚠ No tax class match → tax = 0.0");
+          return 0.0;
+        }
+
+        final rateString =
+        selected.slug.replaceAll(RegExp(r'[^0-9.]'), '');
+        rate = double.tryParse(rateString) ?? 0.0;
+      }
 
       final taxAmount = ((price * rate) / 100) * qty;
 
-      print("🔥 Custom Item Tax:");
-      print("   price: $price, qty: $qty, rate: $rate%, tax: $taxAmount");
+      print("🔥 Custom Item Tax → price:$price qty:$qty rate:$rate tax:$taxAmount");
 
       return taxAmount;
     } catch (e) {
@@ -2503,6 +2511,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       return 0.0;
     }
   }
+
 
   double getProductTaxFromHive(
       int productId,
@@ -2684,8 +2693,60 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             final isCashback = itemType.contains("cashback");
             final isCoupon   = itemType.contains("coupon");
 
+            if (isCustom) {
+              final name = item['name'] ?? "Item";
+
+              final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+              final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+
+              final String taxClass =
+                  item['tax_class']?.toString() ??
+                      item['tax_Class']?.toString() ?? '';
+
+              final double taxRate =
+                  double.tryParse(
+                      item['tax_rate']?.toString() ??
+                          item['tax_Rate']?.toString() ??
+                          '0'
+                  ) ?? 0.0;
+
+              final double itemTax =
+              taxRate > 0 ? ((price * taxRate) / 100) * qty : 0.0;
+
+              if (kDebugMode) {
+                print(
+                    "🧾 CUSTOM ITEM TAX → "
+                        "Name:$name | "
+                        "Price:$price | "
+                        "Qty:$qty | "
+                        "TaxClass:$taxClass | "
+                        "Rate:$taxRate% | "
+                        "Tax:$itemTax"
+                );
+              }
+
+              if (kDebugMode) {
+                print("🧾 CUSTOM ITEM TAX → "
+                    "Name:$name | Price:$price | Qty:$qty | Rate:$taxRate% | Tax:$itemTax");
+              }
+
+              orderTax += itemTax;
+
+              return {
+                'item_name': name,
+                'item_price': price,
+                'items_count': qty,
+                'item_sum_price': price * qty,
+                'item_image': item['image'] ?? "",
+                'item_type': 'custom',
+                'item_tax': itemTax,
+                'tax_class': taxClass,
+              };
+            }
+
+
             // ---------------- CUSTOM / NON-PRODUCT ITEMS ----------------
-            if (isCustom || isPayout || isCashback || isCoupon) {
+            if (isPayout || isCashback || isCoupon) {
               final name = item['name'] ??
                   item['custom_item_name'] ??
                   item['item_name'] ??

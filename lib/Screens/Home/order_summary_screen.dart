@@ -1746,6 +1746,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         _displayDate = order[AppDBConst.orderDate].toString().split(' ').first;
       }
     }
+    final bool isButtonDisabled =
+        isPaymentDone ||
+            redeemedValue > 0 ||
+            isOrderPending ||
+            (!(isPhoneValid || isEmailValid) && !showCustomerInput);
 
     return Container(
       height: ResponsiveLayout.getHeight(60),
@@ -1977,8 +1982,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                 // ---------------- ADD / CANCEL BUTTON (SAME LOGIC) ----------------
                 InkWell(
-                  onTap: (isPaymentDone || redeemedValue > 0 ||
-                      (!(isPhoneValid || isEmailValid) && !showCustomerInput))
+                  onTap: isButtonDisabled
                       ? null
                       : () async {
                     // ---------- CANCEL ----------
@@ -2081,14 +2085,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     width: 126,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: isPaymentDone || redeemedValue > 0 ||
-                          (!(isPhoneValid || isEmailValid) && !showCustomerInput)
-                          ? Colors.grey.shade400
+                      color: isButtonDisabled
+                          ? Colors.grey.shade400       // 🔒 Disabled / Pending
                           : showCustomerInput
-                          ? Colors.red
-                          : const Color(0xFF3B4259),
+                          ? Colors.red             // ❌ Cancel
+                          : const Color(0xFF3B4259),// ➕ Add
                       borderRadius: BorderRadius.circular(6),
                     ),
+
                     child: isAddLoading
                         ? const SizedBox(
                       height: 16,
@@ -4725,11 +4729,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                     availablePoints > 0 &&
                                     isRedeemActive &&
                                     !isPaymentStarted &&
-                                    !hasEbtItem,
+                                    !hasEbtItem && !isOrderPending,
                                 onTap: () async {
                                   if (hasEbtItem) return; // block redeem
 
                                   if (!isRedeemActive) return;
+                                  if (isOrderPending) {
+                                    print("⛔ Redeem blocked: Order is pending");
+                                    return;
+                                  }
+
 
                                   // ⭐ Block redeem when partial payment has started
                                   if (isPaymentStarted) {
@@ -4998,8 +5007,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         orderId: widget.orderId!,
         couponCode: "",
       );
-
-      // --------- UPDATE UI TOTALS ---------
       setState(() {
         discount = 0.0;
         discountValue = 0.0;
@@ -5007,8 +5014,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         tax = oldTax;
         computedNetPayable = grossTotal + tax - merchantDiscount + cashbackFee;
         balanceAmount = computedNetPayable;
+        if (loyaltyData != null) {
+          loyaltyData = {
+            ...loyaltyData!,
+            "existing_net_payable": computedNetPayable,
+            "new_payable_amount": computedNetPayable - redeemedValue,
+          };
+        }
       });
-
       // --------- UPDATE HIVE TOTALS ONLY ----------
       final existing = offlineBox.get(localKey);
 
@@ -5240,7 +5253,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
       final appliedDiscount = double.tryParse(response.discountTotal) ?? 0.0;
       final updatedTax = double.tryParse(response.totalTax) ?? tax;
-
       setState(() {
         discount = appliedDiscount;
         tax = updatedTax;
@@ -5249,6 +5261,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             NetTotal + tax - merchantDiscount + cashbackFee;
         orderTotal = computedNetPayable;
         balanceAmount = computedNetPayable;
+        if (loyaltyData != null) {
+          loyaltyData = {
+            ...loyaltyData!,
+            "existing_net_payable": computedNetPayable,
+            "new_payable_amount": computedNetPayable - redeemedValue,
+          };
+        }
       });
 
       final offlineBox = Hive.box('offlineOrders');

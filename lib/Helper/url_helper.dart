@@ -126,6 +126,7 @@ class UrlMethodConstants { // Build #1.0.13
   static const String loyaltyCreateCustomer = "loyalty/create-customer";
   static const String loyaltyRedeem = "loyalty/add-loyalty-points";
   static const fastkeyimages = "pinaka-pos/v1/fastkeys/get-all-fastkeys-images";
+  static const taxes="pinaka-pos/v1/assets/all-taxes";
   static const String loyaltyRemove = "loyalty/remove-loyalty-points";
   static const String deleteofflineorders = "orders/sync-offline-orders";
   static const String cashbackservices="assets/cash-back-service";

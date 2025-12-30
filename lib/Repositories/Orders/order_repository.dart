@@ -13,6 +13,7 @@ import '../../Database/user_db_helper.dart';
 import '../../Helper/api_helper.dart';
 import '../../Helper/customerdisplayhelper.dart';
 import '../../Helper/url_helper.dart';
+import '../../Models/Assets/asset_model.dart';
 import '../../Models/Orders/apply_discount_model.dart';
 import '../../Models/Orders/get_orders_model.dart';
 import '../../Models/Orders/orders_model.dart';
@@ -41,6 +42,30 @@ class FastKeyImageModel {
     );
   }
 }
+
+class TaxModel {
+  final int id;
+  final String name;
+  final double rate;
+  final String taxClass;
+
+  TaxModel({
+    required this.id,
+    required this.name,
+    required this.rate,
+    required this.taxClass,
+  });
+
+  factory TaxModel.fromJson(Map<String, dynamic> json) {
+    return TaxModel(
+      id: json['id'],
+      name: json['name'],
+      rate: (json['rate'] as num).toDouble(),
+      taxClass: json['tax_class'],
+    );
+  }
+}
+
 
 
 class OrderRepository {  // Build #1.0.25 - added by naveen
@@ -117,7 +142,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       couponLines: [],
     );
   }
-
   Future<void> saveOfflineOrderTotals(int orderId) async {
     final box = Hive.box('offlineOrders');
     final raw = box.get(orderId.toString());
@@ -220,6 +244,50 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   }
 
 
+  double getCustomItemTax({
+    required String taxClass,
+    required double price,
+    required int qty,
+    required List<Tax> taxes,
+    double? taxRate,
+  }) {
+    try {
+      double rate = 0.0;
+
+      if (taxRate != null && taxRate > 0) {
+        rate = taxRate;
+      } else {
+        final selected = taxes.firstWhere(
+              (t) => t.slug == taxClass,
+          orElse: () => Tax(slug: "", name: ""),
+        );
+
+        if (selected.slug.isEmpty) {
+          print("⚠ No tax class match → tax = 0.0");
+          return 0.0;
+        }
+
+        final rateString =
+        selected.slug.replaceAll(RegExp(r'[^0-9.]'), '');
+        rate = double.tryParse(rateString) ?? 0.0;
+      }
+
+      final taxAmount = ((price * rate) / 100) * qty;
+
+      print(
+        "🔥 Custom Item Tax → price:$price qty:$qty rate:$rate tax:$taxAmount",
+      );
+
+      return taxAmount;
+    } catch (e) {
+      print("❌ ERROR in getCustomItemTax → $e");
+      return 0.0;
+    }
+  }
+
+
+
+
   Future<Map<String, dynamic>?> syncSingleOfflineOrder(
       Map<String, dynamic> offlineOrder) async {
     try {
@@ -262,22 +330,73 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
         final int? pid =
         pidRaw == null ? null : int.tryParse(pidRaw.toString());
-
         if (pid == null || pid == 0) {
-          // ---------------------------------------------------------
-          // ⭐ CUSTOM ITEM → MUST GO INTO line_items (not fee_lines)
-          // ---------------------------------------------------------
+          final int qtyInt = qty.toInt();
+
+          // 🔹 READ rate stored from UI
+          final double taxRate =
+              double.tryParse(
+                  item['tax_rate']?.toString() ??
+                      item['tax_Rate']?.toString() ??
+                      '0'
+              ) ?? 0.0;
+
+          // ✅ READ TAX CLASS
+          final String taxClass =
+              item['tax_class']?.toString() ??
+                  item['tax_Class']?.toString() ??
+                  "";
+
+
+          // 🔹 RECALCULATE tax HERE (new screen)
+          final double taxAmount = getCustomItemTax(
+            taxClass: taxClass,
+            price: price,
+            qty: qtyInt,
+            taxes: [],
+            taxRate: taxRate,
+          );
+
           lineItems.add({
             "name": item['name'] ?? "Custom Item",
-            "quantity": qty,
+            "quantity": qtyInt,
             "sku": item["sku"] ?? item["generated_sku"] ?? "",
             "price": price.toStringAsFixed(2),
-            "tax_status": "taxable",       // or from item model
-            "tax_class": "",               // keep empty
-            "type": "custom"
+
+            "tax_status": "taxable",
+            "tax_class": taxClass,
+
+            "subtotal": (price * qtyInt).toStringAsFixed(2),
+            "total": (price * qtyInt).toStringAsFixed(2),
+
+            // ✅ SEND TAX
+            "subtotal_tax": taxAmount.toStringAsFixed(2),
+            "total_tax": taxAmount.toStringAsFixed(2),
+
+            "taxes": taxAmount > 0
+                ? [
+              {
+                "rate_id": 0,
+                "total": taxAmount.toStringAsFixed(2),
+                "subtotal": taxAmount.toStringAsFixed(2),
+              }
+            ]
+                : [],
+
+            // ✅ SEND RATE
+            "meta_data": [
+              {
+                "key": "_custom_tax_rate",
+                "value": taxRate.toString(),
+              }
+            ],
+
+            "type": "custom",
           });
+
           continue;
         }
+
 
         // ---------------------------------------------------------
         // ⭐ WooCommerce normal product
@@ -939,6 +1058,29 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       };
     }
   }
+  Future<List<TaxModel>> getAllTaxes() async {
+    final String url = UrlMethodConstants.taxes;
+
+    try {
+      final raw = await _helper.get(url, true);
+      final response = raw is String ? jsonDecode(raw) : raw;
+
+      if (kDebugMode) {
+        print("🧾 Tax API Response: $response");
+      }
+
+      if (response["success"] == true) {
+        final List list = response["taxes"];
+        return list.map((e) => TaxModel.fromJson(e)).toList();
+      }
+
+      return [];
+    } catch (e) {
+      print("❌ Error fetching taxes: $e");
+      return [];
+    }
+  }
+
 
 
   Future<dynamic> redeemLoyaltyPoints({
