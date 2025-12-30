@@ -1317,15 +1317,22 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
   static Map<String, dynamic> _inMemoryProductCache = {};
 
-  static void addToCache(String sku, Map<String, dynamic> productJson) {
+  static void addToCache(
+      String sku,
+      Map<String, dynamic> productJson, {
+        int? variationId,
+      }) {
     final normalizedSku = sku.trim().toLowerCase();
 
     _inMemoryProductCache[normalizedSku] = {
-      "products": [productJson]   // 🔥 MATCHES productCache Hive structure
+      "product": productJson,
+      "variation_id": variationId, // ✅ CRITICAL FIX
     };
 
     if (kDebugMode) {
-      print("🔥 Updated in-memory product cache for: $normalizedSku");
+      print("🔥 Updated in-memory product cache");
+      print("   SKU → $normalizedSku");
+      print("   Variation → $variationId");
     }
   }
 

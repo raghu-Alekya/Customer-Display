@@ -969,12 +969,35 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 List<Map<String, dynamic>> orderProducts =
                 List<Map<String, dynamic>>.from(raw["products"] ?? []);
 
-                final existingIndex = orderProducts
-                    .indexWhere((p) => normalizeSku(p["sku"]) == trimmedBarcode);
+                final int? selectedVariationId = null; // no variant selected yet
+
+                final existingIndex = orderProducts.indexWhere((p) =>
+                normalizeSku(p["sku"]) == trimmedBarcode &&
+                    (p["variation_id"] == null || p["variation_id"] == selectedVariationId)
+                );
+
 
                 // 🚫 DO NOT AUTO-INCREMENT IF PRODUCT HAS VARIANTS
-                if (existingIndex != -1 && (product?.variations?.isEmpty ?? true)) {
-                  // Only non-variant products reach here
+                if (existingIndex != -1) {
+
+                  final existingItem = orderProducts[existingIndex];
+
+                  // 🔐 Determine if this is a variant product
+                  final bool hasVariantInProduct =
+                  (product?.variations?.isNotEmpty ?? false);
+
+                  final bool hasVariantInOrder =
+                      existingItem["variation_id"] != null;
+
+                  // ❌ STOP auto-increment if ANY variant exists
+                  if (hasVariantInProduct || hasVariantInOrder) {
+                    if (kDebugMode) {
+                      print("🚫 Variant detected — skipping auto increment");
+                    }
+                    return;
+                  }
+
+                  // ✅ SAFE TO AUTO-INCREMENT (simple product only)
                   orderProducts[existingIndex]["quantity"] += 1;
 
                   await offlineBox.put(activeOrderId.toString(), {
@@ -989,6 +1012,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                   if (mounted) setState(() {});
                   return;
                 }
+
 
               }
             } catch (e) {
@@ -1064,6 +1088,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             // ---------------------------------------------------------------------------
             // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
             if (product == null) {
+
+              // ❌ Block only if scanner or age flow is active
               if (_scanLocked || _ageVerificationActive || isDriverLicense) {
                 if (kDebugMode) {
                   print("🚫 Custom Item popup BLOCKED (DL / Age / Locked)");
@@ -1074,9 +1100,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 return;
               }
 
+              // ✅ Stop loader BEFORE opening popup
+              _isLoading = false;
+              if (mounted) setState(() {});
+
+              // ✅ PASS BARCODE HERE
               await _openCustomItemDialog(context, trimmedBarcode);
+
               return;
             }
+
 
             // ---------------------------------------------------------------------------
             // 7️⃣ EXTRACT PRODUCT DATA
@@ -1086,6 +1119,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             final productSku = product.sku ?? trimmedBarcode;
             final productPrice =
                 double.tryParse(product.price?.toString() ?? "0") ?? 0;
+            final int? selectedVariationId =
+            (product.variations != null && product.variations!.isNotEmpty)
+                ? null  // variant not selected yet
+                : null;
+
+
 
 // 🖼 Image
             String image = "";
@@ -1386,17 +1425,24 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 // 6️⃣ SHOW AGE VERIFICATION (ONCE)
 // ------------------------------------------------------
             if (isRestricted && !alreadyVerified) {
+
+              // 🔴 STOP LOADING BEFORE OPENING AGE VERIFICATION
+              _isLoading = false;
+              if (mounted) setState(() {});
+
               final verified = await AgeVerificationProvider()
                   .ageRestrictedProduct(context, product);
 
+              // ❌ User cancelled or failed verification
               if (!verified) {
-                return; // stop item add
+                return;
               }
 
-              // Mark verified for this order
+              // ✅ Mark as verified for this order
               hiveOrder["age_verified"] = true;
               await hiveBox.put(orderKey, hiveOrder);
             }
+
 
 
             if (kDebugMode) {
@@ -1485,14 +1531,14 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           }
 
           finally {
-            // 🔓 ALWAYS UNLOCK HERE
-            await Future.delayed(const Duration(milliseconds: 800));
             _scanLocked = false;
 
-            if (kDebugMode) {
-              print("🔓 Scanner unlocked (finally)");
+            if (_isLoading) {
+              _isLoading = false;
+              if (mounted) setState(() {});
             }
           }
+
         },
 
         child: Stack(

@@ -4061,7 +4061,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                               // 🔹 RIGHT: AMOUNT CONTAINER
                                               Container(
                                                 height: ResponsiveLayout.getHeight(55),
-                                                width: ResponsiveLayout.getWidth(355), // 👈 control width
+                                                width: ResponsiveLayout.getWidth(335), // 👈 control width
                                                 decoration: BoxDecoration(
                                                   color: themeHelper.themeMode == ThemeMode.dark
                                                       ? const Color(0xFF393B46) // Dark mode bg (from ShapeDecoration)
@@ -5291,8 +5291,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
     return Container(
-      width: MediaQuery.of(context).size.width * 0.245, // fixed width
-      height: ResponsiveLayout.getHeight(68),           // fixed height
+      width: MediaQuery.of(context).size.width * 0.240, // fixed width
+      height: ResponsiveLayout.getHeight(63),           // fixed height
       alignment: Alignment.centerLeft,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -5300,7 +5300,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           // 🔴 LEFT INDICATOR BAR (VERTICALLY CENTERED)
           Container(
             width: 4,
-            height: ResponsiveLayout.getHeight(48), // slightly taller for visual effect
+            height: ResponsiveLayout.getHeight(45), // slightly taller for visual effect
             decoration: BoxDecoration(
               color: leftBarColor,
               borderRadius: const BorderRadius.only(
