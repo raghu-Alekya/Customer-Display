@@ -1062,7 +1062,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ebtTotal = finalRemainingEbt;
       tenderAmount = totalPaid;
       balanceAmount = newBalance;
-      changeAmount = 0.0;
+      //changeAmount = 0.0;
       _paymentDialogShown = false;
     });
 
