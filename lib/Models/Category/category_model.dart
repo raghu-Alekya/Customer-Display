@@ -28,7 +28,7 @@ class CategoryModel { // Build #1.0.21
       count: json['count'] ?? 0,
       image: json['image'],
     );
-  }
+  }  
 
   Map<String, dynamic> toJson() {
     return {
