@@ -1173,6 +1173,31 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               productSku,
             );
 
+            // ---------------------------------------------------------------------------
+// ⭐ FINAL EBT ELIGIBILITY CHECK (NOW PRODUCT IS LOADED) ✅
+// ---------------------------------------------------------------------------
+            bool isEbtEligible = false;
+
+            try {
+              final tags = product?.tags ?? [];
+
+              isEbtEligible = tags.any((t) {
+                final name = (t.name ?? "").toLowerCase();
+                final slug = (t.slug ?? "").toLowerCase();
+
+                return name == "ebt" ||
+                    name == "ebt eligible" ||
+                    slug == "ebt" ||
+                    slug == "ebt-eligible";
+              });
+
+              print("💳 FINAL EBT Eligible? → $isEbtEligible (via product.tags)");
+            } catch (e) {
+              print("⚠ EBT eligibility error → $e");
+            }
+
+
+
             // 🔥 ONLY AUTO-INCREMENT NON-VARIANT PRODUCTS
             if (exists && (product.variations ?? []).isEmpty) {
               print("🔁 NON-VARIANT → Auto increment");
@@ -1187,6 +1212,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 activeOrderId,
                 type: ItemType.product.value,
                 productId: productId,
+                isEbtEligible: isEbtEligible,
                 variationId: -1,
               );
 
@@ -1248,6 +1274,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                   type: ItemType.product.value,
                   productId: productId,
                   variationId: -1,
+                  isEbtEligible: isEbtEligible,
                 );
 
                 print("🛒 Product added to order");
@@ -1293,29 +1320,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 // ⭐ NORMAL PRODUCT FLOW
 // ------------------------------------------------------------
             print("➡ Not a variable product, continuing normal flow");
-
-            // ---------------------------------------------------------------------------
-// ⭐ FINAL EBT ELIGIBILITY CHECK (NOW PRODUCT IS LOADED) ✅
-// ---------------------------------------------------------------------------
-            bool isEbtEligible = false;
-
-            try {
-              final tags = product?.tags ?? [];
-
-              isEbtEligible = tags.any((t) {
-                final name = (t.name ?? "").toLowerCase();
-                final slug = (t.slug ?? "").toLowerCase();
-
-                return name == "ebt" ||
-                    name == "ebt eligible" ||
-                    slug == "ebt" ||
-                    slug == "ebt-eligible";
-              });
-
-              print("💳 FINAL EBT Eligible? → $isEbtEligible (via product.tags)");
-            } catch (e) {
-              print("⚠ EBT eligibility error → $e");
-            }
 
 
             // ======================================================
@@ -1488,6 +1492,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                       activeOrderId,
                       productId: product?.id,
                       variationId: selected["id"],
+                      isEbtEligible: isEbtEligible,
                     );
 
                     Navigator.of(_).pop();

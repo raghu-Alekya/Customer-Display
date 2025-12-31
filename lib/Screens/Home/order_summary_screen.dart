@@ -1746,6 +1746,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         _displayDate = order[AppDBConst.orderDate].toString().split(' ').first;
       }
     }
+
+    bool isCustomerFieldDisabled =
+        redeemedValue > 0;
     final bool isButtonDisabled =
         isPaymentDone ||
             redeemedValue > 0 ||
@@ -1921,6 +1924,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               builder: (context, innerSetState) {
                                 return TextField(
                                   controller: mobileController,
+                                  enabled: !isCustomerFieldDisabled,
                                   keyboardType: TextInputType.emailAddress,
 
                                   inputFormatters: [
@@ -3237,21 +3241,27 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
                           if (isEbtEligible)
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 1),
+                              height: 14,
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              alignment: Alignment.center,
                               decoration: BoxDecoration(
                                 color: Colors.green,
                                 borderRadius: BorderRadius.circular(3),
                               ),
                               child: const Text(
                                 "EBT",
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  fontSize: 10,
+                                  fontSize: 8,
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
+                                  height: 1.0,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.clip,
                               ),
                             ),
+
 
                           if (isVariant) ...[
                             const SizedBox(width: 5),
@@ -3382,10 +3392,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   /// 🔹 Reusable badge widget
   Widget _discountBadge(String text, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 5),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(3),
+        borderRadius: BorderRadius.circular(5),
       ),
       child: Text(
         text,

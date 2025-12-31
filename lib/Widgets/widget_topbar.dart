@@ -492,6 +492,44 @@ class _TopBarState extends State<TopBar> {
                                               }
                                             }
 
+                                            // --------------------------------------------------
+// 🟢 EBT ELIGIBILITY RESOLUTION (MANDATORY)
+// --------------------------------------------------
+                                            bool isEbtEligible = false;
+
+                                            try {
+                                              final productBox = Hive.box('productCache');
+
+                                              for (final key in productBox.keys) {
+                                                if (!key.toString().startsWith("products_")) continue;
+
+                                                final cached = productBox.get(key);
+                                                if (cached == null) continue;
+
+                                                if (cached is Map && cached["data"] != null) {
+                                                  final List<dynamic> products = jsonDecode(cached["data"]);
+
+                                                  final match = products.firstWhere(
+                                                        (p) => p["fast_key_product_id"].toString() ==
+                                                        product.id.toString(),
+                                                    orElse: () => null,
+                                                  );
+
+                                                  if (match != null) {
+                                                    isEbtEligible = match["is_ebt_eligible"] == true;
+
+                                                    if (kDebugMode) {
+                                                      print(
+                                                          "🥗 EBT FOUND (SEARCH FLOW) → ${product.name} | Eligible: $isEbtEligible");
+                                                    }
+                                                    break;
+                                                  }
+                                                }
+                                              }
+                                            } catch (e) {
+                                              print("⚠️ Error resolving EBT eligibility (SEARCH FLOW): $e");
+                                            }
+
 // --- Step 2: Variable product / manual price check ---
                                             final bool hasVariants = product.variations != null && product.variations!.isNotEmpty;
                                             final double productPrice =
@@ -773,6 +811,7 @@ class _TopBarState extends State<TopBar> {
                                                                 variationName: variant["name"],
                                                                 unitPrice: variantPrice,
                                                                 salesPrice: variantPrice,
+                                                                isEbtEligible: isEbtEligible,
                                                                 onItemAdded: () async {
                                                                   _removeOverlay();
                                                                   _clearSearch();
@@ -929,6 +968,7 @@ class _TopBarState extends State<TopBar> {
                                                   salesPrice: finalPrice,   // <<< important
                                                   regularPrice: finalPrice, // <<< important
                                                   unitPrice: finalPrice,    // <<< important
+                                                  isEbtEligible: isEbtEligible,
                                                   onItemAdded: () {
                                                     _removeOverlay();
                                                     _clearSearch();

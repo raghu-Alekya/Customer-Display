@@ -182,29 +182,35 @@ class CustomerDisplayHelper {
       // ------------------ BUILD PARSED ITEMS LIST ------------------
       final parsedItems = [
         ...products.map((item) {
-          final qty = int.tryParse(item["quantity"]?.toString() ?? "1") ?? 1;
-          final productId = item["product_id"] ?? item["id"];
+          final qty =
+              int.tryParse(item["quantity"]?.toString() ?? "1") ?? 1;
+
           final unitPrice = _getUnitPrice(item);
-
-          final autoDiscountPerUnit =
-          _getAutoDiscountPerUnit(productId, qty);
-
-          final finalUnitPrice =
-          (unitPrice - autoDiscountPerUnit).clamp(0, double.infinity);
-
-          print(
-              "🧪 [CD ITEM] ${item['name']} | unit=$unitPrice | auto/unit=$autoDiscountPerUnit | final=$finalUnitPrice"
-          );
 
           return {
             "name": item["name"] ?? "",
             "qty": qty.toDouble(),
             "price": unitPrice,
             "original_price": unitPrice,
-            "auto_discount": autoDiscountPerUnit,
+            "auto_discount": 0.0, // 👈 always zero
             "image": item["image"] ?? "",
           };
         }),
+
+        ...payouts.map((p) => {
+          "name": "Payout",
+          "qty": 1.0,
+          "price": (p["amount"] ?? 0).toDouble(),
+          "image": "assets/svg/payout.svg",
+        }),
+
+        ...cashbacks.map((c) => {
+          "name": "Cashback",
+          "qty": 1.0,
+          "price": (c["amount"] ?? 0).toDouble(),
+          "image": c["product_image"] ?? "",
+        }),
+
 
 
     ...payouts.map((p) => {
@@ -224,19 +230,13 @@ class CustomerDisplayHelper {
 
       // ------------------ TOTALS ------------------
       double productTotal = products.fold(0.0, (sum, p) {
-        final qty = int.tryParse(p["quantity"]?.toString() ?? "1") ?? 1;
-        final productId = p["product_id"] ?? p["id"];
+        final qty =
+            int.tryParse(p["quantity"]?.toString() ?? "1") ?? 1;
 
         final unitPrice = _getUnitPrice(p);
-        final autoDiscountPerUnit =
-        _getAutoDiscountPerUnit(productId, qty);
 
-        final finalUnit =
-        (unitPrice - autoDiscountPerUnit).clamp(0, double.infinity);
-
-        return sum + (finalUnit * qty);
+        return sum + (unitPrice * qty);
       });
-
 
       double payoutTotal =
       payouts.fold(0, (sum, p) => sum + (p["amount"] ?? 0).toDouble());
