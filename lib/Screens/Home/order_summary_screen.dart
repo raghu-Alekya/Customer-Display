@@ -3392,21 +3392,29 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   /// 🔹 Reusable badge widget
   Widget _discountBadge(String text, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5),
+      height: 16, // 👈 increases badge height
+      padding: const EdgeInsets.symmetric(
+        horizontal: 6,
+        vertical: 3 // 👈 increases inner height
+      ),
+      alignment: Alignment.center,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(2),
       ),
       child: Text(
         text,
+        textAlign: TextAlign.center,
         style: const TextStyle(
-          fontSize: 10,
+          fontSize: 7,
+          height: 1.0, // 👈 increases text line height
           color: Colors.white,
           fontWeight: FontWeight.bold,
         ),
       ),
     );
   }
+
 
 
   // Widget _buildOrderItem(int index) {
