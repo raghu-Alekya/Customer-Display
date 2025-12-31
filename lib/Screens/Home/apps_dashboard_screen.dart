@@ -10,6 +10,7 @@ import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Preferences/pinaka_preferences.dart';
+import '../../Widgets/SafeStorageHelper.dart';
 import '../../Widgets/widget_topbar.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -36,10 +37,12 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
   final PinakaPreferences _preferences = PinakaPreferences(); // Add this
   // Add variables to track which card is being pressed
   int? _pressedCardIndex;
+  bool _isSafeEnabled = false;
 
   @override
   void initState() {
     super.initState();
+    _loadSafeEnable();
     _selectedSidebarIndex = widget.lastSelectedIndex ??
         4; // Build #1.0.7: Restore previous selection
     // Simulate a loading delay
@@ -49,7 +52,10 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
       });
     });
   }
-
+  Future<void> _loadSafeEnable() async {
+    _isSafeEnabled = await SafeStorageHelper.getSafeEnable();
+    if (mounted) setState(() {});
+  }
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -134,27 +140,20 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
                             );
                           },
                         ),
-                        _buildCard(
-                          // title: TextConstants.safeDrop,
-                          icon: themeHelper.themeMode == ThemeMode.dark
-                              ? Image.asset(
-                            "assets/safedrop_dark.png",
-                          )
-                              : Image.asset(
-                            "assets/safedrop_lite.png",
+                        if (_isSafeEnabled)
+                          _buildCard(
+                            icon: themeHelper.themeMode == ThemeMode.dark
+                                ? Image.asset("assets/safedrop_dark.png")
+                                : Image.asset("assets/safedrop_lite.png"),
+                            cardIndex: 1,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => SafeDropScreen()),
+                              );
+                            },
                           ),
-                          cardIndex: 1,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => SafeDropScreen(),
-                              ),
-                            );
 
-                            // Handle Safe Drop tap
-                          },
-                        ),
                       ],
                     ),
                   ),

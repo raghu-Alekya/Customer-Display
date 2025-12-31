@@ -193,6 +193,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool couponPopupActive = false;
 
 
+
   double ebtTotal = 0.0; // will be loaded from widget.ebtAmount
   double payByEbt = 0.0;   // ADD THIS
   TextEditingController ebtAmountController = TextEditingController();
@@ -358,6 +359,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     _fetchShiftId();
     orderBloc = OrderBloc(OrderRepository());
     selectedPaymentMethod = TextConstants.cash;
+    final bool isNegativeOrder = widget.grossTotal < 0;
+
 
     // Load order values
     orderItems = widget.orderItems;
@@ -468,8 +471,17 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     print("   balanceAmount = $balanceAmount");
     print("   orderTotal = $orderTotal");
 
-    // Fetch payments from API (if needed)
-    _fetchPaymentsByOrderId();
+    if (!isNegativeOrder) {
+      _fetchPaymentsByOrderId(); // sale only
+    } else {
+      // 🔥 payout → no API, no loading
+      setState(() {
+        isLoading = false;
+        isSummaryLoading = false;
+        balanceAmount = widget.grossTotal; // negative
+      });
+    }
+
   }
 
   @override

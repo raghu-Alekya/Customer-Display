@@ -2553,14 +2553,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       final isCouponOrPayout = isCoupon || isPayout;
 
       // Determine sales price
-      final salesPrice =
-      (orderItem[AppDBConst.itemSalesPrice] == null ||
-          (orderItem[AppDBConst.itemSalesPrice]?.toDouble() ?? 0.0) == 0.0)
-          ? (orderItem[AppDBConst.itemRegularPrice] == null ||
-          (orderItem[AppDBConst.itemRegularPrice]?.toDouble() ?? 0.0) == 0.0)
-          ? orderItem[AppDBConst.itemUnitPrice]?.toDouble() ?? 0.0
-          : orderItem[AppDBConst.itemRegularPrice]!.toDouble()
-          : orderItem[AppDBConst.itemSalesPrice]!.toDouble();
+      final double salesPrice =
+      (orderItem[AppDBConst.itemSumPrice] != null &&
+          (orderItem[AppDBConst.itemCount] ?? 0) > 0)
+          ? (orderItem[AppDBConst.itemSumPrice] /
+          orderItem[AppDBConst.itemCount])
+          : 0.0;
 
       double negativeItemPrice =
           orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice];
@@ -2590,10 +2588,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 // ----- SPECIAL FIX: Payout must display sales price also -----
       double displaySalesPrice = salesPrice;
 
-// Cashback must show its actual value
-//       if (isCashback) {
-//         displaySalesPrice = salesPrice.abs();
-//       }
 
 
 // Payout must also show abs value
@@ -2616,6 +2610,47 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         formattedRate =
         "${TextConstants.currencySymbol}${rateValue.toStringAsFixed(2)}";
       }
+      String formattedSalesPrice;
+      if (isPayout) {
+        formattedSalesPrice =
+        "-${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
+      } else {
+        formattedSalesPrice =
+        "${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
+      }
+
+      if (isCashback) {
+        double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
+
+        double cashbackValue =
+            (orderItem['amount'] as num?)?.toDouble() ??
+                (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
+                (orderItem['itemTotalPrice'] as num?)?.toDouble() ??
+                0.0;
+
+        double rateValueCashback = cashbackValue / qty;
+
+        formattedRate =
+        "${TextConstants.currencySymbol}${rateValueCashback.toStringAsFixed(2)}";
+
+        formattedAmount =
+        "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
+
+        formattedSalesPrice =
+        "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
+
+
+        // -----------------------------------
+        // DEBUG PRINT
+        // -----------------------------------
+        print("🟦 -----------------------------");
+        print("🟦 Cashback ITEM");
+        print("🟦 Qty          : $qty");
+        print("🟦 Sales Price  : $formattedSalesPrice");
+        print("🟦 Rate Value   : $formattedRate");
+        print("🟦 Amount Value : $formattedAmount");
+        print("🟦 -----------------------------");
+      }
 
       // ------------------------------------
       // DEBUG PRINT FOR EACH PRODUCT
@@ -2626,46 +2661,46 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         print("🟦 Name         : ${orderItem[AppDBConst.itemName]}");
         print("🟦 Qty          : ${orderItem[AppDBConst.itemCount]}");
         // INSERT THIS FIX HERE ⬇
-        String formattedSalesPrice;
-        if (isPayout) {
-          formattedSalesPrice =
-          "-${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
-        } else {
-          formattedSalesPrice =
-          "${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
-        }
-        if (isCashback) {
-          double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
-
-          double cashbackValue =
-              (orderItem['amount'] as num?)?.toDouble() ??
-                  (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
-                  (orderItem['itemTotalPrice'] as num?)?.toDouble() ??
-                  0.0;
-
-          double rateValueCashback = cashbackValue / qty;
-
-          formattedRate =
-          "${TextConstants.currencySymbol}${rateValueCashback.toStringAsFixed(2)}";
-
-          formattedAmount =
-          "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
-
-          formattedSalesPrice =
-          "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
-
-
-          // -----------------------------------
-          // DEBUG PRINT
-          // -----------------------------------
-          print("🟦 -----------------------------");
-          print("🟦 Cashback ITEM");
-          print("🟦 Qty          : $qty");
-          print("🟦 Sales Price  : $formattedSalesPrice");
-          print("🟦 Rate Value   : $formattedRate");
-          print("🟦 Amount Value : $formattedAmount");
-          print("🟦 -----------------------------");
-        }
+        // String formattedSalesPrice;
+        // if (isPayout) {
+        //   formattedSalesPrice =
+        //   "-${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
+        // } else {
+        //   formattedSalesPrice =
+        //   "${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
+        // }
+        // if (isCashback) {
+        //   double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
+        //
+        //   double cashbackValue =
+        //       (orderItem['amount'] as num?)?.toDouble() ??
+        //           (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
+        //           (orderItem['itemTotalPrice'] as num?)?.toDouble() ??
+        //           0.0;
+        //
+        //   double rateValueCashback = cashbackValue / qty;
+        //
+        //   formattedRate =
+        //   "${TextConstants.currencySymbol}${rateValueCashback.toStringAsFixed(2)}";
+        //
+        //   formattedAmount =
+        //   "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
+        //
+        //   formattedSalesPrice =
+        //   "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
+        //
+        //
+        //   // -----------------------------------
+        //   // DEBUG PRINT
+        //   // -----------------------------------
+        //   print("🟦 -----------------------------");
+        //   print("🟦 Cashback ITEM");
+        //   print("🟦 Qty          : $qty");
+        //   print("🟦 Sales Price  : $formattedSalesPrice");
+        //   print("🟦 Rate Value   : $formattedRate");
+        //   print("🟦 Amount Value : $formattedAmount");
+        //   print("🟦 -----------------------------");
+        // }
 
 
         print("🟦 Sales Price  : $formattedSalesPrice");

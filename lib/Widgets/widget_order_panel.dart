@@ -4314,8 +4314,40 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             final double grossAfterDiscount =
                                 grossTotal.toDouble() - totalAutoDiscount;
 
-                            final double safeGrossAfterDiscount =
-                            grossAfterDiscount < 0 ? 0 : grossAfterDiscount;
+                            // =======================================================
+// 🧪 PRE-NAVIGATION FINAL CHECKPOINT
+// =======================================================
+                            if (kDebugMode) {
+                              print("\n========== 🧾 FINAL CHECKOUT SNAPSHOT ==========");
+                              print("📅 Date / Time        : $displayDate  $displayTime");
+
+                              print("\n🛒 ITEMS (${orderItems.length})");
+                              for (final item in orderItems) {
+                                print("• ${item['item_name']}"
+                                    " | qty=${item['quantity']}"
+                                    " | price=${item['price']}"
+                                    " | autoDisc=${item['auto_discount']}"
+                                    " | type=${item['discount_type']}");
+                              }
+
+                              print("\n💰 TOTALS");
+                              print("Gross Total (raw)     : $grossTotal");
+                              print("Auto Discount Total  : $totalAutoDiscount");
+                              print("Gross After Discount : $grossAfterDiscount");
+
+                              print("\n🧾 EXTRA VALUES");
+                              print("Order Discount       : $orderDiscount");
+                              print("Merchant Discount   : $merchantDiscount");
+                              print("Tax                 : $orderTax");
+                              print("Cashback Fee        : $cashbackFee");
+                              print("EBT Amount          : $ebtAmount");
+                              print("Server Order ID     : $serverOrderId");
+                              print("Offline Order ID    : ${orderHelper.activeOrderId}");
+                              print("Is Offline Synced   : ${serverOrderId != null}");
+
+                              print("===============================================\n");
+                            }
+
 
                             // =======================================================
                             // 🔹 NAVIGATE TO SUMMARY
@@ -4327,7 +4359,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   formattedDate: displayDate,
                                   formattedTime: displayTime,
                                   orderItems: orderItems,
-                                  grossTotal: safeGrossAfterDiscount,
+                                  grossTotal: grossAfterDiscount, // ✅ negative allowed
                                   orderDiscount: orderDiscount,
                                   merchantDiscount: merchantDiscount,
                                   orderTax: orderTax,

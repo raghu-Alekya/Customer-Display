@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
@@ -5,6 +7,8 @@ import 'package:pinaka_pos/Helper/Extentions/text_extensions.dart';
 import 'package:pinaka_pos/Screens/Home/safe_open_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../Blocs/Auth/logout_bloc.dart';
+import '../../Blocs/Auth/shift_bloc.dart';
 import '../../Constants/text.dart';
 import '../../Database/assets_db_helper.dart';
 import '../../Database/db_helper.dart';
@@ -12,14 +16,21 @@ import '../../Database/order_panel_db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
+import '../../Helper/api_response.dart';
 import '../../Models/Assets/asset_model.dart';
+import '../../Models/Auth/shift_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
+import '../../Repositories/Auth/logout_repository.dart';
+import '../../Repositories/Auth/shift_repository.dart';
+import '../../Widgets/SafeStorageHelper.dart';
 import '../../Widgets/widget_alert_popup_dialogs.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_topbar.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../Widgets/widget_navigation_bar.dart' as custom_widgets;
+import '../Auth/login_screen.dart';
+import 'categories_screen.dart';
 import 'fast_key_screen.dart';
 
 class ShiftOpenCloseBalanceScreen extends StatefulWidget {
@@ -34,6 +45,7 @@ class ShiftOpenCloseBalanceScreen extends StatefulWidget {
 class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScreen> with LayoutSelectionMixin {
 
   bool isLoading = true;
+
   int _selectedSidebarIndex = 4;
 
   // Build #1.0.70: Added new variables to store fetched denominations
@@ -44,10 +56,22 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
   String screenTitle = TextConstants.shiftOpen;
   String? _originScreen;
   final PinakaPreferences _preferences = PinakaPreferences(); // Added this
+  late ShiftBloc _shiftBloc;
+  double totalAmount = 0.0;
+  double cashTubes = 0.0;
+  double cashNotesCoin = 0.0;
+  // List to store denomination data
+  final List<Map<String, dynamic>> denominations = [];
+  StreamSubscription? _shiftSubscription;
+  bool _isSubmitting = false;
+  final logoutBloc = LogoutBloc(LogoutRepository());
+  bool _isSafeEnabled = false;
 
   @override
   void initState() {
     super.initState();
+    _loadSafeEnable();
+    _shiftBloc = ShiftBloc(ShiftRepository());
     _selectedSidebarIndex = widget.lastSelectedIndex ?? 4; // Build #1.0.7: Restore previous selection
     _checkShiftId();
     WidgetsBinding.instance.addPostFrameCallback((_) {  // Build #1.0.70
@@ -58,7 +82,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
 
     // Simulate a loading delay
     Future.delayed(const Duration(seconds: 3), () {
-     if(mounted) { /// add to fix memory leaks
+      if(mounted) { /// add to fix memory leaks
         setState(() {
           isLoading = false; // Set loading to false after 3 seconds
         });
@@ -74,6 +98,11 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
     _coinControllers.forEach((denom, controller) {
       controller.addListener(() => _updateCoinTotal(denom, controller));
     });
+  }
+
+  Future<void> _loadSafeEnable() async {
+    _isSafeEnabled = await SafeStorageHelper.getSafeEnable();
+    if (mounted) setState(() {});
   }
 
   // Build #1.0.70: New method to reset state
@@ -231,26 +260,213 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
 
   void _updateTotal(String denomination, TextEditingController controller) {
     setState(() {
-      int count = int.tryParse(controller.text) ?? 0;
-      _noteTotals[denomination] = count * _noteDenominations[denomination]!;
+      final int count = int.tryParse(controller.text) ?? 0;
+      final double value = double.tryParse(denomination) ?? 0.0;
+
+      _noteTotals[denomination] = count * value;
       _calculateGrandTotal();
     });
   }
 
   void _updateCoinTotal(String denomination, TextEditingController controller) {
     setState(() {
-      int count = int.tryParse(controller.text) ?? 0;
-      _coinTotals[denomination] = count * _coinDenominations[denomination]!;
+      final int count = int.tryParse(controller.text) ?? 0;
+      final double value = double.tryParse(denomination) ?? 0.0;
+
+      _coinTotals[denomination] = count * value;
       _calculateGrandTotal();
     });
   }
 
-  void _calculateGrandTotal() {
-    double noteTotal = _noteTotals.values.reduce((a, b) => a + b);
-    double coinTotal = _coinTotals.values.reduce((a, b) => a + b);
-    _grandTotal = noteTotal + coinTotal;
-    //_grandTotal = _noteTotals.values.reduce((a, b) => a + b);
+
+  ShiftRequest _buildShiftRequest({int? shiftId, String? status}) {
+    List<Denomination> drawerDenoms = [];
+
+    _notesDenominations.forEach((denom) {
+      int count = int.tryParse(_controllers[denom.denom.toString()]?.text ?? '0') ?? 0;
+      drawerDenoms.add(Denomination(denomination: num.tryParse(denom.denom.toString()) ?? 0, denomCount: count));
+    });
+    _coinsDenominations.forEach((denom) {
+      int count = int.tryParse(_coinControllers[denom.denom.toString()]?.text ?? '0') ?? 0;
+      drawerDenoms.add(Denomination(denomination: num.tryParse(denom.denom.toString()) ?? 0, denomCount: count));
+    });
+
+    List<TubeDenomination> tubeDenoms = [];
+    denominations.forEach((denom) {
+      tubeDenoms.add(TubeDenomination(
+        denomination: denom['denomValue'],
+        tubeCount: denom['tubeCount'],
+        cellCount: denom['tubeCount'],
+        total: denom['amount'],
+      ));
+    });
+
+    return ShiftRequest(
+      shiftId: shiftId,
+      status: status,
+      drawerDenominations: drawerDenoms,
+      drawerTotalAmount: cashNotesCoin,
+      tubeDenominations: tubeDenoms,
+      tubeTotalAmount: cashTubes,
+      totalAmount: totalAmount,
+    );
   }
+
+  Future<void> _handleShiftSubmit({bool navigateNext = false}) async {
+    if (_isSubmitting) return;
+    setState(() => _isSubmitting = true);
+
+    try {
+      int? shiftId = await UserDbHelper().getUserShiftId();
+      String? previousScreen = _originScreen;
+
+      String status = TextConstants.open;
+      String? closeShiftStatus;
+
+      if (shiftId != null) {
+        if (previousScreen == TextConstants.navLogout) {
+          status = TextConstants.update;
+          closeShiftStatus = TextConstants.closed;
+        } else if (previousScreen == TextConstants.navShiftHistory) {
+          status = TextConstants.update;
+        }
+      }
+
+      await _shiftSubscription?.cancel();
+
+      final request = _buildShiftRequest(
+        shiftId: shiftId,
+        status: status,
+      );
+
+      _shiftBloc.manageShift(request);
+
+      bool dialogShown = false;
+
+      _shiftSubscription = _shiftBloc.shiftStream.listen((response) async {
+        if (!mounted || dialogShown) return;
+
+        if (response.status == Status.COMPLETED) {
+          dialogShown = true;
+          setState(() => _isSubmitting = false);
+
+          // ---------------- OPEN / UPDATE ----------------
+          if (closeShiftStatus == null) {
+            bool? result;
+
+            if (status == TextConstants.open) {
+              await UserDbHelper()
+                  .updateUserShiftId(response.data!.shiftId);
+
+              result = await CustomDialog.showStartShiftVerification(
+                context,
+                totalAmount: totalAmount,
+                overShort: response.data!.overShort.toDouble(),
+              );
+            } else {
+              result = await CustomDialog.showUpdateShiftVerification(
+                context,
+                totalAmount: totalAmount,
+                overShort: response.data!.overShort.toDouble(),
+              );
+            }
+
+            if (result == true && mounted) {
+              _resetState();
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => CategoriesScreen()),
+                    (_) => false,
+              );
+            }
+            return;
+          }
+
+          // ---------------- CLOSE SHIFT ----------------
+          bool? confirmClose =
+          await CustomDialog.showCloseShiftVerification(
+            context,
+            totalAmount: totalAmount,
+            overShort: response.data!.overShort.toDouble(),
+          );
+
+          if (confirmClose != true) return;
+
+          // Show loader dialog
+          CustomDialog.showCloseShiftVerification(
+            context,
+            totalAmount: totalAmount,
+            overShort: response.data!.overShort.toDouble(),
+            isLoading: true,
+          );
+
+          await _shiftSubscription?.cancel();
+
+          final closeRequest = _buildShiftRequest(
+            shiftId: shiftId,
+            status: TextConstants.closed,
+          );
+          _calculateGrandTotal();
+
+
+          _shiftBloc.manageShift(closeRequest);
+
+          _shiftSubscription = _shiftBloc.shiftStream.listen((closeResponse) async {
+            if (closeResponse.status == Status.COMPLETED) {
+              Navigator.of(context).pop(); // close loader
+              await UserDbHelper().updateUserShiftId(null);
+
+              logoutBloc.performLogout();
+
+              logoutBloc.logoutStream.listen((logoutResponse) {
+                if (logoutResponse.status == Status.COMPLETED) {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => LoginScreen()),
+                  );
+                }
+              });
+            }
+          });
+        }
+
+        if (response.status == Status.ERROR) {
+          setState(() => _isSubmitting = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(TextConstants.failedToUpdateShift),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      });
+    } catch (e) {
+      setState(() => _isSubmitting = false);
+      if (kDebugMode) print("Submit error: $e");
+    }
+  }
+
+
+  void _calculateGrandTotal() {
+    final double noteTotal =
+    _noteTotals.values.fold(0.0, (a, b) => a + b);
+
+    final double coinTotal =
+    _coinTotals.values.fold(0.0, (a, b) => a + b);
+
+    cashNotesCoin = noteTotal + coinTotal;
+    totalAmount = cashNotesCoin + cashTubes;
+    _grandTotal = cashNotesCoin;
+
+    if (kDebugMode) {
+      print("🧮 Notes: $noteTotal");
+      print("🧮 Coins: $coinTotal");
+      print("🧮 Drawer: $cashNotesCoin");
+      print("🧮 Tubes: $cashTubes");
+      print("🧮 TOTAL: $totalAmount");
+    }
+  }
+
 
   void _clearCounts() {
     _controllers.forEach((key, controller) => controller.clear());
@@ -277,6 +493,8 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
 
   @override
   void dispose() {
+    _shiftSubscription?.cancel(); // ✅ ADD THIS
+    _shiftBloc.dispose();
     _note100Controller.dispose();
     _note50Controller.dispose();
     _note20Controller.dispose();
@@ -327,20 +545,20 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
               screen: Screen.SHIFT,
               onModeChanged: () async{ /// Build #1.0.192: Fixed -> Exception -> setState() callback argument returned a Future. (onModeChanged in all screens)
                 String newLayout;
-                  if (sidebarPosition == SidebarPosition.left) {
-                    newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
-                  } else if (sidebarPosition == SidebarPosition.right) {
-                    newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
-                  } else {
-                    newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
-                  }
+                if (sidebarPosition == SidebarPosition.left) {
+                  newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
+                } else if (sidebarPosition == SidebarPosition.right) {
+                  newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
+                } else {
+                  newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                }
 
-                  // Update the notifier which will trigger _onLayoutChanged
-                  PinakaPreferences.layoutSelectionNotifier.value = newLayout;
-                  // No need to call saveLayoutSelection here as it's handled in the notifier
+                // Update the notifier which will trigger _onLayoutChanged
+                PinakaPreferences.layoutSelectionNotifier.value = newLayout;
+                // No need to call saveLayoutSelection here as it's handled in the notifier
                 //  _preferences.saveLayoutSelection(newLayout);
-                  //Build #1.0.122: update layout mode change selection to DB
-                  await UserDbHelper().saveUserSettings({AppDBConst.layoutSelection: newLayout}, modeChange: true);
+                //Build #1.0.122: update layout mode change selection to DB
+                await UserDbHelper().saveUserSettings({AppDBConst.layoutSelection: newLayout}, modeChange: true);
                 // update UI
                 setState(() {});
               },
@@ -388,7 +606,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           mainAxisAlignment: MainAxisAlignment.center,
                                           children: [
-                                             Text(
+                                            Text(
                                               screenTitle,
                                               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                                             ),
@@ -465,24 +683,53 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                               height: MediaQuery.of(context).size.height * 0.06,
                                               width: MediaQuery.of(context).size.width * 0.1,
                                               child: ElevatedButton(  // Build #1.0.70
-                                                onPressed: () {
-                                                  // Add this line to close the keypad
+                                                // onPressed: () {
+                                                //   // Add this line to close the keypad
+                                                //   FocusScope.of(context).unfocus();
+                                                //   // Next button action - Pass the grand total to SafeOpenScreen
+                                                //   Navigator.push(
+                                                //     context,
+                                                //     SlideRightRoute(
+                                                //       page: SafeOpenScreen(
+                                                //         cashNotesCoins: _grandTotal,
+                                                //         previousScreen: _originScreen ?? TextConstants.navShiftHistory, //Build #1.0.74
+                                                //       ),
+                                                //       arguments: TextConstants.navShiftHistory, // Build #1.0.226: Fixed Issue -> Menu items are not disabled in shift closing/update time in second screen
+                                                //     ),
+                                                //   ).then((_) {
+                                                //     // Reset state when returning
+                                                //     // _resetState();
+                                                //   });
+                                                // },
+
+                                                // onPressed: () async {
+                                                //   FocusScope.of(context).unfocus();
+                                                //
+                                                //   await _handleShiftSubmit(navigateNext: true);
+                                                // },
+
+                                                onPressed: () async {
                                                   FocusScope.of(context).unfocus();
-                                                  // Next button action - Pass the grand total to SafeOpenScreen
-                                                  Navigator.push(
-                                                    context,
-                                                    SlideRightRoute(
-                                                      page: SafeOpenScreen(
-                                                        cashNotesCoins: _grandTotal,
-                                                        previousScreen: _originScreen ?? TextConstants.navShiftHistory, //Build #1.0.74
+
+                                                  if (_isSafeEnabled) {
+                                                    // ✅ SAFE ENABLE = 1 → go to SafeOpenScreen
+                                                    Navigator.push(
+                                                      context,
+                                                      SlideRightRoute(
+                                                        page: SafeOpenScreen(
+                                                          cashNotesCoins: _grandTotal,
+                                                          previousScreen:
+                                                          _originScreen ?? TextConstants.navShiftHistory,
+                                                        ),
+                                                        arguments: TextConstants.navShiftHistory,
                                                       ),
-                                                      arguments: TextConstants.navShiftHistory, // Build #1.0.226: Fixed Issue -> Menu items are not disabled in shift closing/update time in second screen
-                                                    ),
-                                                  ).then((_) {
-                                                    // Reset state when returning
-                                                    // _resetState();
-                                                  });
+                                                    );
+                                                  } else {
+                                                    // ❌ SAFE NOT ENABLED → normal flow
+                                                    await _handleShiftSubmit(navigateNext: true);
+                                                  }
                                                 },
+
                                                 style: ElevatedButton.styleFrom(
                                                   backgroundColor: Color(0xFFFF6B6B),
                                                   foregroundColor: Colors.white,
@@ -491,7 +738,9 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                                     borderRadius: BorderRadius.circular(8),
                                                   ),
                                                 ),
-                                                child: const Text(TextConstants.nextText,style: TextStyle(fontSize: 16),),
+                                                child: const Text('Submit',
+                                                    style: TextStyle(
+                                                        fontSize: 16)),
                                               ),
                                             ),
                                           ],
@@ -543,7 +792,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                                     style: TextStyle(
                                                       fontWeight: FontWeight.w500,
                                                       color: themeHelper.themeMode == ThemeMode.dark
-                                                    ? ThemeNotifier.textDark : Colors.grey[700],
+                                                          ? ThemeNotifier.textDark : Colors.grey[700],
                                                     ),
                                                   ),
                                                 ),
@@ -582,12 +831,12 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                                 // physics: AlwaysScrollableScrollPhysics(),
                                                 // children: _notesDenominations.map((denom) {
                                                 //   String denomination = denom.denom.toString();
-                                                  itemCount: _notesDenominations.length,
-                                                  physics: const AlwaysScrollableScrollPhysics(),
-                                                  padding: EdgeInsets.zero, // Remove default padding
-                                                  itemBuilder: (context, index) {
-                                                    final denom = _notesDenominations[index];
-                                                    String denomination = denom.denom.toString();
+                                                itemCount: _notesDenominations.length,
+                                                physics: const AlwaysScrollableScrollPhysics(),
+                                                padding: EdgeInsets.zero, // Remove default padding
+                                                itemBuilder: (context, index) {
+                                                  final denom = _notesDenominations[index];
+                                                  String denomination = denom.denom.toString();
                                                   return Padding(
                                                     padding: const EdgeInsets.symmetric(vertical: 7.0, horizontal: 7.0),
                                                     child: Row(
@@ -626,13 +875,13 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                                             decoration: InputDecoration(
                                                               hintText: '0',
                                                               hintStyle: TextStyle(color: themeHelper.themeMode == ThemeMode.dark
-                                                                ? ThemeNotifier.textDark : Colors.grey),
+                                                                  ? ThemeNotifier.textDark : Colors.grey),
                                                               border: InputBorder.none,
                                                               contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9.0),
                                                             ),
                                                           ),
                                                         ),
-                                                       Padding(
+                                                        Padding(
                                                           padding: EdgeInsets.symmetric(horizontal: 12.0),
                                                           child: Text(
                                                             '=',
@@ -752,17 +1001,17 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                                 // Coin rows - Use fetched denominations
                                                 Expanded(
                                                   child: ListView.builder(
-    itemCount: _coinsDenominations.length,
-    physics: const AlwaysScrollableScrollPhysics(),
-    padding: EdgeInsets.zero, // Remove default padding
-    itemBuilder: (context, index) {
-    final denom = _coinsDenominations[index];
-    String denomination = denom.denom.toString();
+                                                    itemCount: _coinsDenominations.length,
+                                                    physics: const AlwaysScrollableScrollPhysics(),
+                                                    padding: EdgeInsets.zero, // Remove default padding
+                                                    itemBuilder: (context, index) {
+                                                      final denom = _coinsDenominations[index];
+                                                      String denomination = denom.denom.toString();
 
-                                                    // scrollDirection: Axis.vertical,
-                                                    // physics: AlwaysScrollableScrollPhysics(),
-                                                    // children: _coinsDenominations.map((denom) {
-                                                    //   String denomination = denom.denom.toString();
+                                                      // scrollDirection: Axis.vertical,
+                                                      // physics: AlwaysScrollableScrollPhysics(),
+                                                      // children: _coinsDenominations.map((denom) {
+                                                      //   String denomination = denom.denom.toString();
                                                       return Padding(
                                                         padding: const EdgeInsets.symmetric(vertical: 7.0, horizontal: 7.0),
                                                         child: Row(

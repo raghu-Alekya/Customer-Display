@@ -13,6 +13,7 @@ class LoginResponse {
   String? role; //Build #1.0.122: Updated
   String? avatar;
   int? shiftId; // Build #1.0.149: Added shift_id from API response
+  String? safeEnable;
 
   LoginResponse({
     this.success,
@@ -29,6 +30,7 @@ class LoginResponse {
     this.role,
     this.avatar,
     this.shiftId, // Build #1.0.149: added
+    this.safeEnable,
   });
 
   LoginResponse.fromJson(Map<String, dynamic> json) {
@@ -46,6 +48,7 @@ class LoginResponse {
     role = json['data']?['role'];
     avatar = json['data']?['avatar'];
     shiftId = json['data']?['shift_id']; // Build #1.0.149: added
+    safeEnable = json['data']?['safe_enable']; // ✅ HERE
   }
 
   Map<String, dynamic> toJson() {
@@ -65,6 +68,7 @@ class LoginResponse {
         'role': role,
         'avatar': avatar,
         'shift_id': shiftId, // Build #1.0.149: added
+        'safe_enable':safeEnable,
       }
     };
   }

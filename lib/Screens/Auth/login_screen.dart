@@ -20,6 +20,7 @@ import '../../Models/Auth/logout_model.dart';
 import '../../Repositories/Assets/asset_repository.dart';
 import '../../Repositories/Auth/login_repository.dart';
 import '../../Repositories/Auth/logout_repository.dart';
+import '../../Widgets/SafeStorageHelper.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_loading.dart';
 import '../../screens/Home/shift_open_close_balance.dart';
@@ -264,6 +265,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                   case Status.COMPLETED:
                                     if (snapshot.data?.data?.token != null) {
                                       WidgetsBinding.instance.addPostFrameCallback((_) async {
+                                        final loginResponse = snapshot.data!.data!;
+
+                                        // ✅ STORE SAFE ENABLE HERE
+                                        await SafeStorageHelper.saveSafeEnable(
+                                          loginResponse.safeEnable == "1",
+                                        );
+                                        // ✅ PRINT RESPONSE VALUE
+                                        if (kDebugMode) {
+                                          print("🔐 safe_enable from API = ${loginResponse.safeEnable}");
+                                          print("💾 safe_enable stored as bool = ${loginResponse.safeEnable == "1"}");
+                                        }
                                         // Build #1.0.163: Call image assets API in background without waiting for it
                                         unawaited(_assetBloc.fetchImageAssets()); // This will run in background
                                         // Build #1.0.69 : Call Fetch Assets Api after login api call success!
