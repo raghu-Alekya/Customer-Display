@@ -1203,7 +1203,7 @@ class _TopBarState extends State<TopBar> {
                     if (isError) ...[
                       const SizedBox(height: 8),
                       const Text(
-                        "Invalid PIN. Please try again",
+                        "You are not authorized to access this feature.",
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.red,

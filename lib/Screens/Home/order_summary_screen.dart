@@ -360,6 +360,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   void initState() {
     super.initState();
 
+    amountController.addListener(() {
+      if (balanceAmount < 0 && amountController.text != '${TextConstants.currencySymbol}0.00') {
+        final value = '${TextConstants.currencySymbol}0.00';
+        amountController.text = value;
+        amountController.selection =
+            TextSelection.collapsed(offset: value.length);
+      }
+    });
+
     _fetchShiftId();
     orderBloc = OrderBloc(OrderRepository());
     selectedPaymentMethod = TextConstants.cash;
@@ -4058,7 +4067,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                               children: [
                                                 /// 🔵 LABEL
                                                 Text(
-                                                  "Tender Amount",
+                                                  "Tender Amount :",
                                                   style: TextStyle(
                                                     fontSize: ResponsiveLayout.getFontSize(18),
                                                     fontWeight: FontWeight.w600,
@@ -4096,6 +4105,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                       keyboardType:
                                                       const TextInputType.numberWithOptions(decimal: true),
                                                       enabled: balanceAmount >= 0,
+                                                      readOnly: balanceAmount < 0, // 🔒 extra safety
                                                       textAlign: TextAlign.right,
                                                       decoration: InputDecoration(
                                                         border: InputBorder.none,

@@ -148,50 +148,6 @@ List<double> _generate3QuickAmounts(double balance) {
   return values;
 }
 
-BoxDecoration neumorphicKeyDecoration(bool isDarkMode,
-    {Color? lightColor, Color? darkColor}) {
-  return BoxDecoration(
-    borderRadius: BorderRadius.circular(14),
-    gradient: LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: isDarkMode
-          ? [
-        darkColor ?? const Color(0xFF2B2C30),
-        const Color(0xFF3A3B40),
-      ]
-          : [
-        darkColor ?? const Color(0xFFD9E4F5), // edge
-        lightColor ?? const Color(0xFFF6FAFF), // center
-      ],
-    ),
-    boxShadow: isDarkMode
-        ? [
-      BoxShadow(
-        color: Colors.black.withOpacity(0.6),
-        blurRadius: 6,
-        offset: const Offset(3, 3),
-      ),
-      BoxShadow(
-        color: Colors.grey.shade800,
-        blurRadius: 6,
-        offset: const Offset(-2, -2),
-      ),
-    ]
-        : const [
-      BoxShadow(
-        color: Color(0xFFCAD6EE),
-        blurRadius: 6,
-        offset: Offset(3, 3),
-      ),
-      BoxShadow(
-        color: Colors.white,
-        blurRadius: 6,
-        offset: Offset(-2, -2),
-      ),
-    ],
-  );
-}
 
 /// ---------------- NUMBER KEY ----------------
 class _NumKey extends StatelessWidget {
@@ -199,9 +155,10 @@ class _NumKey extends StatelessWidget {
   final VoidCallback onTap;
 
   const _NumKey({
+    Key? key,
     required this.text,
     required this.onTap,
-  });
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -210,50 +167,42 @@ class _NumKey extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-
-          // 🎯 THIS creates dark edges + light center
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isDarkMode
-                ? [
-              const Color(0xFF2B2C30),
-              const Color(0xFF3A3B40),
-            ]
-                : [
-              const Color(0xFFD9E4F5), // edge
-              const Color(0xFFF6FAFF), // center
-            ],
+        margin: const EdgeInsets.all(1.5),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        decoration: ShapeDecoration(
+          color: isDarkMode
+              ? const Color(0xFF303136)
+              : const Color(0xFFEDF1F9),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
-
-          boxShadow: isDarkMode
+          shadows: isDarkMode
               ? [
+            // 🌑 Bottom-right shadow
             BoxShadow(
-              color: Colors.black.withOpacity(0.6),
-              blurRadius: 6,
-              offset: const Offset(3, 3),
+              color: Color(0xFF34363F).withOpacity(0.5),
+              offset: const Offset(4, 4),
+              blurRadius: 3,
             ),
+            // 🌘 Top-left highlight
             BoxShadow(
-              color: Colors.grey.shade800,
-              blurRadius: 6,
-              offset: const Offset(-2, -2),
+              color: Colors.white.withOpacity(0.05),
+              offset: const Offset(-4, -4),
+              blurRadius: 8,
             ),
           ]
-              : [
-            // outer depth
-            const BoxShadow(
-              color: Color(0xFFCAD6EE),
-              blurRadius: 6,
-              offset: Offset(3, 3),
-            ),
-            // highlight
-            const BoxShadow(
+              : const [
+            // 🌤 Top-left highlight
+            BoxShadow(
               color: Colors.white,
+              offset: Offset(-4, -4),
               blurRadius: 6,
-              offset: Offset(-2, -2),
+            ),
+            // 🌑 Bottom-right shadow
+            BoxShadow(
+              color: Color(0xFFD9E6FF),
+              offset: Offset(4, 4),
+              blurRadius: 6,
             ),
           ],
         ),
@@ -290,61 +239,20 @@ class _QuickAmountKey extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.all(6),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-
-          // 🌿 Neumorphic gradient (dark edge → light center)
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isDarkMode
-                ? const [
-              Color(0xFF2F4A2F),
-              Color(0xFF3F6B3F),
-            ]
-                : const [
-              Color(0xFFDFF1DF), // edge
-              Color(0xFFF4FFF1), // center
-            ],
+        clipBehavior: Clip.antiAlias,
+        decoration: ShapeDecoration(
+          color: isDarkMode ? const Color(0xFF354D2F) : const Color(0xFFE5FFDD),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
           ),
-
-          // 🌫 Same depth as number keys
-          boxShadow: isDarkMode
-              ? [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.6),
-              blurRadius: 6,
-              offset: const Offset(3, 3),
-            ),
-            BoxShadow(
-              color: Colors.grey.shade800,
-              blurRadius: 6,
-              offset: const Offset(-2, -2),
-            ),
-          ]
-              : const [
-            BoxShadow(
-              color: Color(0xFFBFD8BF),
-              blurRadius: 6,
-              offset: Offset(3, 3),
-            ),
-            BoxShadow(
-              color: Colors.white,
-              blurRadius: 6,
-              offset: Offset(-2, -2),
-            ),
-          ],
         ),
+        alignment: Alignment.center,
         child: Text(
           text,
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
-            color: isDarkMode
-                ? Colors.white
-                : const Color(0xFF3F7F3F),
+            color: isDarkMode ? Colors.white : const Color(0xFF518C3A),
           ),
         ),
       ),
@@ -352,12 +260,11 @@ class _QuickAmountKey extends StatelessWidget {
   }
 }
 
-
 /// ---------------- CLEAR KEY ----------------
 class _ClearKey extends StatelessWidget {
   final VoidCallback onTap;
 
-  const _ClearKey({required this.onTap});
+  const _ClearKey({Key? key, required this.onTap}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -366,19 +273,53 @@ class _ClearKey extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.all(6),
-        decoration: neumorphicKeyDecoration(
-          isDarkMode,
-          lightColor: const Color(0xFFFFF1F1),
-          darkColor: const Color(0xFFF2C6C6),
+        margin: const EdgeInsets.all(3),
+        decoration: ShapeDecoration(
+          color: isDarkMode
+              ? const Color(0xFF872727)
+              : const Color(0xFFFFDADA),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          shadows: isDarkMode
+              ? [
+            // 🌑 Bottom-right shadow
+            BoxShadow(
+              color: Color(0xFFD40D0D).withOpacity(0.4),
+              offset: const Offset(4, 4),
+              blurRadius: 3,
+            ),
+            // 🌘 Top-left highlight
+            BoxShadow(
+              color: Colors.white.withOpacity(0.08),
+              offset: const Offset(-4, -4),
+              blurRadius: 8,
+            ),
+          ]
+              : const [
+            // 🌤 Top-left highlight
+            BoxShadow(
+              color: Colors.white,
+              offset: Offset(-4, -4),
+              blurRadius: 4,
+            ),
+            // 🌑 Bottom-right shadow
+            BoxShadow(
+              color: Color(0xFFFFCCCC),
+              offset: Offset(4, 4),
+              blurRadius: 2,
+            ),
+          ],
         ),
         alignment: Alignment.center,
         child: Text(
           'C',
           style: TextStyle(
             fontSize: 24,
-            fontWeight: FontWeight.w600,
-            color: isDarkMode ? Colors.white : const Color(0xFFD93025),
+            fontWeight: FontWeight.bold,
+            color: isDarkMode
+                ? Colors.white
+                : const Color(0xFFFF4D20),
           ),
         ),
       ),
@@ -401,23 +342,54 @@ class _BackspaceKey extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.all(6),
-        decoration: neumorphicKeyDecoration(
-          isDarkMode,
-          lightColor: const Color(0xFFF6FAFF),
-          darkColor: const Color(0xFFD9E4F5),
+        margin: const EdgeInsets.all(1.5),
+        decoration: ShapeDecoration(
+          color: isDarkMode
+              ? const Color(0xFF303136)
+              : const Color(0xFFEDF1F9),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          shadows: isDarkMode
+              ? [
+            // 🌑 Bottom-right shadow
+            BoxShadow(
+              color: Color(0xFF34363F).withOpacity(0.5),
+              offset: const Offset(4, 4),
+              blurRadius: 3,
+            ),
+            // 🌘 Top-left highlight
+            BoxShadow(
+              color: Colors.white.withOpacity(0.05),
+              offset: const Offset(-4, -4),
+              blurRadius: 8,
+            ),
+          ]
+              : const [
+            // 🌤 Top-left highlight
+            BoxShadow(
+              color: Colors.white,
+              offset: Offset(-4, -4),
+              blurRadius: 6,
+            ),
+            // 🌑 Bottom-right shadow
+            BoxShadow(
+              color: Color(0xFFD9E6FF),
+              offset: Offset(4, 4),
+              blurRadius: 6,
+            ),
+          ],
         ),
         alignment: Alignment.center,
         child: Icon(
           Icons.backspace_outlined,
-          size: 28,
+          size: 30,
           color: isDarkMode ? Colors.white : const Color(0xFF0C3952),
         ),
       ),
     );
   }
 }
-
 
 /// ---------------- PAY BUTTON ----------------
 class _PayButton extends StatelessWidget {
