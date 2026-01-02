@@ -129,6 +129,82 @@ import '../Utilities/svg_images_utility.dart';
 import 'ManualPriceDialog.dart';
 import 'OrderPopupHelper.dart';
 enum Screen { FASTKEY, CATEGORY, ADD, ORDERS, APPS, SHIFT, SAFE, EDIT }
+
+class _PinBoxField extends StatefulWidget {
+  final TextEditingController controller;
+  final bool hasError;
+
+  const _PinBoxField({
+    required this.controller,
+    required this.hasError,
+  });
+
+  @override
+  State<_PinBoxField> createState() => _PinBoxFieldState();
+}
+
+class _PinBoxFieldState extends State<_PinBoxField> {
+  bool _obscure = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return SizedBox(
+      height: 48,
+      child: TextField(
+        controller: widget.controller,
+        maxLength: 6,
+        autofocus: true,
+        keyboardType: TextInputType.text,
+        obscureText: _obscure,
+        enableSuggestions: false,
+        autocorrect: false,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          letterSpacing: 14,
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+          color: isDark ? Colors.white : Colors.black,
+        ),
+        decoration: InputDecoration(
+          counterText: "",
+          filled: true,
+          fillColor: isDark
+              ? const Color(0xFF40424F)
+              : const Color(0xFFF2F4F8),
+          suffixIcon: IconButton(
+            splashRadius: 13,
+            icon: Icon(
+              _obscure ? Icons.visibility_off : Icons.visibility,
+              size: 20,
+              color: isDark ? Colors.white54 : Colors.grey,
+            ),
+            onPressed: () {
+              setState(() => _obscure = !_obscure);
+            },
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(
+              color: widget.hasError ? Colors.red : Colors.transparent,
+              width: 1.2,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(
+              color: widget.hasError ? Colors.red : Colors.redAccent,
+              width: 1.5,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
 class TopBar extends StatefulWidget { // Build #1.0.13 : Updated top bar with search api integration
   final Function() onModeChanged;
   // final Function() onThemeChanged;
@@ -1048,6 +1124,167 @@ class _TopBarState extends State<TopBar> {
       });
     }
   }
+  Future<bool> _showCashDrawerPinPopup(BuildContext context) async {
+    final TextEditingController pinController = TextEditingController();
+    bool isError = false;
+
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              backgroundColor: isDark
+                  ? const Color(0xFF2F3241)
+                  : Colors.white,
+              child: SizedBox(
+                width: 320,
+            child: Padding(
+            padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 🔐 Icon
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.lock_outline,
+                        color: Colors.redAccent,
+                        size: 30,
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    Text(
+                      "Authentication Required ",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'Inter',
+                        color: isDark ? Colors.white : Colors.black,
+                      ),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    Text(
+                      "Enter 6-digit PIN to open cash drawer",
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Inter',
+                        color: isDark
+                            ? Colors.white60
+                            : Colors.grey[600],
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    // 🔢 PIN BOXES
+                    _PinBoxField(
+                      controller: pinController,
+                      hasError: isError,
+                    ),
+
+                    if (isError) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        "Invalid PIN. Please try again",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.red,
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 20),
+
+                    // 🔘 ACTION BUTTONS
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isDark
+                                  ? const Color(0xFF50535F)
+                                  : const Color(0xFFE0E0E0),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 10,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: Text(
+                              "Cancel",
+                              style: TextStyle(
+                                color: isDark ? Colors.white70 : Colors.black87,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.redAccent,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 10,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            onPressed: () {
+                              if (pinController.text == "123456") {
+                                Navigator.pop(ctx, true);
+                              } else {
+                                setState(() => isError = true);
+                                pinController.clear();
+                              }
+                            },
+                            child: const Text(
+                              "Confirm",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                  ],
+                ),
+              ),
+            ));
+          },
+        );
+      },
+    ) ??
+        false;
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -1203,40 +1440,59 @@ class _TopBarState extends State<TopBar> {
                   GestureDetector(
                     // onTap: widget.onThemeChanged,
                     onTap: () async {
-                      ///Deprecated code, moved to PrinterSettings now
-                      //  // final profile = await CapabilityProfile.load(name: 'default');
-                      //  // var bytes = Generator(PaperSize.mm80, profile).drawer(pin: PosDrawer.pin5); /// open drawer
-                      //  // if (kDebugMode) {
-                      //  //   print("TopBar onTap of cash drawer open tapped with profile: ${profile.name} and bytes return $bytes");
-                      //  // }
-                      // // var sunmi = SunmiPrinterPlus();
-                      // // SunmiDrawer.openDrawer();
-                      // var result = await SunmiPrinterPlusPlatform.instance.openDrawer();
-                      // // sunmi.openDrawer();
-                      //  // bool isOpen = await sunmi.isDrawerOpen();
-                      //  if (kDebugMode) {
-                      //    print("Drawer is open $result");
-                      //  }
-                      //  ScaffoldMessenger.of(context).showSnackBar(
-                      //    const SnackBar(
-                      //      content: Text(TextConstants.cashDrawerIsOpening),
-                      //      backgroundColor: Colors.orange,
-                      //      duration: Duration(seconds: 2),
-                      //    ),
-                      //  );
+                      final isAuthorized = await _showCashDrawerPinPopup(context);
 
-                      ///Use below code if only openDrawer is needed
-                      // PrinterSettings.openDrawer(context: context);
-                      ///As per Shravan's suggestion, we are now calling printTicket to open drawer from topbar which will automatically invoke open drawer
+                      if (!isAuthorized) return;
+
+                      /// ✅ AUTHORIZED → OPEN CASH DRAWER
                       await PrinterSettings.openDrawer(context: context);
+
                       List<int> bytes = [];
-                      final ticket =  await _printerSettings.getTicket();
+                      final ticket = await _printerSettings.getTicket();
                       bytes += ticket.feed(1);
+
                       final result = await _printerSettings.printTicket(bytes, ticket);
+
                       if (kDebugMode) {
                         print(">>>> TopBar printer result $result");
                       }
                     },
+
+                    // onTap: () async {
+                    //   ///Deprecated code, moved to PrinterSettings now
+                    //   //  // final profile = await CapabilityProfile.load(name: 'default');
+                    //   //  // var bytes = Generator(PaperSize.mm80, profile).drawer(pin: PosDrawer.pin5); /// open drawer
+                    //   //  // if (kDebugMode) {
+                    //   //  //   print("TopBar onTap of cash drawer open tapped with profile: ${profile.name} and bytes return $bytes");
+                    //   //  // }
+                    //   // // var sunmi = SunmiPrinterPlus();
+                    //   // // SunmiDrawer.openDrawer();
+                    //   // var result = await SunmiPrinterPlusPlatform.instance.openDrawer();
+                    //   // // sunmi.openDrawer();
+                    //   //  // bool isOpen = await sunmi.isDrawerOpen();
+                    //   //  if (kDebugMode) {
+                    //   //    print("Drawer is open $result");
+                    //   //  }
+                    //   //  ScaffoldMessenger.of(context).showSnackBar(
+                    //   //    const SnackBar(
+                    //   //      content: Text(TextConstants.cashDrawerIsOpening),
+                    //   //      backgroundColor: Colors.orange,
+                    //   //      duration: Duration(seconds: 2),
+                    //   //    ),
+                    //   //  );
+                    //
+                    //   ///Use below code if only openDrawer is needed
+                    //   // PrinterSettings.openDrawer(context: context);
+                    //   ///As per Shravan's suggestion, we are now calling printTicket to open drawer from topbar which will automatically invoke open drawer
+                    //   await PrinterSettings.openDrawer(context: context);
+                    //   List<int> bytes = [];
+                    //   final ticket =  await _printerSettings.getTicket();
+                    //   bytes += ticket.feed(1);
+                    //   final result = await _printerSettings.printTicket(bytes, ticket);
+                    //   if (kDebugMode) {
+                    //     print(">>>> TopBar printer result $result");
+                    //   }
+                    // },
                     child: Container(
                       padding:
                       const EdgeInsets.all(10), // spacing inside circle
@@ -1587,6 +1843,7 @@ class _TopBarState extends State<TopBar> {
       ),
     );
   }
+
 }
 
 // extension on String? {

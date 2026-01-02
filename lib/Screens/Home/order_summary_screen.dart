@@ -236,6 +236,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isMobileValid = false;
   double redeemedValue = 0.0;
   bool isPaymentStarted = false;
+  bool isRedeemAppliedFromApi = false;
+  bool isCouponAppliedFromApi = false;
+  double couponValue= 0;
+  double couponDiscount = 0.0;
 
   Future<void> _fetchShiftId() async {
     final data = await UserDbHelper().getUserData();
@@ -402,7 +406,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           offlineOrder!['balanceAmount'] != null) {
 
         tenderAmount = (offlineOrder!['tenderAmount'] as num).toDouble();
-        balanceAmount = (offlineOrder!['balanceAmount'] as num).toDouble();
+        balanceAmount = orderTotal; // always start fresh
 
         payByCash =
             (offlineOrder!['payByCash'] as num?)?.toDouble() ?? 0.0;
@@ -898,71 +902,54 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     await box.put(orderId, updated);
 
-    print("🗑 [Hive] Redeemed points REMOVED → ID: $orderId");
+    if (kDebugMode) {
+      print("🗑 [Hive] Redeem REMOVED → OrderId: $orderId");
+    }
   }
-
-
   void _fetchPaymentsByOrderId() {
     if (kDebugMode) print("###### _fetchPaymentsByOrderId");
 
-    if (orderId == null) {
-      if (kDebugMode) print("###### orderId is null");
-      return;
-    }
+    if (orderId == null) return;
+
+    final box = Hive.box('offlineOrders');
+    final key = orderId.toString();
 
     // ================================
-    // 📦 RESTORE EBT FROM HIVE FIRST
+    // 🎁 RESTORE REDEEM
     // ================================
     try {
-      final box = Hive.box('offlineOrders');
-      final key = (orderId ?? 0).toString();
-
       if (box.containsKey(key)) {
         final stored = Map<String, dynamic>.from(box.get(key));
-
-        if (stored["ebtTotal"] != null) {
-          ebtTotal = (stored["ebtTotal"] as num).toDouble();
-
-          if (kDebugMode) {
-            print("📦 Loaded EBT from Hive = $ebtTotal");
-          }
-        }
+        redeemedValue =
+            (stored["redeemed_value"] as num?)?.toDouble() ?? 0.0;
       }
-    } catch (e) {
-      print("⚠ Failed loading EBT from Hive: $e");
+    } catch (_) {
+      redeemedValue = 0.0;
     }
 
-    setState(() {
-      isSummaryLoading = true;
-    });
+    // ================================
+    // 🥗 RESTORE ORIGINAL EBT
+    // ================================
+    try {
+      if (box.containsKey(key)) {
+        final stored = Map<String, dynamic>.from(box.get(key));
+        if (stored["originalEbt"] != null) {
+          ebtTotal = (stored["originalEbt"] as num).toDouble();
+        }
+      }
+    } catch (_) {}
+
+    setState(() => isSummaryLoading = true);
 
     paymentBloc.getPaymentsByOrderId(orderId!);
 
     _paymentListSubscription?.cancel();
     _paymentListSubscription =
         paymentBloc.paymentsListStream.listen((response) {
-
           if (response.status == Status.COMPLETED) {
-            if (kDebugMode) {
-              print("###### _fetchPaymentsByOrderId Api call COMPLETED");
-            }
-
-            if (response.data!.isNotEmpty) {
-              orderStatus =
-                  response.data!.last.orderStatus ?? TextConstants.processing;
-            }
-
             _processPaymentList(response.data!);
-
-          } else if (response.status == Status.ERROR) {
-            if (kDebugMode) {
-              print("Error fetching payments: ${response.message}");
-            }
           }
-
-          setState(() {
-            isSummaryLoading = false;
-          });
+          setState(() => isSummaryLoading = false);
         });
   }
   void _processPaymentList(List<PaymentListModel> payments) {
@@ -970,29 +957,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     double otherTotal = 0.0;
     double ebtPaid = 0.0;
 
-    if (kDebugMode) {
-      print("======================================");
-      print("🔍 PROCESSING PAYMENTS (${payments.length})");
-    }
-
-    // =====================================================
-    // 1️⃣ ACCUMULATE NON-VOIDED PAYMENTS
-    // =====================================================
+    // ===================================================
+    // 1️⃣ ACCUMULATE NON-VOID PAYMENTS
+    // ===================================================
     for (final payment in payments) {
-      final amount = double.tryParse(payment.amount) ?? 0.0;
+      if (payment.voidStatus) continue;
 
-      if (payment.voidStatus) {
-        if (kDebugMode) {
-          print("⛔ Skipping VOID payment: ${payment.paymentMethod} | $amount");
-        }
-        continue;
-      }
+      final amount = double.tryParse(payment.amount) ?? 0.0;
 
       if (payment.paymentMethod == TextConstants.ebtText) {
         ebtPaid += amount;
-        if (kDebugMode) {
-          print("🥗 EBT PAID +$amount → Total EBT Paid = $ebtPaid");
-        }
       } else if (payment.paymentMethod == TextConstants.cash) {
         cashTotal += amount;
       } else {
@@ -1000,72 +974,71 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       }
     }
 
-    // =====================================================
-    // 2️⃣ LOAD OFFLINE ORDER + REDEEM INFO FROM HIVE
-    // =====================================================
     final box = Hive.box('offlineOrders');
-    final key = (orderId ?? 0).toString();
+    final key = orderId.toString();
 
     final existing = box.containsKey(key)
         ? Map<String, dynamic>.from(box.get(key))
         : <String, dynamic>{};
 
+    // ===================================================
+    // 🔥 SINGLE SOURCE OF TRUTH
+    // ===================================================
+    final double basePayable = computedNetPayable;
+
+    // ===================================================
+    // 🥗 LOCK ORIGINAL EBT
+    // ===================================================
     final double originalEbt =
-    (existing["originalEbt"] ?? ebtTotal).toDouble();
+        (existing["originalEbt"] as num?)?.toDouble() ?? ebtTotal;
+
     existing["originalEbt"] ??= originalEbt;
 
-    final double redeemedValue =
-    (existing["redeemed_value"] ?? 0).toDouble();
-    final int redeemedPoints =
-    (existing["redeemed_points"] ?? 0);
-
-    if (kDebugMode) {
-      print("🎁 REDEEM INFO");
-      print("   ➤ Redeemed Value  = $redeemedValue");
-      print("   ➤ Redeemed Points = $redeemedPoints");
-    }
-
-    // =====================================================
-    // 3️⃣ APPLY REDEEM BEFORE PAYMENTS
-    // =====================================================
-    final double payableAfterRedeem =
-    (orderTotal - redeemedValue).clamp(0.0, orderTotal);
-
-    // =====================================================
-    // 4️⃣ EBT CALCULATION (VOID SAFE)
-    // =====================================================
+    // ===================================================
+    // 🧮 REMAINING EBT AFTER EBT PAYMENTS
+    // ===================================================
     final double remainingEbt =
-    (originalEbt - ebtPaid).clamp(0.0, originalEbt);
+    originalEbt - ebtPaid < 0 ? 0.0 : originalEbt - ebtPaid;
 
-    // =====================================================
-    // 5️⃣ NON-EBT PAYMENT OVERFLOW TO EBT
-    // =====================================================
+    // ===================================================
+    // 💵 NON-EBT PORTION
+    // ===================================================
     final double nonEbtOrderValue =
-    (payableAfterRedeem - originalEbt).clamp(0.0, payableAfterRedeem);
+    basePayable - originalEbt < 0 ? 0.0 : basePayable - originalEbt;
 
     final double nonEbtPaid = cashTotal + otherTotal;
 
+    // ===================================================
+    // 🔁 CASH / CARD OVERFLOW REDUCES EBT
+    // ===================================================
     final double overflowToEbt =
     nonEbtPaid > nonEbtOrderValue
         ? nonEbtPaid - nonEbtOrderValue
         : 0.0;
 
     final double finalRemainingEbt =
-    (remainingEbt - overflowToEbt).clamp(0.0, originalEbt);
+    remainingEbt - overflowToEbt < 0 ? 0.0 : remainingEbt - overflowToEbt;
 
-    // =====================================================
-    // 6️⃣ TOTAL PAID & FINAL BALANCE
-    // =====================================================
-    final double totalPaid =
-        cashTotal + otherTotal + ebtPaid;
+    // ===================================================
+    // 🎁 APPLY REDEEM (DISCOUNT ONLY)
+    // ===================================================
+    final double effectiveOrderTotal =
+        basePayable - redeemedValue;
 
-    final double newBalance =
-    (payableAfterRedeem - totalPaid)
-        .clamp(0.0, double.infinity);
+    // ===================================================
+    // 💰 TOTAL PAID
+    // ===================================================
+    final double totalPaid = cashTotal + otherTotal + ebtPaid;
 
-    // =====================================================
-    // 7️⃣ UPDATE UI STATE
-    // =====================================================
+    // ✅ ALLOW NEGATIVE VALUE
+    final double newBalance = effectiveOrderTotal - totalPaid;
+
+    // Pass RAW value to popup (can be negative)
+    final double popupBalance = newBalance;
+
+    // ===================================================
+    // 🔄 UPDATE UI
+    // ===================================================
     setState(() {
       payByCash = cashTotal;
       payByOther = otherTotal;
@@ -1074,44 +1047,41 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ebtTotal = finalRemainingEbt;
       tenderAmount = totalPaid;
       balanceAmount = newBalance;
-      //changeAmount = 0.0;
+
       _paymentDialogShown = false;
     });
 
-    // =====================================================
-    // 8️⃣ SAVE BACK TO HIVE
-    // =====================================================
+    // ===================================================
+    // 💾 SAVE TO HIVE
+    // ===================================================
     existing["remainingEbt"] = finalRemainingEbt;
+    existing["redeemed_value"] = redeemedValue;
+    existing["remainingBalance"] = newBalance;
+
     box.put(key, existing);
 
-    // =====================================================
-    // 9️⃣ DEBUG SUMMARY
-    // =====================================================
     if (kDebugMode) {
       print("📊 PAYMENT SUMMARY");
-      print("🟢 Order Total          = $orderTotal");
-      print("🎁 Redeemed Value       = $redeemedValue");
-      print("🧾 Payable After Redeem = $payableAfterRedeem");
-      print("🥗 Original EBT         = $originalEbt");
-      print("🥗 EBT Paid             = $ebtPaid");
-      print("🥗 Remaining EBT        = $finalRemainingEbt");
-      print("💵 Cash Paid            = $cashTotal");
-      print("💳 Other Paid           = $otherTotal");
-      print("💰 Total Paid           = $totalPaid");
-      print("⚖ FINAL BALANCE         = $balanceAmount");
-      print("======================================");
+      print("Base Payable      = $basePayable");
+      print("Redeem            = $redeemedValue");
+      print("Cash              = $cashTotal");
+      print("Other             = $otherTotal");
+      print("EBT Paid          = $ebtPaid");
+      print("Remaining EBT     = $finalRemainingEbt");
+      print("Total Paid        = $totalPaid");
+      print("Balance           = $newBalance");
     }
 
-    // =====================================================
-    // 🔔 PAYMENT COMPLETE DIALOG
-    // =====================================================
-    if (balanceAmount == 0 && payments.isNotEmpty) {
+    // ===================================================
+    // 🔔 PAYMENT COMPLETE (ZERO OR NEGATIVE)
+    // ===================================================
+    if (payments.isNotEmpty && newBalance <= 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showPaymentDialog(
           context,
           tenderAmount,
-          changeAmount: changeAmount,
-          showChange: changeAmount > 0,
+          changeAmount: popupBalance, // 👈 negative allowed
+          showChange: true,
         );
       });
     }
@@ -3406,8 +3376,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return Container(
       height: 16, // 👈 increases badge height
       padding: const EdgeInsets.symmetric(
-        horizontal: 6,
-        vertical: 3 // 👈 increases inner height
+          horizontal: 6,
+          vertical: 3 // 👈 increases inner height
       ),
       alignment: Alignment.center,
       decoration: BoxDecoration(
@@ -3811,6 +3781,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 
   Future<void> _removeRedeemedAmount() async {
+    // 🔴 Contact is mandatory for API
     if (mobileController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -3822,11 +3793,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
 
     final String contact = mobileController.text.trim();
-    final int order = widget.orderId ?? orderId ?? 0;
+    final int order =
+        widget.orderId ?? widget.offlineOrderId ?? 0;
 
     setState(() => isSummaryLoading = true);
 
     try {
+      // 🔥 API is the SOURCE OF TRUTH
       final rawRes = await OrderRepository().removeLoyaltyPoints(
         orderId: order,
         contact: contact,
@@ -3834,36 +3807,48 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
       final result = jsonDecode(rawRes);
 
-      if (result["success"] == true) {
-        final data = result["data"];
-
-        setState(() {
-          redeemedValue = 0;
-
-          /// Update balance using order_total returned by API
-          balanceAmount = (data["order_total"] as num?)?.toDouble() ?? balanceAmount;
-
-          /// Keep remaining available points
-          availablePoints = loyaltyData?["available_points"] ?? availablePoints;
-        });
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Redeemed points removed successfully."),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      }
-      else {
+      if (result["success"] != true) {
         throw Exception(result["message"] ?? "Unable to remove points");
+      }
+
+      final data = result["data"];
+
+      // 🧠 Update UI strictly from API response
+      setState(() {
+        redeemedValue = 0;
+        isRedeemAppliedFromApi = false;
+
+        /// API-driven balance
+        balanceAmount =
+            (data["order_total"] as num?)?.toDouble() ?? balanceAmount;
+
+        /// Keep available points from API
+        availablePoints =
+            (data["available_points"] as num?)?.toInt() ?? availablePoints;
+      });
+
+      // 🧹 FORCE DELETE FROM HIVE
+      final String orderKey = order.toString();
+      await removeOfflineOrderRedeem(orderKey);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Redeemed points removed successfully."),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+
+      if (kDebugMode) {
+        print("🧹 Redeem removed → API + UI + Hive");
       }
     } catch (e) {
       print("❌ Remove Loyalty Points Error: $e");
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text("Failed to remove redeemed points. Try again."),
             backgroundColor: Colors.red,
           ),
@@ -4044,129 +4029,98 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                       Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Row(
-                                            children: [
-                                              // 🔴 LEFT: TEXT CONTAINER
-                                              Container(
-                                                height: ResponsiveLayout.getHeight(53),
-                                                padding: EdgeInsets.symmetric(
-                                                  horizontal: ResponsiveLayout.getPadding(48),
+                                          Container(
+                                            height: ResponsiveLayout.getHeight(60),
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: ResponsiveLayout.getPadding(16),
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: themeHelper.themeMode == ThemeMode.dark
+                                                  ? const Color(0xFF40424F)
+                                                  : const Color(0xFFF9FBFF),
+                                              borderRadius: BorderRadius.circular(10),
+                                              boxShadow: const [
+                                                BoxShadow(
+                                                  color: Color(0x22000000),
+                                                  blurRadius: 6,
+                                                  offset: Offset(0, 2),
                                                 ),
-                                                decoration: BoxDecoration(
-                                                  color: themeHelper.themeMode == ThemeMode.dark
-                                                      ? const Color(0xFF4C5F7D)
-                                                      : const Color(0xFF4C5F7D), // Light mode color
-
-                                                  borderRadius: const BorderRadius.only(
-                                                    topLeft: Radius.circular(10),
-                                                    bottomLeft: Radius.circular(10),
-                                                  ),
-
-                                                  // 🔴 Border only in dark mode
-                                                  // border: themeHelper.themeMode == ThemeMode.dark
-                                                  //     ? Border.all(
-                                                  //   color: const Color(0xFFFFEBEB),
-                                                  // )
-                                                  //     : null,
-
-                                                  // 🌫 Shadow in BOTH modes
-                                                  boxShadow: const [
-                                                    BoxShadow(
-                                                      color: Color(0x3F000000), // 25% black
-                                                      blurRadius: 4,
-                                                      offset: Offset(2, 4),
-                                                      spreadRadius: 0,
-                                                    ),
-                                                  ],
-                                                ),
-                                                alignment: Alignment.center,
-                                                child: Text(
+                                              ],
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                /// 🔵 LABEL
+                                                Text(
                                                   "Tender Amount",
                                                   style: TextStyle(
                                                     fontSize: ResponsiveLayout.getFontSize(18),
-                                                    fontWeight: FontWeight.bold,
+                                                    fontWeight: FontWeight.w600,
                                                     color: themeHelper.themeMode == ThemeMode.dark
-                                                        ? ThemeNotifier.textDark.withOpacity(0.7)
-                                                        : Colors.white,
+                                                        ? Colors.white
+                                                        : const Color(0xFF0D47A1),
                                                   ),
                                                 ),
-                                              ),
 
-                                              // 🔹 RIGHT: AMOUNT CONTAINER
-                                              Container(
-                                                height: ResponsiveLayout.getHeight(55),
-                                                width: ResponsiveLayout.getWidth(335), // 👈 control width
-                                                decoration: BoxDecoration(
-                                                  color: themeHelper.themeMode == ThemeMode.dark
-                                                      ? const Color(0xFF393B46) // Dark mode bg (from ShapeDecoration)
-                                                      : const Color(0xFFF9F9F9), // Light mode bg
+                                                const SizedBox(width: 16),
 
-                                                  borderRadius: BorderRadius.only(
-                                                    topRight: Radius.circular(ResponsiveLayout.getRadius(6)),
-                                                    bottomRight: Radius.circular(ResponsiveLayout.getRadius(6)),
-                                                  ),
-
-                                                  // 🔴 Border (kept from your existing logic)
-                                                  border: Border.all(
-                                                    color: _amountErrorText != null
-                                                        ? Colors.red
-                                                        : themeHelper.themeMode == ThemeMode.dark
-                                                        ? ThemeNotifier.borderColor
-                                                        : Colors.grey.shade300,
-                                                  ),
-
-                                                  // 🌫 Mode-specific shadows
-                                                  boxShadow: [
-                                                    BoxShadow(
+                                                /// 🔹 AMOUNT FIELD
+                                                Expanded(
+                                                  child: Container(
+                                                    height: ResponsiveLayout.getHeight(44),
+                                                    padding: EdgeInsets.symmetric(
+                                                      horizontal: ResponsiveLayout.getPadding(12),
+                                                    ),
+                                                    decoration: BoxDecoration(
                                                       color: themeHelper.themeMode == ThemeMode.dark
-                                                          ? const Color(0x51181818) // Dark mode shadow
-                                                          : const Color(0x51000000), // Light mode shadow
-                                                      blurRadius: 10,
-                                                      offset: themeHelper.themeMode == ThemeMode.dark
-                                                          ? const Offset(0, 1)
-                                                          : const Offset(0, 2),
-                                                      spreadRadius: 0,
+                                                          ? const Color(0xFF1F1D2B)
+                                                          : Colors.white,
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      border: Border.all(
+                                                        color: _amountErrorText != null
+                                                            ? Colors.red
+                                                            : themeHelper.themeMode == ThemeMode.dark
+                                                            ? Colors.white24
+                                                            : const Color(0xFFB6C6E3),
+                                                      ),
                                                     ),
-                                                  ],
-                                                ),
-
-                                                child: TextField(
-                                                  controller: amountController,
-                                                  keyboardType:
-                                                  const TextInputType.numberWithOptions(decimal: true),
-                                                  enabled: balanceAmount >= 0,
-                                                  textAlign: TextAlign.right,
-                                                  decoration: InputDecoration(
-                                                    border: InputBorder.none,
-                                                    contentPadding: EdgeInsets.symmetric(
-                                                      horizontal: ResponsiveLayout.getPadding(16),
-
+                                                    alignment: Alignment.centerRight,
+                                                    child: TextField(
+                                                      controller: amountController,
+                                                      keyboardType:
+                                                      const TextInputType.numberWithOptions(decimal: true),
+                                                      enabled: balanceAmount >= 0,
+                                                      textAlign: TextAlign.right,
+                                                      decoration: InputDecoration(
+                                                        border: InputBorder.none,
+                                                        isDense: true,
+                                                        contentPadding: EdgeInsets.zero,
+                                                        hintText: '${TextConstants.currencySymbol}0.00',
+                                                        hintStyle: TextStyle(
+                                                          color: themeHelper.themeMode == ThemeMode.dark
+                                                              ? Colors.white38
+                                                              : Colors.grey[400],
+                                                        ),
+                                                      ),
+                                                      style: TextStyle(
+                                                        fontSize: ResponsiveLayout.getFontSize(22),
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.black,
+                                                      ),
                                                     ),
-                                                    hintText: '${TextConstants.currencySymbol}0.00',
-                                                    hintStyle: TextStyle(
-                                                      color: themeHelper.themeMode == ThemeMode.dark
-                                                          ? ThemeNotifier.textDark
-                                                          : Colors.grey[400],
-                                                      fontSize: ResponsiveLayout.getFontSize(18),
-                                                    ),
-
-                                                  ),
-                                                  style: TextStyle(
-                                                    color: themeHelper.themeMode == ThemeMode.dark
-                                                        ? ThemeNotifier.textDark
-                                                        : Colors.grey[900],
-                                                    fontSize: ResponsiveLayout.getFontSize(18),
-                                                    fontWeight: FontWeight.bold,
                                                   ),
                                                 ),
-                                              ),
-                                            ],
+                                              ],
+                                            ),
                                           ),
 
-                                          // 🔹 ERROR TEXT
+
+                                          /// 🔴 ERROR TEXT BELOW FIELD
                                           if (computedNetPayable > 0 && _amountErrorText != null)
                                             Padding(
-                                              padding: EdgeInsets.only(top: ResponsiveLayout.getPadding(4)),
+                                              padding: EdgeInsets.only(
+                                                top: ResponsiveLayout.getPadding(4),
+                                                left: ResponsiveLayout.getPadding(12),
+                                              ),
                                               child: Text(
                                                 _amountErrorText!,
                                                 style: TextStyle(
@@ -4884,6 +4838,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                     redeemedValue = newRedeemValue;
                                     availablePoints = newAvailablePoints;
                                     balanceAmount = newBalanceAmount;
+                                    isRedeemAppliedFromApi = true;
                                   });
 
                                   print("🟩 UI Updated:");
@@ -5022,7 +4977,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     if (widget.orderId == null || widget.orderId == 0) return;
 
     final offlineBox = Hive.box('offlineOrders');
-    final localKey = widget.offlineOrderId?.toString();  // 🔥 ALWAYS LOCAL KEY
+    final localKey = widget.offlineOrderId?.toString(); // 🔥 LOCAL KEY ONLY
 
     if (localKey == null) {
       print("❌ No offlineOrderId found");
@@ -5032,46 +4987,51 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     setState(() => isSummaryLoading = true);
 
     try {
-      // 🔥 Woo API call uses Woo ID only
+      // 🔥 Remove coupon from Woo
       await orderBloc.removeCoupon(
         orderId: widget.orderId!,
         couponCode: "",
       );
+
+      // 🔥 RESTORE ORIGINAL PAYABLE
+      final double restoredPayable =
+          grossTotal + oldTax - merchantDiscount + cashbackFee;
+
       setState(() {
         discount = 0.0;
         discountValue = 0.0;
-        NetTotal = grossTotal;
-        tax = oldTax;
-        computedNetPayable = grossTotal + tax - merchantDiscount + cashbackFee;
-        balanceAmount = computedNetPayable;
-        if (loyaltyData != null) {
-          loyaltyData = {
-            ...loyaltyData!,
-            "existing_net_payable": computedNetPayable,
-            "new_payable_amount": computedNetPayable - redeemedValue,
-          };
-        }
-      });
-      // --------- UPDATE HIVE TOTALS ONLY ----------
-      final existing = offlineBox.get(localKey);
+        couponDiscount = 0.0;
 
+        computedNetPayable = restoredPayable;
+        balanceAmount = restoredPayable - tenderAmount;
+
+        isCouponAppliedFromApi = false;
+      });
+
+      // ----------------- UPDATE HIVE -----------------
+      final existing = offlineBox.get(localKey);
       if (existing != null) {
         final data = Map<String, dynamic>.from(existing);
 
-        // ONLY update totals
-        data["orderDiscount"] = 0.0;
+        // 🧹 CLEAR COUPON DATA
+        data.remove("appliedCoupon");
+        data.remove("couponCode");
+        data.remove("couponDiscount");
+        data.remove("orderDiscount");
+
+        // 🔥 SINGLE SOURCE OF TRUTH
+        data["basePayableAmount"] = restoredPayable;
         data["wooTax"] = oldTax;
+        data["couponRemoved"] = true;
 
         offlineBox.put(localKey, data);
 
-        print("🟢 Hive totals updated (LOCAL KEY: $localKey) — no product changes");
-      } else {
-        print("⚠ No hive order found for localKey → $localKey");
+        print("🗑 Coupon removed | Base payable restored = $restoredPayable");
       }
 
-      // --------- CUSTOMER DISPLAY ----------
-      print("📌 Updating Customer Display using LOCAL ORDER ID = $localKey");
-      await CustomerDisplayHelper.updateCustomerDisplay(widget.offlineOrderId!);
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        widget.offlineOrderId!,
+      );
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -5079,13 +5039,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           backgroundColor: Colors.green,
         ),
       );
-
     } catch (e) {
       print("❌ Error removing coupon: $e");
     } finally {
       setState(() => isSummaryLoading = false);
     }
   }
+
   void _openCouponPopup() {
     ScannerGuard.isCouponPopupOpen = true;
 
@@ -5291,6 +5251,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             NetTotal + tax - merchantDiscount + cashbackFee;
         orderTotal = computedNetPayable;
         balanceAmount = computedNetPayable;
+        isCouponAppliedFromApi = true; // 🔥 IMPORTANT
         if (loyaltyData != null) {
           loyaltyData = {
             ...loyaltyData!,
@@ -5341,7 +5302,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     return Container(
       width: MediaQuery.of(context).size.width * 0.240, // fixed width
-      height: ResponsiveLayout.getHeight(63),           // fixed height
+      height: ResponsiveLayout.getHeight(61),           // fixed height
       alignment: Alignment.centerLeft,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -5366,7 +5327,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             ),
           ),
 
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
 
           // 📄 TEXT CONTENT
           Column(
@@ -5376,7 +5337,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(14),
+                  fontSize: ResponsiveLayout.getFontSize(12),
                   fontWeight: FontWeight.w500,
                   color: themeHelper.themeMode == ThemeMode.dark
                       ? Colors.white
@@ -5387,7 +5348,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               Text(
                 amount,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(24),
+                  fontSize: ResponsiveLayout.getFontSize(22),
                   fontWeight: FontWeight.w700,
                   color: amountColor ??
                       (themeHelper.themeMode == ThemeMode.dark

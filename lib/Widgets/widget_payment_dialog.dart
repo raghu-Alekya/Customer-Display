@@ -322,7 +322,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
               ],
             ),
           ),
-          if (widget.changeAmount != null && widget.changeAmount! > 0) ...[
+          if (widget.changeAmount != null && widget.changeAmount! != 0) ...[
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
