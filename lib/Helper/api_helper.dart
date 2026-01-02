@@ -20,6 +20,46 @@ class APIHelper { // Build #1.0.8, Naveen added
       print("#### APIHelper: UrlHelper base URL initialized: ${UrlHelper.baseUrl}");
     }
   }
+  Future<dynamic> postForm(
+      String url,
+      Map<String, String> params,
+      bool useToken, {
+        bool validateMarchentUrl = false,
+      }) async {
+    String finalUrl = "";
+    String token = ""; // ✅ non-nullable
+
+    try {
+      await _initializeBaseUrl();
+
+      finalUrl =
+      validateMarchentUrl ? url : UrlHelper.baseUrl + url;
+
+      final userData = await UserDbHelper().getUserData();
+      token = userData?[AppDBConst.userToken] ?? "";
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse(finalUrl),
+      );
+
+      if (useToken && token.isNotEmpty) {
+        request.headers[HttpHeaders.authorizationHeader] =
+        "Bearer $token";
+      }
+
+      request.fields.addAll(params);
+
+      final streamedResponse = await request.send();
+      final response =
+      await http.Response.fromStream(streamedResponse);
+
+      return _returnResponse(response);
+    } catch (e, s) {
+      _logError("POST FORM", finalUrl, token, e, s);
+      throw Exception("Exception: $e; Stack: $s");
+    }
+  }
 
   // Base method for handling GET requests
   Future<dynamic> get(String url, bool useToken) async {

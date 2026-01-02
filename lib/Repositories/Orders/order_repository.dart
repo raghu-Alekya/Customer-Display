@@ -1081,7 +1081,26 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
   }
 
+  Future<String> validateLoginPin(String pin) async {
+    final String url =
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}token/validate-login-pin";
 
+    if (kDebugMode) {
+      print("OrderRepository - Validate PIN URL: $url");
+      print("OrderRepository - PIN: $pin");
+    }
+
+    final response = await _helper.postForm(
+      url,
+      {
+        "emp_login_pin": pin,
+      },
+      true,
+      validateMarchentUrl: true,
+    );
+
+    return response;
+  }
 
   Future<dynamic> redeemLoyaltyPoints({
     required int orderId,

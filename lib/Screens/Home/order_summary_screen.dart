@@ -1047,6 +1047,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ebtTotal = finalRemainingEbt;
       tenderAmount = totalPaid;
       balanceAmount = newBalance;
+      isPaymentStarted = totalPaid > 0;
+
+
+      // 🔒 HARD DISABLE REDEEM & COUPON
+      if (isPaymentStarted) {
+        isRedeemActive = false;
+      }
 
       _paymentDialogShown = false;
     });

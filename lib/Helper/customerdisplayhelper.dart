@@ -211,21 +211,6 @@ class CustomerDisplayHelper {
           "image": c["product_image"] ?? "",
         }),
 
-
-
-    ...payouts.map((p) => {
-          "name": "Payout",
-          "qty": 1.0,
-          "price": (p["amount"] ?? 0).toDouble(),
-          "image": "assets/svg/payout.svg",
-        }),
-
-        ...cashbacks.map((c) => {
-          "name": "Cashback",
-          "qty": 1.0,
-          "price": (c["amount"] ?? 0).toDouble(),
-          "image": c["product_image"] ?? "",
-        }),
       ];
 
       // ------------------ TOTALS ------------------

@@ -205,6 +205,7 @@ class _PinBoxFieldState extends State<_PinBoxField> {
 }
 
 
+
 class TopBar extends StatefulWidget { // Build #1.0.13 : Updated top bar with search api integration
   final Function() onModeChanged;
   // final Function() onThemeChanged;
@@ -1253,14 +1254,35 @@ class _TopBarState extends State<TopBar> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            onPressed: () {
-                              if (pinController.text == "123456") {
-                                Navigator.pop(ctx, true);
-                              } else {
+                            onPressed: () async {
+                              final pin = pinController.text.trim();
+
+                              if (pin.length != 6) {
+                                setState(() => isError = true);
+                                return;
+                              }
+
+                              setState(() => isError = false);
+
+                              try {
+                                final response =
+                                await OrderRepository().validateLoginPin(pin); // ✅ positional
+
+                                final decoded = json.decode(response);
+
+                                if (decoded["success"] == true) {
+                                  Navigator.pop(ctx, true);
+                                } else {
+                                  setState(() => isError = true);
+                                  pinController.clear();
+                                }
+                              } catch (e) {
                                 setState(() => isError = true);
                                 pinController.clear();
                               }
                             },
+
+
                             child: const Text(
                               "Confirm",
                               style: TextStyle(
