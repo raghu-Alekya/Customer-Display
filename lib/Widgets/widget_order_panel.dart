@@ -1490,6 +1490,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                       qty,
                       selected["sku"],
                       activeOrderId,
+                      type: 'variant',
                       productId: product?.id,
                       variationId: selected["id"],
                       isEbtEligible: isEbtEligible,
@@ -3125,6 +3126,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                       },
                       itemBuilder: (context, index) {
                         final orderItem = orderItems[index];
+
                         if (kDebugMode) {
                           print("@@@@@@@@@@@@@@@@@ orderItem Data : $orderItem");
                         }

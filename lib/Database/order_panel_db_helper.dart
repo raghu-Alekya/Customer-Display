@@ -1285,9 +1285,14 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           'price': price,
           'quantity': quantity,
           'sku': sku,
-          'type': type ?? 'product',
+          'type': (variationId != null && variationId > 0) ? 'variant' : (type ?? 'product'),
+
           'product_id': productId,
+          // ✅ ADD ALL THREE KEYS (safe + backward compatible)
           'variation_id': variationId,
+          'item_variation': variationId,
+          'variationId': variationId,
+
           'variation_name': variationName,
           'variation_count': variationCount,
           'combo': combo,

@@ -3178,7 +3178,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     child: Row(
                       children: [
                         SizedBox(
-                          width: 180,
+                          width: 150,
                           child: Text(
                             itemName.length > 30
                                 ? '${itemName.substring(0, 30)}...'
@@ -3317,7 +3317,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
             /// RIGHT PRICE COLUMN
             SizedBox(
-              width: 55,
+              //width: 55,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

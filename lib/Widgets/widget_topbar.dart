@@ -1180,7 +1180,7 @@ class _TopBarState extends State<TopBar> {
                     const SizedBox(height: 6),
 
                     Text(
-                      "Enter 6-digit PIN to open cash drawer",
+                      "Enter PIN to open cash drawer",
                       style: TextStyle(
                         fontSize: 12,
                         fontFamily: 'Inter',

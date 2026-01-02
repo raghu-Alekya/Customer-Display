@@ -149,7 +149,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
 
                   // 📄 MESSAGE (same secondary text style)
                   Text(
-                    "Please wait while we prepare items.\nDo not perform any action.",
+                    "Please wait while we securely sync your latest data.\nThis may not take much time. Do not close the app.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 13,
