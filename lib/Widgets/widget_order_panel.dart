@@ -107,6 +107,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   double cashbackFee =0.0;
   bool _scanLocked = false;
   bool _ageVerificationActive=false;
+  Map<String, dynamic>? resolvedProductMap;
+
 
   void _toggleSummary() {
     setState(() {
@@ -879,6 +881,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 else {
                   productMap = Map<String, dynamic>.from(memoryData);
                 }
+                // 🔥 FIX FOR CUSTOM ITEM RE-SCAN 🔥
+                if (productMap.containsKey('product') &&
+                    productMap['product'] is Map<String, dynamic>) {
+                  productMap =
+                  Map<String, dynamic>.from(productMap['product']);
+                }
+
+// ✅ STORE FINAL MAP FOR LATER USE
+                resolvedProductMap = productMap;
+
 
                 if (kDebugMode) {
                   print("💾 Extracted productMap from memory → $productMap");
@@ -1114,11 +1126,28 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             // ---------------------------------------------------------------------------
             // 7️⃣ EXTRACT PRODUCT DATA
             // ---------------------------------------------------------------------------
-            final productId = product.id ?? -1;
-            final productName = product.name ?? "Unnamed Product";
-            final productSku = product.sku ?? trimmedBarcode;
-            final productPrice =
-                double.tryParse(product.price?.toString() ?? "0") ?? 0;
+            final bool isCustomItem =
+                product.id == null ||
+                    product.id == 0 ||
+                    product.type == 'custom';
+
+            final productId = product.id ?? 0;
+
+            final productName = isCustomItem
+                ? (resolvedProductMap?['name'] ?? 'Custom Item').toString()
+                : (product.name ?? 'Unnamed Product');
+
+            final productSku = isCustomItem
+                ? (resolvedProductMap?['sku'] ?? trimmedBarcode).toString()
+                : (product.sku ?? trimmedBarcode);
+
+            final productPrice = isCustomItem
+                ? double.tryParse(
+              resolvedProductMap?['price']?.toString() ?? '0',
+            ) ??
+                0.0
+                : double.tryParse(product.price?.toString() ?? '0') ?? 0.0;
+
             final int? selectedVariationId =
             (product.variations != null && product.variations!.isNotEmpty)
                 ? null  // variant not selected yet
