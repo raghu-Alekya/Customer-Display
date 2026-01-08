@@ -1,12 +1,29 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart'; // For displaying SVG images
 import 'package:pinaka_pos/Constants/text.dart';
 import 'package:pinaka_pos/Helper/Extentions/text_extensions.dart';
 import 'package:provider/provider.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:thermal_printer/esc_pos_utils_platform/src/enums.dart';
+import 'package:thermal_printer/esc_pos_utils_platform/src/pos_styles.dart';
+import 'package:thermal_printer/esc_pos_utils_platform/src/qrcode.dart';
+import '../Constants/misc_features.dart';
 import '../Helper/Extentions/theme_notifier.dart';
+import '../Screens/Home/Settings/printer_setup_screen.dart';
 import '../Utilities/printer_settings.dart'; // Contains text constants for UI
+import 'dart:async';
+import 'dart:core';
+import 'package:flutter/services.dart';
+import 'package:pinaka_pos/Helper/Extentions/extensions.dart';
+import 'package:flutter_svg/svg.dart';
+import '../Utilities/result_utility.dart';
 
 // Enum for different payment completion states
 enum PaymentStatus { successful, partial, receipt, exitConfirmation, voidConfirmation }
@@ -28,6 +45,8 @@ class PaymentDialog extends StatefulWidget {
   final VoidCallback? onExitConfirm; // Callback for confirming exit
   final Function(String)? onEmail; // Callback for sending receipt via email
   final Function(String)? onSMS; // Callback for sending receipt via SMS
+  final Map<String, dynamic>? couponResponse;
+
 
   const PaymentDialog({
     Key? key,
@@ -44,6 +63,7 @@ class PaymentDialog extends StatefulWidget {
     this.onExitConfirm,
     this.onEmail,
     this.onSMS,
+    this.couponResponse,
   }) : super(key: key);
 
   @override
@@ -81,7 +101,9 @@ class _PaymentDialogState extends State<PaymentDialog> {
   bool _isDoneLoading = false; // Track loading for done action
   bool _isNoReceiptLoading = false; // Track loading for no receipt action
   bool _isContinueLoading = false; // Track loading for no receipt action
-
+  String? _selectedCouponCode;
+  final _printerSettings =  PrinterSettings();
+  List<int> bytes = [];
   @override
   Widget build(BuildContext context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -92,7 +114,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
       backgroundColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.popUpsBackground : null,
       child: SingleChildScrollView(
         child: Container(
-          padding: const EdgeInsets.all(30), // Padding inside dialog
+          padding: const EdgeInsets.all(20), // Padding inside dialog
           width: 750, // Fixed width for dialog
           child: Column(
             mainAxisSize: MainAxisSize.min, // Keep dialog as small as possible
@@ -136,14 +158,468 @@ class _PaymentDialogState extends State<PaymentDialog> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-              const SizedBox(height: 32), // Vertical spacing
-              _buildActionButtons(), // Display appropriate action buttons
+              const SizedBox(height: 15), // Vertical spacing
+              _buildActionButtons(),
+              const SizedBox(height: 15),// Display appropriate action buttons
             ],
           ),
         ),
       ),
     );
   }
+  Widget _buildCouponCard(Map c, ThemeNotifier themeHelper) {
+    final bool isSelected = _selectedCouponCode == c["code"];
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+
+        children: [
+          // 🟨 COUPON CARD
+          Expanded(
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  if (_selectedCouponCode == c["code"]) {
+                    _selectedCouponCode = null; // 🔁 unselect
+                  } else {
+                    _selectedCouponCode = c["code"]; // ✅ select
+                  }
+                });
+              },
+
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFFFFF3E0)
+                      : const Color(0xFFFFF7EC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isSelected ? Colors.orange : Colors.transparent,
+                    width: 1.2,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    // ✅ CHECK ICON
+                    Container(
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.orange : Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: isSelected ? Colors.orange : Colors.grey,
+                        ),
+                      ),
+                      child: isSelected
+                          ? const Icon(Icons.check,
+                          color: Colors.white, size: 18)
+                          : null,
+                    ),
+
+                    const SizedBox(width: 7),
+
+                    // 📄 TEXT DETAILS
+                    Expanded(
+                      child: Row(
+                        children: [
+                          RichText(
+                            text: TextSpan(
+                              style: const TextStyle(color: Colors.black, fontSize: 14),
+                              children: [
+                                const TextSpan(
+                                  text: "CODE: ",
+                                  style: TextStyle(color: Colors.orange,fontWeight: FontWeight.w600),
+                                ),
+                                TextSpan(
+                                  text: c["code"],
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF4C5F7D),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(width: 7),
+
+                          Flexible(
+                            child: RichText(
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              text: TextSpan(
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: const Color(0xFF4C5F7D),
+                                  fontWeight: FontWeight.w400, // label normal
+                                ),
+                                children: [
+                                  const TextSpan(text: "Valid: "),
+                                  TextSpan(
+                                    text: c["expiry_date"]?.toString() ?? '',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700, // ✅ value bold
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+
+                          const SizedBox(width: 7),
+
+                          Flexible(
+                            child: RichText(
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              text: TextSpan(
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: const Color(0xFF4C5F7D),
+                                  fontWeight: FontWeight.w400, // label normal
+                                ),
+                                children: [
+                                  const TextSpan(text: "Min. cart: "),
+                                  TextSpan(
+                                    text:
+                                    '${TextConstants.currencySymbol}'
+                                        '${double.tryParse(c["min_amount"].toString())?.toStringAsFixed(2) ?? '0.00'}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700, // ✅ amount bold
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                        ],
+                      ),
+                    ),
+
+
+                    const SizedBox(width: 10),
+
+                    // 💰 AMOUNT
+                    Text(
+                      '${TextConstants.currencySymbol}'
+                          '${double.tryParse(c["amount"].toString())?.toStringAsFixed(2) ?? '0.00'}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF4C5F7D),
+                      ),
+                    ),
+
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          // 🖨 PRINT BUTTON (OUTSIDE CARD)
+          SizedBox(
+            height: 52,
+            child: ElevatedButton(
+
+              // onPressed: isSelected
+              //     ? () async {
+              //   final String couponCode = c["code"].toString();
+              //
+              //   // Generate QR
+              //   final qrPainter = QrPainter(
+              //     data: couponCode,
+              //     version: QrVersions.auto,
+              //     gapless: true,
+              //   );
+              //
+              //   final ui.Image qrImage = await qrPainter.toImage(200);
+              //   final byteData =
+              //   await qrImage.toByteData(format: ui.ImageByteFormat.png);
+              //
+              //   if (byteData == null) return;
+              //
+              //   final Uint8List qrBytes = byteData.buffer.asUint8List();
+              //   final String qrBase64 = base64Encode(qrBytes);
+              //
+              //   // 🔥 Prepare print content
+              //   await _prepareCouponPrintTicket(
+              //     couponCode: couponCode,
+              //     qrBase64: qrBase64,
+              //   );
+              //
+              //   // 🖨 Direct print
+              //   await _printTicket();
+              // }
+              //     : null,
+
+              // onPressed: isSelected
+              //     ? () async {
+              //   final String couponCode = c["code"].toString();
+              //   final String qrData = "$couponCode";
+              //
+              //   final qrPainter = QrPainter(
+              //     data: qrData,
+              //     version: QrVersions.auto,
+              //     gapless: true,
+              //     eyeStyle: const QrEyeStyle(
+              //       eyeShape: QrEyeShape.square,
+              //       color: Colors.black,
+              //     ),
+              //     dataModuleStyle: const QrDataModuleStyle(
+              //       dataModuleShape: QrDataModuleShape.square,
+              //       color: Colors.black,
+              //     ),
+              //   );
+              //
+              //   final ui.Image qrImage = await qrPainter.toImage(200);
+              //   final byteData =
+              //   await qrImage.toByteData(format: ui.ImageByteFormat.png);
+              //
+              //   if (byteData == null) return;
+              //
+              //   final Uint8List qrBytes = byteData.buffer.asUint8List();
+              //   final String qrBase64 = base64Encode(qrBytes);
+              //
+              //   // 🔥 SHOW QR IMAGE PREVIEW
+              //   showDialog(
+              //     context: context,
+              //     builder: (_) => AlertDialog(
+              //       backgroundColor: Colors.white,
+              //       content: Column(
+              //         mainAxisSize: MainAxisSize.min,
+              //         children: [
+              //           Container(
+              //             padding: const EdgeInsets.all(8),
+              //             color: Colors.white,
+              //             child: Image.memory(
+              //               qrBytes,
+              //               width: 180,
+              //               height: 180,
+              //               fit: BoxFit.contain,
+              //             ),
+              //           ),
+              //           const SizedBox(height: 12),
+              //           Text(
+              //             couponCode,
+              //             style: const TextStyle(
+              //               fontSize: 16,
+              //               fontWeight: FontWeight.w700,
+              //             ),
+              //           ),
+              //           const SizedBox(height: 12),
+              //           ElevatedButton(
+              //             onPressed: () {
+              //               Navigator.pop(context);
+              //
+              //               // 🔹 NOW PRINT
+              //               _handleCouponPrint(
+              //                 couponCode: couponCode,
+              //                 qrBase64: qrBase64,
+              //               );
+              //             },
+              //             child: const Text("Print"),
+              //           ),
+              //         ],
+              //       ),
+              //     ),
+              //   );
+              // }
+              //     : null,
+
+              onPressed: isSelected
+                  ? () async {
+                final String couponCode = c["code"].toString();
+                final String qrData = "COUPON:$couponCode";
+
+                // 🔹 GENERATE QR FIRST
+                final qrPainter = QrPainter(
+                  data: qrData,
+                  version: QrVersions.auto,
+                  gapless: true,
+                );
+
+                final ui.Image qrImage = await qrPainter.toImage(200);
+                final byteData =
+                await qrImage.toByteData(format: ui.ImageByteFormat.png);
+
+                if (byteData == null) {
+                  print("❌ QR generation failed");
+                  return;
+                }
+
+                final Uint8List qrBytes = byteData.buffer.asUint8List();
+                final String qrBase64 = base64Encode(qrBytes);
+
+                // 🔹 PASS ONLY GENERATED DATA
+                _handleCouponPrint(
+                  couponCode: couponCode,
+                  qrBase64: qrBase64,
+                );
+              }
+                  : null,
+
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                disabledBackgroundColor: Colors.grey.shade400,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+              ),
+              child: const Text(
+                "Print",
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white, // ✅ white text
+                ),
+              ),
+
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  Future<void> _prepareCouponPrintTicket({
+    required String couponCode,
+    required String qrBase64,
+  }) async {
+    print("🖨 ===============================");
+    print("🖨 Preparing Coupon Print Ticket");
+    print("🖨 ===============================");
+
+    // Reset buffer
+    bytes = [];
+    print("🧹 Buffer reset");
+
+    final ticket = await _printerSettings.getTicket();
+    print("🎟 Ticket instance created");
+
+    // ===============================
+    // 🧾 HEADER
+    // ===============================
+    print("🧾 Printing HEADER → COUPON");
+
+    bytes += ticket.text(
+      'COUPON',
+      styles: const PosStyles(
+        align: PosAlign.center,
+        bold: true,
+        height: PosTextSize.size2,
+        width: PosTextSize.size2,
+      ),
+    );
+
+    bytes += ticket.hr();
+    print("➖ Divider printed");
+
+    // ===============================
+    // 🔤 COUPON CODE
+    // ===============================
+    print("🔤 Printing Coupon Code → $couponCode");
+
+    bytes += ticket.text(
+      couponCode,
+      styles: const PosStyles(
+        align: PosAlign.center,
+        bold: true,
+      ),
+    );
+
+    bytes += ticket.feed(1);
+    print("↩ Line feed added");
+
+    // ===============================
+    // 🔳 QR CODE
+    // ===============================
+    print("🔳 Printing QR Code");
+    print("🔳 QR Data → $couponCode");
+    print("🔳 QR Base64 length → ${qrBase64.length}");
+
+    bytes += ticket.qrcode(
+      couponCode,
+      size: QRSize.Size6,
+      align: PosAlign.center,
+    );
+
+    bytes += ticket.feed(2);
+    print("↩↩ QR spacing added");
+
+    // ===============================
+    // ✂ CUT
+    // ===============================
+    bytes += ticket.cut();
+    print("✂ Cut command added");
+
+    // ===============================
+    // ✅ FINAL OUTPUT
+    // ===============================
+    print("✅ Coupon Print Ticket Ready");
+    print("📦 Total bytes generated → ${bytes.length}");
+    print("🖨 ===============================");
+  }
+
+  Future _printTicket() async{
+    final ticket =  await _printerSettings.getTicket();
+    final result = await _printerSettings.printTicket(bytes, ticket);
+
+    if (kDebugMode) {
+      print(">>>> PrintTicket result $result");
+    }
+    switch (result) {
+      case Ok<BluetoothPrinter>():
+      // BluetoothPrinter printer = result.value;
+        break;
+      case Error<BluetoothPrinter>():
+        WidgetsBinding.instance.addPostFrameCallback((_) { // Build #1.0.16
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                result.error.getMessage,
+                style: const TextStyle(color: Colors.red),
+              ),
+              backgroundColor: Colors.black, // ✅ Black background
+              duration: const Duration(seconds: 3),
+            ),
+          );
+          /// call printer setup screen
+          if (kDebugMode) {
+            print("call printer setup screen");
+          }
+          Navigator.push(context, MaterialPageRoute(
+            builder: (context) => PrinterSetup(),
+          )).then((result) {
+            if (result == TextConstants.refresh) { // Build #1.0.175: added TextConstants
+              _printerSettings.loadPrinter();
+              setState(() {
+                // Update state to refresh the UI
+                if (kDebugMode) {
+                  print("SettingScreen - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
+                }
+                if(!Misc.disablePrinter) {
+                  _printTicket();
+                }
+              });
+            }
+          });
+        });
+        break;
+    }
+  }
+
+
 
   Widget _buildStatusIcon() {
     //Color iconColor; // Commented out unused variable
@@ -239,6 +715,11 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
   Widget _buildPaymentInfo() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
+    // ===================================================
+    // 🎁 READ COUPONS (SAFE)
+    // ===================================================
+    final List coupons =
+        widget.couponResponse?["coupons"] as List? ?? [];
     if (widget.status == PaymentStatus.receipt) {
       return Row(
         mainAxisAlignment: MainAxisAlignment.center, // Center the receipt options
@@ -279,8 +760,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
       );
     }
     return Container( //Build #1.0.34: UI updated as per new figma ui
-      width: MediaQuery.of(context).size.width * 0.25,
-      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 0),
+      constraints: const BoxConstraints(maxWidth: 580),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
       decoration: BoxDecoration(
         color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.popUpsBackground : Colors.white,
       ),
@@ -361,6 +842,38 @@ class _PaymentDialogState extends State<PaymentDialog> {
               ),
             ),
           ],
+
+          // ===================================================
+          // 🎁 COUPON SECTION (FULL LINE)
+          // ===================================================
+          if (coupons.isNotEmpty) ...[
+            const SizedBox(height: 24),
+
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Coupon Code Availability",
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.textDark
+                      : Colors.blueGrey[800],
+                ),
+              ),
+            ),
+
+
+            const SizedBox(height: 8),
+
+            ...coupons.map((c) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 0),
+                child: _buildCouponCard(c, themeHelper),
+              );
+            }).toList(),
+          ],
+
         ],
       ),
     );
@@ -779,4 +1292,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
       ),
     );
   }
+
+  void _handleCouponPrint({required String couponCode, required String qrBase64}) {}
 }

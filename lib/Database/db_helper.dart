@@ -45,6 +45,21 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String orderShipping = 'shipping'; // Optional: Shipping charges
   static const String orderAgeRestricted = 'age_restricted'; //Build #1.0.234: Added column in order table
 
+  // Add these new constants for order-level fields
+  static const multipackDiscountTotal = 'multipack_discount_total';
+  static const autoDiscountTotal = 'auto_discount_total';
+  static const orderGetTime = 'get_time';
+
+  static const multipackDiscount = 'multipack_discount_total';
+
+  static const String multipack_discount_total = 'multipack_discount_total'; // line_item -> product_data-> regular price
+  // Add these for item-level multipack discount (already present)
+  static const itemMultipackDiscountTotal = 'multipack_discount_total';
+  static const itemAutoDiscountMeta = 'item_auto_discount_meta';
+
+
+  // static const autoDiscount = 'multipack_discount_total';
+
   // Purchased Items Table
   static const String purchasedItemsTable = 'purchased_items_table';
   static const String itemId = 'items_id';
@@ -65,6 +80,13 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String itemSalesPrice = 'item_sales_price'; // It is a Discounted price = line_item -> product_data-> sales price * quantity
   static const String itemRegularPrice = 'item_regular_price'; //It is a Regular price = line_item -> product_data-> regular price * quantity
   static const String itemUnitPrice = 'item_unit_price'; // line_item -> product_data-> regular price
+
+
+
+  // For order table (you might want these too)
+  static const orderMultipackDiscount = 'multipack_discount_applied';
+  static const orderAutoDiscountTotal = 'auto_discount_total';
+
 
   // Coupon Items Table: remove if above itemType is not working properly
   static const String couponsItemsTable = 'coupons_items_table';
@@ -238,27 +260,41 @@ class DBHelper {
     )
     ''');
 
-   //Build #1.0.40:  Updated Orders Table
+    //Build #1.0.40:  Updated Orders Table
     await db.execute('''
 CREATE TABLE ${AppDBConst.orderTable} (
-  ${AppDBConst.orderId} INTEGER PRIMARY KEY, -- Changed: Use API id, no AUTOINCREMENT
-  ${AppDBConst.orderServerId} INTEGER, -- Required: Updated by REST API, can be NULL initially
+  ${AppDBConst.orderId} INTEGER PRIMARY KEY, -- Use API id, no AUTOINCREMENT
+  ${AppDBConst.orderServerId} INTEGER, -- Updated by REST API, can be NULL initially
   ${AppDBConst.userId} INTEGER NOT NULL,
+
   ${AppDBConst.orderTotal} REAL NOT NULL,
   ${AppDBConst.orderStatus} TEXT NOT NULL,
   ${AppDBConst.orderType} TEXT NOT NULL,
   ${AppDBConst.orderDate} TEXT NOT NULL,
   ${AppDBConst.orderTime} TEXT NOT NULL,
-  ${AppDBConst.orderPaymentMethod} TEXT, -- Optional: Payment method (e.g., cash, card)
-  ${AppDBConst.orderDiscount} REAL DEFAULT 0, -- Optional: Discount applied to the order
-  ${AppDBConst.merchantDiscount} REAL DEFAULT 0, -- Optional: Merchant Discount applied to the order
-  ${AppDBConst.merchantDiscountIds} TEXT, -- Optional: Merchant Discount Ids applied to the order 
-  ${AppDBConst.orderTax} REAL DEFAULT 0, -- Optional: Tax applied to the order
-  ${AppDBConst.orderShipping} REAL DEFAULT 0, -- Optional: Shipping charges
-  ${AppDBConst.orderAgeRestricted} TEXT, -- Added this line
-  FOREIGN KEY(${AppDBConst.userId}) REFERENCES ${AppDBConst.userTable}(${AppDBConst.userId}) ON DELETE CASCADE
+
+  ${AppDBConst.orderPaymentMethod} TEXT, -- cash, card, etc.
+
+  ${AppDBConst.orderDiscount} REAL DEFAULT 0, -- Manual order discount
+  ${AppDBConst.merchantDiscount} REAL DEFAULT 0, -- Merchant discount
+  ${AppDBConst.merchantDiscountIds} TEXT, -- Merchant discount IDs
+
+  ${AppDBConst.orderTax} REAL DEFAULT 0,
+  ${AppDBConst.orderShipping} REAL DEFAULT 0,
+
+  ${AppDBConst.orderAgeRestricted} TEXT,
+
+  -- Multipack / automatic discounts
+  multipack_discount_applied INTEGER DEFAULT 0, -- 0 = false, 1 = true
+  ${AppDBConst.multipack_discount_total} REAL DEFAULT 0,
+  auto_discount_total REAL DEFAULT 0,
+
+  FOREIGN KEY(${AppDBConst.userId})
+    REFERENCES ${AppDBConst.userTable}(${AppDBConst.userId})
+    ON DELETE CASCADE
 )
 ''');
+
 
     // Purchased Items Table
     await db.execute('''
@@ -281,6 +317,10 @@ CREATE TABLE ${AppDBConst.orderTable} (
       ${AppDBConst.itemUnitPrice} REAL,
       ${AppDBConst.orderIdForeignKey} INTEGER NOT NULL,
       ${AppDBConst.itemType} TEXT NOT NULL,
+     ${AppDBConst.multipack_discount_total} REAL DEFAULT 0, -- correct syntax
+     ${AppDBConst.autoDiscountTotal} REAL DEFAULT 0, -- correct syntax
+
+
       FOREIGN KEY(${AppDBConst.orderIdForeignKey}) REFERENCES ${AppDBConst.orderTable}(${AppDBConst.orderServerId}) ON DELETE CASCADE
     )
     ''');
@@ -556,5 +596,37 @@ CREATE TABLE ${AppDBConst.orderTable} (
       print("#### Database connection closed!");
     }
   }
+
+
+  Future<void> insertPurchasedItem(Map<String, dynamic> item) async {
+    final db = await DBHelper.instance.database;
+
+    await db.insert(
+      AppDBConst.purchasedItemsTable,
+      {
+        AppDBConst.itemServerId: item['serverId'],
+        AppDBConst.itemProductId: item['productId'],
+        AppDBConst.itemVariationId: item['variationId'],
+        AppDBConst.itemName: item['name'],
+        AppDBConst.itemSKU: item['sku'],
+        AppDBConst.itemPrice: item['price'],
+        AppDBConst.itemImage: item['image'],
+        AppDBConst.itemCount: item['count'],
+        AppDBConst.itemSumPrice: item['sumPrice'],
+        AppDBConst.itemVariationCustomName: item['variationCustomName'],
+        AppDBConst.itemVariationCount: item['variationCount'],
+        AppDBConst.itemCombo: item['combo'],
+        AppDBConst.itemSalesPrice: item['salesPrice'],
+        AppDBConst.itemRegularPrice: item['regularPrice'],
+        AppDBConst.itemUnitPrice: item['unitPrice'],
+        AppDBConst.orderIdForeignKey: item['orderId'],
+        AppDBConst.itemType: item['type'],
+        AppDBConst.multipack_discount_total: item['multipack_discount_total'] ?? 0,
+        AppDBConst.autoDiscountTotal: item['auto_discount_total'] ?? 0, // fixed
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
 }
 

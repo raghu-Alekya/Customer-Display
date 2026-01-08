@@ -1001,6 +1001,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
               ),
             ),
             const SizedBox(height: 4),
+
             Expanded(
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 0),
@@ -1022,7 +1023,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                     interactive: false,
                     radius: const Radius.circular(8),
                     trackVisibility: true,
-                    child: ReorderableListView.builder(
+                    child:
+                    ReorderableListView.builder(
                       buildDefaultDragHandles: false,
                       //Build #1.0.4: re-order for list
                       onReorder: (oldIndex, newIndex) {
@@ -1137,6 +1139,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             orderItem[AppDBConst.itemVariationCount] ?? 0;
                         final combo = orderItem[AppDBConst.itemCombo] ?? '';
 
+
+                        final double multipackDiscount =
+                            (orderItem[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
+
+                        final double autoDiscount =
+                            (orderItem[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
+
+
                         /// Build #1.0.134: Item Price will check sales price if it is null/empty, check regular price else unit price
                         final salesPrice = (orderItem[
                         AppDBConst.itemSalesPrice] ==
@@ -1211,362 +1221,394 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             displayName = '$maskedPart$visiblePart';
                           }
                         }
-                        return ClipRRect(
-                          key: ValueKey(index),
-                          borderRadius: BorderRadius.circular(20),
-                          child: SizedBox(
-                            // Ensuring Slidable matches the item height
-                            height: 70, // reduce height
-                            //height: MediaQuery.of(context).size.height * 0.12, // Adjust to match your item height
-                            child: Slidable(
-                              //Build #1.0.2 : added code for delete the items in list
-                              key: ValueKey(index),
-                              enabled: false,
-                              closeOnScroll: true,
-                              direction: Axis.horizontal,
-                              endActionPane: ActionPane(
-                                motion: const DrawerMotion(),
-                                children: [
-                                  CustomSlidableAction(
-                                    onPressed: (context) => {},
-                                    backgroundColor: Colors.transparent,
-                                    child: Column(
-                                      mainAxisAlignment:
-                                      MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.delete, color: Colors.red),
-                                        const SizedBox(height: 4),
-                                        const Text(TextConstants.deleteText,
-                                            style: TextStyle(
-                                                color: Colors.red,
-                                                fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              child: GestureDetector(
-                                onTap: () {
-                                  if (isPayoutOrCouponOrCustomItem) return;
-                                  // Navigator.push(
-                                  //   context,
-                                  //   MaterialPageRoute(
-                                  //     builder: (context) => EditProductScreen(
-                                  //       orderItem: orderItem,
-                                  //       onQuantityUpdated: (newQuantity) async {
-                                  //
-                                  //         if (orderHelper.activeOrderId != null) {
-                                  //           final order = orderHelper.orders.firstWhere(
-                                  //                 (order) => order[AppDBConst.orderId] == orderHelper.activeOrderId,
-                                  //             orElse: () => {},
-                                  //           );
-                                  //           final serverOrderId = order[AppDBConst.orderServerId] as int?;
-                                  //           final dbOrderId = orderHelper.activeOrderId;
-                                  //           // final lineItemId = orderItem[AppDBConst.itemServerId] as int?;
-                                  //           final productId = orderItem[AppDBConst.itemServerId] as int?;
-                                  //
-                                  //           if (serverOrderId != null && dbOrderId != null && productId != null) {
-                                  //             _updateOrderSubscription?.cancel();
-                                  //             _updateOrderSubscription = orderBloc.updateOrderStream.listen((response) async {
-                                  //               if (response.status == Status.COMPLETED) {
-                                  //                 await orderHelper.updateItemQuantity(
-                                  //                   orderItem[AppDBConst.itemId],
-                                  //                   newQuantity,
-                                  //                 );
-                                  //                 await fetchOrderItems();
-                                  //               } else if (response.status == Status.ERROR) {
-                                  //                 _scaffoldMessenger.showSnackBar(
-                                  //                   SnackBar(
-                                  //                     content: Text(response.message ?? "Failed to update quantity"),
-                                  //                     backgroundColor: Colors.red,
-                                  //                     duration: const Duration(seconds: 2),
-                                  //                   ),
-                                  //                 );
-                                  //               }
-                                  //             });
-                                  //             // API CALL WHILE EDITING THE PRODUCT QUANTITY
-                                  //             await orderBloc.updateOrderProducts(
-                                  //               orderId: serverOrderId,
-                                  //               dbOrderId: dbOrderId,
-                                  //               lineItems: [
-                                  //                 OrderLineItem(
-                                  //                   productId: productId,
-                                  //                   quantity: newQuantity,
-                                  //                 ),
-                                  //               ],
-                                  //             );
-                                  //           } else {
-                                  //             await orderHelper.updateItemQuantity(
-                                  //               orderItem[AppDBConst.itemId],
-                                  //               newQuantity,
-                                  //             );
-                                  //             await fetchOrderItems();
-                                  //           }
-                                  //         }
-                                  //       },
-                                  //     ),
-                                  //   ),
-                                  // );
-                                },
-                                child: Container(
-                                  margin: const EdgeInsets.symmetric(
-                                      vertical: 1, horizontal: 8),
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: themeHelper.themeMode ==
-                                        ThemeMode.dark
-                                        ? Color(0xFF252837)
-                                        : Color(0xFFE8E8E8), // ThemeNotifier.secondaryBackground color of items in order panel
-                                    borderRadius: BorderRadius.circular(8),
-                                    //   BoxShadow(
-                                    //     color: Colors.black12,
-                                    //     blurRadius: 5,
-                                    //     spreadRadius: 1,
-                                    //   )
-                                    // ],
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      // Replace the ClipRRect widget with this:
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(5),
-                                        child: isPayout
-                                            ? SvgPicture.asset(
-                                          "assets/svg/payout.svg",
-                                          height: MediaQuery.of(context).size.height * 0.08,
-                                          width: MediaQuery.of(context).size.height * 0.075,
-                                          fit: BoxFit.cover,
-                                        )
-                                            : buildProductImage(
-                                          orderItem[AppDBConst.itemImage]?.toString(),
-                                          height: MediaQuery.of(context).size.height * 0.08,
-                                          width: MediaQuery.of(context).size.height * 0.075,
-                                        ),
+                        return
+                          ClipRRect(
+                            key: ValueKey(index),
+                            borderRadius: BorderRadius.circular(20),
+                            child: SizedBox(
+                              // Ensuring Slidable matches the item height
+                              height: 70, // reduce height
+                              //height: MediaQuery.of(context).size.height * 0.12, // Adjust to match your item height
+                              child: Slidable(
+                                //Build #1.0.2 : added code for delete the items in list
+                                key: ValueKey(index),
+                                enabled: false,
+                                closeOnScroll: true,
+                                direction: Axis.horizontal,
+                                endActionPane: ActionPane(
+                                  motion: const DrawerMotion(),
+                                  children: [
+                                    CustomSlidableAction(
+                                      onPressed: (context) => {},
+                                      backgroundColor: Colors.transparent,
+                                      child: Column(
+                                        mainAxisAlignment:
+                                        MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.delete, color: Colors.red),
+                                          const SizedBox(height: 4),
+                                          const Text(TextConstants.deleteText,
+                                              style: TextStyle(
+                                                  color: Colors.red,
+                                                  fontWeight: FontWeight.bold)),
+                                        ],
                                       ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                          mainAxisAlignment:
-                                          MainAxisAlignment.spaceEvenly,
-                                          children: [
-                                            Column(
-                                              crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                              mainAxisAlignment:
-                                              MainAxisAlignment.start,
-                                              children: [
-                                                RichText(
-                                                  maxLines: 2,
-                                                  softWrap: true,
-                                                  text: TextSpan(
+                                    ),
+                                  ],
+                                ),
+                                child: GestureDetector(
+                                  onTap: () {
+                                    if (isPayoutOrCouponOrCustomItem) return;
+                                    // Navigator.push(
+                                    //   context,
+                                    //   MaterialPageRoute(
+                                    //     builder: (context) => EditProductScreen(
+                                    //       orderItem: orderItem,
+                                    //       onQuantityUpdated: (newQuantity) async {
+                                    //
+                                    //         if (orderHelper.activeOrderId != null) {
+                                    //           final order = orderHelper.orders.firstWhere(
+                                    //                 (order) => order[AppDBConst.orderId] == orderHelper.activeOrderId,
+                                    //             orElse: () => {},
+                                    //           );
+                                    //           final serverOrderId = order[AppDBConst.orderServerId] as int?;
+                                    //           final dbOrderId = orderHelper.activeOrderId;
+                                    //           // final lineItemId = orderItem[AppDBConst.itemServerId] as int?;
+                                    //           final productId = orderItem[AppDBConst.itemServerId] as int?;
+                                    //
+                                    //           if (serverOrderId != null && dbOrderId != null && productId != null) {
+                                    //             _updateOrderSubscription?.cancel();
+                                    //             _updateOrderSubscription = orderBloc.updateOrderStream.listen((response) async {
+                                    //               if (response.status == Status.COMPLETED) {
+                                    //                 await orderHelper.updateItemQuantity(
+                                    //                   orderItem[AppDBConst.itemId],
+                                    //                   newQuantity,
+                                    //                 );
+                                    //                 await fetchOrderItems();
+                                    //               } else if (response.status == Status.ERROR) {
+                                    //                 _scaffoldMessenger.showSnackBar(
+                                    //                   SnackBar(
+                                    //                     content: Text(response.message ?? "Failed to update quantity"),
+                                    //                     backgroundColor: Colors.red,
+                                    //                     duration: const Duration(seconds: 2),
+                                    //                   ),
+                                    //                 );
+                                    //               }
+                                    //             });
+                                    //             // API CALL WHILE EDITING THE PRODUCT QUANTITY
+                                    //             await orderBloc.updateOrderProducts(
+                                    //               orderId: serverOrderId,
+                                    //               dbOrderId: dbOrderId,
+                                    //               lineItems: [
+                                    //                 OrderLineItem(
+                                    //                   productId: productId,
+                                    //                   quantity: newQuantity,
+                                    //                 ),
+                                    //               ],
+                                    //             );
+                                    //           } else {
+                                    //             await orderHelper.updateItemQuantity(
+                                    //               orderItem[AppDBConst.itemId],
+                                    //               newQuantity,
+                                    //             );
+                                    //             await fetchOrderItems();
+                                    //           }
+                                    //         }
+                                    //       },
+                                    //     ),
+                                    //   ),
+                                    // );
+                                  },
+                                  child: Container(
+                                    margin: const EdgeInsets.symmetric(
+                                        vertical: 1, horizontal: 8),
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: themeHelper.themeMode ==
+                                          ThemeMode.dark
+                                          ? Color(0xFF252837)
+                                          : Color(0xFFE8E8E8), // ThemeNotifier.secondaryBackground color of items in order panel
+                                      borderRadius: BorderRadius.circular(8),
+                                      //   BoxShadow(
+                                      //     color: Colors.black12,
+                                      //     blurRadius: 5,
+                                      //     spreadRadius: 1,
+                                      //   )
+                                      // ],
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        // Replace the ClipRRect widget with this:
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(5),
+                                          child: isPayout
+                                              ? SvgPicture.asset(
+                                            "assets/svg/payout.svg",
+                                            height: MediaQuery.of(context).size.height * 0.08,
+                                            width: MediaQuery.of(context).size.height * 0.075,
+                                            fit: BoxFit.cover,
+                                          )
+                                              : buildProductImage(
+                                            orderItem[AppDBConst.itemImage]?.toString(),
+                                            height: MediaQuery.of(context).size.height * 0.08,
+                                            width: MediaQuery.of(context).size.height * 0.075,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                            mainAxisAlignment:
+                                            MainAxisAlignment.spaceEvenly,
+                                            children: [
+                                              Column(
+                                                crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                                mainAxisAlignment:
+                                                MainAxisAlignment.start,
+                                                children: [
+                                                  RichText(
+                                                    maxLines: 2,
+                                                    softWrap: true,
+                                                    text: TextSpan(
+                                                      children: [
+                                                        TextSpan(
+                                                          text: displayName,
+                                                          style: TextStyle(
+                                                              fontFamily: 'inter',
+                                                              fontSize: 12,
+                                                              fontWeight:
+                                                              FontWeight.w700,
+                                                              color: themeHelper
+                                                                  .themeMode ==
+                                                                  ThemeMode
+                                                                      .dark
+                                                                  ? ThemeNotifier
+                                                                  .textDark
+                                                                  : ThemeNotifier
+                                                                  .textLight),
+                                                        ),
+
+
+                                                        TextSpan(
+                                                          text: combo == ''
+                                                              ? ''
+                                                              : " (Combo)",
+                                                          style: TextStyle(
+                                                              fontSize: 8,
+                                                              color: Colors.cyan),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+
+                                                  if (multipackDiscount > 0) ...[
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      "Multipack Discount: -${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}",
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.w600,
+                                                        color: Colors.green,
+                                                      ),
+                                                    ),
+                                                  ],
+
+
+                                                  if (autoDiscount > 0) ...[
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      "auto Discount : -${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.w600,
+                                                        color: Colors.green,
+                                                      ),
+                                                    ),
+                                                  ],
+
+
+
+                                                  variationCount == 0
+                                                      ? SizedBox(
+                                                    width: 0,
+                                                  )
+                                                      : Row(
                                                     children: [
-                                                      TextSpan(
-                                                        text: displayName,
+                                                      Text(
+                                                        variationName == ''
+                                                            ? ""
+                                                            : "(${variationName ?? ''})",
+                                                        overflow:
+                                                        TextOverflow
+                                                            .ellipsis,
                                                         style: TextStyle(
-                                                            fontFamily: 'inter',
-                                                            fontSize: 12,
-                                                            fontWeight:
-                                                            FontWeight.w700,
+                                                            fontSize: 10,
                                                             color: themeHelper
                                                                 .themeMode ==
                                                                 ThemeMode
                                                                     .dark
                                                                 ? ThemeNotifier
                                                                 .textDark
-                                                                : ThemeNotifier
-                                                                .textLight),
+                                                                : Colors
+                                                                .grey),
                                                       ),
-                                                      TextSpan(
-                                                        text: combo == ''
-                                                            ? ''
-                                                            : " (Combo)",
+                                                      SizedBox(
+                                                        width: 4,
+                                                      ),
+                                                      SvgPicture.asset(
+                                                        "assets/svg/variation.svg",
+                                                        height: 10,
+                                                        width: 10,
+                                                      ),
+                                                      SizedBox(
+                                                        width: 4,
+                                                      ),
+                                                      Text(
+                                                        "${variationCount ?? 0}",
+                                                        overflow:
+                                                        TextOverflow
+                                                            .ellipsis,
                                                         style: TextStyle(
-                                                            fontSize: 8,
-                                                            color: Colors.cyan),
+                                                            fontSize: 10,
+                                                            color: Color(
+                                                                0xFFFE6464)),
                                                       ),
                                                     ],
                                                   ),
-                                                ),
-                                                variationCount == 0
-                                                    ? SizedBox(
-                                                  width: 0,
-                                                )
-                                                    : Row(
-                                                  children: [
-                                                    Text(
-                                                      variationName == ''
-                                                          ? ""
-                                                          : "(${variationName ?? ''})",
-                                                      overflow:
-                                                      TextOverflow
-                                                          .ellipsis,
-                                                      style: TextStyle(
-                                                          fontSize: 10,
-                                                          color: themeHelper
-                                                              .themeMode ==
-                                                              ThemeMode
-                                                                  .dark
-                                                              ? ThemeNotifier
-                                                              .textDark
-                                                              : Colors
-                                                              .grey),
+                                                ],
+                                              ),
+                                              if (isEbtEligible) ...[
+                                                const SizedBox(height: 3),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.green,
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: const Text(
+                                                    "EBT",
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Colors.white,
                                                     ),
-                                                    SizedBox(
-                                                      width: 4,
-                                                    ),
-                                                    SvgPicture.asset(
-                                                      "assets/svg/variation.svg",
-                                                      height: 10,
-                                                      width: 10,
-                                                    ),
-                                                    SizedBox(
-                                                      width: 4,
-                                                    ),
-                                                    Text(
-                                                      "${variationCount ?? 0}",
-                                                      overflow:
-                                                      TextOverflow
-                                                          .ellipsis,
-                                                      style: TextStyle(
-                                                          fontSize: 10,
-                                                          color: Color(
-                                                              0xFFFE6464)),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                            if (isEbtEligible) ...[
-                                              const SizedBox(height: 3),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.green,
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                                child: const Text(
-                                                  "EBT",
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.white,
                                                   ),
                                                 ),
-                                              ),
-                                            ],
+                                              ],
 
-                                            // Modified: Show quantity * price only for non-Payout/Coupon items
-                                            if (!isPayoutOrCouponOrCustomItem) ...[
-                                              Builder(
-                                                builder: (context) {
-                                                  double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1;
+                                              // Modified: Show quantity * price only for non-Payout/Coupon items
+                                              if (!isPayoutOrCouponOrCustomItem) ...[
+                                                Builder(
+                                                  builder: (context) {
+                                                    double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1;
 
-                                                  double unitPrice =
-                                                      (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ??
-                                                          (orderItem[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
-                                                          (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??
-                                                          0.0;
+                                                    double unitPrice =
+                                                        (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ??
+                                                            (orderItem[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
+                                                            (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??
+                                                            0.0;
 
-                                                  // If still zero → derive price from sum price
-                                                  if (unitPrice == 0.0) {
-                                                    final double sumPrice =
-                                                        (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
+                                                    // If still zero → derive price from sum price
+                                                    if (unitPrice == 0.0) {
+                                                      final double sumPrice =
+                                                          (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
 
-                                                    if (sumPrice > 0 && qty > 0) {
-                                                      unitPrice = sumPrice / qty;
+                                                      if (sumPrice > 0 && qty > 0) {
+                                                        unitPrice = sumPrice / qty;
+                                                      }
                                                     }
-                                                  }
 
-                                                  return Text(
-                                                    "${TextConstants.currencySymbol} ${unitPrice.toStringAsFixed(2)} × ${qty.toInt()}",
-                                                    style: TextStyle(
-                                                      color: themeHelper.themeMode == ThemeMode.dark
-                                                          ? ThemeNotifier.textDark
-                                                          : Colors.black54,
-                                                      fontSize: 10,
-                                                    ),
-                                                  );
-                                                },
-                                              ),
+                                                    return Text(
+                                                      "${TextConstants.currencySymbol} ${unitPrice.toStringAsFixed(2)} × ${qty.toInt()}",
+                                                      style: TextStyle(
+                                                        color: themeHelper.themeMode == ThemeMode.dark
+                                                            ? ThemeNotifier.textDark
+                                                            : Colors.black54,
+                                                        fontSize: 10,
+                                                      ),
+                                                    );
+                                                  },
+                                                ),
+                                              ],
+
                                             ],
+                                          ),
+                                        ),
+                                        // if (!isCouponOrPayout)
+                                        //   Text(
+                                        //     "${TextConstants.currencySymbol}${(regularPrice * orderItem[AppDBConst.itemCount]).toStringAsFixed(2)}", //Build #1.0.134: itemPrice updated
+                                        //     style: TextStyle(
+                                        //         color: themeHelper.themeMode ==
+                                        //             ThemeMode.dark
+                                        //             ? ThemeNotifier.textDark
+                                        //             : Colors.blueGrey,
+                                        //         fontSize: 14),
+                                        //   ),
+                                        const SizedBox(width: 20),
+                                        Column(
+                                          mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                          children: [
+                                            // Text(
+                                            //   isCouponOrPayout
+                                            //       ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice]).toStringAsFixed(2)}"
+                                            //       : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * salesPrice).toStringAsFixed(2)}", //Build #1.0.134: itemTotalPrice updated
+                                            //   style: TextStyle(
+                                            //     fontSize: 14,
+                                            //     fontWeight: FontWeight.bold,
+                                            //     color:
+                                            //     isPayoutOrCouponOrCustomItem
+                                            //         ? Colors.red
+                                            //         : themeHelper.themeMode ==
+                                            //         ThemeMode.dark
+                                            //         ? ThemeNotifier
+                                            //         .textDark
+                                            //         : ThemeNotifier
+                                            //         .textLight, // Added: Red color for Payout/Coupon
+                                            //   ),
+                                            // ),
+                                            Text(
+                                              isPayout
+                                                  ? "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.abs().toStringAsFixed(2)}"
+                                                  : isCashback
+                                                  ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.toStringAsFixed(2)}"
+                                                  : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.toStringAsFixed(2)}",
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                                color: isPayout
+                                                    ? Colors.red
+                                                    : isCashback
+                                                    ? (themeHelper.themeMode == ThemeMode.dark
+                                                    ? ThemeNotifier.textDark
+                                                    : ThemeNotifier.textLight)
+                                                    : (isCoupon
+                                                    ? Colors.red
+                                                    : (themeHelper.themeMode == ThemeMode.dark
+                                                    ? ThemeNotifier.textDark
+                                                    : ThemeNotifier.textLight)),
+                                              ),
+                                            )
+
 
                                           ],
                                         ),
-                                      ),
-                                      // if (!isCouponOrPayout)
-                                      //   Text(
-                                      //     "${TextConstants.currencySymbol}${(regularPrice * orderItem[AppDBConst.itemCount]).toStringAsFixed(2)}", //Build #1.0.134: itemPrice updated
-                                      //     style: TextStyle(
-                                      //         color: themeHelper.themeMode ==
-                                      //             ThemeMode.dark
-                                      //             ? ThemeNotifier.textDark
-                                      //             : Colors.blueGrey,
-                                      //         fontSize: 14),
-                                      //   ),
-                                      const SizedBox(width: 20),
-                                      Column(
-                                        mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                        children: [
-                                          // Text(
-                                          //   isCouponOrPayout
-                                          //       ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice]).toStringAsFixed(2)}"
-                                          //       : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * salesPrice).toStringAsFixed(2)}", //Build #1.0.134: itemTotalPrice updated
-                                          //   style: TextStyle(
-                                          //     fontSize: 14,
-                                          //     fontWeight: FontWeight.bold,
-                                          //     color:
-                                          //     isPayoutOrCouponOrCustomItem
-                                          //         ? Colors.red
-                                          //         : themeHelper.themeMode ==
-                                          //         ThemeMode.dark
-                                          //         ? ThemeNotifier
-                                          //         .textDark
-                                          //         : ThemeNotifier
-                                          //         .textLight, // Added: Red color for Payout/Coupon
-                                          //   ),
-                                          // ),
-                                          Text(
-                                            isPayout
-                                                ? "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.abs().toStringAsFixed(2)}"
-                                                : isCashback
-                                                ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.toStringAsFixed(2)}"
-                                                : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.toStringAsFixed(2)}",
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.bold,
-                                              color: isPayout
-                                                  ? Colors.red
-                                                  : isCashback
-                                                  ? (themeHelper.themeMode == ThemeMode.dark
-                                                  ? ThemeNotifier.textDark
-                                                  : ThemeNotifier.textLight)
-                                                  : (isCoupon
-                                                  ? Colors.red
-                                                  : (themeHelper.themeMode == ThemeMode.dark
-                                                  ? ThemeNotifier.textDark
-                                                  : ThemeNotifier.textLight)),
-                                            ),
-                                          )
-
-
-                                        ],
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
+                          );
                       },
                     ),
                   ),
                 ),
               ),
             ),
+
             ///Todo: update ui as per loading from screen
             ///Show print and email invoice buttons if coming from order history screen
             ///else show regular buttons
@@ -2298,7 +2340,561 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
   }
 
 
-  Future _preparePrintTicket() async{
+//   Future _preparePrintTicket() async{
+//     var header = _printerReceipt?[AppDBConst.receiptHeaderText] ?? "";
+//     var footer = _printerReceipt?[AppDBConst.receiptFooterText] ?? "";
+//     var logo = _printerReceipt?[AppDBConst.receiptIconPath] ?? "";
+//
+//     if (kDebugMode) {
+//       print("OrderSummaryScreen _preparePrintTicket call print receipt ---- $header");
+//       print("OrderSummaryScreen _preparePrintTicket call print receipt ---- $footer");
+//       print("OrderSummaryScreen _preparePrintTicket logo: $logo");
+//     }
+//     if (_order != null) {
+//       setState(() {
+//         var orderId = _order[AppDBConst.orderServerId] as int? ?? 0;
+//         var orderDateTime = "${_order[AppDBConst.orderDate]} ${_order[AppDBConst.orderTime]}" ;
+//         balanceAmount = (_order[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0; // Fetch total
+//         final discount = uiOrderDiscount;
+//         final merchantDiscount = uiMerchantDiscount;
+//         final tax = uiOrderTax;
+//         final cashbackFee = uiCashbackFee;
+//         var balanceAmt = total - discount - merchantDiscount + tax -cashbackFee;
+//         if (kDebugMode) {
+//           print("Fetched orderServerId: $orderId, Discount: $discount for activeOrderId: ${widget.activeOrderId}, Time: $orderDateTime");
+//           print("Balance amount calculated is $balanceAmt and balance from API is $balanceAmount");
+//         }
+//       });
+//     } else {
+//       if (kDebugMode) {
+//         print("No orderServerId found for activeOrderId: ${widget.activeOrderId}");
+//       }
+//     }
+//
+//     bytes = [];
+//     final ticket =  await _printerSettings.getTicket();
+//
+//     var dateToPrint = "";
+//     var timeToPrint = "";
+//
+//     if (_order.isNotEmpty && _order[AppDBConst.orderDate] != null) {
+//       try {
+//         final DateTime createdDateTime = DateTime.parse(_order[AppDBConst.orderDate].toString());
+//         dateToPrint = DateFormat(TextConstants.dateFormat).format(createdDateTime);
+//         timeToPrint = DateFormat(TextConstants.timeFormat).format(createdDateTime);
+//       } catch (e) {
+//         if (kDebugMode) {
+//           print("Error parsing order creation date: $e");
+//         }
+//         // Fallback to raw data or default if parsing fails
+//         // displayDate = order[AppDBConst.orderDate].toString().split(' ').first;
+//       }
+//     }
+//
+//     var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
+//     var storeId = "${merchantDetails?[AppDBConst.storeId]}";
+//     var storePhone = "${merchantDetails?[AppDBConst.storePhone]}";
+//
+//     var storeDetails = await AssetDBHelper.instance.getStoreDetails();
+//     var storeName = "${storeDetails?.name}";
+//     var address = "${storeDetails?.address},";
+//     var cityStateZip = "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
+//     var orderIdToPrint = '${widget.activeOrderId}';
+//
+//     final userData = await UserDbHelper().getUserData();
+//     var cashierName = "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
+//     var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
+//
+//     final grossTotal = uiGrossTotal;
+//     final discount = uiOrderDiscount;
+//     final merchantDiscount = uiMerchantDiscount;
+//     final tax = uiOrderTax;
+//     final cashbackFee = uiCashbackFee;
+//     final hiveRedeemedValue = uiRedeemedValue;
+//     final netpayable= uiNetPayable;
+//
+//
+//     if (kDebugMode) {
+//       print(" >>>>> PrintOrder  dateToPrint $dateToPrint ");
+//       print(" >>>>> PrintOrder  timeToPrint $timeToPrint ");
+//       print(" >>>>> PrintOrder  storeId $storeId ");
+//       print(" >>>>> PrintOrder  storeName $storeName ");
+//       print(" >>>>> PrintOrder  address $address ");
+//       print(" >>>>> PrintOrder  cityStateZip $cityStateZip ");
+//       print(" >>>>> PrintOrder  storePhone $storePhone ");
+//       print(" >>>>> PrintOrder  orderIdToPrint $orderIdToPrint ");
+//       print(" >>>>> PrintOrder  cashierName $cashierName ");
+//       print(" >>>>> PrintOrder  cashierRole $cashierRole ");
+//     }
+//
+//     if (kDebugMode) {
+//       print("=============== 🧾 PRINT TICKET DEBUG INFO ===============");
+//
+//       print("HEADER TEXT        : $header");
+//       print("FOOTER TEXT        : $footer");
+//       print("LOGO PATH          : $logo");
+//
+//       print("\n------------------- ORDER DETAILS ------------------------");
+//       print("Order Server ID    : ${_order[AppDBConst.orderServerId]}");
+//       print("Order Local ID     : ${widget.activeOrderId}");
+//       print("Order Date         : ${_order[AppDBConst.orderDate]}");
+//       print("Order Time         : ${_order[AppDBConst.orderTime]}");
+//
+//       print("Parsed Date        : $dateToPrint");
+//       print("Parsed Time        : $timeToPrint");
+//
+//       print("\n------------------- STORE DETAILS ------------------------");
+//       print("Store ID           : $storeId");
+//       print("Store Name         : $storeName");
+//       print("Address            : $address");
+//       print("City/State/Zip     : $cityStateZip");
+//       print("Store Phone        : $storePhone");
+//
+//       print("\n------------------- CASHIER DETAILS ----------------------");
+//       print("Cashier Name       : $cashierName");
+//       print("Cashier Role       : $cashierRole");
+//
+//       print("\n------------------- ORDER AMOUNTS ------------------------");
+//       print("Gross Total        : ${grossTotal.toStringAsFixed(2)}");
+//       print("Discount           : ${discount.toStringAsFixed(2)}");
+//       print("Merchant Discount  : ${merchantDiscount.toStringAsFixed(2)}");
+//       print("Tax                : ${tax.toStringAsFixed(2)}");
+//       print("Cashback Fee       : ${cashbackFee.toStringAsFixed(2)}");
+//       print("Service Charges    : ${servicecharges.toStringAsFixed(2)}");
+//
+//       print("Balance (NetPay)   : ${balanceAmount.toStringAsFixed(2)}");
+//
+//       print("\n------------------- PAYMENT DETAILS ----------------------");
+//       print("Redeemed Points    : ${hiveRedeemedValue.toStringAsFixed(2)}");
+//       print("Pay By Cash        : ${payByCash.toStringAsFixed(2)}");
+//       print("Pay By Other       : ${payByOther.toStringAsFixed(2)}");
+//       print("Tender Amount      : ${tenderAmount.toStringAsFixed(2)}");
+//       print("Change Amount      : ${changeAmount.toStringAsFixed(2)}");
+//
+//       print("=============== END DEBUG PRINT ==========================\n\n");
+//     }
+//
+//
+//     if(header != "") {
+//       bytes += ticket.row([
+//         PosColumn(
+//             text: "$header",
+//             width: 12,
+//             styles: PosStyles(align: PosAlign.center)),
+//       ]);
+//     }
+//     bytes += ticket.row([
+//       PosColumn(
+//         text: "***** INVOICE COPY *****",
+//         width: 12,
+//         styles: PosStyles(align: PosAlign.center, bold: true),
+//       ),
+//     ]);
+//     bytes += ticket.feed(1);
+//     //Store Name
+//     bytes += ticket.row([
+//       PosColumn(text: "$storeName", width: 12, styles: PosStyles(align: PosAlign.center,bold: true, height: PosTextSize.size2, width: PosTextSize.size2)), //Build #1.0.257: increase font to 5 and bold
+//     ]);
+//     bytes += ticket.feed(1); /// Add space between store name and address
+//     //Address
+//     bytes += ticket.row([
+//       PosColumn(text: "$address", width: 12, styles: PosStyles(align: PosAlign.center)),
+//     ]);
+//     //cityStateZip
+//     bytes += ticket.row([
+//       PosColumn(text: "$cityStateZip", width: 12, styles: PosStyles(align: PosAlign.center)),
+//     ]);
+//     // Store Phone (Centered)
+//     bytes += ticket.row([
+//       PosColumn(text: "Phone: $storePhone", width: 12, styles: PosStyles(align: PosAlign.center, bold: true)),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: "-----------------------------------------------", width: 12),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(text: "Date: $dateToPrint", width: 7, styles: PosStyles(align: PosAlign.left)),
+//       PosColumn(text: "Time: $timeToPrint", width: 5, styles: PosStyles(align: PosAlign.left)),
+//     ]);
+//
+//     //cashier and  store id
+//     bytes += ticket.row([
+//       PosColumn(text: "Cashier: $cashierName", width: 7, styles: PosStyles(align: PosAlign.left)),
+//       PosColumn(text: "StoreID: $storeId", width: 5, styles: PosStyles(align: PosAlign.left)),
+//     ]);
+//
+//     //role and order Id
+//     bytes += ticket.row([
+//       PosColumn(text: "Role: $cashierRole", width: 7, styles: PosStyles(align: PosAlign.left)),
+//       PosColumn(text: "OrderID: $orderIdToPrint", width: 5, styles: PosStyles(align: PosAlign.left)),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(text: "-----------------------------------------------", width: 12),
+//     ]);
+//     // bytes += ticket.feed(1);
+//
+//     //Item header
+//     bytes += ticket.row([
+//       PosColumn(text: "#", width: 1,styles: PosStyles(align: PosAlign.left,bold:true)),
+//       PosColumn(text: "Description", width:5,styles: PosStyles(align: PosAlign.left,bold:true)),
+//       PosColumn(text: "Qty", width: 1, styles: PosStyles(align: PosAlign.center,bold:true)),
+//       PosColumn(text: "Rate", width: 2, styles: PosStyles(align: PosAlign.right,bold:true)),
+//       // PosColumn(text: "Dis", width: 1, styles: PosStyles(align: PosAlign.right)), ///removed based on request on 3-Sep-25
+//       PosColumn(text: "Amt", width: 3, styles: PosStyles(align: PosAlign.right,bold:true)),
+//     ]);
+//     bytes += ticket.feed(1);
+//
+//     if (kDebugMode) {
+//       print(" >>>>> Order items count ${orderItems.length} ");
+//
+//     }
+//
+//     //Product Items
+//     for (int i = 0; i < orderItems.length; i++) {
+//       var orderItem = orderItems[i];
+//       // --------------------------------------------------
+// // HIDE discount, coupons, redeem points from printing
+// // --------------------------------------------------
+//       final nameLower = orderItem[AppDBConst.itemName]
+//           ?.toString()
+//           .toLowerCase() ?? "";
+//
+//       final itemTypeLower = orderItem[AppDBConst.itemType]
+//           ?.toString()
+//           .toLowerCase() ?? "";
+//
+//       bool hideItem =
+//           nameLower.contains("discount") ||
+//               nameLower.contains("coupon") ||
+//               nameLower.contains("loyalty") ||      // FIXED
+//               nameLower.contains("redeemed") ||
+//               nameLower.contains("points") ||
+//               itemTypeLower.contains("discount") ||
+//               itemTypeLower.contains("coupon") ||
+//               itemTypeLower.contains("loyalty") ||  // FIXED
+//               itemTypeLower.contains("points");
+//
+//       if (hideItem) {
+//         print("🚫 HIDDEN FROM PRINT → ${orderItem[AppDBConst.itemName]}");
+//         continue;
+//       }
+//
+//
+//       final itemType = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
+//       final isPayout = itemType.contains(TextConstants.payoutText);
+//       final isCoupon = itemType.contains(TextConstants.couponText);
+//       final isCashback = itemType.contains("cashback") ||
+//           (orderItem[AppDBConst.itemName]?.toString().toLowerCase() == "cashback");
+//
+//       final isCouponOrPayout = isCoupon || isPayout;
+//
+//       // Determine sales price
+//       final double salesPrice =
+//       (orderItem[AppDBConst.itemSumPrice] != null &&
+//           (orderItem[AppDBConst.itemCount] ?? 0) > 0)
+//           ? (orderItem[AppDBConst.itemSumPrice] /
+//           orderItem[AppDBConst.itemCount])
+//           : 0.0;
+//
+//       double negativeItemPrice =
+//           orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice];
+//
+//       // ----- RATE -----
+//       double rateValue;
+//       if (isCashback) {
+//         rateValue = salesPrice.abs();
+//
+//       } else if (isCouponOrPayout) {
+//         rateValue = negativeItemPrice; // negative
+//       } else {
+//         rateValue = salesPrice;
+//       }
+//
+// // ----- AMOUNT -----
+//       double amountValue;
+//       if (isCashback) {
+//         amountValue = (orderItem[AppDBConst.itemCount] * salesPrice).abs();
+//
+//       } else if (isCouponOrPayout) {
+//         amountValue = negativeItemPrice; // negative
+//       } else {
+//         amountValue = orderItem[AppDBConst.itemCount] * salesPrice;
+//       }
+//
+// // ----- SPECIAL FIX: Payout must display sales price also -----
+//       double displaySalesPrice = salesPrice;
+//
+//
+//
+// // Payout must also show abs value
+//       if (isPayout && salesPrice == 0) {
+//         displaySalesPrice = negativeItemPrice.abs();
+//       }
+//
+//
+// // ----- FORMAT AMOUNT -----
+//       String formattedAmount = amountValue < 0
+//           ? "-${TextConstants.currencySymbol}${amountValue.abs().toStringAsFixed(2)}"
+//           : "${TextConstants.currencySymbol}${amountValue.toStringAsFixed(2)}";
+//
+// // ----- FORMAT RATE (sign before $) -----
+//       String formattedRate;
+//       if (rateValue < 0) {
+//         formattedRate =
+//         "-${TextConstants.currencySymbol}${rateValue.abs().toStringAsFixed(2)}";
+//       } else {
+//         formattedRate =
+//         "${TextConstants.currencySymbol}${rateValue.toStringAsFixed(2)}";
+//       }
+//       String formattedSalesPrice;
+//       if (isPayout) {
+//         formattedSalesPrice =
+//         "-${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
+//       } else {
+//         formattedSalesPrice =
+//         "${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
+//       }
+//
+//       if (isCashback) {
+//         double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
+//
+//         double cashbackValue =
+//             (orderItem['amount'] as num?)?.toDouble() ??
+//                 (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
+//                 (orderItem['itemTotalPrice'] as num?)?.toDouble() ??
+//                 0.0;
+//
+//         double rateValueCashback = cashbackValue / qty;
+//
+//         formattedRate =
+//         "${TextConstants.currencySymbol}${rateValueCashback.toStringAsFixed(2)}";
+//
+//         formattedAmount =
+//         "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
+//
+//         formattedSalesPrice =
+//         "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
+//
+//
+//         // -----------------------------------
+//         // DEBUG PRINT
+//         // -----------------------------------
+//         print("🟦 -----------------------------");
+//         print("🟦 Cashback ITEM");
+//         print("🟦 Qty          : $qty");
+//         print("🟦 Sales Price  : $formattedSalesPrice");
+//         print("🟦 Rate Value   : $formattedRate");
+//         print("🟦 Amount Value : $formattedAmount");
+//         print("🟦 -----------------------------");
+//       }
+//
+//       // ------------------------------------
+//       // DEBUG PRINT FOR EACH PRODUCT
+//       // ------------------------------------
+//       if (kDebugMode) {
+//         print("🟦 -----------------------------");
+//         print("🟦 ITEM #${i + 1}");
+//         print("🟦 Name         : ${orderItem[AppDBConst.itemName]}");
+//         print("🟦 Qty          : ${orderItem[AppDBConst.itemCount]}");
+//         // INSERT THIS FIX HERE ⬇
+//         // String formattedSalesPrice;
+//         // if (isPayout) {
+//         //   formattedSalesPrice =
+//         //   "-${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
+//         // } else {
+//         //   formattedSalesPrice =
+//         //   "${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
+//         // }
+//         // if (isCashback) {
+//         //   double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
+//         //
+//         //   double cashbackValue =
+//         //       (orderItem['amount'] as num?)?.toDouble() ??
+//         //           (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
+//         //           (orderItem['itemTotalPrice'] as num?)?.toDouble() ??
+//         //           0.0;
+//         //
+//         //   double rateValueCashback = cashbackValue / qty;
+//         //
+//         //   formattedRate =
+//         //   "${TextConstants.currencySymbol}${rateValueCashback.toStringAsFixed(2)}";
+//         //
+//         //   formattedAmount =
+//         //   "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
+//         //
+//         //   formattedSalesPrice =
+//         //   "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
+//         //
+//         //
+//         //   // -----------------------------------
+//         //   // DEBUG PRINT
+//         //   // -----------------------------------
+//         //   print("🟦 -----------------------------");
+//         //   print("🟦 Cashback ITEM");
+//         //   print("🟦 Qty          : $qty");
+//         //   print("🟦 Sales Price  : $formattedSalesPrice");
+//         //   print("🟦 Rate Value   : $formattedRate");
+//         //   print("🟦 Amount Value : $formattedAmount");
+//         //   print("🟦 -----------------------------");
+//         // }
+//
+//
+//         print("🟦 Sales Price  : $formattedSalesPrice");
+//         // END FIX ⬆
+//         print("🟦 Raw Neg Price: $negativeItemPrice");
+//         print("🟦 Rate Value   : $formattedRate");
+//         print("🟦 Amount Value : $formattedAmount");
+//         print("🟦 isCashback   : $isCashback");
+//         print("🟦 isCoupon     : $isCoupon");
+//         print("🟦 isPayout     : $isPayout");
+//         print("🟦 -----------------------------");
+//       }
+//
+//       // -------------------------
+//       // ESC/POS VALID 12-WIDTH ROW
+//       // -------------------------
+//       bytes += ticket.row([
+//         PosColumn(text: "${i + 1}", width: 1),
+//         PosColumn(text: "${orderItem[AppDBConst.itemName]}", width: 5),
+//         PosColumn(
+//           text: "${orderItem[AppDBConst.itemCount]}",
+//           width: 1,
+//           styles: PosStyles(align: PosAlign.center),
+//         ),
+//         PosColumn(
+//           text: formattedRate,
+//           width: 2,
+//           styles: PosStyles(align: PosAlign.right),
+//         ),
+//         PosColumn(
+//           text: formattedAmount,
+//           width: 3,
+//           styles: PosStyles(align: PosAlign.right),
+//         ),
+//       ]);
+//
+//       bytes += ticket.emptyLines(1);
+//     }
+//
+//
+//
+//
+//     //bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(text: "-----------------------------------------------", width: 12),
+//     ]);
+//     bytes += ticket.feed(1);
+//
+//     if (kDebugMode) {
+//       print(" >>>>> Printer Order merchantDiscount -${merchantDiscount.toStringAsFixed(2)} ");
+//       print(" >>>>> Printer Order discount -${discount.toStringAsFixed(2)} ");
+//       print(" >>>>> Printer Order balanceAmount  $balanceAmount ");
+//       print(" >>>>> Printer Order gross total  $grossTotal ");
+//       print(" >>>>> Printer Order tenderAmount $tenderAmount ");
+//       print(" >>>>> Printer Order changeAmount $changeAmount ");
+//       print(" >>>>> Printer Order paidAmount $paidAmount ");
+//
+//     }
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.grossTotal, width: 10),
+//       PosColumn(text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+//     ]);
+//     // bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.discountText, width: 10), // Build #1.0.148: deleted duplicate discount string from constants , already we have discountText using !
+//       PosColumn(text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+//     ]);
+//     bytes += ticket.row([
+//       PosColumn(text: "-----------------------------------------------", width: 12),
+//     ]);
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.taxText, width: 10),
+//       PosColumn(text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+//     ]);
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.merchantDiscount, width: 10),
+//       PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.cashbackFee, width: 10),
+//       PosColumn(text: "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.servicecharges, width: 10),
+//       PosColumn(text: "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+//     ]);
+//
+//
+//     bytes += ticket.row([
+//       PosColumn(text: "-----------------------------------------------", width: 12),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//     //Net Payable
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.netPayable, width: 10),
+//       PosColumn(text: "${TextConstants.currencySymbol}${netpayable.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.redeemPoints, width: 10),
+//       PosColumn(text: "${TextConstants.currencySymbol}${hiveRedeemedValue.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+//     ]);
+//
+//
+//     ///Todo: get pay by cash amount
+//     // bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.payByCash, width: 10),
+//       PosColumn(text: "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}", width:2,styles: PosStyles(align: PosAlign.right)),
+//     ]);
+//     ///Todo: get pay by other amount
+//     // bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.payByOther, width: 10),
+//       PosColumn(text: "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+//     ]);
+//     // bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.tenderAmount, width: 10),
+//       PosColumn(text: "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+//     ]);
+//     // bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.change, width: 10),
+//       PosColumn(text: "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+//
+//     ]);
+//     bytes += ticket.row([
+//       PosColumn(text: "-----------------------------------------------", width: 12),
+//     ]);
+//     //bytes += ticket.feed(1);
+//
+//     //Footer
+//     // bytes += ticket.row([
+//     //   PosColumn(text: "Thank You, Visit Again", width: 12),
+//     // ]);
+//
+//     if(footer != "") {
+//       bytes += ticket.row([
+//         PosColumn(text: "$footer",
+//             width: 12,
+//             styles: PosStyles(align: PosAlign.center)),
+//       ]);
+//       bytes += ticket.feed(1);
+//     }
+//   }
+
+  Future _preparePrintTicket() async {
     var header = _printerReceipt?[AppDBConst.receiptHeaderText] ?? "";
     var footer = _printerReceipt?[AppDBConst.receiptFooterText] ?? "";
     var logo = _printerReceipt?[AppDBConst.receiptIconPath] ?? "";
@@ -2308,16 +2904,17 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       print("OrderSummaryScreen _preparePrintTicket call print receipt ---- $footer");
       print("OrderSummaryScreen _preparePrintTicket logo: $logo");
     }
+
     if (_order != null) {
       setState(() {
         var orderId = _order[AppDBConst.orderServerId] as int? ?? 0;
         var orderDateTime = "${_order[AppDBConst.orderDate]} ${_order[AppDBConst.orderTime]}" ;
-        balanceAmount = (_order[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0; // Fetch total
+        balanceAmount = (_order[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0;
         final discount = uiOrderDiscount;
         final merchantDiscount = uiMerchantDiscount;
         final tax = uiOrderTax;
         final cashbackFee = uiCashbackFee;
-        var balanceAmt = total - discount - merchantDiscount + tax -cashbackFee;
+        var balanceAmt = total - discount - merchantDiscount + tax - cashbackFee;
         if (kDebugMode) {
           print("Fetched orderServerId: $orderId, Discount: $discount for activeOrderId: ${widget.activeOrderId}, Time: $orderDateTime");
           print("Balance amount calculated is $balanceAmt and balance from API is $balanceAmount");
@@ -2330,7 +2927,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
 
     bytes = [];
-    final ticket =  await _printerSettings.getTicket();
+    final ticket = await _printerSettings.getTicket();
 
     var dateToPrint = "";
     var timeToPrint = "";
@@ -2344,8 +2941,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         if (kDebugMode) {
           print("Error parsing order creation date: $e");
         }
-        // Fallback to raw data or default if parsing fails
-        // displayDate = order[AppDBConst.orderDate].toString().split(' ').first;
       }
     }
 
@@ -2369,8 +2964,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     final tax = uiOrderTax;
     final cashbackFee = uiCashbackFee;
     final hiveRedeemedValue = uiRedeemedValue;
-    final netpayable= uiNetPayable;
-
+    final netpayable = uiNetPayable;
 
     if (kDebugMode) {
       print(" >>>>> PrintOrder  dateToPrint $dateToPrint ");
@@ -2387,7 +2981,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
     if (kDebugMode) {
       print("=============== 🧾 PRINT TICKET DEBUG INFO ===============");
-
       print("HEADER TEXT        : $header");
       print("FOOTER TEXT        : $footer");
       print("LOGO PATH          : $logo");
@@ -2432,7 +3025,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       print("=============== END DEBUG PRINT ==========================\n\n");
     }
 
-
+    // ---------------- HEADER PRINT ----------------
     if(header != "") {
       bytes += ticket.row([
         PosColumn(
@@ -2441,6 +3034,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
             styles: PosStyles(align: PosAlign.center)),
       ]);
     }
+
     bytes += ticket.row([
       PosColumn(
         text: "***** INVOICE COPY *****",
@@ -2448,44 +3042,41 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         styles: PosStyles(align: PosAlign.center, bold: true),
       ),
     ]);
+
     bytes += ticket.feed(1);
-    //Store Name
+
     bytes += ticket.row([
-      PosColumn(text: "$storeName", width: 12, styles: PosStyles(align: PosAlign.center,bold: true, height: PosTextSize.size2, width: PosTextSize.size2)), //Build #1.0.257: increase font to 5 and bold
+      PosColumn(text: "$storeName", width: 12, styles: PosStyles(align: PosAlign.center,bold: true, height: PosTextSize.size2, width: PosTextSize.size2)),
     ]);
-    bytes += ticket.feed(1); /// Add space between store name and address
-    //Address
+
+    bytes += ticket.feed(1);
+
     bytes += ticket.row([
       PosColumn(text: "$address", width: 12, styles: PosStyles(align: PosAlign.center)),
     ]);
-    //cityStateZip
     bytes += ticket.row([
       PosColumn(text: "$cityStateZip", width: 12, styles: PosStyles(align: PosAlign.center)),
     ]);
-    // Store Phone (Centered)
     bytes += ticket.row([
       PosColumn(text: "Phone: $storePhone", width: 12, styles: PosStyles(align: PosAlign.center, bold: true)),
     ]);
 
     bytes += ticket.feed(1);
-
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
-
     bytes += ticket.feed(1);
+
     bytes += ticket.row([
       PosColumn(text: "Date: $dateToPrint", width: 7, styles: PosStyles(align: PosAlign.left)),
       PosColumn(text: "Time: $timeToPrint", width: 5, styles: PosStyles(align: PosAlign.left)),
     ]);
 
-    //cashier and  store id
     bytes += ticket.row([
       PosColumn(text: "Cashier: $cashierName", width: 7, styles: PosStyles(align: PosAlign.left)),
       PosColumn(text: "StoreID: $storeId", width: 5, styles: PosStyles(align: PosAlign.left)),
     ]);
 
-    //role and order Id
     bytes += ticket.row([
       PosColumn(text: "Role: $cashierRole", width: 7, styles: PosStyles(align: PosAlign.left)),
       PosColumn(text: "OrderID: $orderIdToPrint", width: 5, styles: PosStyles(align: PosAlign.left)),
@@ -2495,47 +3086,36 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
-    // bytes += ticket.feed(1);
 
-    //Item header
+    // ---------------- ITEMS HEADER ----------------
     bytes += ticket.row([
       PosColumn(text: "#", width: 1,styles: PosStyles(align: PosAlign.left,bold:true)),
       PosColumn(text: "Description", width:5,styles: PosStyles(align: PosAlign.left,bold:true)),
       PosColumn(text: "Qty", width: 1, styles: PosStyles(align: PosAlign.center,bold:true)),
       PosColumn(text: "Rate", width: 2, styles: PosStyles(align: PosAlign.right,bold:true)),
-      // PosColumn(text: "Dis", width: 1, styles: PosStyles(align: PosAlign.right)), ///removed based on request on 3-Sep-25
       PosColumn(text: "Amt", width: 3, styles: PosStyles(align: PosAlign.right,bold:true)),
     ]);
     bytes += ticket.feed(1);
 
-    if (kDebugMode) {
-      print(" >>>>> Order items count ${orderItems.length} ");
+    // 🔥 MULTIPACK DISCOUNT TOTAL
+    double totalMultipackDiscount = 0.0;
 
-    }
-
-    //Product Items
+    // ---------------- ITEMS LOOP ----------------
     for (int i = 0; i < orderItems.length; i++) {
       var orderItem = orderItems[i];
-      // --------------------------------------------------
-// HIDE discount, coupons, redeem points from printing
-// --------------------------------------------------
-      final nameLower = orderItem[AppDBConst.itemName]
-          ?.toString()
-          .toLowerCase() ?? "";
 
-      final itemTypeLower = orderItem[AppDBConst.itemType]
-          ?.toString()
-          .toLowerCase() ?? "";
+      final nameLower = orderItem[AppDBConst.itemName]?.toString().toLowerCase() ?? "";
+      final itemTypeLower = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? "";
 
       bool hideItem =
           nameLower.contains("discount") ||
               nameLower.contains("coupon") ||
-              nameLower.contains("loyalty") ||      // FIXED
+              nameLower.contains("loyalty") ||
               nameLower.contains("redeemed") ||
               nameLower.contains("points") ||
               itemTypeLower.contains("discount") ||
               itemTypeLower.contains("coupon") ||
-              itemTypeLower.contains("loyalty") ||  // FIXED
+              itemTypeLower.contains("loyalty") ||
               itemTypeLower.contains("points");
 
       if (hideItem) {
@@ -2543,185 +3123,58 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         continue;
       }
 
-
       final itemType = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
       final isPayout = itemType.contains(TextConstants.payoutText);
       final isCoupon = itemType.contains(TextConstants.couponText);
-      final isCashback = itemType.contains("cashback") ||
-          (orderItem[AppDBConst.itemName]?.toString().toLowerCase() == "cashback");
-
+      final isCashback = itemType.contains("cashback") || (orderItem[AppDBConst.itemName]?.toString().toLowerCase() == "cashback");
       final isCouponOrPayout = isCoupon || isPayout;
 
-      // Determine sales price
-      final double salesPrice =
-      (orderItem[AppDBConst.itemSumPrice] != null &&
-          (orderItem[AppDBConst.itemCount] ?? 0) > 0)
-          ? (orderItem[AppDBConst.itemSumPrice] /
-          orderItem[AppDBConst.itemCount])
+      final double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
+      final double salesPrice = (orderItem[AppDBConst.itemSumPrice] != null && qty > 0)
+          ? (orderItem[AppDBConst.itemSumPrice] / qty)
           : 0.0;
 
-      double negativeItemPrice =
-          orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice];
+      double negativeItemPrice = qty * (orderItem[AppDBConst.itemPrice] as num? ?? 0);
 
-      // ----- RATE -----
       double rateValue;
       if (isCashback) {
         rateValue = salesPrice.abs();
-
       } else if (isCouponOrPayout) {
-        rateValue = negativeItemPrice; // negative
+        rateValue = negativeItemPrice;
       } else {
         rateValue = salesPrice;
       }
 
-// ----- AMOUNT -----
       double amountValue;
       if (isCashback) {
-        amountValue = (orderItem[AppDBConst.itemCount] * salesPrice).abs();
-
+        amountValue = (qty * salesPrice).abs();
       } else if (isCouponOrPayout) {
-        amountValue = negativeItemPrice; // negative
+        amountValue = negativeItemPrice;
       } else {
-        amountValue = orderItem[AppDBConst.itemCount] * salesPrice;
+        amountValue = qty * salesPrice;
       }
 
-// ----- SPECIAL FIX: Payout must display sales price also -----
-      double displaySalesPrice = salesPrice;
-
-
-
-// Payout must also show abs value
-      if (isPayout && salesPrice == 0) {
-        displaySalesPrice = negativeItemPrice.abs();
+      // 🔥 MULTIPACK DISCOUNT
+      final double multipackDiscount = (orderItem[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
+      if (multipackDiscount > 0 && !isPayout && !isCoupon && !isCashback) {
+        amountValue -= multipackDiscount;
+        totalMultipackDiscount += multipackDiscount;
       }
 
+      String formattedRate = rateValue < 0
+          ? "-${TextConstants.currencySymbol}${rateValue.abs().toStringAsFixed(2)}"
+          : "${TextConstants.currencySymbol}${rateValue.toStringAsFixed(2)}";
 
-// ----- FORMAT AMOUNT -----
       String formattedAmount = amountValue < 0
           ? "-${TextConstants.currencySymbol}${amountValue.abs().toStringAsFixed(2)}"
           : "${TextConstants.currencySymbol}${amountValue.toStringAsFixed(2)}";
 
-// ----- FORMAT RATE (sign before $) -----
-      String formattedRate;
-      if (rateValue < 0) {
-        formattedRate =
-        "-${TextConstants.currencySymbol}${rateValue.abs().toStringAsFixed(2)}";
-      } else {
-        formattedRate =
-        "${TextConstants.currencySymbol}${rateValue.toStringAsFixed(2)}";
-      }
-      String formattedSalesPrice;
-      if (isPayout) {
-        formattedSalesPrice =
-        "-${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
-      } else {
-        formattedSalesPrice =
-        "${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
-      }
-
-      if (isCashback) {
-        double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
-
-        double cashbackValue =
-            (orderItem['amount'] as num?)?.toDouble() ??
-                (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
-                (orderItem['itemTotalPrice'] as num?)?.toDouble() ??
-                0.0;
-
-        double rateValueCashback = cashbackValue / qty;
-
-        formattedRate =
-        "${TextConstants.currencySymbol}${rateValueCashback.toStringAsFixed(2)}";
-
-        formattedAmount =
-        "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
-
-        formattedSalesPrice =
-        "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
-
-
-        // -----------------------------------
-        // DEBUG PRINT
-        // -----------------------------------
-        print("🟦 -----------------------------");
-        print("🟦 Cashback ITEM");
-        print("🟦 Qty          : $qty");
-        print("🟦 Sales Price  : $formattedSalesPrice");
-        print("🟦 Rate Value   : $formattedRate");
-        print("🟦 Amount Value : $formattedAmount");
-        print("🟦 -----------------------------");
-      }
-
-      // ------------------------------------
-      // DEBUG PRINT FOR EACH PRODUCT
-      // ------------------------------------
-      if (kDebugMode) {
-        print("🟦 -----------------------------");
-        print("🟦 ITEM #${i + 1}");
-        print("🟦 Name         : ${orderItem[AppDBConst.itemName]}");
-        print("🟦 Qty          : ${orderItem[AppDBConst.itemCount]}");
-        // INSERT THIS FIX HERE ⬇
-        // String formattedSalesPrice;
-        // if (isPayout) {
-        //   formattedSalesPrice =
-        //   "-${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
-        // } else {
-        //   formattedSalesPrice =
-        //   "${TextConstants.currencySymbol}${displaySalesPrice.toStringAsFixed(2)}";
-        // }
-        // if (isCashback) {
-        //   double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
-        //
-        //   double cashbackValue =
-        //       (orderItem['amount'] as num?)?.toDouble() ??
-        //           (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
-        //           (orderItem['itemTotalPrice'] as num?)?.toDouble() ??
-        //           0.0;
-        //
-        //   double rateValueCashback = cashbackValue / qty;
-        //
-        //   formattedRate =
-        //   "${TextConstants.currencySymbol}${rateValueCashback.toStringAsFixed(2)}";
-        //
-        //   formattedAmount =
-        //   "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
-        //
-        //   formattedSalesPrice =
-        //   "${TextConstants.currencySymbol}${cashbackValue.toStringAsFixed(2)}";
-        //
-        //
-        //   // -----------------------------------
-        //   // DEBUG PRINT
-        //   // -----------------------------------
-        //   print("🟦 -----------------------------");
-        //   print("🟦 Cashback ITEM");
-        //   print("🟦 Qty          : $qty");
-        //   print("🟦 Sales Price  : $formattedSalesPrice");
-        //   print("🟦 Rate Value   : $formattedRate");
-        //   print("🟦 Amount Value : $formattedAmount");
-        //   print("🟦 -----------------------------");
-        // }
-
-
-        print("🟦 Sales Price  : $formattedSalesPrice");
-        // END FIX ⬆
-        print("🟦 Raw Neg Price: $negativeItemPrice");
-        print("🟦 Rate Value   : $formattedRate");
-        print("🟦 Amount Value : $formattedAmount");
-        print("🟦 isCashback   : $isCashback");
-        print("🟦 isCoupon     : $isCoupon");
-        print("🟦 isPayout     : $isPayout");
-        print("🟦 -----------------------------");
-      }
-
-      // -------------------------
-      // ESC/POS VALID 12-WIDTH ROW
-      // -------------------------
+      // ---------------- ITEM ROW ----------------
       bytes += ticket.row([
         PosColumn(text: "${i + 1}", width: 1),
         PosColumn(text: "${orderItem[AppDBConst.itemName]}", width: 5),
         PosColumn(
-          text: "${orderItem[AppDBConst.itemCount]}",
+          text: qty.toInt().toString(),
           width: 1,
           styles: PosStyles(align: PosAlign.center),
         ),
@@ -2737,45 +3190,53 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         ),
       ]);
 
+      // 🔥 PRINT MULTIPACK DISCOUNT LINE
+      if (multipackDiscount > 0) {
+        bytes += ticket.row([
+          PosColumn(text: "", width: 1),
+          PosColumn(text: "Multipack Discount", width: 7),
+          PosColumn(
+            text: "-${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}",
+            width: 4,
+            styles: PosStyles(align: PosAlign.right),
+          ),
+        ]);
+      }
+
       bytes += ticket.emptyLines(1);
     }
 
-
-
-
-    //bytes += ticket.feed(1);
+    // ---------------- SUMMARY ----------------
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
-    bytes += ticket.feed(1);
-
-    if (kDebugMode) {
-      print(" >>>>> Printer Order merchantDiscount -${merchantDiscount.toStringAsFixed(2)} ");
-      print(" >>>>> Printer Order discount -${discount.toStringAsFixed(2)} ");
-      print(" >>>>> Printer Order balanceAmount  $balanceAmount ");
-      print(" >>>>> Printer Order gross total  $grossTotal ");
-      print(" >>>>> Printer Order tenderAmount $tenderAmount ");
-      print(" >>>>> Printer Order changeAmount $changeAmount ");
-      print(" >>>>> Printer Order paidAmount $paidAmount ");
-
-    }
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.grossTotal, width: 10),
       PosColumn(text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    // bytes += ticket.feed(1);
+
     bytes += ticket.row([
-      PosColumn(text: TextConstants.discountText, width: 10), // Build #1.0.148: deleted duplicate discount string from constants , already we have discountText using !
+      PosColumn(text: TextConstants.discountText, width: 10),
       PosColumn(text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
     ]);
+
+    if (totalMultipackDiscount > 0) {
+      bytes += ticket.row([
+        PosColumn(text: "Multipack Discount", width: 10),
+        PosColumn(text: "-${TextConstants.currencySymbol}${totalMultipackDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      ]);
+    }
+
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.taxText, width: 10),
       PosColumn(text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
     ]);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.merchantDiscount, width: 10),
       PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
@@ -2791,13 +3252,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       PosColumn(text: "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
     ]);
 
-
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
 
     bytes += ticket.feed(1);
-    //Net Payable
+
+    // ---------------- NET PAYABLE & PAYMENT ----------------
     bytes += ticket.row([
       PosColumn(text: TextConstants.netPayable, width: 10),
       PosColumn(text: "${TextConstants.currencySymbol}${netpayable.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
@@ -2808,49 +3269,39 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       PosColumn(text: "${TextConstants.currencySymbol}${hiveRedeemedValue.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
     ]);
 
-
-    ///Todo: get pay by cash amount
-    // bytes += ticket.feed(1);
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByCash, width: 10),
       PosColumn(text: "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}", width:2,styles: PosStyles(align: PosAlign.right)),
     ]);
-    ///Todo: get pay by other amount
-    // bytes += ticket.feed(1);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByOther, width: 10),
       PosColumn(text: "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    // bytes += ticket.feed(1);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.tenderAmount, width: 10),
       PosColumn(text: "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
     ]);
-    // bytes += ticket.feed(1);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.change, width: 10),
       PosColumn(text: "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
-
     ]);
-    bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
-    ]);
-    //bytes += ticket.feed(1);
 
-    //Footer
-    // bytes += ticket.row([
-    //   PosColumn(text: "Thank You, Visit Again", width: 12),
-    // ]);
+    bytes += ticket.feed(2);
 
-    if(footer != "") {
+    // ---------------- FOOTER ----------------
+    if(footer != ""){
       bytes += ticket.row([
-        PosColumn(text: "$footer",
-            width: 12,
-            styles: PosStyles(align: PosAlign.center)),
+        PosColumn(text: "$footer", width: 12, styles: PosStyles(align: PosAlign.center)),
       ]);
-      bytes += ticket.feed(1);
     }
+
+    bytes += ticket.feed(2);
   }
+
+/////
 
   Future _printTicket() async{
     final ticket =  await _printerSettings.getTicket();

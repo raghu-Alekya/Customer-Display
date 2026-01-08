@@ -9,6 +9,7 @@ import '../../Database/db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
+import '../../Inventory_screen/InventoryScreen.dart';
 import '../../Preferences/pinaka_preferences.dart';
 import '../../Widgets/SafeStorageHelper.dart';
 import '../../Widgets/widget_topbar.dart';
@@ -153,6 +154,28 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
                               );
                             },
                           ),
+
+                        _buildCard(
+                          //title: TextConstants.cashier,
+                          icon: themeHelper.themeMode == ThemeMode.dark
+                              ? Image.asset(
+                            "assets/stock_inventory.png",
+                          )
+                              : Image.asset(
+                            "assets/stock_inventory.png",
+                          ),
+                          cardIndex: 0,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      InventoryScreen() //Build #1.0.386
+                                //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
+                              ),
+                            );
+                          },
+                        ),
 
                       ],
                     ),

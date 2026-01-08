@@ -22,6 +22,7 @@ class PaymentRequestModel {  // Build #1.0.25 - added by naveen
     required this.serviceType,
     required this.datetime,
     required this.notes,
+
   });
 
   Map<String, dynamic> toJson() {
@@ -54,6 +55,9 @@ class PaymentResponseModel { // Build #1.0.175: Updated -> PaymentResponseModel 
   final String? orderStatus; // Optional for specific APIs
   final bool? voidStatus; // Optional for payment response
   final List<int>? voidedPayments; // Optional for void order
+  // ⭐ ADD THESE TWO
+  final int? availableCoupons;
+  final List<CouponModel>? coupons;
 
   PaymentResponseModel({
     required this.message,
@@ -68,6 +72,8 @@ class PaymentResponseModel { // Build #1.0.175: Updated -> PaymentResponseModel 
     this.orderStatus,
     this.voidStatus,
     this.voidedPayments,
+    this.availableCoupons,
+    this.coupons,
   });
 
   factory PaymentResponseModel.fromJson(Map<String, dynamic> json) => PaymentResponseModel(
@@ -85,6 +91,10 @@ class PaymentResponseModel { // Build #1.0.175: Updated -> PaymentResponseModel 
     voidedPayments: json['voided_payments'] != null
         ? List<int>.from(json['voided_payments'])
         : null,
+    availableCoupons: json['available_coupons'],
+    coupons: (json['coupons'] as List?)
+        ?.map((e) => CouponModel.fromJson(e))
+        .toList(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -100,8 +110,63 @@ class PaymentResponseModel { // Build #1.0.175: Updated -> PaymentResponseModel 
     if (orderStatus != null) 'order_status': orderStatus,
     if (voidStatus != null) 'void': voidStatus,
     if (voidedPayments != null) 'voided_payments': voidedPayments,
+    if (availableCoupons != null)
+      'available_coupons': availableCoupons,
+    if (coupons != null)
+      'coupons': coupons!.map((c) => c.toJson()).toList(),
   };
 }
+
+class CouponModel {
+  final int id;
+  final String code;
+  final String discountType;
+  final double amount;
+  final double minAmount;
+  final double maxAmount;
+  final String generateType;
+  final int generateLimit;
+  final String expiryDate;
+
+  CouponModel({
+    required this.id,
+    required this.code,
+    required this.discountType,
+    required this.amount,
+    required this.minAmount,
+    required this.maxAmount,
+    required this.generateType,
+    required this.generateLimit,
+    required this.expiryDate,
+  });
+
+  factory CouponModel.fromJson(Map<String, dynamic> json) {
+    return CouponModel(
+      id: json['id'] ?? 0,
+      code: json['code'] ?? '',
+      discountType: json['discount_type'] ?? '',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      minAmount: (json['min_amount'] as num?)?.toDouble() ?? 0.0,
+      maxAmount: (json['max_amount'] as num?)?.toDouble() ?? 0.0,
+      generateType: json['generate_type'] ?? '',
+      generateLimit: json['generate_limit'] ?? 0,
+      expiryDate: json['expiry_date'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'code': code,
+    'discount_type': discountType,
+    'amount': amount,
+    'min_amount': minAmount,
+    'max_amount': maxAmount,
+    'generate_type': generateType,
+    'generate_limit': generateLimit,
+    'expiry_date': expiryDate,
+  };
+}
+
 
 // models/payment/payment_detail_model.dart
 class PaymentDetailModel {

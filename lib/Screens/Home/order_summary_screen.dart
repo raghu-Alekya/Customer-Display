@@ -18,6 +18,7 @@ import 'package:provider/provider.dart';
 import 'package:thermal_printer/esc_pos_utils_platform/esc_pos_utils_platform.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../Blocs/Orders/order_bloc.dart';
 import '../../Blocs/Payment/payment_bloc.dart';
@@ -1049,6 +1050,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final double changeAmount =
     rawBalance < 0 ? rawBalance.abs() : 0.0;
 
+    final Map<String, dynamic> couponResponse =
+        (existing["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
+
+
     // ===================================================
     // 🔄 UPDATE UI
     // ===================================================
@@ -1102,18 +1107,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           tenderAmount,
           changeAmount: changeAmount, // 👈 negative allowed
           showChange: true,
+          couponResponse: couponResponse,
         );
       });
     }
   }
 
-  // void fetchOrderItems() async {
-  //   // TODO: Implement actual data fetching from database
-  //   setState(() {
-  //     // Temporary sample data
-  //     orderItems = [];
-  //   });
-  // }
+
   void _toggleSummary() {
     setState(() {
       _showFullSummary = !_showFullSummary;
@@ -1235,6 +1235,31 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           paymentId = paymentData.paymentId.toString();
           orderStatus =
               paymentData.orderStatus ?? TextConstants.processing;
+
+          try {
+            final box = Hive.box('offlineOrders');
+            final key = (orderId ?? 0).toString();
+
+            final existing = box.containsKey(key)
+                ? Map<String, dynamic>.from(box.get(key))
+                : <String, dynamic>{};
+
+            existing["coupon_response"] = {
+              "available_coupons": paymentData.availableCoupons,
+              "coupons": paymentData.coupons
+                  ?.map((c) => c.toJson())
+                  .toList(),
+            };
+
+            box.put(key, existing);
+
+            if (kDebugMode) {
+              print("🎁 FULL COUPON RESPONSE SAVED");
+              print(existing["coupon_response"]);
+            }
+          } catch (e) {
+            print("⚠ Coupon save failed: $e");
+          }
 
           // ------------------------------------------
           // OFFLINE DELETE (unchanged)
@@ -1822,15 +1847,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             ? Colors.white
                             : Colors.white,
                       )),
-                  // BackButton(
-                  //   style: ButtonStyle(
-                  //       alignment: Alignment.centerLeft,
-                  //       iconSize: WidgetStatePropertyAll(ResponsiveLayout.getIconSize(20))
-                  //   ),
-                  //   // onPressed: () {
-                  //   //   _showExitPaymentConfirmation(context);
-                  //   //   },
-                  // ),
                   const SizedBox(width: 10),
                   Text(
                     TextConstants.back,
@@ -1843,30 +1859,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           ),
           const SizedBox(width: 70),
 
-          // // Order ID
-          // Row(
-          //   mainAxisSize: MainAxisSize.min,
-          //   children: [
-          //     Text(
-          //       '${TextConstants.orderId} ',
-          //       style: TextStyle(
-          //         color: theme.brightness == Brightness.dark
-          //             ? Colors.white70
-          //             : Colors.red,
-          //         fontWeight: FontWeight.bold,
-          //         fontSize: ResponsiveLayout.getFontSize(18),
-          //       ),
-          //     ),
-          //     Text(
-          //       '# :$orderId',
-          //       style: TextStyle(
-          //         color: Colors.black,
-          //         fontWeight: FontWeight.bold,
-          //         fontSize: ResponsiveLayout.getFontSize(18),
-          //       ),
-          //     ),
-          //   ],
-          // ),
 
           const SizedBox(width: 160),
           Expanded(
@@ -2214,38 +2206,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             ],
           ),
 
-          // Calendar
-          // Row(
-          //   children: [
-          //     Icon(
-          //       Icons.calendar_month_rounded,
-          //       size: ResponsiveLayout.getIconSize(24),
-          //       color: const Color(0xFF007BFF),
-          //     ),
-          //     const SizedBox(width: 4),
-          //     Text(
-          //       _displayDate,
-          //       style: const TextStyle(fontSize: 13),
-          //     ),
-          //   ],
-          // ),
-//           const SizedBox(width: 24),
-//
-// // Time
-//           Row(
-//             children: [
-//               Icon(
-//                 Icons.access_time,
-//                 size: ResponsiveLayout.getIconSize(24),
-//                 color: const Color(0xFF007BFF),
-//               ),
-//               const SizedBox(width: 4),
-//               Text(
-//                 _displayTime,
-//                 style: const TextStyle(fontSize: 13),
-//               ),
-//             ],
-//           ),
           const SizedBox(width: 18),
         ],
       ),
@@ -2450,262 +2410,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               ),
 
 
-              // Row(
-              //   crossAxisAlignment: CrossAxisAlignment.center,
-              //   children: [
-              //     // Label
-              //     Text(
-              //       "Cust Info:",
-              //       style: TextStyle(
-              //         fontSize: ResponsiveLayout.getFontSize(16),
-              //         fontWeight: FontWeight.w500,
-              //         color: Theme.of(context).brightness == Brightness.dark
-              //             ? Colors.white70
-              //             : Colors.black87,
-              //       ),
-              //     ),
-              //
-              //     const SizedBox(width: 8),
-              //
-              //     // Input container
-              //     Expanded(
-              //       child: Container(
-              //         height: 42,
-              //         margin: const EdgeInsets.only(right: 2),
-              //         padding: const EdgeInsets.symmetric(horizontal: 2),
-              //         decoration: BoxDecoration(
-              //           color: Theme.of(context).brightness == Brightness.dark
-              //               ? const Color(0xFF2C2C2E) // Dark mode background
-              //               : const Color(0xFFFFFDFD), // Light mode background
-              //           borderRadius: BorderRadius.circular(8),
-              //           border: Border.all(
-              //             width: 1,
-              //             color: Theme.of(context).brightness == Brightness.dark
-              //                 ? Colors.grey.shade800
-              //                 : const Color(0xFFF1EEEE),
-              //           ),
-              //         ),
-              //         child: Row(
-              //           children: [
-              //             // TextField
-              //             Expanded(
-              //               child: StatefulBuilder(
-              //                 builder: (context, innerSetState) {
-              //                   return TextField(
-              //                     controller: mobileController,
-              //                     keyboardType: TextInputType
-              //                         .emailAddress, // supports email + numbers
-              //                     maxLength:
-              //                     50, // allow longer input for emails
-              //
-              //                     textAlign: TextAlign.start,
-              //                     textAlignVertical: TextAlignVertical.center,
-              //
-              //                     onChanged: (value) {
-              //                       innerSetState(() {});
-              //                       setState(() {
-              //                         // Check if numeric 10-digit phone
-              //                         isPhoneValid = RegExp(r'^[0-9]{10}$')
-              //                             .hasMatch(value);
-              //
-              //                         // Check if valid email
-              //                         isEmailValid = RegExp(
-              //                             r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
-              //                             .hasMatch(value);
-              //                       });
-              //                     },
-              //
-              //                     style: TextStyle(
-              //                       fontSize: 14,
-              //                       fontWeight: FontWeight.w700,
-              //                       fontFamily: 'Inter',
-              //                       color: Theme.of(context).brightness ==
-              //                           Brightness.dark
-              //                           ? Colors.white
-              //                           : Colors.black87,
-              //                     ),
-              //
-              //                     decoration: InputDecoration(
-              //                       counterText: "",
-              //                       hintText: "Add Mobile No or Email",
-              //                       hintStyle: TextStyle(
-              //                         color: Theme.of(context).brightness ==
-              //                             Brightness.dark
-              //                             ? Colors.grey.shade500
-              //                             : const Color(0xFFCCCCCC),
-              //                         fontSize: 12,
-              //                         fontFamily: 'Inter',
-              //                         fontWeight: FontWeight.w500,
-              //                       ),
-              //                       border: InputBorder.none,
-              //                       isCollapsed: true,
-              //                       contentPadding: const EdgeInsets.only(
-              //                           left: 8, top: 8, bottom: 8),
-              //                     ),
-              //                   );
-              //                 },
-              //               ),
-              //             ),
-              //
-              //             const SizedBox(width: 10),
-              //
-              //             // Add / Cancel button
-              //             InkWell(
-              //               onTap: isPaymentDone       // <--- FIX
-              //                   ? null                 // disable tap after any payment
-              //                   : () async {
-              //                 if (showCustomerInput) {
-              //                   setState(() {
-              //                     mobileController.clear();
-              //                     showCustomerInput = false;
-              //                     isPhoneValid = false;
-              //                     isEmailValid = false;
-              //                     isRedeemActive = false;
-              //                   });
-              //
-              //                   // ---------------- CLEAR LOYALTY CONTACT FROM HIVE ----------------
-              //                   final offlineBox = Hive.box('offlineOrders');
-              //                   final localKey = widget.offlineOrderId?.toString();
-              //
-              //                   if (localKey != null) {
-              //                     final existing = offlineBox.get(localKey);
-              //
-              //                     if (existing != null) {
-              //                       final d = Map<String, dynamic>.from(existing);
-              //                       d["loyaltyContact"] = "";  // <---- IMPORTANT
-              //                       offlineBox.put(localKey, d);
-              //
-              //                       print("🟡 Loyalty contact removed for $localKey");
-              //                     }
-              //                   }
-              //
-              //                   // ---------------- UPDATE CUSTOMER DISPLAY WITH NO LOYALTY ----------------
-              //                   final localOrderId = widget.offlineOrderId;
-              //                   if (localOrderId != null) {
-              //                     print("📺 Customer Display → loyalty cleared");
-              //                     await CustomerDisplayHelper.updateCustomerDisplay(localOrderId);
-              //                   }
-              //
-              //                   return;
-              //                 }
-              //
-              //                 if (!(isPhoneValid || isEmailValid) || redeemedValue > 0) return;
-              //
-              //                 setState(() => isAddLoading = true);
-              //
-              //                 final contact = mobileController.text.trim();
-              //                 final orderId = widget.orderId ?? 0;
-              //
-              //                 try {
-              //                   final rawResponse = await orderBloc.addLoyaltyPoints(
-              //                     orderId: orderId,
-              //                     contact: contact,
-              //                   );
-              //
-              //                   final result = jsonDecode(rawResponse);
-              //                   final data = result["data"];
-              //
-              //                   final int pts = int.tryParse(data["available_points"].toString()) ?? 0;
-              //
-              //                   setState(() {
-              //                     loyaltyData = data;
-              //                     availablePoints = pts;
-              //                     isRedeemActive = true;
-              //                     showCustomerInput = true;
-              //                   });
-              //
-              //                   // ---------------- SAVE CONTACT INTO HIVE ----------------
-              //                   final offlineBox = Hive.box('offlineOrders');
-              //                   final localKey = widget.offlineOrderId?.toString();
-              //
-              //                   if (localKey != null) {
-              //                     final existing = offlineBox.get(localKey);
-              //
-              //                     if (existing != null) {
-              //                       final d = Map<String, dynamic>.from(existing);
-              //                       d["loyaltyContact"] = contact;   // <---- SAVE CONTACT
-              //                       offlineBox.put(localKey, d);
-              //
-              //                       print("🟢 Loyalty contact saved into Hive for $localKey → $contact");
-              //                     }
-              //                   }
-              //
-              //                   // -------------- UPDATE CUSTOMER DISPLAY -----------------
-              //                   final localOrderId = widget.offlineOrderId;
-              //                   if (localOrderId != null) {
-              //                     print("📌 Updating Customer Display → loyalty added");
-              //                     await CustomerDisplayHelper.updateCustomerDisplay(localOrderId);
-              //                   }
-              //
-              //                   if (mounted) {
-              //                     ScaffoldMessenger.of(context).showSnackBar(
-              //                       const SnackBar(
-              //                         content: Text("Loyalty Points Added Successfully!"),
-              //                         backgroundColor: Colors.green,
-              //                       ),
-              //                     );
-              //                   }
-              //
-              //                 } catch (e) {
-              //                   print("❌ Loyalty API Error: $e");
-              //
-              //                   if (mounted) {
-              //                     ScaffoldMessenger.of(context).showSnackBar(
-              //                       SnackBar(
-              //                         content: Text("Failed to add loyalty points. Please try again."),
-              //                         backgroundColor: Colors.red,
-              //                       ),
-              //                     );
-              //                   }
-              //
-              //                 } finally {
-              //                   if (mounted) setState(() => isAddLoading = false);
-              //                 }
-              //
-              //               },
-              //               child: Container(
-              //                 margin: const EdgeInsets.all(2),
-              //                 padding: const EdgeInsets.fromLTRB(20, 8, 28, 8),
-              //                 decoration: BoxDecoration(
-              //                   color: isPaymentDone
-              //                       ? Colors.grey.shade400                 // <--- Disabled
-              //                       : (redeemedValue > 0)
-              //                       ? Colors.grey.shade400
-              //                       : !(isPhoneValid || isEmailValid)
-              //                       ? Colors.grey.shade400
-              //                       : showCustomerInput
-              //                       ? Colors.red
-              //                       : Theme.of(context).brightness == Brightness.dark
-              //                       ? const Color(0xFF262D41)
-              //                       : const Color(0xFF3B4259),
-              //
-              //                   borderRadius: BorderRadius.circular(6),
-              //                 ),
-              //                 child: isAddLoading
-              //                     ? const SizedBox(
-              //                   height: 16,
-              //                   width: 16,
-              //                   child: CircularProgressIndicator(
-              //                     strokeWidth: 2,
-              //                     color: Colors.white,
-              //                   ),
-              //                 )
-              //                     : Text(
-              //                   showCustomerInput ? "× Cancel" : "+ Add",
-              //                   style: const TextStyle(
-              //                     color: Colors.white,
-              //                     fontSize: 13,
-              //                     fontWeight: FontWeight.w600,
-              //                   ),
-              //                 ),
-              //               ),
-              //             ),
-              //           ],
-              //         ),
-              //       ),
-              //     ),
-              //   ],
-              // ),
+
               SizedBox(height: ResponsiveLayout.getHeight(8)),
               Expanded(
                 flex: 6,
@@ -3035,17 +2740,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           .getOrderItems(orderData.first[AppDBConst.orderServerId]);
 
       //Build #1.0.29:  Fetch the orderServerId from the database
-      // final db = await DBHelper.instance.database;
-      // final List<Map<String, dynamic>> orderData = await db.query(
-      //   AppDBConst.orderTable,
-      //   columns: [AppDBConst.orderServerId,
-      //   AppDBConst.orderDiscount,
-      //   AppDBConst.orderTax,
-      //   AppDBConst.merchantDiscount // Build #1.0.80
-      //   ],
-      //   where: '${AppDBConst.orderId} = ?',
-      //   whereArgs: [order.first[AppDBConst.orderServerId]],
-      // );
+
+
 
       if (orderData.isNotEmpty) {
         setState(() {
@@ -3416,204 +3112,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     );
   }
 
-
-
-  // Widget _buildOrderItem(int index) {
-  //   final themeHelper = Provider.of<ThemeNotifier>(context);
-  //   final orderItem = orderItems[index];
-  //   final itemType = orderItem['item_type']?.toString().toLowerCase() ?? '';
-  //
-  //   final bool isVariant =
-  //       (orderItem['is_variant'] == true) ||
-  //           (itemType == 'variant') ||
-  //           (orderItem['variation_name'] != null &&
-  //               orderItem['variation_name'].toString().trim().isNotEmpty) ||
-  //           (orderItem['variation_id'] != null &&
-  //               orderItem['variation_id'] != 0);
-  //   final bool isEbtEligible = orderItem['is_ebt_eligible'] == true;
-  //
-  //
-  //   final String itemName = orderItem['item_name']?.toString() ?? '';
-  //   final double itemPrice = (orderItem['item_price'] ?? 0).toDouble();
-  //   final int itemCount = (orderItem['items_count'] ?? 0).toInt();
-  //   final double itemSumPrice = (orderItem['item_sum_price'] ?? 0).toDouble();
-  //   final String itemImage = orderItem['item_image']?.toString() ?? '';
-  //
-  //   final bool isPayout = itemType.contains(TextConstants.payoutText);
-  //   final bool isCoupon = itemType.contains(TextConstants.couponText);
-  //   final bool isCustomItem = itemType.contains(TextConstants.customItemText);
-  //   final bool isCashback = itemType.contains("cashback");
-  //
-  //   final bool isPayoutOrCoupon =
-  //       isPayout || isCoupon || isCashback;
-  //   if (kDebugMode) {
-  //     print("🧩 Building Order Item #$index → $itemName | $itemType");
-  //   }
-  //
-  //   /// ✅ Select image based on item type
-  //   Widget imageWidget;
-  //   if (isPayout) {
-  //     imageWidget = SvgPicture.asset(
-  //       'assets/svg/payout.svg', // 👈 your existing payout icon path
-  //       fit: BoxFit.contain,
-  //     );
-  //   } else if (isCoupon) {
-  //     imageWidget = SvgPicture.asset(
-  //       'assets/svg/coupon.svg', // 👈 coupon icon
-  //       fit: BoxFit.contain,
-  //     );
-  //   } else if (isCustomItem) {
-  //     // Custom item MUST show PNG
-  //     imageWidget = Image.asset(
-  //       'assets/custom.png',
-  //       fit: BoxFit.cover,
-  //     );
-  //   } else if (itemImage.startsWith('http')) {
-  //     // HTTP product image
-  //     imageWidget = Image.network(
-  //       itemImage,
-  //       fit: BoxFit.cover,
-  //       errorBuilder: (context, error, stackTrace) =>
-  //           Image.asset('assets/custom.png'), // PNG fallback instead of SVG
-  //     );
-  //   } else if (itemImage.startsWith('assets/')) {
-  //     // Local asset image (.png / .jpg)
-  //     imageWidget = Image.asset(
-  //       itemImage,
-  //       fit: BoxFit.cover,
-  //       errorBuilder: (context, error, stackTrace) =>
-  //           Image.asset('assets/custom.png'), // fallback PNG
-  //     );
-  //   } else {
-  //     // Final fallback
-  //     imageWidget = Image.asset(
-  //       'assets/custom.png',
-  //       fit: BoxFit.cover,
-  //     );
-  //   }
-  //
-  //   return Padding(
-  //     padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 12),
-  //     child: SizedBox(
-  //       height: MediaQuery.of(context).size.height * 0.097,
-  //       child: Row(
-  //         children: [
-  //           // 🖼️ Image Section
-  //           Container(
-  //             width: 42,
-  //             height: 42,
-  //             decoration: BoxDecoration(
-  //               borderRadius: BorderRadius.circular(8),
-  //               color: Colors.transparent,
-  //             ),
-  //             child: ClipRRect(
-  //               borderRadius: BorderRadius.circular(8),
-  //               child: imageWidget,
-  //             ),
-  //           ),
-  //
-  //           const SizedBox(width: 12),
-  //
-  //           // 🧾 Details
-  //           Expanded(
-  //             child: Column(
-  //               crossAxisAlignment: CrossAxisAlignment.start,
-  //               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-  //               children: [
-  //                 Expanded(
-  //                   child: Column(
-  //                     crossAxisAlignment: CrossAxisAlignment.start,
-  //                     mainAxisAlignment: MainAxisAlignment.center,
-  //                     children: [
-  //                       // 🔹 Item Name
-  //                       Text(
-  //                         itemName,
-  //                         maxLines: 2,
-  //                         overflow: TextOverflow.ellipsis,
-  //                         style: TextStyle(
-  //                           fontSize: 13,
-  //                           fontWeight: FontWeight.bold,
-  //                           color: themeHelper.themeMode == ThemeMode.dark
-  //                               ? ThemeNotifier.textDark
-  //                               : ThemeNotifier.textLight,
-  //                         ),
-  //                       ),
-  //
-  //                       Row(
-  //                         children: [
-  //                           // 🔹 Price × Qty (not for payouts/custom/coupon)
-  //                           if (!isPayoutOrCoupon)
-  //                             Text(
-  //                               "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
-  //                               style: TextStyle(
-  //                                 fontSize: 13,
-  //                                 color: themeHelper.themeMode == ThemeMode.dark
-  //                                     ? ThemeNotifier.textDark
-  //                                     : Colors.black87,
-  //                               ),
-  //                             ),
-  //
-  //                           // spacing after price
-  //                           if (!isPayoutOrCoupon) const SizedBox(width: 6),
-  //
-  //                           // 🟢 EBT Badge
-  //                           if (isEbtEligible)
-  //                             Container(
-  //                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-  //                               decoration: BoxDecoration(
-  //                                 color: Colors.green,
-  //                                 borderRadius: BorderRadius.circular(4),
-  //                               ),
-  //                               child: const Text(
-  //                                 "EBT",
-  //                                 style: TextStyle(
-  //                                   fontSize: 10,
-  //                                   color: Colors.white,
-  //                                   fontWeight: FontWeight.bold,
-  //                                 ),
-  //                               ),
-  //                             ),
-  //
-  //                           // spacing after EBT
-  //                           if (isEbtEligible) const SizedBox(width: 6),
-  //
-  //                           // 🔻 Variant Icon
-  //                           if (isVariant)
-  //                             SvgPicture.asset(
-  //                               SvgUtils.variationIcon,
-  //                               height: 10,
-  //                               width: 10,
-  //                             ),
-  //                         ],
-  //                       )
-  //                     ],
-  //                   ),
-  //                 ),
-  //               ],
-  //             ),
-  //           ),
-  //
-  //           // 💰 Right-side total
-  //           Text(
-  //             isCoupon || isPayout
-  //                 ? "-${TextConstants.currencySymbol}${itemSumPrice.abs().toStringAsFixed(2)}"
-  //                 : "${TextConstants.currencySymbol}${itemSumPrice.toStringAsFixed(2)}",
-  //             style: TextStyle(
-  //               fontWeight: FontWeight.bold,
-  //               fontSize: 16,
-  //               color: isCoupon || isPayout
-  //                   ? Colors.red
-  //                   : themeHelper.themeMode == ThemeMode.dark
-  //                   ? ThemeNotifier.textDark
-  //                   : ThemeNotifier.textLight,
-  //             ),
-  //           ),
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
-
   FontWeight labelFontWeight = FontWeight.w500;
   FontWeight amountFontWeight = FontWeight.w600;
 
@@ -3657,22 +3155,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     } else if (label == TextConstants.discountText || isDiscount) {
       labelColor = Colors.green[600]!;
       amountColor = Colors.green[600]!;
-      // leadingIcon = SvgPicture.asset(
-      //   'assets/svg/discount_star.svg',
-      //   // width: ResponsiveLayout.getIconSize(16),
-      //   // height: ResponsiveLayout.getIconSize(16),
-      //   // color: Colors.green[600],
-      // );
+
     } else if (label == TextConstants.merchantDiscount) {
       labelColor = Colors.blue[600]!;
       amountColor = Colors.blue[600]!;
-      // leadingIcon = SvgPicture.asset(
-      //   'assets/svg/discount_star.svg',
-      //   colorFilter: ColorFilter.mode(Colors.blueAccent, BlendMode.srcIn),
-      //   // width: ResponsiveLayout.getIconSize(16),
-      //   // height: ResponsiveLayout.getIconSize(16),
-      //   // color: Colors.blue[600],
-      // );
+
     }
     // ---------------- CASHBACK ( #55CBCD ) ----------------
     else if (label == TextConstants.cashbackFee ||
@@ -3946,37 +3433,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 mainAxisAlignment:
                 MainAxisAlignment.start, // Changed from spaceEvenly
                 children: [
-                  // Payment amount display row
-                  // Row(
-                  //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  //   mainAxisSize: MainAxisSize.min,
-                  //   spacing: ResponsiveLayout.getWidth(12),
-                  //   children: [
-                  //     _buildAmountDisplay(
-                  //       TextConstants.netPayable,
-                  //       '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
-                  //       amountColor: themeHelper.themeMode == ThemeMode.dark
-                  //           ? ThemeNotifier.textDark
-                  //           : null,
-                  //     ),
-                  //     _buildAmountDisplay(
-                  //       TextConstants.balanceAmount,
-                  //       '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
-                  //       amountColor: Colors.red,
-                  //     ),
-                  //     // _buildAmountDisplay(
-                  //     //   TextConstants.change,
-                  //     //   '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}',
-                  //     //   amountColor: Colors.green,
-                  //     // ),
-                  //     _buildAmountDisplay(
-                  //       TextConstants.EBTAmount,
-                  //       '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
-                  //       amountColor: Colors.green,
-                  //     ),
-                  //
-                  //   ],
-                  // ),
 
                   SizedBox(height: ResponsiveLayout.getHeight(6)),
 
@@ -4014,37 +3470,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                     crossAxisAlignment:
                                     CrossAxisAlignment.start,
                                     children: [
-                                      // Label container
-                                      // Container(
-                                      //     height: ResponsiveLayout.getHeight(36),
-                                      //     width: double.infinity,
-                                      //     padding: EdgeInsets.only(
-                                      //         top: ResponsiveLayout.getPadding(7),
-                                      //         left:
-                                      //         ResponsiveLayout.getPadding(12)),
-                                      //     decoration: BoxDecoration(
-                                      //       color: themeHelper.themeMode ==
-                                      //           ThemeMode.dark
-                                      //           ? ThemeNotifier.tabsBackground
-                                      //           : Colors.red[50],
-                                      //       borderRadius: BorderRadius.circular(
-                                      //           ResponsiveLayout.getRadius(6)),
-                                      //     ),
-                                      //     child: Text(
-                                      //       _getPaymentHeader(),
-                                      //       style: TextStyle(
-                                      //         color: Colors.red,
-                                      //         fontWeight: FontWeight.w600,
-                                      //         fontSize: ResponsiveLayout.getFontSize(14),
-                                      //       ),
-                                      //     )
-                                      //
-                                      // ),
-                                      // SizedBox(
-                                      //     height:
-                                      //     ResponsiveLayout.getHeight(8)),
-
-                                      // Amount TextField
                                       Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
@@ -4156,48 +3581,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           height:
                                           ResponsiveLayout.getHeight(8)),
 
-// QUICK AMOUNT BUTTONS - FIXED
-//                                       if (balanceAmount > 0 && selectedPaymentMethod != TextConstants.ebtText && selectedPaymentMethod != TextConstants.card)
-//
-//                                         Row(
-//                                           mainAxisAlignment:
-//                                           MainAxisAlignment.spaceBetween,
-//                                           children: _generateQuickAmounts(
-//                                               balanceAmount)
-//                                               .map(
-//                                                 (amount) => GestureDetector(
-//                                               onTap: () {
-//                                                 setState(() {
-//                                                   double allowedAmount = balanceAmount;
-//
-//                                                   // --- EBT PAYMENT CASE ---
-//                                                   if (selectedPaymentMethod == TextConstants.ebtText) {
-//                                                     allowedAmount = min(balanceAmount, ebtTotal);
-//                                                   }
-//
-//                                                   // --- CARD PAYMENT CASE ---
-//                                                   else if (selectedPaymentMethod == TextConstants.card) {
-//                                                     allowedAmount = balanceAmount;   // full remaining balance allowed
-//                                                   }
-//
-//                                                   // UPDATE RAW AMOUNT
-//                                                   _rawAmount = (allowedAmount * 100).toInt();
-//
-//                                                   // UPDATE TEXT FIELD
-//                                                   amountController.text =
-//                                                   '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
-//
-//                                                   _amountErrorText = null;
-//                                                   _isAmountEntered = true;
-//                                                 });
-//                                               },
-//                                               child: _buildQuickAmountButton(
-//                                                   '${TextConstants.currencySymbol} ${amount.toStringAsFixed(2)}'),
-//                                             ),
-//                                           )
-//                                               .toList(),
-//                                         ),
-
                                       SizedBox(
                                           height:
                                           ResponsiveLayout.getHeight(12)),
@@ -4308,65 +3691,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                         ),
                                       ),
 
-                                      // Expanded numpad to fill remaining space
-                                      // Expanded(
-                                      //   child: CustomNumPad(
-                                      //     numPadType: NumPadType.payment,
-                                      //     isDarkTheme: themeHelper.themeMode == ThemeMode.dark,
-                                      //     getPaidAmount: () => amountController.text,
-                                      //     balanceAmount: balanceAmount,
-                                      //     onDigitPressed: (value) {
-                                      //       if (balanceAmount <= 0) {
-                                      //         return;
-                                      //       }
-                                      //       if (_amountErrorText != null) {
-                                      //         setState(() {
-                                      //           _amountErrorText = null;
-                                      //         });
-                                      //       }
-                                      //       String cleanText = amountController.text.replaceAll(TextConstants.currencySymbol, '');
-                                      //       amountController.text = '${TextConstants.currencySymbol}' + cleanText + value;
-                                      //       setState(() {});
-                                      //     },
-                                      //     onClearPressed: () {
-                                      //       if (_amountErrorText != null) {
-                                      //         setState(() {
-                                      //           _amountErrorText = null;
-                                      //         });
-                                      //       }
-                                      //       amountController.clear();
-                                      //       setState(() {});
-                                      //     },
-                                      //     onDeletePressed: () {
-                                      //       if (amountController.text.isNotEmpty) {
-                                      //         amountController.text = amountController.text.substring(0, amountController.text.length - 1);
-                                      //         setState(() {});
-                                      //       }
-                                      //     },
-                                      //     onPayPressed: () {
-                                      //       if (balanceAmount <= 0) {
-                                      //         setState(() {
-                                      //           _amountErrorText = null;
-                                      //           _callCreatePaymentAPI(amount: 0.0);
-                                      //         });
-                                      //       } else {
-                                      //         String paidAmount = amountController.text;
-                                      //         String cleanAmount = paidAmount.replaceAll('${TextConstants.currencySymbol}', '').trim();
-                                      //         double amount = double.tryParse(cleanAmount) ?? 0.0;
-                                      //
-                                      //         setState(() {
-                                      //           if (amount == 0.0) {
-                                      //             _amountErrorText = TextConstants.amountValidation;
-                                      //           } else {
-                                      //             _amountErrorText = null;
-                                      //             _callCreatePaymentAPI();
-                                      //           }
-                                      //         });
-                                      //       }
-                                      //     },
-                                      //     isLoading: isLoading,
-                                      //   ),
-                                      // ),
                                     ],
                                   ),
                                 ),
@@ -4390,13 +3714,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: [
                   // SizedBox(height: ResponsiveLayout.getHeight(3)),
-                  // Text(
-                  //   TextConstants.selectPaymentMode,
-                  //   style: TextStyle(
-                  //     fontSize: ResponsiveLayout.getFontSize(14),
-                  //     fontWeight: FontWeight.bold,
-                  //   ),
-                  // ),
+
                   SizedBox(height: ResponsiveLayout.getHeight(3)),
 
                   // Payment mode buttons - make flexible
@@ -4434,21 +3752,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           Container(
                             width: double.infinity,
                             padding: EdgeInsets.all(ResponsiveLayout.getPadding(8)),
-                            // decoration: BoxDecoration(
-                            //   color: themeHelper.themeMode == ThemeMode.dark
-                            //       ? ThemeNotifier.secondaryBackground // dark mode main container
-                            //       : Colors.white, // light mode main container
-                            //   borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
-                            //   boxShadow: [
-                            //     BoxShadow(
-                            //       color: themeHelper.themeMode == ThemeMode.dark
-                            //           ? Colors.black.withOpacity(0.3) // subtle shadow in dark mode
-                            //           : Colors.black12, // light mode
-                            //       blurRadius: 4,
-                            //       offset: const Offset(0, 2),
-                            //     ),
-                            //   ],
-                            // ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.start,
@@ -4599,95 +3902,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       ),
                     ),
                   ),
-                  // Expanded(
-                  //   flex: 3, // Give more space to payment modes
-                  //   child: Container(
-                  //     width: double.infinity,
-                  //     padding: EdgeInsets.all(ResponsiveLayout.getPadding(8)),
-                  //     decoration: BoxDecoration(
-                  //       color: themeHelper.themeMode == ThemeMode.dark
-                  //           ? ThemeNotifier.secondaryBackground
-                  //           : Colors.white,
-                  //       borderRadius: BorderRadius.circular(
-                  //           ResponsiveLayout.getRadius(5)),
-                  //     ),
-                  //     child: Column(
-                  //       children: [
-                  //         _buildPaymentModeButton(
-                  //           TextConstants.cash,
-                  //           Icons.money,
-                  //           isSelected: selectedPaymentMethod == TextConstants.cash,
-                  //           onTap: () {
-                  //             setState(() {
-                  //               selectedPaymentMethod = TextConstants.cash;
-                  //               _resetAmount();
-                  //             });
-                  //           },
-                  //         ),
-                  //         SizedBox(height: ResponsiveLayout.getHeight(10)),
-                  //         // _buildPaymentModeButton(
-                  //         //   TextConstants.card,
-                  //         //   Icons.credit_card,
-                  //         //   isSelected: false,
-                  //         //   onTap: null, // ✅ disabled
-                  //         // ),
-                  //
-                  //         _buildPaymentModeButton(
-                  //           TextConstants.card,
-                  //           Icons.credit_card,
-                  //           isSelected: selectedPaymentMethod == TextConstants.card,
-                  //           onTap: () {
-                  //             setState(() {
-                  //               selectedPaymentMethod = TextConstants.card;
-                  //               double allowedAmount = balanceAmount;
-                  //
-                  //               _rawAmount = (allowedAmount * 100).toInt();
-                  //
-                  //               amountController.text =
-                  //               '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
-                  //
-                  //               _amountErrorText = null;
-                  //               _isAmountEntered = true;
-                  //             });
-                  //           },
-                  //         ),
-                  //         _buildPaymentModeButton(
-                  //           TextConstants.wallet,
-                  //           Icons.account_balance_wallet,
-                  //           isSelected: selectedPaymentMethod == TextConstants.wallet,
-                  //           onTap: () {
-                  //             showVoidExitConfirmation(context, true);
-                  //           },
-                  //         ),
-                  //
-                  //         SizedBox(height: ResponsiveLayout.getHeight(10)),
-                  //
-                  //         _buildPaymentModeButton(
-                  //           TextConstants.ebtText,
-                  //           Icons.payment,
-                  //           isSelected: selectedPaymentMethod == TextConstants.ebtText,
-                  //           onTap: () {
-                  //             setState(() {
-                  //               selectedPaymentMethod = TextConstants.ebtText;
-                  //
-                  //               // ALWAYS allow only the smaller amount
-                  //               double allowedAmount = min(ebtTotal, balanceAmount);
-                  //
-                  //               _rawAmount = (allowedAmount * 100).toInt();
-                  //
-                  //               amountController.text =
-                  //               '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
-                  //
-                  //               _amountErrorText = null;
-                  //               _isAmountEntered = true;
-                  //             });
-                  //           },
-                  //         ),
-                  //
-                  //       ],
-                  //     ),
-                  //   ),
-                  // ),
                   SizedBox(height: ResponsiveLayout.getHeight(10)),
 
                   // Payment options - make flexible
@@ -4926,23 +4140,19 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       String title,
       String iconPath, {
         required VoidCallback onTap,
-        bool isActive = true, // NEW
+        bool isActive = true,
       }) {
     return InkWell(
-      onTap: isActive ? onTap : null, //  Disable tap
+      onTap: isActive ? onTap : null,
       child: Container(
         height: 50,
         width: 368,
-        padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 24), // ✅ SAME PADDING
         decoration: BoxDecoration(
-          color: isActive ? Color(0xFFFFFFFF): Colors.grey.shade200,
-          // 🔹 Grey if disabled
+          color: isActive ? Colors.white : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(6),
-          // ✅ BORDER COLOR
           border: Border.all(
-            color: isActive
-                ? const Color(0xFFEB910E) // darker green border
-                : Colors.grey,   // disabled border
+            color: isActive ? const Color(0xFFEB910E) : Colors.grey,
             width: 1,
           ),
           boxShadow: const [
@@ -4950,49 +4160,46 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               color: Color(0x3F000000),
               blurRadius: 4,
               offset: Offset(2, 4),
-              spreadRadius: 0,
             ),
           ],
-
         ),
         child: Row(
           children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                color: isActive
-                    ? const Color(0xFFEB910E) // darker green border
-                    : Colors.grey,
+            // 🔹 LEFT: TEXT
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: isActive ? const Color(0xFFEB910E) : Colors.grey,
+                ),
               ),
             ),
-            const SizedBox(width: 15),
-            Container(
-              padding: const EdgeInsets.all(6), // controls circle size
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isActive
-                    ? const Color(0xFFEB910E) // darker green border
-                    : Colors.grey,// white circle
-              ),
-              child: Image.asset(
-                'assets/couponsicon.png',
-                width: 18,
-                height: 18,
-                color: isActive
-                    ?  Colors.white // darker green border
-                    : Colors.white,
-                fit: BoxFit.contain,
-              ),
 
+            // 🔹 RIGHT: ICON (ALIGNED)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isActive ? const Color(0xFFEB910E) : Colors.grey,
+                ),
+                child: Image.asset(
+                  iconPath,
+                  width: 18,
+                  height: 18,
+                  color: Colors.white,
+                ),
+              ),
             ),
-
           ],
         ),
       ),
     );
   }
+
   Future<void> _removeAppliedCoupon() async {
     if (widget.orderId == null || widget.orderId == 0) return;
 
@@ -5322,7 +4529,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     return Container(
       width: MediaQuery.of(context).size.width * 0.240, // fixed width
-      height: ResponsiveLayout.getHeight(61),           // fixed height
+      height: ResponsiveLayout.getHeight(63),           // fixed height
       alignment: Alignment.centerLeft,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -5384,29 +4591,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 
 
-
-  // Widget _buildQuickAmountButton(String amount, {bool isHighlighted = false}) {
-  //   return GestureDetector(
-  //     onTap: () {
-  //       amountController.text = amount.replaceAll(r'$', '');
-  //       setState(() {});
-  //     },
-  //     child: Container(
-  //       height: 60,
-  //       width: 90,
-  //       alignment: Alignment.center,
-  //       padding: const EdgeInsets.all(16.0),
-  //       decoration: BoxDecoration(
-  //       //  color: isHighlighted ? Color(0xFFBFF1C0) : Color(0xFFE0E0E0),
-  //         color: Color(0xFFBFF1C0),
-  //         borderRadius: BorderRadius.circular(8),
-  //       ),
-  //       child: Text(amount, style: TextStyle(fontWeight: FontWeight.bold, color: isHighlighted ? Colors.green : Colors.black, fontSize: 18)),
-  //     ),
-  //   );
-  // }
-
-  // Update _buildQuickAmountButton to remove isHighlighted logic for enabling
   Widget _buildQuickAmountButton(String amount) {
     // Build #1.0.29: updated
     return GestureDetector(
@@ -5504,139 +4688,93 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       return sortedAmounts.take(5).toList();
     }
   }
-  //
-  // Widget _buildPaymentModeButton(
-  //     String label,
-  //     IconData icon, {
-  //       bool isSelected = false,
-  //       VoidCallback? onTap,
-  //     }) {
-  //   final themeHelper = Provider.of<ThemeNotifier>(context);
-  //
-  //   return GestureDetector(
-  //     onTap: onTap, // ← FIX: This enables clicking
-  //     child: Container(
-  //       width: ResponsiveLayout.getWidth(168),
-  //       height: ResponsiveLayout.getHeight(64),
-  //       padding: ResponsiveLayout.getResponsivePadding(vertical: 10),
-  //       margin: EdgeInsets.symmetric(vertical: 2),
-  //       decoration: BoxDecoration(
-  //         color: isSelected
-  //             ? Colors.red.shade100
-  //             : themeHelper.themeMode == ThemeMode.dark
-  //             ? ThemeNotifier.primaryBackground
-  //             : Colors.white,
-  //         borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(5)),
-  //         border: isSelected
-  //             ? Border.all(color: Colors.red.shade300)
-  //             : Border.all(
-  //           color: themeHelper.themeMode == ThemeMode.dark
-  //               ? ThemeNotifier.borderColor
-  //               : Colors.grey.shade200,
-  //         ),
-  //         boxShadow: [
-  //           BoxShadow(
-  //             color: Colors.grey.withOpacity(0.1),
-  //             spreadRadius: 1,
-  //             blurRadius: 2,
-  //             offset: const Offset(0, 1),
-  //           ),
-  //         ],
-  //       ),
-  //       child: Row(
-  //         mainAxisAlignment: MainAxisAlignment.center,
-  //         children: [
-  //           Icon(
-  //             icon,
-  //             color: isSelected ? Colors.red : Colors.grey,
-  //             size: ResponsiveLayout.getIconSize(32),
-  //           ),
-  //           SizedBox(width: ResponsiveLayout.getWidth(8)),
-  //           Text(
-  //             label,
-  //             style: TextStyle(
-  //               color: isSelected ? Colors.red : Colors.grey,
-  //               fontFamily: 'Montserrat',
-  //               fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-  //               fontSize: isSelected
-  //                   ? ResponsiveLayout.getFontSize(18)
-  //                   : ResponsiveLayout.getFontSize(16),
-  //             ),
-  //           ),
-  //         ],
-  //       ),
-  //     ),
-  //   );
+
   Widget _buildPaymentModeButton(
       String label,
-      Widget iconWidget, { // ✅ changed
+      Widget iconWidget, {
         required LinearGradient gradient,
         required Color borderColor,
-        Color? iconColor, // optional now
+        Color? iconColor, // optional
         VoidCallback? onTap,
       }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: ResponsiveLayout.getWidth(178),
-        height: ResponsiveLayout.getHeight(54),
-        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-        decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(5)),
-          border: Border.all(color: borderColor),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x3F000000),
-              blurRadius: 4,
-              offset: Offset(2, 4),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            // Glossy overlay
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                height: ResponsiveLayout.getHeight(5),
-              ),
-            ),
+    double _scale = 1.0;
 
-            // Main content
-            Center(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Label
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontFamily: 'Montserrat',
-                      fontWeight: FontWeight.bold,
-                      fontSize: ResponsiveLayout.getFontSize(16),
-                    ),
-                  ),
-                  SizedBox(width: ResponsiveLayout.getWidth(34)),
-
-                  // ✅ Image/Icon inside white circle
-                  Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                    ),
-                    child: iconWidget,
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return GestureDetector(
+          onTapDown: (_) {
+            setState(() {
+              _scale = 0.95; // press effect
+            });
+          },
+          onTapUp: (_) {
+            setState(() {
+              _scale = 1.0;
+            });
+            if (onTap != null) onTap();
+          },
+          onTapCancel: () {
+            setState(() {
+              _scale = 1.0;
+            });
+          },
+          child: AnimatedScale(
+            scale: _scale,
+            duration: const Duration(milliseconds: 100),
+            curve: Curves.easeInOut,
+            child: Container(
+              width: ResponsiveLayout.getWidth(178),
+              height: ResponsiveLayout.getHeight(54),
+              margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+              decoration: BoxDecoration(
+                gradient: gradient,
+                borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                border: Border.all(color: borderColor),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x3F000000),
+                    blurRadius: 4,
+                    offset: Offset(2, 4),
                   ),
                 ],
               ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                  onTap: onTap,
+                  splashColor: Colors.white24,
+                  highlightColor: Colors.transparent,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Icon inside circle
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                        ),
+                        child: iconWidget,
+                      ),
+                      SizedBox(width: ResponsiveLayout.getWidth(12)),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontFamily: 'Montserrat',
+                          fontWeight: FontWeight.bold,
+                          fontSize: ResponsiveLayout.getFontSize(18),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -5647,18 +4785,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         required VoidCallback onTap,
       }) {
     return InkWell(
-      onTap: onTap,
+      onTap: isActive ? onTap : null,
       child: Container(
         height: 50,
         width: 368,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 24), // ✅ SAME PADDING
         decoration: BoxDecoration(
           color: isActive ? Colors.white : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
-            color: isActive
-                ? const Color(0xFF817ACC) // darker green border
-                : Colors.grey,   // disabled border
+            color: isActive ? const Color(0xFF817ACC) : Colors.grey,
             width: 1,
           ),
           boxShadow: const [
@@ -5666,43 +4802,46 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               color: Color(0x3F000000),
               blurRadius: 4,
               offset: Offset(2, 4),
-              spreadRadius: 0,
             ),
           ],
-
         ),
         child: Row(
           children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                color: isActive ? Color(0xFF817ACC) : Colors.grey,
+            // 🔹 LEFT: TEXT
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: isActive ? const Color(0xFF817ACC) : Colors.grey,
+                ),
               ),
             ),
-            const SizedBox(width: 15),
-            Container(
-              padding: EdgeInsets.all(6), // circle size
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isActive ? Color(0xFF817ACC) : Colors.grey, // white circle background
-              ),
-              child: Image.asset(
-                'assets/redeempoints.png',
-                width: 18,
-                height: 18,
-                color: isActive ? Colors.white : Colors.white,
-                fit: BoxFit.contain,
-              ),
 
+            // 🔹 RIGHT: ICON (ALIGNED)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isActive ? const Color(0xFF817ACC) : Colors.grey,
+                ),
+                child: Image.asset(
+                  iconPath,
+                  width: 18,
+                  height: 18,
+                  color: Colors.white,
+                ),
+              ),
             ),
-
           ],
         ),
       ),
     );
   }
+
   // Build #1.0.49: Added _handleVoidPayment for void payment api call code
   // Build #1.0.175: Modified _handleVoidPayment for partial void with API call
   void _handleVoidPayment(BuildContext context, {required bool isPartial}) {
@@ -5761,17 +4900,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           _fetchPaymentsByOrderId(); // Refresh payments after successful payment
           /// Build #1.0.175: We are already updating all the values in _callCreatePaymentAPI method, after that again here updating again no need
           /// If required un-comment and use it!
-          // orderTotal = response.data!.orderTotal ?? orderTotal;
-          // tenderAmount = response.data!.totalPaid ?? tenderAmount;
-          // balanceAmount = response.data!.remainingAmount ?? balanceAmount;
-          // changeAmount = tenderAmount > orderTotal ? (tenderAmount - orderTotal) : 0.0;
+
           orderStatus = response.data!.orderStatus ?? orderStatus;
-          // Subtract the voided amount (paidAmount) from payByCash or payByOther based on selectedPaymentMethod
-          // if (selectedPaymentMethod == TextConstants.cash) {
-          //   payByCash = (payByCash - paidAmount).clamp(0.0, double.infinity);
-          // } else {
-          //   payByOther = (payByOther - paidAmount).clamp(0.0, double.infinity);
-          // }
+
 
           if (kDebugMode) {
             print("✅ After Update:");
@@ -5960,6 +5091,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       double amount, {
         double? changeAmount,
         required bool showChange,
+        Map<String, dynamic>? couponResponse,
       }) async {
     if (kDebugMode) {
       print(
@@ -6006,6 +5138,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         mode: PaymentMode.cash,
         amount: amount,
         changeAmount: showChange ? changeAmount : null,
+        couponResponse: couponResponse,
         onVoid: () {
           // Navigator.of(context).pop();
           showVoidExitConfirmation(context, true);
@@ -6069,7 +5202,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
     return printerDB.first;
   }
-
   Future _preparePrintTicket() async {
     if (kDebugMode) {
       print("OrderSummaryScreen _preparePrintTicket call print receipt");
@@ -6128,11 +5260,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     if (header != "") {
       bytes += ticket.row([
-        PosColumn(
-          text: header,
-          width: 12,
-          styles: PosStyles(align: PosAlign.center),
-        ),
+        PosColumn(text: header, width: 12, styles: PosStyles(align: PosAlign.center)),
       ]);
     }
 
@@ -6146,7 +5274,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     bytes += ticket.feed(1);
 
-    // Store Name
     bytes += ticket.row([
       PosColumn(
         text: storeName,
@@ -6162,46 +5289,33 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     bytes += ticket.feed(1);
 
-    // Address and Phone
     bytes += ticket.row([
-      PosColumn(
-          text: address, width: 12, styles: PosStyles(align: PosAlign.center))
+      PosColumn(text: address, width: 12, styles: PosStyles(align: PosAlign.center))
     ]);
     bytes += ticket.row([
-      PosColumn(
-          text: cityStateZip,
-          width: 12,
-          styles: PosStyles(align: PosAlign.center))
+      PosColumn(text: cityStateZip, width: 12, styles: PosStyles(align: PosAlign.center))
     ]);
     bytes += ticket.row([
-      PosColumn(
-          text: "Phone: $storePhone",
-          width: 12,
-          styles: PosStyles(align: PosAlign.center)),
+      PosColumn(text: "Phone: $storePhone", width: 12, styles: PosStyles(align: PosAlign.center)),
+    ]);
+
+    bytes += ticket.feed(1);
+    bytes += ticket.row([
+      PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
 
     bytes += ticket.feed(1);
 
-    bytes += ticket.row([
-      PosColumn(
-          text: "-----------------------------------------------", width: 12),
-    ]);
-
-    bytes += ticket.feed(1);
-
-    // Date & Time
     bytes += ticket.row([
       PosColumn(text: "Date: $_displayDate", width: 7),
       PosColumn(text: "Time: $_displayTime", width: 5),
     ]);
 
-    // Cashier & Store ID
     bytes += ticket.row([
       PosColumn(text: "Cashier: $cashierName", width: 7),
       PosColumn(text: "StoreID: $storeId", width: 5),
     ]);
 
-    // Role & Order ID
     bytes += ticket.row([
       PosColumn(text: "Role: $cashierRole", width: 7),
       PosColumn(text: "OrderID: $orderIdToPrint", width: 5),
@@ -6209,8 +5323,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     bytes += ticket.feed(1);
     bytes += ticket.row([
-      PosColumn(
-          text: "-----------------------------------------------", width: 12),
+      PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
 
     bytes += ticket.feed(1);
@@ -6221,28 +5334,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     bytes += ticket.row([
       PosColumn(text: "#", width: 1, styles: PosStyles(bold: true)),
       PosColumn(text: "Description", width: 5, styles: PosStyles(bold: true)),
-      PosColumn(
-          text: "Qty",
-          width: 1,
-          styles: PosStyles(align: PosAlign.center, bold: true)),
-      PosColumn(
-          text: "Rate",
-          width: 2,
-          styles: PosStyles(align: PosAlign.right, bold: true)),
-      PosColumn(
-          text: "Amt",
-          width: 3,
-          styles: PosStyles(align: PosAlign.right, bold: true)),
+      PosColumn(text: "Qty", width: 1, styles: PosStyles(align: PosAlign.center, bold: true)),
+      PosColumn(text: "Rate", width: 2, styles: PosStyles(align: PosAlign.right, bold: true)),
+      PosColumn(text: "Amt", width: 3, styles: PosStyles(align: PosAlign.right, bold: true)),
     ]);
 
     bytes += ticket.feed(1);
 
-// -------------------------------
-// ITEMS LOOP
-// -------------------------------
     // -------------------------------
-// ITEMS LOOP (CLEANED & FIXED)
-// -------------------------------
+    // ITEMS LOOP
+    // -------------------------------
     for (int i = 0; i < orderItems.length; i++) {
       var item = orderItems[i];
 
@@ -6254,119 +5355,121 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
       bool isPayout = type.contains(TextConstants.payoutText);
       bool isCoupon = type.contains(TextConstants.couponText);
+      bool isPayoutOrCoupon = isPayout || isCoupon;
 
-      // ⭐ Correct rate formatting
       String formattedRate = isCoupon || isPayout
           ? "-${TextConstants.currencySymbol}${unitPrice.abs().toStringAsFixed(2)}"
           : "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)}";
 
-      // ⭐ Correct total formatting
       String formattedTotal = isCoupon || isPayout
           ? "-${TextConstants.currencySymbol}${lineTotal.abs().toStringAsFixed(2)}"
           : "${TextConstants.currencySymbol}${lineTotal.toStringAsFixed(2)}";
 
-      if (kDebugMode) {
-        print("🟩 ITEM ${i + 1}");
-        print("Name: $itemName  Qty: $qty  Rate: $formattedRate  Total: $formattedTotal  Type: $type");
-      }
-
       bytes += ticket.row([
         PosColumn(text: "${i + 1}", width: 1),
         PosColumn(text: itemName, width: 5),
-        PosColumn(
-            text: "$qty",
-            width: 1,
-            styles: PosStyles(align: PosAlign.center)),
-
-        // ⭐ ONLY ONE RATE COLUMN NOW
-        PosColumn(
-            text: formattedRate,
-            width: 2,
-            styles: PosStyles(align: PosAlign.right)),
-
-        // ⭐ Correct AMOUNT column
-        PosColumn(
-            text: formattedTotal,
-            width: 3,
-            styles: PosStyles(align: PosAlign.right)),
+        PosColumn(text: "$qty", width: 1, styles: PosStyles(align: PosAlign.center)),
+        PosColumn(text: formattedRate, width: 2, styles: PosStyles(align: PosAlign.right)),
+        PosColumn(text: formattedTotal, width: 3, styles: PosStyles(align: PosAlign.right)),
       ]);
+
+      String discountType = item['discount_type']?.toString() ?? '';
+
+      double autoDiscount =
+      (discountType.isEmpty || discountType == 'auto')
+          ? (item['auto_discount'] ?? 0).toDouble()
+          : 0.0;
+
+      double multipackDiscount =
+      (discountType == 'multipack')
+          ? (item['auto_discount'] ?? 0).toDouble()
+          : 0.0;
+
+      double comboDiscount = (discountType == 'combo')
+          ? (item['auto_discount'] ?? 0).toDouble()
+          : 0.0;
+
+      if (autoDiscount > 0 && !isPayoutOrCoupon) {
+        bytes += ticket.row([
+          PosColumn(text: "   Auto Discount", width: 9),
+          PosColumn(
+            text: "-${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
+            width: 3,
+            styles: PosStyles(align: PosAlign.right),
+          ),
+        ]);
+      }
+
+      // Combo Discount (new)
+      if (comboDiscount > 0 && !isPayoutOrCoupon) {
+        bytes += ticket.row([
+          PosColumn(text: "   Combo Discount", width: 9),
+          PosColumn(
+            text: "-${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}",
+            width: 3,
+            styles: PosStyles(align: PosAlign.right),
+          ),
+        ]);
+      }
+
+      if (multipackDiscount > 0 && !isPayoutOrCoupon) {
+        bytes += ticket.row([
+          PosColumn(text: "   Multipack Discount", width: 9),
+          PosColumn(
+            text: "-${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}",
+            width: 3,
+            styles: PosStyles(align: PosAlign.right),
+          ),
+        ]);
+      }
 
       bytes += ticket.emptyLines(1);
     }
 
-
     // -------------------------------
     // TOTALS
     // -------------------------------
-    final double grossTotal = this.grossTotal;
-
-    print("🟩 Totals Computed:");
-    print("Gross Total: $grossTotal");
-    print("Discount: $discount");
-    print("Merchant Disc: $merchantDiscount");
-    print("Tax: $tax");
-    print("Cashback Fee: $cashbackFee");
-    print("Service Charge: $servicecharges");
-    print("Redeemed Value: $redeemedValue");
-    print("Net Payable: $computedNetPayable");
-    print("Cash: $payByCash");
-    print("Other: $payByOther");
-    print("Tender: $tenderAmount");
-    print("Change: $changeAmount");
-
-    print("================================================");
-    print("🟩 _preparePrintTicket() COMPLETED SUCCESSFULLY");
-    print("================================================");
     bytes += ticket.feed(1);
     bytes += ticket.row([
-      PosColumn(
-          text: "-----------------------------------------------", width: 12),
+      PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
-    bytes += ticket.feed(1);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.grossTotal, width: 10),
       PosColumn(
-          text:
-          "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}",
-          width: 2,
-          styles: PosStyles(align: PosAlign.right)),
+        text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}",
+        width: 2,
+        styles: PosStyles(align: PosAlign.right),
+      ),
     ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.discountText, width: 10),
       PosColumn(
-          text:
-          "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}",
-          width: 2,
-          styles: PosStyles(align: PosAlign.right)),
-    ]);
-
-    bytes += ticket.row([
-      PosColumn(
-          text: "-----------------------------------------------", width: 12),
+        text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}",
+        width: 2,
+        styles: PosStyles(align: PosAlign.right),
+      ),
     ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.taxText, width: 10),
       PosColumn(
-          text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}",
-          width: 2,
-          styles: PosStyles(align: PosAlign.right)),
+        text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}",
+        width: 2,
+        styles: PosStyles(align: PosAlign.right),
+      ),
     ]);
-
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.merchantDiscount, width: 10),
       PosColumn(
-          text:
-          "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
-          width: 2,
-          styles: PosStyles(align: PosAlign.right)),
+        text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
+        width: 2,
+        styles: PosStyles(align: PosAlign.right),
+      ),
     ]);
 
-
-    // Cashback Fee
     if (cashbackFee > 0) {
       bytes += ticket.row([
         PosColumn(text: TextConstants.cashbackFee, width: 10),
@@ -6378,8 +5481,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ]);
     }
 
-// Service Charges
-
     bytes += ticket.row([
       PosColumn(text: TextConstants.servicecharges, width: 10),
       PosColumn(
@@ -6389,11 +5490,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     ]);
 
-
-
     bytes += ticket.row([
-      PosColumn(
-          text: "-----------------------------------------------", width: 12),
+      PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
 
     bytes += ticket.feed(1);
@@ -6401,13 +5499,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     bytes += ticket.row([
       PosColumn(text: TextConstants.netPayable, width: 10),
       PosColumn(
-          text:
-          "${TextConstants.currencySymbol}${orderTotal.toStringAsFixed(2)}",
-          width: 2,
-          styles: PosStyles(align: PosAlign.right)),
+        text: "${TextConstants.currencySymbol}${orderTotal.toStringAsFixed(2)}",
+        width: 2,
+        styles: PosStyles(align: PosAlign.right),
+      ),
     ]);
 
-    // Redeemed Value
     if (redeemedValue > 0) {
       bytes += ticket.row([
         PosColumn(text: "Redeemed Amount", width: 10),
@@ -6419,114 +5516,55 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ]);
     }
 
-
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByCash, width: 10),
       PosColumn(
-          text:
-          "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}",
-          width: 2,
-          styles: PosStyles(align: PosAlign.right)),
+        text: "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}",
+        width: 2,
+        styles: PosStyles(align: PosAlign.right),
+      ),
     ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByOther, width: 10),
       PosColumn(
-          text:
-          "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}",
-          width: 2,
-          styles: PosStyles(align: PosAlign.right)),
+        text: "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}",
+        width: 2,
+        styles: PosStyles(align: PosAlign.right),
+      ),
     ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.tenderAmount, width: 10),
       PosColumn(
-          text:
-          "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
-          width: 2,
-          styles: PosStyles(align: PosAlign.right)),
+        text: "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
+        width: 2,
+        styles: PosStyles(align: PosAlign.right),
+      ),
     ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.change, width: 10),
       PosColumn(
-          text:
-          "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}",
-          width: 2,
-          styles: PosStyles(align: PosAlign.right)),
+        text: "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}",
+        width: 2,
+        styles: PosStyles(align: PosAlign.right),
+      ),
     ]);
 
     bytes += ticket.row([
-      PosColumn(
-          text: "-----------------------------------------------", width: 12),
+      PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
 
-    // Footer
     if (footer != "") {
-      bytes += ticket.row([
-        PosColumn(
-            text: footer, width: 12, styles: PosStyles(align: PosAlign.center)),
-      ]);
       bytes += ticket.feed(1);
+      bytes += ticket.row([
+        PosColumn(text: footer, width: 12, styles: PosStyles(align: PosAlign.center)),
+      ]);
     }
   }
 
-  // Future _printTicket() async{
-  //   // if(true) return;
-  //   final ticket =  await _printerSettings.getTicket();
-  //   final result = await _printerSettings.printTicket(bytes, ticket);
-  //
-  //   if (kDebugMode) {
-  //     print(">>>> PrintTicket result $result");
-  //   }
-  //   switch (result) {
-  //     case Ok<BluetoothPrinter>():
-  //     // BluetoothPrinter printer = result.value;
-  //       break;
-  //     case Error<BluetoothPrinter>():
-  //       WidgetsBinding.instance.addPostFrameCallback((_) { // Build #1.0.16
-  //         ScaffoldMessenger.of(context).showSnackBar(
-  //           SnackBar(
-  //             content: Text(
-  //               result.error.getMessage,
-  //               style: const TextStyle(color: Colors.red),
-  //             ),
-  //             backgroundColor: Colors.black, // ✅ Black background
-  //             duration: const Duration(seconds: 3),
-  //           ),
-  //         );
-  //         /// call printer setup screen
-  //         if (kDebugMode) {
-  //           print("call printer setup screen");
-  //         }
-  //         Navigator.push(context, MaterialPageRoute(
-  //           builder: (context) => PrinterSetup(),
-  //         )).then((result) {
-  //           if (result == TextConstants.refresh) { // Build #1.0.175: added TextConstants
-  //             _printerSettings.loadPrinter();
-  //             setState(() {
-  //               // Update state to refresh the UI
-  //               if (kDebugMode) {
-  //                 print("OrderSummaryScreen - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
-  //               }
-  //               if(!Misc.disablePrinter) {
-  //                 _printTicket();
-  //               }
-  //             });
-  //           } else {
-  //             if (kDebugMode) {
-  //               print("OrderSummaryScreen - printer setup is NOT done, or user cancels printer setup");
-  //             }
-  //             // Build #1.0.168: If user cancels printer setup, show receipt dialog again
-  //             if(mounted) {
-  //               _showReceiptDialog(context, paidAmount);
-  //             }
-  //           }
-  //         });
-  //       });
-  //       break;
-  //   }
-  // }
+
   Future _printTicket({bool manual = false}) async {
     final ticket = await _printerSettings.getTicket();
     final result = await _printerSettings.printTicket(bytes, ticket);
@@ -6539,7 +5577,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       case Ok<BluetoothPrinter>():
         break;
       case Error<BluetoothPrinter>():
-        if (manual) return; // ✅ Stop retry when called manually
+        if (manual) return;
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -6759,36 +5797,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     /// Build #1.0.168: Fixed Issue - Change is showing as zero only
     /// No need here to reset changeAmount,balanceAmount or tenderAmount
     /// Every time comes to this screen we are already resetting initially in fetchOrderItems method
-    // setState(() {
-    //   changeAmount = 0.0; // Reset change after returning
-    //   if (balanceAmount == 0) tenderAmount = 0.0; // Reset tender if order is fully paid
-    // });
+
 
     if (kDebugMode) {
       print(
           "OrderSummaryScreen _showReceiptDialog Done call print receipt = $isReceipt");
     }
 
-    // if (selectedOption == TextConstants.print) {
-    //   // Call print callback if selected
-    //   if (isReceipt) {
-    //     if(!Misc.disablePrinter) {
-    //       _printTicket();
-    //     }
-    //     if (kDebugMode) {
-    //       print("printing the ticket --- $isReceipt");
-    //     }
-    //   }
-    //   // } else if (selectedOption == TextConstants.email) { // Build #1.0.159: Email receipt -> No need
-    //   //   ScaffoldMessenger.of(context).showSnackBar(
-    //   //     SnackBar(
-    //   //       content: Text(TextConstants.emailConfiguration),
-    //   //       backgroundColor: Colors.red,
-    //   //       duration: const Duration(seconds: 2),
-    //   //     ),
-    //   //   );
-    //
-    // }
     if (kDebugMode) {
       print(
           "changeStatusToCompletedAndExit called with isReceipt=$isReceipt, selectedOption=$selectedOption");
@@ -6805,25 +5820,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     ///ToDO: Change the status of order to 'completed' here
     // Build #1.0.49: Added Call Order Status Update API code
-    // orderBloc.changeOrderStatus(orderId: orderId!, status: TextConstants.completed);
-    // StreamSubscription? subscription;
-    // subscription = orderBloc.changeOrderStatusStream.listen((response) {
-    //   if (response.status == Status.COMPLETED) {
-    //     if (kDebugMode) {
-    //       print("OrderPanel - Order #@# $orderId, successfully completed");
-    //     }
-    //     if (!isReceipt) { //Build #1.0.134: IF USER TAP ON "NO RECEIPT" -> POP THE DIALOG & POP THE SCREEN
-    //       // Build #1.0.104:  Pop the receipt dialog
-    //       Navigator.of(context).pop();
-    //       // Build #1.0.104:  Pop back to the previous screen with a refresh signal
-    //       Navigator.of(context).pop(TextConstants.refresh);
-    //     }else{ //Build #1.0.134: IF USER TAP ON "DONE" -> POP THE PRINTER SCREEN & THE DIALOG & POP THE SCREEN
-    //       // Navigator.of(context).pop();
-    //       // Build #1.0.104:  Pop the receipt dialog
-    //       Navigator.of(context).pop();
-    //       // Build #1.0.104:  Pop back to the previous screen with a refresh signal
-    //       Navigator.of(context).pop(TextConstants.refresh);
-    //     }
+
+
     /// Build #1.0.175: No need change status to completed API call
     /// It was handling from backend
     Navigator.of(context).pop(); // Dismiss the receipt dialog
@@ -6850,26 +5848,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         duration: const Duration(seconds: 3),
       ),
     );
-    // Optionally refresh UI or remove tab
-    // fetchOrderItems();
-    //   } else if (response.status == Status.ERROR) {
-    //     if (kDebugMode) {
-    //       print("OrderPanel - completed failed: ${response.message}");
-    //     }
-    //     ScaffoldMessenger.of(context).showSnackBar(
-    //       SnackBar(
-    //         content: Text(
-    //           response.message ?? "Failed to complete order",
-    //           style: const TextStyle(color: Colors.red),
-    //         ),
-    //         backgroundColor: Colors.black,
-    //         duration: const Duration(seconds: 3),
-    //       ),
-    //     );
-    //     Navigator.of(context).pop(); // Build #1.0.104: close dialog on error
-    //   }
-    //   subscription?.cancel();
-    // });
   }
 
   void showVoidExitConfirmation(BuildContext context, bool isPartial) {

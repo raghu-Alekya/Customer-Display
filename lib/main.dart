@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/adapters.dart';
+import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/services/CustomerDisplayService.dart';
 import 'package:provider/provider.dart';
 import 'Constants/misc_features.dart';
@@ -11,6 +13,19 @@ import 'Helper/Extentions/theme_notifier.dart';
 import 'Helper/cashbackhelper.dart';
 import 'Helper/customerdisplayhelper.dart';
 import 'Helper/url_helper.dart';
+
+import 'Inventory_screen/Inventory_Tags/inventory_tag_bloc/inventory_tag_bloc.dart';
+import 'Inventory_screen/Inventory_Tags/inventory_tag_get_tags_usecase.dart';
+import 'Inventory_screen/Inventory_Tags/inventory_tag_remote_data_source.dart';
+import 'Inventory_screen/Inventory_Tags/inventory_tag_repository_impl.dart';
+import 'Inventory_screen/inventory_Tax/inventory_tax_bloc/inventory_tax_bloc.dart';
+import 'Inventory_screen/inventory_Tax/inventory_tax_get_usecase.dart';
+import 'Inventory_screen/inventory_Tax/inventory_tax_remote_data_source.dart';
+import 'Inventory_screen/inventory_Tax/inventory_tax_repository_impl.dart';
+import 'Inventory_screen/inventory_categories/inventory_categories_bloc/inventory_categories_bloc.dart';
+import 'Inventory_screen/inventory_categories/inventory_categories_get_usecase.dart';
+import 'Inventory_screen/inventory_categories/inventory_categories_remote_data_source.dart';
+import 'Inventory_screen/inventory_categories/inventory_categories_repository_impl.dart';
 import 'Preferences/pinaka_preferences.dart';
 import 'Screens/Auth/splash_screen.dart';
 import 'package:flutter/services.dart';
@@ -67,12 +82,60 @@ void main() async {
   } else {
     await CustomerDisplayService.showWelcome();
   }
+
+  /////Inventory_Tag_Get
+  final httpClient = http.Client();
+
+  final inventoryTagRemoteDataSource = Inventory_Tag_Remote_Data_Source_Impl(httpClient);
+
+  final inventoryTagRepository = Inventory_Tag_Repository_Impl(inventoryTagRemoteDataSource);
+
+  final inventoryTagUseCase = Inventory_Tag_Get_Tags_UseCase(inventoryTagRepository);
+
+//////Inventory_Tax_Get
+
+  final inventoryTaxRemoteDataSource = Inventory_Tax_Remote_Data_Source_Impl(httpClient);
+
+  final inventoryTaxRepository = Inventory_Tax_Repository_Impl(inventoryTaxRemoteDataSource);
+
+  final inventoryTaxUseCase = Inventory_Tax_Get_UseCase(inventoryTaxRepository);
+
+  // Inventory Categories
+  final inventoryCategoriesRemoteDataSource = InventoryCategoriesRemoteDataSourceImpl(client: httpClient);
+  final inventoryCategoriesRepository = InventoryCategoriesRepositoryImpl(remoteDataSource: inventoryCategoriesRemoteDataSource);
+  final inventoryCategoriesUseCase = InventoryCategoriesGetUseCase(repository: inventoryCategoriesRepository);
+
+  // runApp(
+  //   ChangeNotifierProvider(
+  //     create: (_) => themeNotifier,
+  //     child: const MyApp(),
+  //   ),
+  // );
+
+
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => themeNotifier,
-      child: const MyApp(),
+    MultiBlocProvider(
+      providers: [
+        BlocProvider<Inventory_Tag_Bloc>(
+          create: (_) => Inventory_Tag_Bloc(inventoryTagUseCase),
+        ),
+
+        BlocProvider<Inventory_Tax_Bloc>(
+          create: (_) => Inventory_Tax_Bloc(inventoryTaxUseCase),
+        ),
+
+        BlocProvider<InventoryCategoriesBloc>(
+          create: (_) => InventoryCategoriesBloc(getCategoriesUseCase: inventoryCategoriesUseCase),
+        ),
+
+      ],
+      child: ChangeNotifierProvider(
+        create: (_) => themeNotifier,
+        child: const MyApp(),
+      ),
     ),
   );
+
 }
 
 class MyApp extends StatelessWidget {

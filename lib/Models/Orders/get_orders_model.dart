@@ -3,7 +3,7 @@ import 'package:pinaka_pos/Constants/text.dart';
 
 import 'orders_model.dart';
 
-class OrdersListModel { //Build #1.0.40
+class OrdersListModel {
   final List<OrderModel> orders;
 
   OrdersListModel({required this.orders});
@@ -36,8 +36,8 @@ class OrderModel {
   final Billing billing;
   final Shipping shipping;
   final List<LineItem> lineItems;
-  List<FeeLine>? feeLines;    // For payout and discount data
-  List<CouponLine> couponLines; // For coupon data
+  List<FeeLine>? feeLines;
+  List<CouponLine> couponLines;
   final List<MetaData> metaData;
   final String? datePaid;
   final String? dateCompleted;
@@ -45,6 +45,15 @@ class OrderModel {
   final String createdVia;
   final String number;
   final String currencySymbol;
+
+  // New fields for multipack and auto discounts at order level
+  final String? multipackDiscountTotal;
+  final String? autoDiscountTotal;
+  final String? getTime;
+  final String? autoDiscountMeta;
+
+  // **NEW: Order-level auto discount amount from meta_data**
+  final double orderLevelAutoDiscountAmount;
 
   OrderModel({
     required this.id,
@@ -76,9 +85,39 @@ class OrderModel {
     required this.createdVia,
     required this.number,
     required this.currencySymbol,
+    this.multipackDiscountTotal,
+    this.autoDiscountTotal,
+    this.getTime,
+    this.autoDiscountMeta,
+    required this.orderLevelAutoDiscountAmount,
   });
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
+    // Extract order-level meta_data
+    final metaList = (json['meta_data'] as List<dynamic>?)
+        ?.map((e) => MetaData.fromJson(e as Map<String, dynamic>))
+        .toList() ??
+        <MetaData>[];
+
+    // Helper to find meta value by key
+    String? getOrderMetaValue(String key) {
+      try {
+        return metaList
+            .firstWhere(
+              (m) => m.key == key,
+          orElse: () => MetaData(id: 0, key: '', value: null),
+        )
+            .value
+            ?.toString();
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // **Extract _discount_amount from order-level meta_data**
+    final orderDiscountStr = getOrderMetaValue('_discount_amount');
+    final orderLevelAutoDiscountAmount = double.tryParse(orderDiscountStr ?? '0') ?? 0.0;
+
     return OrderModel(
       id: json['id'] ?? 0,
       parentId: json['parent_id'] ?? 0,
@@ -103,29 +142,65 @@ class OrderModel {
           ?.map((item) => LineItem.fromJson(item))
           .toList() ??
           [],
-      feeLines: (json['fee_lines'] is List) //Build #1.0.134: updated
-          ? (json['fee_lines'] as List<dynamic>?)?.map((e) => FeeLine.fromJson(e as Map<String, dynamic>)).toList()
+      feeLines: (json['fee_lines'] is List)
+          ? (json['fee_lines'] as List<dynamic>?)
+          ?.map((e) => FeeLine.fromJson(e as Map<String, dynamic>))
+          .toList()
           : (json['fee_lines'] is Map)
-          ? (json['fee_lines'] as Map<String, dynamic>).values
+          ? (json['fee_lines'] as Map<String, dynamic>)
+          .values
           .map((e) => FeeLine.fromJson(e as Map<String, dynamic>))
           .toList()
           : null,
-      couponLines: (json['coupon_lines'] as List<dynamic>?)?.map((e) => CouponLine.fromJson(e as Map<String, dynamic>)).toList() ?? [],
-      metaData: (json['meta_data'] as List<dynamic>?)
-          ?.map((item) => MetaData.fromJson(item))
+      couponLines: (json['coupon_lines'] as List<dynamic>?)
+          ?.map((e) => CouponLine.fromJson(e as Map<String, dynamic>))
           .toList() ??
           [],
+      metaData: metaList,
       datePaid: json['date_paid'],
       dateCompleted: json['date_completed'],
       paymentMethod: json['payment_method'] ?? '',
       createdVia: json['created_via'] ?? '',
       number: json['number'] ?? '',
       currencySymbol: json['currency_symbol'] ?? TextConstants.currencySymbol,
+      multipackDiscountTotal: json['multipack_discount_total'] as String?,
+      autoDiscountTotal: json['auto_discount_total'] as String?,
+      getTime: json['get_time'] as String?,
+      autoDiscountMeta: json['auto_discount_meta'] as String?,
+      orderLevelAutoDiscountAmount: orderLevelAutoDiscountAmount,
     );
   }
+
+  // Computed: Total multipack discount from all line items
+  double get totalMultipackDiscount {
+    return lineItems.fold(0.0, (sum, item) => sum + item.multipackDiscountAmount);
+  }
+
+  // Computed: Total auto discount from all line items
+  double get totalAutoDiscount {
+    return lineItems.fold(0.0, (sum, item) => sum + item.autoDiscountAmount);
+  }
+
+  // **NEW: Combined auto discount (order-level + line items)**
+  double get totalCombinedAutoDiscount {
+    return orderLevelAutoDiscountAmount + totalAutoDiscount;
+  }
+
+  double get totalAllDiscounts {
+    final discount = double.tryParse(discountTotal) ?? 0.0;
+    final auto = double.tryParse(autoDiscountTotal ?? '0') ?? 0.0;
+    return discount + totalMultipackDiscount + auto + totalCombinedAutoDiscount;
+  }
+
+  bool get hasMultipackDiscount => totalMultipackDiscount > 0;
+
+  bool get hasAutoDiscount => totalCombinedAutoDiscount > 0;
+
+  // **NEW: Check if order-level auto discount exists**
+  bool get hasOrderLevelAutoDiscount => orderLevelAutoDiscountAmount > 0;
 }
 
-class FeeLine {// Build #1.0.64
+class FeeLine {
   int? id;
   String? name;
   String? taxClass;
@@ -163,7 +238,7 @@ class FeeLine {// Build #1.0.64
   }
 }
 
-class CouponLine { // Build #1.0.64
+class CouponLine {
   int? id;
   String? code;
   String? discount;
@@ -244,7 +319,6 @@ class Shipping {
 }
 
 class LineItem {
-
   final int id;
   final String name;
   final int productId;
@@ -257,38 +331,86 @@ class LineItem {
   final String totalTax;
   final List<MetaData> metaData;
   final String? sku;
-  final double price; // Use double to handle both int and double
+  final double price;
   final ImageData image;
   final ProductData productData;
   final ProductVariationData? productVariationData;
 
+  // Multipack discount fields extracted from meta_data
+  final String? originalSubtotal;
+  final String? multipackUnitPriceBefore;
+  final String? multipackUnitPriceAfter;
+  final double multipackDiscountAmount;
+  final bool multipackApplied;
+
+  // Auto discount fields
+  final double autoDiscountAmount;
+  final bool autoDiscountApplied;
+
   LineItem({
+    required this.id,
+    required this.name,
     required this.productId,
     required this.variationId,
+    required this.quantity,
     required this.taxClass,
     required this.subtotal,
     required this.subtotalTax,
     required this.total,
     required this.totalTax,
     required this.metaData,
-    required this.id,
-    required this.name,
-    required this.quantity,
-    required this.price,
     this.sku,
+    required this.price,
     required this.image,
     required this.productData,
     this.productVariationData,
+    this.originalSubtotal,
+    this.multipackUnitPriceBefore,
+    this.multipackUnitPriceAfter,
+    required this.multipackDiscountAmount,
+    required this.multipackApplied,
+    required this.autoDiscountAmount,
+    required this.autoDiscountApplied,
   });
 
   factory LineItem.fromJson(Map<String, dynamic> json) {
+    final metaList = (json['meta_data'] as List<dynamic>?)
+        ?.map((e) => MetaData.fromJson(e as Map<String, dynamic>))
+        .toList() ??
+        <MetaData>[];
+
+    // Helper to find meta value by key
+    String? getMetaValue(String key) {
+      try {
+        return metaList
+            .firstWhere(
+              (m) => m.key == key,
+          orElse: () => MetaData(id: 0, key: '', value: null),
+        )
+            .value
+            ?.toString();
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // Existing multipack discount extraction
+    final originalSubtotal = getMetaValue('_pinaka_multipack_original_subtotal');
+    final unitBefore = getMetaValue('_pinaka_multipack_unit_price_before');
+    final unitAfter = getMetaValue('_pinaka_multipack_unit_price_after');
+    final discountStr = getMetaValue('_pinaka_multipack_product_discount');
+    final applied = getMetaValue('_pinaka_multipack_applied') == 'yes';
+    final discountAmount = double.tryParse(discountStr ?? '0') ?? 0.0;
+
+    // Auto discount extraction from line item meta_data
+    final autoDiscountStr = getMetaValue('_discount_amount');
+    final autoApplied = getMetaValue('_pinaka_discount_amount_auto_apply') == 'yes';
+    final autoDiscountAmount = double.tryParse(autoDiscountStr ?? '0') ?? 0.0;
+
     return LineItem(
       id: json['id'] ?? 0,
       name: json['name'] ?? '',
       quantity: json['quantity'] ?? 0,
-      image: ImageData.fromJson(json['image'] ?? {}),
-      productData: ProductData.fromJson(json['product_data'] ?? {}),
-      productVariationData: ProductVariationData.fromJson(json['product_variation_data'] ?? {}),
       productId: json['product_id'] ?? 0,
       variationId: json['variation_id'] ?? 0,
       taxClass: json['tax_class'] ?? '',
@@ -296,16 +418,34 @@ class LineItem {
       subtotalTax: json['subtotal_tax'] ?? '0.00',
       total: json['total'] ?? '0.00',
       totalTax: json['total_tax'] ?? '0.00',
-      metaData: (json['meta_data'] as List<dynamic>?)
-          ?.map((e) => MetaData.fromJson(e))
-          .toList() ??
-          [],
-      sku: json['sku'] ?? '',
+      metaData: metaList,
+      sku: json['sku'] as String?,
       price: (json['price'] is int
-          ? (json['price'] as int).toDouble() // Convert int to double
-          : json['price'] ?? 0.0), // Use double directly or default to 0.0
+          ? (json['price'] as int).toDouble()
+          : double.tryParse(json['price']?.toString() ?? '0') ?? 0.0),
+      image: ImageData.fromJson(json['image'] ?? {}),
+      productData: ProductData.fromJson(json['product_data'] ?? {}),
+      productVariationData: json['product_variation_data'] != null
+          ? ProductVariationData.fromJson(json['product_variation_data'])
+          : null,
+      originalSubtotal: originalSubtotal,
+      multipackUnitPriceBefore: unitBefore,
+      multipackUnitPriceAfter: unitAfter,
+      multipackDiscountAmount: discountAmount,
+      multipackApplied: applied,
+      autoDiscountAmount: autoDiscountAmount,
+      autoDiscountApplied: autoApplied,
     );
   }
+
+  // Multipack discount helper
+  bool get hasMultipackDiscount => multipackApplied && multipackDiscountAmount > 0;
+
+  // Auto discount helper
+  bool get hasAutoDiscount => autoDiscountApplied && autoDiscountAmount > 0;
+
+  // Total discount including multipack + auto
+  double get totalDiscountAmount => multipackDiscountAmount + autoDiscountAmount;
 }
 
 class Tag {
@@ -348,9 +488,6 @@ class ProductData {
   });
 
   factory ProductData.fromJson(Map<String, dynamic> json) {
-    if (kDebugMode) {
-      print("get_order_model = ProductData ${json['variations']}");
-    }
     return ProductData(
       id: json['id'] ?? 0,
       name: json['name'] ?? '',
@@ -358,7 +495,9 @@ class ProductData {
           ?.map((tag) => Tag.fromJson(tag))
           .toList() ??
           [],
-      variations: (json['variations'] as List?)?.map((item) => item as int).toList() ?? [],
+      variations: (json['variations'] as List?)
+          ?.map((item) => item as int)
+          .toList(),
       price: json['price'] == "" ? "0" : json['price'] ?? "0",
       regularPrice: json['regular_price'] == "" ? "0" : json['regular_price'] ?? "0",
       salePrice: json['sale_price'] == "" ? "0" : json['sale_price'] ?? "0",
@@ -379,7 +518,7 @@ class ProductVariationData {
     this.regularPrice,
     this.salePrice,
     this.price,
-    required this.metaData,
+    this.metaData,
     required this.id,
     required this.type,
     required this.sku,
@@ -391,8 +530,7 @@ class ProductVariationData {
       type: json['type'] ?? '',
       metaData: (json['meta_data'] as List<dynamic>?)
           ?.map((item) => MetaData.fromJson(item))
-          .toList() ??
-          [],
+          .toList(),
       sku: json['sku'] ?? "",
       price: json['price'] ?? "",
       regularPrice: json['regular_price'] ?? "",
@@ -411,12 +549,6 @@ class MetaData {
     required this.key,
     required this.value,
   });
-
-  // {
-  // "id": 3962,
-  // "key": "age_restricted",
-  // "value": "18" true/false
-  // },
 
   factory MetaData.fromJson(Map<String, dynamic> json) {
     return MetaData(
@@ -443,4 +575,3 @@ class ImageData {
     );
   }
 }
-
