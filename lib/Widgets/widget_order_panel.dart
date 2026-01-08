@@ -3775,8 +3775,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                                               /// 🟢 FINAL PRICE (AFTER DISCOUNT)
                                               Text(
-                                                isPayout
-                                                    ? "-${TextConstants.currencySymbol}${finalTotal.toStringAsFixed(2)}"
+                                                isPayout || isCoupon
+                                                    ? "-${TextConstants.currencySymbol}${finalTotal.abs().toStringAsFixed(2)}"
                                                     : "${TextConstants.currencySymbol}${finalTotal.toStringAsFixed(2)}",
                                                 style: TextStyle(
                                                   fontSize: 14,
@@ -4310,6 +4310,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 }
                               }
 
+                              // 🔹 STORE RAW META (NEW)
+                              item['combo_discount'] = comboDiscount;
+                              item['multipack_discount'] = multipackDiscount;
+                              item['has_combo_discount'] = isCombo;
+                              item['has_multipack_discount'] = isMultipack;
+
                               // ---------- APPLY PRIORITY ----------
                               if (isCombo && comboDiscount > 0) {
                                 item['auto_discount'] = comboDiscount;
@@ -4320,8 +4326,46 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 item['discount_type'] = 'multipack';
                                 item['discount_source'] = 'woo';
                               }
+
+                              if (kDebugMode) {
+                                print(
+                                    "🧾 ITEM DISCOUNT SNAPSHOT → "
+                                        "name=${item['item_name']} | "
+                                        "combo=$comboDiscount | "
+                                        "multipack=$multipackDiscount | "
+                                        "hasCombo=$isCombo | "
+                                        "hasMultipack=$isMultipack | "
+                                        "applied=${item['auto_discount']} | "
+                                        "type=${item['discount_type']}"
+                                );
+                              }
+
+                            }
+                            final localKey = orderHelper.activeOrderId.toString();
+                            final serverKey = serverOrderId?.toString();
+
+// Save to local order
+                            final existingLocal = box.get(localKey);
+                            if (existingLocal != null) {
+                              final updated = Map<String, dynamic>.from(existingLocal);
+                              updated['items'] = orderItems;
+                              await box.put(localKey, updated);
                             }
 
+// Save to server order (if exists)
+                            if (serverKey != null) {
+                              final existingServer = box.get(serverKey);
+                              if (existingServer != null) {
+                                final updated = Map<String, dynamic>.from(existingServer);
+                                updated['items'] = orderItems;
+                                await box.put(serverKey, updated);
+                              }
+                            }
+
+// 🔥 Call customer display AFTER saving
+                            await CustomerDisplayHelper.updateCustomerDisplay(
+                              orderHelper.activeOrderId!,
+                            );
 // =======================================================
 // ⭐ CALCULATE TOTAL AUTO DISCOUNT (COMBO + MULTIPACK)
 // =======================================================
