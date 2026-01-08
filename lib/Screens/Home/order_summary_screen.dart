@@ -1039,11 +1039,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     // ===================================================
     final double totalPaid = cashTotal + otherTotal + ebtPaid;
 
-    // ✅ ALLOW NEGATIVE VALUE
-    final double newBalance = effectiveOrderTotal - totalPaid;
+    final double rawBalance = effectiveOrderTotal - totalPaid;
 
-    // Pass RAW value to popup (can be negative)
-    final double popupBalance = newBalance;
+// Balance should NEVER be negative
+    final double finalBalance =
+    rawBalance > 0 ? rawBalance : 0.0;
+
+// Change only if overpaid
+    final double changeAmount =
+    rawBalance < 0 ? rawBalance.abs() : 0.0;
 
     // ===================================================
     // 🔄 UPDATE UI
@@ -1055,11 +1059,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
       ebtTotal = finalRemainingEbt;
       tenderAmount = totalPaid;
-      balanceAmount = newBalance;
+
+      balanceAmount = finalBalance;   // ✅ never negative
       isPaymentStarted = totalPaid > 0;
 
-
-      // 🔒 HARD DISABLE REDEEM & COUPON
       if (isPaymentStarted) {
         isRedeemActive = false;
       }
@@ -1067,12 +1070,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       _paymentDialogShown = false;
     });
 
+
     // ===================================================
     // 💾 SAVE TO HIVE
     // ===================================================
     existing["remainingEbt"] = finalRemainingEbt;
     existing["redeemed_value"] = redeemedValue;
-    existing["remainingBalance"] = newBalance;
+    existing["remainingBalance"] = finalBalance;
 
     box.put(key, existing);
 
@@ -1085,24 +1089,23 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       print("EBT Paid          = $ebtPaid");
       print("Remaining EBT     = $finalRemainingEbt");
       print("Total Paid        = $totalPaid");
-      print("Balance           = $newBalance");
+      print("Balance           = $finalBalance");
     }
 
     // ===================================================
     // 🔔 PAYMENT COMPLETE (ZERO OR NEGATIVE)
     // ===================================================
-    if (payments.isNotEmpty && newBalance <= 0) {
+    if (payments.isNotEmpty && finalBalance <= 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showPaymentDialog(
           context,
           tenderAmount,
-          changeAmount: popupBalance, // 👈 negative allowed
+          changeAmount: changeAmount, // 👈 negative allowed
           showChange: true,
         );
       });
     }
   }
-
 
   // void fetchOrderItems() async {
   //   // TODO: Implement actual data fetching from database
