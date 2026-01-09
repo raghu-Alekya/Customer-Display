@@ -1036,7 +1036,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                         setState(() {
                           final movedItem = orderItems.removeAt(oldIndex);
                           orderItems.insert(newIndex, movedItem);
-                          // 🔥 FORCE CASHBACK TO ALWAYS COME LAST
+                          //  FORCE CASHBACK TO ALWAYS COME LAST
                           orderItems.sort((a, b) {
                             final typeA = a[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
                             final typeB = b[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
@@ -1064,6 +1064,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                       },
                       itemBuilder: (context, index) {
                         final orderItem = orderItems[index];
+
 
                         final itemTypeRaw = orderItem[AppDBConst.itemType]
                             ?.toString()
@@ -1146,6 +1147,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                         final double autoDiscount =
                             (orderItem[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
 
+                        final double comboDiscount =
+                            (orderItem[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
 
                         /// Build #1.0.134: Item Price will check sales price if it is null/empty, check regular price else unit price
                         final salesPrice = (orderItem[
@@ -1355,6 +1358,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                           ),
                                         ),
                                         const SizedBox(width: 10),
+
                                         Expanded(
                                           child: Column(
                                             crossAxisAlignment:
@@ -1428,7 +1432,17 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                     ),
                                                   ],
 
-
+                                                  if (combo != '' && comboDiscount > 0) ...[
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      "Combo Discount: -${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}",
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.w600,
+                                                        color: Colors.green,
+                                                      ),
+                                                    ),
+                                                  ],
 
                                                   variationCount == 0
                                                       ? SizedBox(
@@ -1498,17 +1512,57 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                 ),
                                               ],
 
-                                              // Modified: Show quantity * price only for non-Payout/Coupon items
+                                              //Modified: Show quantity * price only for non-Payout/Coupon items
+
+                                              // if (!isPayoutOrCouponOrCustomItem) ...[
+                                              //   Builder(
+                                              //     builder: (context) {
+                                              //       double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1;
+                                              //
+                                              //       double unitPrice =
+                                              //           (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////---
+                                              //           (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ??
+                                              //               (orderItem[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
+                                              //               (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////
+                                              //               0.0;   ////
+                                              //
+                                              //       // If still zero → derive price from sum price
+                                              //       if (unitPrice == 0.0) {
+                                              //         final double sumPrice =
+                                              //             (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
+                                              //
+                                              //         if (sumPrice > 0 && qty > 0) {
+                                              //           unitPrice = sumPrice / qty;
+                                              //         }
+                                              //       }
+                                              //
+                                              //       return Text(
+                                              //         "${TextConstants.currencySymbol} ${unitPrice.toStringAsFixed(2)} × ${qty.toInt()}",
+                                              //
+                                              //
+                                              //         style: TextStyle(
+                                              //           color: themeHelper.themeMode == ThemeMode.dark
+                                              //               ? ThemeNotifier.textDark
+                                              //               : Colors.black54,
+                                              //           fontSize: 10,
+                                              //         ),
+                                              //       );
+                                              //     },
+                                              //   ),
+                                              // ],
+
                                               if (!isPayoutOrCouponOrCustomItem) ...[
                                                 Builder(
                                                   builder: (context) {
-                                                    double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1;
+                                                    double qty =
+                                                        (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1;
 
                                                     double unitPrice =
-                                                        (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ??
+                                                        (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////---
+                                                            (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ??
                                                             (orderItem[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
-                                                            (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??
-                                                            0.0;
+                                                            (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////
+                                                            0.0;   ////
 
                                                     // If still zero → derive price from sum price
                                                     if (unitPrice == 0.0) {
@@ -1520,8 +1574,17 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                       }
                                                     }
 
+                                                    // 🔹 NEW: calculate total amount
+                                                    final double totalAmount = unitPrice * qty;
+
                                                     return Text(
-                                                      "${TextConstants.currencySymbol} ${unitPrice.toStringAsFixed(2)} × ${qty.toInt()}",
+                                                      // 🔹 OLD: only unit price × qty
+                                                      // "${TextConstants.currencySymbol} ${unitPrice.toStringAsFixed(2)} × ${qty.toInt()}",
+
+                                                      // 🔹 NEW: show unit price × qty = total amount
+                                                      "${TextConstants.currencySymbol} ${unitPrice.toStringAsFixed(2)} × ${qty.toInt()} ",
+                                                          // "= ${TextConstants.currencySymbol} ${totalAmount.toStringAsFixed(2)}",
+
                                                       style: TextStyle(
                                                         color: themeHelper.themeMode == ThemeMode.dark
                                                             ? ThemeNotifier.textDark
@@ -1533,66 +1596,129 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                 ),
                                               ],
 
+
                                             ],
                                           ),
                                         ),
-                                        // if (!isCouponOrPayout)
-                                        //   Text(
-                                        //     "${TextConstants.currencySymbol}${(regularPrice * orderItem[AppDBConst.itemCount]).toStringAsFixed(2)}", //Build #1.0.134: itemPrice updated
-                                        //     style: TextStyle(
-                                        //         color: themeHelper.themeMode ==
-                                        //             ThemeMode.dark
-                                        //             ? ThemeNotifier.textDark
-                                        //             : Colors.blueGrey,
-                                        //         fontSize: 14),
-                                        //   ),
                                         const SizedBox(width: 20),
                                         Column(
                                           mainAxisAlignment:
                                           MainAxisAlignment.center,
                                           children: [
+
+
                                             // Text(
-                                            //   isCouponOrPayout
-                                            //       ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * orderItem[AppDBConst.itemPrice]).toStringAsFixed(2)}"
-                                            //       : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemCount] * salesPrice).toStringAsFixed(2)}", //Build #1.0.134: itemTotalPrice updated
+                                            //   isPayout
+                                            //       ? "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.abs().toStringAsFixed(2)}"
+                                            //       : isCashback
+                                            //       ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.toStringAsFixed(2)}"
+                                            //       : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.toStringAsFixed(2)}",
                                             //   style: TextStyle(
                                             //     fontSize: 14,
                                             //     fontWeight: FontWeight.bold,
-                                            //     color:
-                                            //     isPayoutOrCouponOrCustomItem
+                                            //     color: isPayout
                                             //         ? Colors.red
-                                            //         : themeHelper.themeMode ==
-                                            //         ThemeMode.dark
-                                            //         ? ThemeNotifier
-                                            //         .textDark
-                                            //         : ThemeNotifier
-                                            //         .textLight, // Added: Red color for Payout/Coupon
+                                            //         : isCashback
+                                            //         ? (themeHelper.themeMode == ThemeMode.dark
+                                            //         ? ThemeNotifier.textDark
+                                            //         : ThemeNotifier.textLight)
+                                            //         : (isCoupon
+                                            //         ? Colors.red
+                                            //         : (themeHelper.themeMode == ThemeMode.dark
+                                            //         ? ThemeNotifier.textDark
+                                            //         : ThemeNotifier.textLight)),
                                             //   ),
-                                            // ),
-                                            Text(
-                                              isPayout
-                                                  ? "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.abs().toStringAsFixed(2)}"
-                                                  : isCashback
-                                                  ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.toStringAsFixed(2)}"
-                                                  : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.toStringAsFixed(2)}",
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.bold,
-                                                color: isPayout
-                                                    ? Colors.red
-                                                    : isCashback
-                                                    ? (themeHelper.themeMode == ThemeMode.dark
-                                                    ? ThemeNotifier.textDark
-                                                    : ThemeNotifier.textLight)
-                                                    : (isCoupon
-                                                    ? Colors.red
-                                                    : (themeHelper.themeMode == ThemeMode.dark
-                                                    ? ThemeNotifier.textDark
-                                                    : ThemeNotifier.textLight)),
-                                              ),
-                                            )
+                                            // )
 
 
+                                            Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              children: [
+                                                // Calculate and show strikethrough ONLY if there's actual discount
+                                                if (!isPayoutOrCouponOrCustomItem) ...[
+                                                  Builder(
+                                                    builder: (context) {
+                                                      // Get the actual sum price (final price after all discounts)
+                                                      final double actualSumPrice = (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
+
+                                                      // Calculate what the price WOULD BE without discount
+                                                      double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1;
+                                                      double unitPrice =
+                                                          (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??
+                                                              (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ??
+                                                              (orderItem[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
+                                                              0.0;
+
+                                                      if (unitPrice == 0.0) {
+                                                        final double sumPrice = actualSumPrice;
+                                                        if (sumPrice > 0 && qty > 0) {
+                                                          unitPrice = sumPrice / qty;
+                                                        }
+                                                      }
+
+                                                      final double originalTotal = unitPrice * qty;
+
+                                                      // Calculate total discount amount
+                                                      final double totalDiscount = multipackDiscount + autoDiscount + comboDiscount;
+
+                                                      // Show strikethrough ONLY if:
+                                                      // 1. There's an actual discount applied (multipack/auto/combo)
+                                                      // 2. The original total is greater than actual sum price
+                                                      final bool shouldShowStrikethrough = totalDiscount > 0 &&
+                                                          originalTotal > actualSumPrice &&
+                                                          (originalTotal - actualSumPrice).abs() > 0.01;
+
+                                                      if (shouldShowStrikethrough) {
+                                                        return Padding(
+                                                          padding: const EdgeInsets.only(bottom: 2),
+                                                          child: Text(
+                                                            "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
+                                                            style: TextStyle(
+                                                              fontSize: 12,
+                                                              fontWeight: FontWeight.w500,
+                                                              color: themeHelper.themeMode == ThemeMode.dark
+                                                                  ? Colors.grey.shade400
+                                                                  : Colors.black54,
+                                                              decoration: TextDecoration.lineThrough,
+                                                              decorationColor: Colors.black,
+                                                              decorationThickness: 2,
+                                                            ),
+                                                          ),
+                                                        );
+                                                      }
+                                                      return const SizedBox.shrink();
+                                                    },
+                                                  ),
+                                                ],
+
+                                                // Always show the actual sum price (final price)
+                                                Text(
+                                                  isPayout
+                                                      ? "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.abs().toStringAsFixed(2)}"
+                                                      : isCashback
+                                                      ? "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.toStringAsFixed(2)}"
+                                                      : "${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.toStringAsFixed(2)}",
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: isPayout
+                                                        ? Colors.red
+                                                        : isCashback
+                                                        ? (themeHelper.themeMode == ThemeMode.dark
+                                                        ? ThemeNotifier.textDark
+                                                        : ThemeNotifier.textLight)
+                                                        : (isCoupon
+                                                        ? Colors.red
+                                                        : (!isPayoutOrCouponOrCustomItem && (multipackDiscount > 0 || autoDiscount > 0 || comboDiscount > 0))
+                                                        ? Colors.black87  // Green when discount is applied
+                                                        : (themeHelper.themeMode == ThemeMode.dark
+                                                        ? ThemeNotifier.textDark
+                                                        : ThemeNotifier.textLight)),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ],
                                         ),
                                       ],
@@ -3099,6 +3225,166 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
     // 🔥 MULTIPACK DISCOUNT TOTAL
     double totalMultipackDiscount = 0.0;
+    double totalComboDiscount = 0.0;
+    double totalAutoDiscount = 0.0;
+
+    // ---------------- ITEMS LOOP ----------------    ////impo
+    // for (int i = 0; i < orderItems.length; i++) {
+    //
+    //
+    //   var orderItem = orderItems[i];
+    //
+    //   final nameLower = orderItem[AppDBConst.itemName]?.toString().toLowerCase() ?? "";
+    //   final itemTypeLower = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? "";
+    //
+    //   bool hideItem =
+    //       nameLower.contains("discount") ||
+    //           nameLower.contains("coupon") ||
+    //           nameLower.contains("loyalty") ||
+    //           nameLower.contains("redeemed") ||
+    //           nameLower.contains("points") ||
+    //           itemTypeLower.contains("discount") ||
+    //           itemTypeLower.contains("coupon") ||
+    //           itemTypeLower.contains("loyalty") ||
+    //           itemTypeLower.contains("points");
+    //
+    //   if (hideItem) {
+    //     print("🚫 HIDDEN FROM PRINT → ${orderItem[AppDBConst.itemName]}");
+    //     continue;
+    //   }
+    //
+    //   final itemType = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
+    //   final isPayout = itemType.contains(TextConstants.payoutText);
+    //   final isCoupon = itemType.contains(TextConstants.couponText);
+    //   final isCashback = itemType.contains("cashback") || (orderItem[AppDBConst.itemName]?.toString().toLowerCase() == "cashback");
+    //   final isCouponOrPayout = isCoupon || isPayout;
+    //
+    //   final double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
+    //   final double salesPrice = (orderItem[AppDBConst.itemSumPrice] != null && qty > 0)
+    //       ? (orderItem[AppDBConst.itemSumPrice] / qty)
+    //       : 0.0;
+    //
+    //   double negativeItemPrice = qty * (orderItem[AppDBConst.itemPrice] as num? ?? 0);
+    //
+    //   double rateValue;
+    //   if (isCashback) {
+    //     rateValue = salesPrice.abs();
+    //   } else if (isCouponOrPayout) {
+    //     rateValue = negativeItemPrice;
+    //   } else {
+    //     rateValue = salesPrice;
+    //   }
+    //
+    //   double amountValue;
+    //   if (isCashback) {
+    //     amountValue = (qty * salesPrice).abs();
+    //   } else if (isCouponOrPayout) {
+    //     amountValue = negativeItemPrice;
+    //   } else {
+    //     amountValue = qty * salesPrice;
+    //   }
+    //
+    //   // 🔥 MULTIPACK DISCOUNT
+    //   final double multipackDiscount = (orderItem[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
+    //   if (multipackDiscount > 0 && !isPayout && !isCoupon && !isCashback) {
+    //     amountValue -= multipackDiscount;
+    //     totalMultipackDiscount += multipackDiscount;
+    //   }
+    //
+    //   final double comboDiscount =
+    //       (orderItem[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
+    //
+    //   final double autoDiscount =
+    //       (orderItem[AppDBConst.displayAutoDiscount] as num?)?.toDouble() ?? 0.0;
+    //
+    //   if (!isPayout && !isCoupon && !isCashback) {
+    //     if (comboDiscount > 0) {
+    //       amountValue -= comboDiscount;
+    //       totalComboDiscount += comboDiscount;
+    //     }
+    //
+    //     if (autoDiscount > 0) {
+    //       amountValue -= autoDiscount;
+    //       totalAutoDiscount += autoDiscount;
+    //     }
+    //   }
+    //
+    //
+    //   String formattedRate = rateValue < 0
+    //       ? "-${TextConstants.currencySymbol}${rateValue.abs().toStringAsFixed(2)}"
+    //       : "${TextConstants.currencySymbol}${rateValue.toStringAsFixed(2)}";
+    //
+    //   String formattedAmount = amountValue < 0
+    //       ? "-${TextConstants.currencySymbol}${amountValue.abs().toStringAsFixed(2)}"
+    //       : "${TextConstants.currencySymbol}${amountValue.toStringAsFixed(2)}";
+    //
+    //
+    //
+    //   // ---------------- ITEM ROW ----------------
+    //   bytes += ticket.row([
+    //     PosColumn(text: "${i + 1}", width: 1),
+    //
+    //     PosColumn(text: "${orderItem[AppDBConst.itemName]}", width: 5),
+    //     PosColumn(
+    //       text: qty.toInt().toString(),
+    //       width: 1,
+    //       styles: PosStyles(align: PosAlign.center),
+    //     ),
+    //     PosColumn(
+    //       text: formattedRate,
+    //       width: 2,
+    //       styles: PosStyles(align: PosAlign.right),
+    //     ),
+    //     PosColumn(
+    //       text: formattedAmount,
+    //       width: 3,
+    //       styles: PosStyles(align: PosAlign.right),
+    //     ),
+    //   ]);
+    //
+    //   //  PRINT MULTIPACK DISCOUNT LINE
+    //   if (multipackDiscount > 0) {
+    //     bytes += ticket.row([
+    //       PosColumn(text: "", width: 1),
+    //       PosColumn(text: "Multipack Discount", width: 7),
+    //       PosColumn(
+    //         text: "-${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}",
+    //         width: 4,
+    //         styles: PosStyles(align: PosAlign.right),
+    //       ),
+    //     ]);
+    //   }
+    //
+    //   if (comboDiscount > 0) {
+    //     bytes += ticket.row([
+    //       PosColumn(text: "", width: 1),
+    //       PosColumn(text: "Combo Discount", width: 7),
+    //       PosColumn(
+    //         text: "-${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}",
+    //         width: 4,
+    //         styles: PosStyles(align: PosAlign.right),
+    //       ),
+    //     ]);
+    //   }
+    //
+    //   if (autoDiscount > 0) {
+    //     bytes += ticket.row([
+    //       PosColumn(text: "", width: 1),
+    //       PosColumn(text: "Auto Discount", width: 7),
+    //       PosColumn(
+    //         text: "-${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
+    //         width: 4,
+    //         styles: PosStyles(align: PosAlign.right),
+    //       ),
+    //     ]);
+    //   }
+    //
+    //
+    //
+    //
+    //
+    //   bytes += ticket.emptyLines(1);
+    // }
 
     // ---------------- ITEMS LOOP ----------------
     for (int i = 0; i < orderItems.length; i++) {
@@ -3154,11 +3440,34 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         amountValue = qty * salesPrice;
       }
 
-      // 🔥 MULTIPACK DISCOUNT
+      // 🔥 GET DISCOUNTS
       final double multipackDiscount = (orderItem[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
+      final double comboDiscount = (orderItem[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
+      final double autoDiscount = (orderItem[AppDBConst.displayAutoDiscount] as num?)?.toDouble() ?? 0.0;
+
+      // 🔥 CALCULATE ORIGINAL AMOUNT (before any discount)
+      final double originalAmount = qty * salesPrice;
+
+      // 🔥 CHECK IF THERE'S ANY DISCOUNT
+      final bool hasDiscount = (multipackDiscount > 0 || comboDiscount > 0 || autoDiscount > 0)
+          && !isPayout && !isCoupon && !isCashback;
+
+      // 🔥 APPLY DISCOUNTS TO AMOUNT
       if (multipackDiscount > 0 && !isPayout && !isCoupon && !isCashback) {
         amountValue -= multipackDiscount;
         totalMultipackDiscount += multipackDiscount;
+      }
+
+      if (!isPayout && !isCoupon && !isCashback) {
+        if (comboDiscount > 0) {
+          amountValue -= comboDiscount;
+          totalComboDiscount += comboDiscount;
+        }
+
+        if (autoDiscount > 0) {
+          amountValue -= autoDiscount;
+          totalAutoDiscount += autoDiscount;
+        }
       }
 
       String formattedRate = rateValue < 0
@@ -3168,6 +3477,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       String formattedAmount = amountValue < 0
           ? "-${TextConstants.currencySymbol}${amountValue.abs().toStringAsFixed(2)}"
           : "${TextConstants.currencySymbol}${amountValue.toStringAsFixed(2)}";
+
 
       // ---------------- ITEM ROW ----------------
       bytes += ticket.row([
@@ -3188,15 +3498,54 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
           width: 3,
           styles: PosStyles(align: PosAlign.right),
         ),
+
+
       ]);
 
-      // 🔥 PRINT MULTIPACK DISCOUNT LINE
+      // 🔥 NEW: SHOW ORIGINAL PRICE WITH STRIKETHROUGH IF DISCOUNT EXISTS
+      if (hasDiscount && originalAmount > amountValue && (originalAmount - amountValue).abs() > 0.01) {
+        bytes += ticket.row([
+          PosColumn(text: "", width: 1),
+          PosColumn(text: "Original Price:", width: 7),
+          PosColumn(
+            text: "${TextConstants.currencySymbol}${originalAmount.toStringAsFixed(2)}",
+            width: 4,
+            styles: PosStyles(align: PosAlign.right),
+          ),
+        ]);
+      }
+
+      // PRINT MULTIPACK DISCOUNT LINE
       if (multipackDiscount > 0) {
         bytes += ticket.row([
           PosColumn(text: "", width: 1),
-          PosColumn(text: "Multipack Discount", width: 7),
+          PosColumn(text: "  Multipack Discount", width: 7),
           PosColumn(
             text: "-${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}",
+            width: 4,
+            styles: PosStyles(align: PosAlign.right),
+          ),
+        ]);
+      }
+
+      if (comboDiscount > 0) {
+        bytes += ticket.row([
+          PosColumn(text: "", width: 1),
+          PosColumn(text: "  Combo Discount", width: 7),
+          PosColumn(
+            text: "-${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}",
+            width: 4,
+            styles: PosStyles(align: PosAlign.right),
+          ),
+        ]);
+      }
+
+      if (autoDiscount > 0) {
+        bytes += ticket.row([
+          PosColumn(text: "", width: 1),
+          PosColumn(text: "  Auto Discount", width: 7),
+          PosColumn(
+            text: "-${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
             width: 4,
             styles: PosStyles(align: PosAlign.right),
           ),
@@ -3212,44 +3561,44 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.grossTotal, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: TextConstants.grossTotal, width:8),
+      PosColumn(text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", width:4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.discountText, width: 10),
-      PosColumn(text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: TextConstants.discountText, width:8),
+      PosColumn(text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}", width:4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
-    if (totalMultipackDiscount > 0) {
-      bytes += ticket.row([
-        PosColumn(text: "Multipack Discount", width: 10),
-        PosColumn(text: "-${TextConstants.currencySymbol}${totalMultipackDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
-      ]);
-    }
+    // if (totalMultipackDiscount > 0) {
+    //   bytes += ticket.row([
+    //     PosColumn(text: "Multipack Discount", width: 10),
+    //     PosColumn(text: "-${TextConstants.currencySymbol}${totalMultipackDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+    //   ]);
+    // }
 
     bytes += ticket.row([
       PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.taxText, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: TextConstants.taxText, width:8),
+      PosColumn(text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}", width:4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.merchantDiscount, width: 10),
-      PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: TextConstants.merchantDiscount, width:8),
+      PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}", width:4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.cashbackFee, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: TextConstants.cashbackFee, width:8),
+      PosColumn(text: "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}", width:4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.servicecharges, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: TextConstants.servicecharges, width: 8),
+      PosColumn(text: "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}", width:4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
@@ -3260,33 +3609,33 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
     // ---------------- NET PAYABLE & PAYMENT ----------------
     bytes += ticket.row([
-      PosColumn(text: TextConstants.netPayable, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${netpayable.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: TextConstants.netPayable, width:8),
+      PosColumn(text: "${TextConstants.currencySymbol}${netpayable.toStringAsFixed(2)}", width:4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.redeemPoints, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${hiveRedeemedValue.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: TextConstants.redeemPoints, width: 8),
+      PosColumn(text: "${TextConstants.currencySymbol}${hiveRedeemedValue.toStringAsFixed(2)}", width:4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.payByCash, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}", width:2,styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: TextConstants.payByCash, width:8),
+      PosColumn(text: "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}", width:4,styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.payByOther, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: TextConstants.payByOther, width: 8),
+      PosColumn(text: "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}", width:4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.tenderAmount, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: TextConstants.tenderAmount, width: 8),
+      PosColumn(text: "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}", width:4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.change, width: 10),
-      PosColumn(text: "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}", width:2, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: TextConstants.change, width: 8),
+      PosColumn(text: "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}", width:4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.feed(2);
@@ -3299,6 +3648,10 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
 
     bytes += ticket.feed(2);
+
+    bytes += ticket.row([
+      PosColumn(text: "-----------------------------------------------", width: 12),
+    ]);
   }
 
 /////

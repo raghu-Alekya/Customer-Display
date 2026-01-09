@@ -3549,7 +3549,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                                       style: TextStyle(
                                                         fontSize: ResponsiveLayout.getFontSize(22),
                                                         fontWeight: FontWeight.bold,
-                                                        color: Colors.black,
+                                                        color: themeHelper.themeMode == ThemeMode.dark
+                                                            ? const Color(0xFFFFFFFF)
+                                                            : const Color(0xFF1F1D2B),
                                                       ),
                                                     ),
                                                   ),
@@ -3744,161 +3746,163 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                           ),
                         ],
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        children: [
-                          // Net Payable
-                          Container(
-                            width: double.infinity,
-                            padding: EdgeInsets.all(ResponsiveLayout.getPadding(8)),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              children: [
-                                // Net Payable
-                                Container(
-                                  padding: const EdgeInsets.only(
-                                    top: 6,
-                                    right: 6,
-                                    bottom: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: themeHelper.themeMode == ThemeMode.dark
-                                        ? const Color(0xFF091B34) // dark background
-                                        : const Color(0xFFF4FCF7), // light mode background
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border(
-                                      top: BorderSide(
-                                        color: themeHelper.themeMode == ThemeMode.dark
-                                            ? const Color(0xFF091B34)
-                                            : const Color(0xFF3EAE4C),
-                                        width: 1,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            // Net Payable
+                            Container(
+                              width: double.infinity,
+                              padding: EdgeInsets.all(ResponsiveLayout.getPadding(8)),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.start,
+                                children: [
+                                  // Net Payable
+                                  Container(
+                                    padding: const EdgeInsets.only(
+                                      top: 6,
+                                      right: 6,
+                                      bottom: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: themeHelper.themeMode == ThemeMode.dark
+                                          ? const Color(0xFF091B34) // dark background
+                                          : const Color(0xFFF4FCF7), // light mode background
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border(
+                                        top: BorderSide(
+                                          color: themeHelper.themeMode == ThemeMode.dark
+                                              ? const Color(0xFF091B34)
+                                              : const Color(0xFF3EAE4C),
+                                          width: 1,
+                                        ),
+                                        right: BorderSide(
+                                          color: themeHelper.themeMode == ThemeMode.dark
+                                              ? const Color(0xFF091B34)
+                                              : const Color(0xFF3EAE4C),
+                                          width: 1,
+                                        ),
+                                        bottom: BorderSide(
+                                          color: themeHelper.themeMode == ThemeMode.dark
+                                              ? const Color(0xFF091B34)
+                                              : const Color(0xFF3EAE4C),
+                                          width: 1,
+                                        ),
+                                        left: BorderSide.none, // 🚫 no left border
                                       ),
-                                      right: BorderSide(
-                                        color: themeHelper.themeMode == ThemeMode.dark
-                                            ? const Color(0xFF091B34)
-                                            : const Color(0xFF3EAE4C),
-                                        width: 1,
-                                      ),
-                                      bottom: BorderSide(
-                                        color: themeHelper.themeMode == ThemeMode.dark
-                                            ? const Color(0xFF091B34)
-                                            : const Color(0xFF3EAE4C),
-                                        width: 1,
-                                      ),
-                                      left: BorderSide.none, // 🚫 no left border
+                                    ),
+                                    child: _buildAmountDisplay(
+                                      TextConstants.netPayable,
+                                      '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                                      leftBarColor: const Color(0xFF3EAE4C),
+                                      amountColor: themeHelper.themeMode == ThemeMode.dark
+                                          ? Colors.white
+                                          : Colors.black,
                                     ),
                                   ),
-                                  child: _buildAmountDisplay(
-                                    TextConstants.netPayable,
-                                    '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
-                                    leftBarColor: const Color(0xFF3EAE4C),
-                                    amountColor: themeHelper.themeMode == ThemeMode.dark
-                                        ? Colors.white
-                                        : Colors.black,
-                                  ),
-                                ),
-
-                                SizedBox(height: ResponsiveLayout.getHeight(15)),
-
-
-                                // Balance Amount
-                                Container(
-                                  padding: const EdgeInsets.only(
-                                    top: 6,
-                                    right: 6,
-                                    bottom: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: themeHelper.themeMode == ThemeMode.dark
-                                        ? const Color(0xFF091B34)
-                                        : const Color(0xFFFCF4F4),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border(
-                                      top: BorderSide(
-                                        color: themeHelper.themeMode == ThemeMode.dark
-                                            ? const Color(0xFF091B34)
-                                            : const Color(0xFFE85C43),
-                                        width: 1,
+                        
+                                  SizedBox(height: ResponsiveLayout.getHeight(15)),
+                        
+                        
+                                  // Balance Amount
+                                  Container(
+                                    padding: const EdgeInsets.only(
+                                      top: 6,
+                                      right: 6,
+                                      bottom: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: themeHelper.themeMode == ThemeMode.dark
+                                          ? const Color(0xFF091B34)
+                                          : const Color(0xFFFCF4F4),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border(
+                                        top: BorderSide(
+                                          color: themeHelper.themeMode == ThemeMode.dark
+                                              ? const Color(0xFF091B34)
+                                              : const Color(0xFFE85C43),
+                                          width: 1,
+                                        ),
+                                        right: BorderSide(
+                                          color: themeHelper.themeMode == ThemeMode.dark
+                                              ? const Color(0xFF091B34)
+                                              : const Color(0xFFE85C43),
+                                          width: 1,
+                                        ),
+                                        bottom: BorderSide(
+                                          color: themeHelper.themeMode == ThemeMode.dark
+                                              ? const Color(0xFF091B34)
+                                              : const Color(0xFFE85C43),
+                                          width: 1,
+                                        ),
+                                        left: BorderSide.none, // 🚫 no left border
                                       ),
-                                      right: BorderSide(
-                                        color: themeHelper.themeMode == ThemeMode.dark
-                                            ? const Color(0xFF091B34)
-                                            : const Color(0xFFE85C43),
-                                        width: 1,
-                                      ),
-                                      bottom: BorderSide(
-                                        color: themeHelper.themeMode == ThemeMode.dark
-                                            ? const Color(0xFF091B34)
-                                            : const Color(0xFFE85C43),
-                                        width: 1,
-                                      ),
-                                      left: BorderSide.none, // 🚫 no left border
+                                    ),
+                                    child: _buildAmountDisplay(
+                                      TextConstants.balanceAmount,
+                                      '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
+                                      leftBarColor: const Color(0xFFE85C43),
+                                      amountColor: themeHelper.themeMode == ThemeMode.dark
+                                          ? Colors.white
+                                          : Colors.black,
                                     ),
                                   ),
-                                  child: _buildAmountDisplay(
-                                    TextConstants.balanceAmount,
-                                    '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
-                                    leftBarColor: const Color(0xFFE85C43),
-                                    amountColor: themeHelper.themeMode == ThemeMode.dark
-                                        ? Colors.white
-                                        : Colors.black,
-                                  ),
-                                ),
-
-                                SizedBox(height: ResponsiveLayout.getHeight(15)),
-
-
-                                // EBT Amount
-                                Container(
-                                  padding: const EdgeInsets.only(
-                                    top: 6,
-                                    right: 6,
-                                    bottom: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: themeHelper.themeMode == ThemeMode.dark
-                                        ? const Color(0xFF091B34)
-                                        : const Color(0xFFF4F7FC),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border(
-                                      top: BorderSide(
-                                        color: themeHelper.themeMode == ThemeMode.dark
-                                            ? const Color(0xFF091B34)
-                                            : const Color(0xFF3B7DDD),
-                                        width: 1,
+                        
+                                  SizedBox(height: ResponsiveLayout.getHeight(15)),
+                        
+                        
+                                  // EBT Amount
+                                  Container(
+                                    padding: const EdgeInsets.only(
+                                      top: 6,
+                                      right: 6,
+                                      bottom: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: themeHelper.themeMode == ThemeMode.dark
+                                          ? const Color(0xFF091B34)
+                                          : const Color(0xFFF4F7FC),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border(
+                                        top: BorderSide(
+                                          color: themeHelper.themeMode == ThemeMode.dark
+                                              ? const Color(0xFF091B34)
+                                              : const Color(0xFF3B7DDD),
+                                          width: 1,
+                                        ),
+                                        right: BorderSide(
+                                          color: themeHelper.themeMode == ThemeMode.dark
+                                              ? const Color(0xFF091B34)
+                                              : const Color(0xFF3B7DDD),
+                                          width: 1,
+                                        ),
+                                        bottom: BorderSide(
+                                          color: themeHelper.themeMode == ThemeMode.dark
+                                              ? const Color(0xFF091B34)
+                                              : const Color(0xFF3B7DDD),
+                                          width: 1,
+                                        ),
+                                        left: BorderSide.none, // 🚫 no left border
                                       ),
-                                      right: BorderSide(
-                                        color: themeHelper.themeMode == ThemeMode.dark
-                                            ? const Color(0xFF091B34)
-                                            : const Color(0xFF3B7DDD),
-                                        width: 1,
-                                      ),
-                                      bottom: BorderSide(
-                                        color: themeHelper.themeMode == ThemeMode.dark
-                                            ? const Color(0xFF091B34)
-                                            : const Color(0xFF3B7DDD),
-                                        width: 1,
-                                      ),
-                                      left: BorderSide.none, // 🚫 no left border
+                                    ),
+                                    child: _buildAmountDisplay(
+                                      TextConstants.EBTAmount,
+                                      '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
+                                      leftBarColor: const Color(0xFF3B7DDD),
+                                      amountColor: themeHelper.themeMode == ThemeMode.dark
+                                          ? Colors.white
+                                          : Colors.black,
                                     ),
                                   ),
-                                  child: _buildAmountDisplay(
-                                    TextConstants.EBTAmount,
-                                    '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
-                                    leftBarColor: const Color(0xFF3B7DDD),
-                                    amountColor: themeHelper.themeMode == ThemeMode.dark
-                                        ? Colors.white
-                                        : Colors.black,
-                                  ),
-                                ),
-
-                              ],
-                            ),
-                          )
-
-                        ],
+                        
+                                ],
+                              ),
+                            )
+                        
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -5435,57 +5439,57 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.grossTotal, width: 10),
+      PosColumn(text: TextConstants.grossTotal, width:8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}",
-        width: 2,
+        width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.discountText, width: 10),
+      PosColumn(text: TextConstants.discountText, width:8),
       PosColumn(
         text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}",
-        width: 2,
+        width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.taxText, width: 10),
+      PosColumn(text: TextConstants.taxText, width:8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}",
-        width: 2,
+        width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.merchantDiscount, width: 10),
+      PosColumn(text: TextConstants.merchantDiscount, width: 8),
       PosColumn(
         text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
-        width: 2,
+        width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
 
     if (cashbackFee > 0) {
       bytes += ticket.row([
-        PosColumn(text: TextConstants.cashbackFee, width: 10),
+        PosColumn(text: TextConstants.cashbackFee, width: 8),
         PosColumn(
           text: "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
-          width: 2,
+          width: 4,
           styles: PosStyles(align: PosAlign.right),
         ),
       ]);
     }
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.servicecharges, width: 10),
+      PosColumn(text: TextConstants.servicecharges, width: 8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}",
-        width: 2,
+        width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
@@ -5497,57 +5501,57 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     bytes += ticket.feed(1);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.netPayable, width: 10),
+      PosColumn(text: TextConstants.netPayable, width:8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${orderTotal.toStringAsFixed(2)}",
-        width: 2,
+        width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
 
     if (redeemedValue > 0) {
       bytes += ticket.row([
-        PosColumn(text: "Redeemed Amount", width: 10),
+        PosColumn(text: "Redeemed Amount", width: 8),
         PosColumn(
           text: "-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}",
-          width: 2,
+          width: 4,
           styles: PosStyles(align: PosAlign.right),
         ),
       ]);
     }
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.payByCash, width: 10),
+      PosColumn(text: TextConstants.payByCash, width: 8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}",
-        width: 2,
+        width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.payByOther, width: 10),
+      PosColumn(text: TextConstants.payByOther, width:8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}",
-        width: 2,
+        width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.tenderAmount, width: 10),
+      PosColumn(text: TextConstants.tenderAmount, width:8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
-        width: 2,
+        width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.change, width: 10),
+      PosColumn(text: TextConstants.change, width:8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}",
-        width: 2,
+        width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
@@ -5564,6 +5568,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
   }
 
+////
 
   Future _printTicket({bool manual = false}) async {
     final ticket = await _printerSettings.getTicket();

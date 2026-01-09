@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../Database/db_helper.dart';
+import '../../Helper/url_helper.dart';
 import 'inventory_categories_model.dart';
 
 abstract class InventoryCategoriesRemoteDataSource {
@@ -38,7 +39,16 @@ class InventoryCategoriesRemoteDataSourceImpl implements InventoryCategoriesRemo
   Future<List<InventoryCategoriesModel>> getCategories() async {
     final token = await _getTokenFromDb();
 
-    final url = Uri.parse('https://merchantretail.alektasolutions.com/wp-json/wc/v3/products/categories');
+    /// Full correct URL
+    final String fullUrl =
+        "${UrlHelper.wooBaseUrl}products/categories";
+
+    final Uri url = Uri.parse(fullUrl);
+
+    if (kDebugMode) {
+      print("#### FULL REQUEST URL: $fullUrl");
+    }
+
     final response = await client.get(
       url,
       headers: {
@@ -49,7 +59,9 @@ class InventoryCategoriesRemoteDataSourceImpl implements InventoryCategoriesRemo
 
     if (response.statusCode == 200) {
       final List<dynamic> decoded = json.decode(response.body);
-      return decoded.map((e) => InventoryCategoriesModel.fromJson(e)).toList();
+      return decoded
+          .map((e) => InventoryCategoriesModel.fromJson(e))
+          .toList();
     } else {
       if (kDebugMode) {
         print('#### API ERROR: ${response.statusCode}');
@@ -58,4 +70,5 @@ class InventoryCategoriesRemoteDataSourceImpl implements InventoryCategoriesRemo
       throw Exception('Failed to load categories');
     }
   }
+
 }

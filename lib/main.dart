@@ -22,6 +22,9 @@ import 'Inventory_screen/inventory_Tax/inventory_tax_bloc/inventory_tax_bloc.dar
 import 'Inventory_screen/inventory_Tax/inventory_tax_get_usecase.dart';
 import 'Inventory_screen/inventory_Tax/inventory_tax_remote_data_source.dart';
 import 'Inventory_screen/inventory_Tax/inventory_tax_repository_impl.dart';
+import 'Inventory_screen/inventory_attributes/inventory_attributes_get_usecase.dart';
+import 'Inventory_screen/inventory_attributes/inventory_attributes_remote_data_source.dart';
+import 'Inventory_screen/inventory_attributes/inventory_attributes_repository_impl.dart';
 import 'Inventory_screen/inventory_categories/inventory_categories_bloc/inventory_categories_bloc.dart';
 import 'Inventory_screen/inventory_categories/inventory_categories_get_usecase.dart';
 import 'Inventory_screen/inventory_categories/inventory_categories_remote_data_source.dart';
@@ -104,6 +107,19 @@ void main() async {
   final inventoryCategoriesRemoteDataSource = InventoryCategoriesRemoteDataSourceImpl(client: httpClient);
   final inventoryCategoriesRepository = InventoryCategoriesRepositoryImpl(remoteDataSource: inventoryCategoriesRemoteDataSource);
   final inventoryCategoriesUseCase = InventoryCategoriesGetUseCase(repository: inventoryCategoriesRepository);
+
+  // Inventory Attributes
+  final inventoryAttributesRemoteDataSource =
+  InventoryAttributesRemoteDataSourceImpl(client: httpClient);
+
+  final inventoryAttributesRepository =
+  InventoryAttributesRepositoryImpl(
+      remoteDataSource: inventoryAttributesRemoteDataSource);
+
+  final inventoryAttributesUseCase =
+  InventoryAttributesGetUseCase(
+      repository: inventoryAttributesRepository);
+
 
   // runApp(
   //   ChangeNotifierProvider(

@@ -57,6 +57,10 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const itemMultipackDiscountTotal = 'multipack_discount_total';
   static const itemAutoDiscountMeta = 'item_auto_discount_meta';
 
+  // Add these new constants for combo discounts
+  static const comboDiscountTotal = 'combo_discount_total';
+  static const displayAutoDiscount = 'display_auto_discount';
+
 
   // static const autoDiscount = 'multipack_discount_total';
 
@@ -289,6 +293,9 @@ CREATE TABLE ${AppDBConst.orderTable} (
   ${AppDBConst.multipack_discount_total} REAL DEFAULT 0,
   auto_discount_total REAL DEFAULT 0,
 
+   ${AppDBConst.comboDiscountTotal} REAL DEFAULT 0, -- NEW: Total combo discounts for order
+   ${AppDBConst.displayAutoDiscount} REAL DEFAULT 0, -- NEW: Total display auto discounts for order
+  
   FOREIGN KEY(${AppDBConst.userId})
     REFERENCES ${AppDBConst.userTable}(${AppDBConst.userId})
     ON DELETE CASCADE
@@ -320,6 +327,8 @@ CREATE TABLE ${AppDBConst.orderTable} (
      ${AppDBConst.multipack_discount_total} REAL DEFAULT 0, -- correct syntax
      ${AppDBConst.autoDiscountTotal} REAL DEFAULT 0, -- correct syntax
 
+     ${AppDBConst.comboDiscountTotal} REAL DEFAULT 0, -- NEW: For "Discount Applied" combo discounts
+     ${AppDBConst.displayAutoDiscount} REAL DEFAULT 0, -- NEW: For "auto_discount_amount" display discounts
 
       FOREIGN KEY(${AppDBConst.orderIdForeignKey}) REFERENCES ${AppDBConst.orderTable}(${AppDBConst.orderServerId}) ON DELETE CASCADE
     )
@@ -623,6 +632,9 @@ CREATE TABLE ${AppDBConst.orderTable} (
         AppDBConst.itemType: item['type'],
         AppDBConst.multipack_discount_total: item['multipack_discount_total'] ?? 0,
         AppDBConst.autoDiscountTotal: item['auto_discount_total'] ?? 0, // fixed
+        AppDBConst.comboDiscountTotal: item['combo_discount_total'] ?? 0,
+        AppDBConst.displayAutoDiscount: item['display_auto_discount'] ?? 0,
+
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );

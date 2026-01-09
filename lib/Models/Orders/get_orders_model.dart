@@ -1,7 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:pinaka_pos/Constants/text.dart';
-
-import 'orders_model.dart';
 
 class OrdersListModel {
   final List<OrderModel> orders;
@@ -181,20 +180,42 @@ class OrderModel {
     return lineItems.fold(0.0, (sum, item) => sum + item.autoDiscountAmount);
   }
 
+  // **NEW: Total combo discount from all line items**
+  double get totalComboDiscount {
+    return lineItems.fold(0.0, (sum, item) => sum + item.comboDiscountAmount);
+  }
+
+  // **NEW: Total display auto discount from all line items**
+  double get totalDisplayAutoDiscount {
+    return lineItems.fold(0.0, (sum, item) => sum + item.displayAutoDiscountAmount);
+  }
+
   // **NEW: Combined auto discount (order-level + line items)**
   double get totalCombinedAutoDiscount {
     return orderLevelAutoDiscountAmount + totalAutoDiscount;
   }
 
+  // Updated to include new discount types
   double get totalAllDiscounts {
     final discount = double.tryParse(discountTotal) ?? 0.0;
     final auto = double.tryParse(autoDiscountTotal ?? '0') ?? 0.0;
-    return discount + totalMultipackDiscount + auto + totalCombinedAutoDiscount;
+    return discount +
+        totalMultipackDiscount +
+        auto +
+        totalCombinedAutoDiscount +
+        totalComboDiscount +
+        totalDisplayAutoDiscount;
   }
 
   bool get hasMultipackDiscount => totalMultipackDiscount > 0;
 
   bool get hasAutoDiscount => totalCombinedAutoDiscount > 0;
+
+  // **NEW: Check if order has combo discounts**
+  bool get hasComboDiscount => totalComboDiscount > 0;
+
+  // **NEW: Check if order has display auto discounts**
+  bool get hasDisplayAutoDiscount => totalDisplayAutoDiscount > 0;
 
   // **NEW: Check if order-level auto discount exists**
   bool get hasOrderLevelAutoDiscount => orderLevelAutoDiscountAmount > 0;
@@ -347,6 +368,13 @@ class LineItem {
   final double autoDiscountAmount;
   final bool autoDiscountApplied;
 
+  // **NEW: Combo discount fields**
+  final double comboDiscountAmount;
+  final bool comboDiscountApplied;
+
+  // **NEW: Auto discount from display meta fields**
+  final double displayAutoDiscountAmount;
+
   LineItem({
     required this.id,
     required this.name,
@@ -371,6 +399,11 @@ class LineItem {
     required this.multipackApplied,
     required this.autoDiscountAmount,
     required this.autoDiscountApplied,
+    // **NEW: Combo discount parameters**
+    required this.comboDiscountAmount,
+    required this.comboDiscountApplied,
+    // **NEW: Display auto discount parameter**
+    required this.displayAutoDiscountAmount,
   });
 
   factory LineItem.fromJson(Map<String, dynamic> json) {
@@ -407,6 +440,19 @@ class LineItem {
     final autoApplied = getMetaValue('_pinaka_discount_amount_auto_apply') == 'yes';
     final autoDiscountAmount = double.tryParse(autoDiscountStr ?? '0') ?? 0.0;
 
+    // **NEW: Combo discount extraction**
+    // Looking for "Discount Applied" key or display_key
+    final comboDiscountStr = getMetaValue('Discount Applied') ??
+        _extractDisplayMetaValue(metaList, 'Discount Applied', keyToMatch: 'display_key');
+    final comboDiscountAmount = double.tryParse(comboDiscountStr ?? '0') ?? 0.0;
+    final comboApplied = comboDiscountAmount > 0;
+
+    // **NEW: Auto discount from display meta fields**
+    // Looking for "auto_discount_amount" key or display_key
+    final displayAutoDiscountStr = getMetaValue('auto_discount_amount') ??
+        _extractDisplayMetaValue(metaList, 'auto_discount_amount', keyToMatch: 'display_key');
+    final displayAutoDiscountAmount = double.tryParse(displayAutoDiscountStr ?? '0') ?? 0.0;
+
     return LineItem(
       id: json['id'] ?? 0,
       name: json['name'] ?? '',
@@ -435,7 +481,49 @@ class LineItem {
       multipackApplied: applied,
       autoDiscountAmount: autoDiscountAmount,
       autoDiscountApplied: autoApplied,
+      // **NEW: Combo discount fields**
+      comboDiscountAmount: comboDiscountAmount,
+      comboDiscountApplied: comboApplied,
+      // **NEW: Display auto discount field**
+      displayAutoDiscountAmount: displayAutoDiscountAmount,
     );
+  }
+
+  // **NEW: Helper method to extract display meta values**
+  static String? _extractDisplayMetaValue(
+      List<MetaData> metaList,
+      String valueToFind, {
+        String keyToMatch = 'display_key'
+      }) {
+    try {
+      // Look for meta entries where display_key matches the value we're looking for
+      for (var meta in metaList) {
+        if (meta.value is Map<String, dynamic>) {
+          final valueMap = meta.value as Map<String, dynamic>;
+          if (valueMap[keyToMatch]?.toString() == valueToFind) {
+            return valueMap['display_value']?.toString();
+          }
+        }
+      }
+
+      // Alternative: Check if value is a JSON string
+      for (var meta in metaList) {
+        if (meta.value is String) {
+          try {
+            final parsed = jsonDecode(meta.value as String) as Map<String, dynamic>;
+            if (parsed[keyToMatch]?.toString() == valueToFind) {
+              return parsed['display_value']?.toString();
+            }
+          } catch (_) {
+            // Not a JSON string, continue
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      return null;
+    }
   }
 
   // Multipack discount helper
@@ -444,8 +532,18 @@ class LineItem {
   // Auto discount helper
   bool get hasAutoDiscount => autoDiscountApplied && autoDiscountAmount > 0;
 
-  // Total discount including multipack + auto
-  double get totalDiscountAmount => multipackDiscountAmount + autoDiscountAmount;
+  // **NEW: Combo discount helper**
+  bool get hasComboDiscount => comboDiscountApplied && comboDiscountAmount > 0;
+
+  // **NEW: Display auto discount helper**
+  bool get hasDisplayAutoDiscount => displayAutoDiscountAmount > 0;
+
+  // Updated total discount including all discount types
+  double get totalDiscountAmount =>
+      multipackDiscountAmount +
+          autoDiscountAmount +
+          comboDiscountAmount +
+          displayAutoDiscountAmount;
 }
 
 class Tag {

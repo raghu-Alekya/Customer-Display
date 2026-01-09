@@ -331,119 +331,13 @@ class _PaymentDialogState extends State<PaymentDialog> {
             height: 52,
             child: ElevatedButton(
 
-              // onPressed: isSelected
-              //     ? () async {
-              //   final String couponCode = c["code"].toString();
-              //
-              //   // Generate QR
-              //   final qrPainter = QrPainter(
-              //     data: couponCode,
-              //     version: QrVersions.auto,
-              //     gapless: true,
-              //   );
-              //
-              //   final ui.Image qrImage = await qrPainter.toImage(200);
-              //   final byteData =
-              //   await qrImage.toByteData(format: ui.ImageByteFormat.png);
-              //
-              //   if (byteData == null) return;
-              //
-              //   final Uint8List qrBytes = byteData.buffer.asUint8List();
-              //   final String qrBase64 = base64Encode(qrBytes);
-              //
-              //   // 🔥 Prepare print content
-              //   await _prepareCouponPrintTicket(
-              //     couponCode: couponCode,
-              //     qrBase64: qrBase64,
-              //   );
-              //
-              //   // 🖨 Direct print
-              //   await _printTicket();
-              // }
-              //     : null,
-
-              // onPressed: isSelected
-              //     ? () async {
-              //   final String couponCode = c["code"].toString();
-              //   final String qrData = "$couponCode";
-              //
-              //   final qrPainter = QrPainter(
-              //     data: qrData,
-              //     version: QrVersions.auto,
-              //     gapless: true,
-              //     eyeStyle: const QrEyeStyle(
-              //       eyeShape: QrEyeShape.square,
-              //       color: Colors.black,
-              //     ),
-              //     dataModuleStyle: const QrDataModuleStyle(
-              //       dataModuleShape: QrDataModuleShape.square,
-              //       color: Colors.black,
-              //     ),
-              //   );
-              //
-              //   final ui.Image qrImage = await qrPainter.toImage(200);
-              //   final byteData =
-              //   await qrImage.toByteData(format: ui.ImageByteFormat.png);
-              //
-              //   if (byteData == null) return;
-              //
-              //   final Uint8List qrBytes = byteData.buffer.asUint8List();
-              //   final String qrBase64 = base64Encode(qrBytes);
-              //
-              //   // 🔥 SHOW QR IMAGE PREVIEW
-              //   showDialog(
-              //     context: context,
-              //     builder: (_) => AlertDialog(
-              //       backgroundColor: Colors.white,
-              //       content: Column(
-              //         mainAxisSize: MainAxisSize.min,
-              //         children: [
-              //           Container(
-              //             padding: const EdgeInsets.all(8),
-              //             color: Colors.white,
-              //             child: Image.memory(
-              //               qrBytes,
-              //               width: 180,
-              //               height: 180,
-              //               fit: BoxFit.contain,
-              //             ),
-              //           ),
-              //           const SizedBox(height: 12),
-              //           Text(
-              //             couponCode,
-              //             style: const TextStyle(
-              //               fontSize: 16,
-              //               fontWeight: FontWeight.w700,
-              //             ),
-              //           ),
-              //           const SizedBox(height: 12),
-              //           ElevatedButton(
-              //             onPressed: () {
-              //               Navigator.pop(context);
-              //
-              //               // 🔹 NOW PRINT
-              //               _handleCouponPrint(
-              //                 couponCode: couponCode,
-              //                 qrBase64: qrBase64,
-              //               );
-              //             },
-              //             child: const Text("Print"),
-              //           ),
-              //         ],
-              //       ),
-              //     ),
-              //   );
-              // }
-              //     : null,
-
               onPressed: isSelected
                   ? () async {
                 final String couponCode = c["code"].toString();
-                final String qrData = "COUPON:$couponCode";
 
-                // 🔹 GENERATE QR FIRST
+                // Generate QR
                 final qrPainter = QrPainter(
-                  data: qrData,
+                  data: couponCode,
                   version: QrVersions.auto,
                   gapless: true,
                 );
@@ -452,22 +346,21 @@ class _PaymentDialogState extends State<PaymentDialog> {
                 final byteData =
                 await qrImage.toByteData(format: ui.ImageByteFormat.png);
 
-                if (byteData == null) {
-                  print("❌ QR generation failed");
-                  return;
-                }
+                if (byteData == null) return;
 
                 final Uint8List qrBytes = byteData.buffer.asUint8List();
                 final String qrBase64 = base64Encode(qrBytes);
 
-                // 🔹 PASS ONLY GENERATED DATA
-                _handleCouponPrint(
+                // 🔥 Prepare print content
+                await _prepareCouponPrintTicket(
                   couponCode: couponCode,
                   qrBase64: qrBase64,
                 );
+
+                // 🖨 Direct print
+                await _printTicket();
               }
                   : null,
-
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
                 disabledBackgroundColor: Colors.grey.shade400,
@@ -1292,6 +1185,4 @@ class _PaymentDialogState extends State<PaymentDialog> {
       ),
     );
   }
-
-  void _handleCouponPrint({required String couponCode, required String qrBase64}) {}
 }

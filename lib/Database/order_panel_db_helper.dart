@@ -463,6 +463,9 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     if (kDebugMode) {
       print("#### DEBUG: updateOrderItems orderId: $orderId");
       print("#### DEBUG: Order-level auto discount: ${orderModel.orderLevelAutoDiscountAmount}");  // ✅ Log the discount
+      // NEW: Log combo and display auto discounts
+      print("#### DEBUG: Total combo discount: ${orderModel.totalComboDiscount}");
+      print("#### DEBUG: Total display auto discount: ${orderModel.totalDisplayAutoDiscount}");
     }
     final db = await DBHelper.instance.database;
     final existingItems = await db.query(
@@ -512,6 +515,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       if (kDebugMode) {
         print("#### DEBUG: updateOrderItems - Processing API item ID: $itemId, name: ${apiItem.name}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
         print("variationName $variationName, variationCount:$variationCount, combo:$combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
+        // NEW: Log item-level discounts
+        print("Item discounts - Multipack: ${apiItem.multipackDiscountAmount}, Auto: ${apiItem.autoDiscountAmount}, Combo: ${apiItem.comboDiscountAmount}, Display Auto: ${apiItem.displayAutoDiscountAmount}");
       }
 
       if (existingItemsMap.containsKey(itemId)) {
@@ -531,7 +536,10 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
             AppDBConst.itemProductId: apiItem.productId,
             AppDBConst.itemVariationId: apiItem.variationId,
             AppDBConst.multipackDiscount: apiItem.multipackDiscountAmount,
-            // AppDBConst.autoDiscountTotal: apiItem.autoDiscountAmount,  // ✅ Line item auto discount
+            AppDBConst.autoDiscountTotal: apiItem.displayAutoDiscountAmount,
+            // NEW: Add combo discount and display auto discount
+            AppDBConst.comboDiscountTotal: apiItem.comboDiscountAmount,
+            AppDBConst.displayAutoDiscount: apiItem.displayAutoDiscountAmount,
           },
           where: '${AppDBConst.itemServerId} = ?',
           whereArgs: [existingItem[AppDBConst.itemServerId]],
@@ -568,7 +576,10 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           AppDBConst.itemProductId: apiItem.productId,
           AppDBConst.itemVariationId: apiItem.variationId,
           AppDBConst.multipackDiscount: apiItem.multipackDiscountAmount,
-          AppDBConst.autoDiscountTotal: apiItem.autoDiscountAmount,  // ✅ Line item auto discount
+          AppDBConst.autoDiscountTotal: apiItem.displayAutoDiscountAmount,
+          // NEW: Add combo discount and display auto discount
+          AppDBConst.comboDiscountTotal: apiItem.comboDiscountAmount,
+          AppDBConst.displayAutoDiscount: apiItem.displayAutoDiscountAmount,
         });
         if (kDebugMode) {
           print("#### DEBUG: Inserted new item ID: $itemId for order $orderId");
@@ -588,24 +599,35 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     }
 
     // 3️⃣ ADD ORDER-LEVEL AUTO DISCOUNT UPDATE HERE
-    // Update the order table with order-level auto discount
+    // Update the order table with order-level auto discount and other discounts
     await db.update(
       AppDBConst.orderTable,
       {
         AppDBConst.autoDiscountTotal: orderModel.orderLevelAutoDiscountAmount,  // ✅ CORRECT: Use instance property
+        // NEW: Update order-level combo and display auto discounts
+        AppDBConst.comboDiscountTotal: orderModel.totalComboDiscount,
+        AppDBConst.displayAutoDiscount: orderModel.totalDisplayAutoDiscount,
+        // NEW: Also update multipack discount from order model
+        AppDBConst.multipack_discount_total: orderModel.totalMultipackDiscount,
       },
       where: '${AppDBConst.orderServerId} = ?',
       whereArgs: [orderId],
     );
 
     if (kDebugMode) {
-      print("#### DEBUG: Updated order $orderId with order-level auto discount: ${orderModel.orderLevelAutoDiscountAmount}");
+      print("#### DEBUG: Updated order $orderId with order-level discounts:");
+      print("  - Auto discount: ${orderModel.orderLevelAutoDiscountAmount}");
+      print("  - Combo discount: ${orderModel.totalComboDiscount}");
+      print("  - Display auto discount: ${orderModel.totalDisplayAutoDiscount}");
+      print("  - Multipack discount: ${orderModel.totalMultipackDiscount}");
     }
 
     final items = await getOrderItems(orderId);
     for (var item in items) {
       if (kDebugMode) {
         print("#### DEBUG: Check after insert if Order items ID: ${item[AppDBConst.itemId]},  ${item[AppDBConst.itemServerId]} for order $orderId is correct?, loadOrderItems 2");
+        // NEW: Check if discounts are saved correctly
+        print("Item discounts saved - Multipack: ${item[AppDBConst.multipack_discount_total]}, Auto: ${item[AppDBConst.autoDiscountTotal]}, Combo: ${item[AppDBConst.comboDiscountTotal]}, Display Auto: ${item[AppDBConst.displayAutoDiscount]}");
       }
     }
 
@@ -613,7 +635,6 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       print("#### DEBUG: updateOrderItems for order id $orderId completed...");
     }
   }
-
 
   // Build #1.0.64 : Modified updateOrderPayoutItems to align with updateOrderItems
   @Deprecated("This API is deprecated and replaced by 'updateOrderPayoutItem' with line_item")
