@@ -104,7 +104,7 @@ class MainActivity : FlutterActivity() {
                             }
                         }.start()
                     } else {
-                        Log.e("CustomerDisplay", "❌ storeBaseUrl is empty → cannot load slideshow for store $storeName")
+                        Log.e("CustomerDisplay", "storeBaseUrl is empty → cannot load slideshow for store $storeName")
                     }
 
                     // --- Show Welcome layout on customer display ---

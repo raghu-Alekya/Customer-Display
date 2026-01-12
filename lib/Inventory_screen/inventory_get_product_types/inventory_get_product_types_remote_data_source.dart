@@ -4,22 +4,20 @@ import 'package:http/http.dart' as http;
 
 import '../../../Database/db_helper.dart';
 import '../../Helper/url_helper.dart';
-import 'inventory_tag_model.dart';
+import 'inventory_get_product_types_model.dart';
 
-abstract class Inventory_Tag_Remote_Data_Source {
-  Future<List<Inventory_Tag_Model>> fetchInventoryTags();
+abstract class InventoryGetProductTypesRemoteDataSource {
+  Future<InventoryGetProductTypesModel> getProductTypes();
 }
 
-class Inventory_Tag_Remote_Data_Source_Impl
-    implements Inventory_Tag_Remote_Data_Source {
+class InventoryGetProductTypesRemoteDataSourceImpl
+    implements InventoryGetProductTypesRemoteDataSource {
   final http.Client client;
 
-  Inventory_Tag_Remote_Data_Source_Impl(this.client);
+  InventoryGetProductTypesRemoteDataSourceImpl({required this.client});
 
   @override
-
-
-  Future<List<Inventory_Tag_Model>> fetchInventoryTags() async {
+  Future<InventoryGetProductTypesModel> getProductTypes() async {
     final db = await DBHelper.instance.database;
 
     final result = await db.query(
@@ -36,13 +34,12 @@ class Inventory_Tag_Remote_Data_Source_Impl
 
     final token = result.first[AppDBConst.userToken];
 
+    // Corrected URL
     final url =
-        "${UrlHelper.wooBaseUrl}"
-        "${UrlMethodConstants.products}"
-        "${EndUrlConstants.gettags}";
+        '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}inventories${EndUrlConstants.get_product_types}';
 
     if (kDebugMode) {
-      print("#### INVENTORY TAGS URL: $url");
+      print('#### PRODUCT TYPES URL: $url');
     }
 
     final response = await client.get(
@@ -53,17 +50,14 @@ class Inventory_Tag_Remote_Data_Source_Impl
     );
 
     if (response.statusCode == 200) {
-      final List decoded = json.decode(response.body);
-      return decoded
-          .map((e) => Inventory_Tag_Model.fromJson(e))
-          .toList();
+      final decoded = json.decode(response.body);
+      return InventoryGetProductTypesModel.fromJson(decoded);
     } else {
       if (kDebugMode) {
         print('#### API ERROR: ${response.statusCode}');
         print('#### BODY: ${response.body}');
       }
-      throw Exception('Failed to load inventory tags');
+      throw Exception('Failed to load product types');
     }
   }
-
 }

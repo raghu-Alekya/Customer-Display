@@ -1524,6 +1524,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                       variationId: selected["id"],
                       isEbtEligible: isEbtEligible,
                     );
+                    await fetchOrderItems();
+                    await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
 
                     Navigator.of(_).pop();
                   },

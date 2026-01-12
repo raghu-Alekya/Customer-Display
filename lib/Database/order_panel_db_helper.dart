@@ -487,7 +487,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         continue;
       }
       final itemId = apiItem.id.toString();
-      final double itemPrice = apiItem.productData.regularPrice == '' ?  double.parse(apiItem.productData.price ?? '0.0') : double.parse(apiItem.productData.regularPrice ?? '0.0');
+      final double itemPrice = apiItem.productData.price == '' ?  double.parse(apiItem.productData.price ?? '0.0') : double.parse(apiItem.productData.price ?? '0.0');
       final int itemQuantity = apiItem.quantity ?? 0;
       final double itemSumPrice = double.parse(apiItem.subtotal);
 

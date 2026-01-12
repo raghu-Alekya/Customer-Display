@@ -966,6 +966,9 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
                   controller: _barcodeController,
                   autofocus: true, // so scanner input works
                   maxLines: 2,
+                  // readOnly: true,                 // ⭐ KEY LINE
+                  // enableInteractiveSelection: false,
+                  // showCursor: false,
                 ),
               ),
             ),
@@ -1441,12 +1444,13 @@ class AgeVerificationHelper {
     return showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AgeVerificationPopup(
-        minimumAge: minimumAge,
-        onManualVerify: onManualVerify,
-        onAgeVerified: onAgeVerified,
-        onCancel: onCancel,
-      ),
+      builder: (context) =>
+          AgeVerificationPopup(
+            minimumAge: minimumAge,
+            onManualVerify: onManualVerify,
+            onAgeVerified: onAgeVerified,
+            onCancel: onCancel,
+          ),
     );
   }
 }

@@ -1,3 +1,178 @@
+// import 'package:flutter/material.dart';
+// import 'package:flutter_bloc/flutter_bloc.dart';
+//
+// import 'inventory_categories_bloc/inventory_categories_bloc.dart';
+// import 'inventory_categories_bloc/inventory_categories_event.dart';
+// import 'inventory_categories_bloc/inventory_categories_state.dart';
+//
+// class InventoryCategoriesDropdown extends StatefulWidget {
+//   final ValueChanged<dynamic>? onCategorySelected; // <-- new callback
+//
+//   const InventoryCategoriesDropdown({super.key,this.onCategorySelected});
+//
+//   @override
+//   State<InventoryCategoriesDropdown> createState() =>
+//       _InventoryCategoriesDropdownState();
+// }
+//
+// class _InventoryCategoriesDropdownState
+//     extends State<InventoryCategoriesDropdown> {
+//   String? selectedCategory;
+//
+//   @override
+//   void initState() {
+//     super.initState();
+//     context
+//         .read<InventoryCategoriesBloc>()
+//         .add(InventoryCategoriesFetchEvent());
+//   }
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     return BlocBuilder<InventoryCategoriesBloc, InventoryCategoriesState>(
+//       builder: (context, state) {
+//
+//         // 🔹 Always show the dropdown to prevent flicker
+//         List categories = [];
+//         bool isLoading = false;
+//         String hintText = 'Please select the category';
+//
+//         if (state is InventoryCategoriesLoading) {
+//           isLoading = true;
+//           hintText = 'Loading categories...';
+//         } else if (state is InventoryCategoriesLoaded) {
+//           categories = state.categories;
+//         } else if (state is InventoryCategoriesError) {
+//           return Center(
+//             child: Text(
+//               state.message,
+//               style: const TextStyle(color: Colors.red),
+//             ),
+//           );
+//         }
+//
+//         return
+//         //   DropdownButtonFormField<String>(
+//         //   value: selectedCategory,
+//         //   hint: Text(hintText),
+//         //   decoration: InputDecoration(
+//         //     floatingLabelBehavior: FloatingLabelBehavior.never,
+//         //     filled: true,
+//         //     fillColor: Colors.grey[200],
+//         //     contentPadding:
+//         //     const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+//         //     border: OutlineInputBorder(
+//         //       borderRadius: BorderRadius.circular(8),
+//         //       borderSide: const BorderSide(color: Colors.grey),
+//         //     ),
+//         //     enabledBorder: OutlineInputBorder(
+//         //       borderRadius: BorderRadius.circular(8),
+//         //       borderSide: const BorderSide(color: Colors.grey),
+//         //     ),
+//         //     focusedBorder: OutlineInputBorder(
+//         //       borderRadius: BorderRadius.circular(8),
+//         //       borderSide: const BorderSide(color: Colors.grey),
+//         //     ),
+//         //   ),
+//         //   items: categories.map<DropdownMenuItem<String>>((category) {
+//         //     return DropdownMenuItem<String>(
+//         //       value: category.name,
+//         //       child: Row(
+//         //         children: [
+//         //           if (category.imageUrl.isNotEmpty)
+//         //             Image.network(
+//         //               category.imageUrl,
+//         //               width: 30,
+//         //               height: 30,
+//         //               fit: BoxFit.cover,
+//         //             ),
+//         //           const SizedBox(width: 10),
+//         //           Text('${category.name} (${category.count})'),
+//         //         ],
+//         //       ),
+//         //     );
+//         //   }).toList(),
+//         //   onChanged: isLoading
+//         //       ? null
+//         //       : (value) {
+//         //     setState(() {
+//         //       selectedCategory = value;
+//         //     });
+//         //     if (value != null) {
+//         //       print('Selected Category: $value,');
+//         //     }
+//         //   },
+//         // );
+//
+//           DropdownButtonFormField<dynamic>(
+//             value: selectedCategory,
+//             hint: Text(hintText),
+//             decoration: InputDecoration(
+//               floatingLabelBehavior: FloatingLabelBehavior.never,
+//               filled: true,
+//               fillColor: Colors.grey[200],
+//               contentPadding:
+//               const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+//               border: OutlineInputBorder(
+//                 borderRadius: BorderRadius.circular(8),
+//                 borderSide: const BorderSide(color: Colors.grey),
+//               ),
+//               enabledBorder: OutlineInputBorder(
+//                 borderRadius: BorderRadius.circular(8),
+//                 borderSide: const BorderSide(color: Colors.grey),
+//               ),
+//               focusedBorder: OutlineInputBorder(
+//                 borderRadius: BorderRadius.circular(8),
+//                 borderSide: const BorderSide(color: Colors.grey),
+//               ),
+//             ),
+//             items: categories.map<DropdownMenuItem<dynamic>>((category) {
+//               return DropdownMenuItem<dynamic>(
+//                 value: category, // <-- store the full category object
+//                 child: Row(
+//                   children: [
+//                     if (category.imageUrl.isNotEmpty)
+//                       Image.network(
+//                         category.imageUrl,
+//                         width: 30,
+//                         height: 30,
+//                         fit: BoxFit.cover,
+//                       ),
+//                     const SizedBox(width: 10),
+//                     Text('${category.name} (${category.count})'),
+//                   ],
+//                 ),
+//               );
+//             }).toList(),
+//             onChanged: isLoading
+//                 ? null
+//                 : (value) {
+//               setState(() {
+//                 selectedCategory = value;
+//               });
+//
+//               // ✅ Local debug print
+//               if (value != null) {
+//                 debugPrint(
+//                     'Selected Category -> ID: ${value.id}, Name: ${value.name}');
+//               }
+//
+//               // ✅ Trigger parent callback
+//               if (widget.onCategorySelected != null) {
+//                 widget.onCategorySelected!(value);
+//               }
+//             },
+//           );
+//
+//       },
+//     );
+//   }
+// }
+
+
+/////
+
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -6,7 +181,9 @@ import 'inventory_categories_bloc/inventory_categories_event.dart';
 import 'inventory_categories_bloc/inventory_categories_state.dart';
 
 class InventoryCategoriesDropdown extends StatefulWidget {
-  const InventoryCategoriesDropdown({super.key});
+  final ValueChanged<dynamic>? onCategorySelected; // parent callback
+
+  const InventoryCategoriesDropdown({super.key, this.onCategorySelected});
 
   @override
   State<InventoryCategoriesDropdown> createState() =>
@@ -15,84 +192,112 @@ class InventoryCategoriesDropdown extends StatefulWidget {
 
 class _InventoryCategoriesDropdownState
     extends State<InventoryCategoriesDropdown> {
-  String? selectedCategory;
+  dynamic selectedCategory;
 
   @override
   void initState() {
     super.initState();
-
-    /// 🔥 THIS IS THE FIX
-    context
-        .read<InventoryCategoriesBloc>()
-        .add(InventoryCategoriesFetchEvent());
+    context.read<InventoryCategoriesBloc>().add(InventoryCategoriesFetchEvent());
   }
 
   @override
   Widget build(BuildContext context) {
+    // Detect dark mode
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final fillColor = isDark ? const Color(0xFF252837) : Colors.grey[200];
+    final borderColor = isDark ? const Color(0xFF3B4259) : Colors.grey;
+    final textColor = isDark ? Colors.white70 : Colors.black87;
+    final dropdownBackgroundColor = isDark ? const Color(0xFF2C2C3A) : Colors.white;
+
     return BlocBuilder<InventoryCategoriesBloc, InventoryCategoriesState>(
       builder: (context, state) {
+        List categories = [];
+        bool isLoading = false;
+        String hintText = 'Please select the category';
+
         if (state is InventoryCategoriesLoading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (state is InventoryCategoriesLoaded) {
-          if (state.categories.isEmpty) {
-            return const Center(child: Text('No categories found'));
-          }
-
-          return DropdownButtonFormField<String>(
-            value: selectedCategory,
-            // decoration: InputDecoration(
-            //   labelText: 'Select Category',
-            //   border: OutlineInputBorder(
-            //     borderRadius: BorderRadius.circular(12),
-            //   ),
-            //   filled: true,
-            //   fillColor: Colors.grey[100],
-            // ),
-
-            decoration: InputDecoration(
-              labelText: 'Select Category',
-              filled: true,
-              fillColor: Colors.grey[200],
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                  vertical: 14, horizontal: 12),
+          isLoading = true;
+          hintText = 'Loading categories...';
+        } else if (state is InventoryCategoriesLoaded) {
+          categories = state.categories;
+        } else if (state is InventoryCategoriesError) {
+          return Center(
+            child: Text(
+              state.message,
+              style: const TextStyle(color: Colors.red),
             ),
-            items: state.categories.map((category) {
-              return DropdownMenuItem<String>(
-                value: category.name,
-                child: Row(
-                  children: [
-                    if (category.imageUrl.isNotEmpty)
-                      Image.network(
-                        category.imageUrl,
-                        width: 30,
-                        height: 30,
-                        fit: BoxFit.cover,
-                      ),
-                    const SizedBox(width: 10),
-                    Text('${category.name} (${category.count})'),
-                  ],
-                ),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() {
-                selectedCategory = value;
-              });
-            },
           );
         }
 
-        if (state is InventoryCategoriesError) {
-          return Center(child: Text(state.message));
-        }
+        return DropdownButtonFormField<dynamic>(
+          value: selectedCategory,
+          hint: Text(
+            hintText,
+            style: TextStyle(color: textColor),
+          ),
+          decoration: InputDecoration(
+            floatingLabelBehavior: FloatingLabelBehavior.never,
+            filled: true,
+            fillColor: fillColor,
+            contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: borderColor),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: borderColor),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: borderColor, width: 2),
+            ),
+          ),
+          items: categories.map<DropdownMenuItem<dynamic>>((category) {
+            return DropdownMenuItem<dynamic>(
+              value: category,
+              child: Row(
+                children: [
+                  if (category.imageUrl.isNotEmpty)
+                    Image.network(
+                      category.imageUrl,
+                      width: 30,
+                      height: 30,
+                      fit: BoxFit.cover,
+                    ),
+                  if (category.imageUrl.isNotEmpty) const SizedBox(width: 10),
+                  Text(
+                    '${category.name} (${category.count})',
+                    style: TextStyle(color: textColor),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+          onChanged: isLoading
+              ? null
+              : (value) {
+            setState(() {
+              selectedCategory = value;
+            });
 
-        /// Initial state
-        return const SizedBox.shrink();
+            if (value != null) {
+              debugPrint(
+                  'Selected Category -> ID: ${value.id}, Name: ${value.name}');
+            }
+
+            if (widget.onCategorySelected != null) {
+              widget.onCategorySelected!(value);
+            }
+          },
+          style: TextStyle(
+            color: textColor,
+            fontSize: 16,
+          ),
+          dropdownColor: dropdownBackgroundColor,
+          iconEnabledColor: Colors.grey,
+        );
       },
     );
   }

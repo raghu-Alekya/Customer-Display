@@ -18,10 +18,19 @@ import 'Inventory_screen/Inventory_Tags/inventory_tag_bloc/inventory_tag_bloc.da
 import 'Inventory_screen/Inventory_Tags/inventory_tag_get_tags_usecase.dart';
 import 'Inventory_screen/Inventory_Tags/inventory_tag_remote_data_source.dart';
 import 'Inventory_screen/Inventory_Tags/inventory_tag_repository_impl.dart';
+import 'Inventory_screen/add_product_toinventory/add_product_inventory_bloc/add_product_inventory_bloc.dart';
+import 'Inventory_screen/add_product_toinventory/add_product_inventory_get_usecase.dart';
+import 'Inventory_screen/add_product_toinventory/add_product_inventory_remote_data_source.dart';
+import 'Inventory_screen/add_product_toinventory/add_product_inventory_repository_impl.dart';
 import 'Inventory_screen/inventory_Tax/inventory_tax_bloc/inventory_tax_bloc.dart';
 import 'Inventory_screen/inventory_Tax/inventory_tax_get_usecase.dart';
 import 'Inventory_screen/inventory_Tax/inventory_tax_remote_data_source.dart';
 import 'Inventory_screen/inventory_Tax/inventory_tax_repository_impl.dart';
+import 'Inventory_screen/inventory_attribute_items/inventory_attribute_items_bloc/inventory_attribute_items_bloc.dart';
+import 'Inventory_screen/inventory_attribute_items/inventory_attribute_items_get_usecase.dart';
+import 'Inventory_screen/inventory_attribute_items/inventory_attribute_items_remote_data_source.dart';
+import 'Inventory_screen/inventory_attribute_items/inventory_attribute_items_repository_impl.dart';
+import 'Inventory_screen/inventory_attributes/inventory_attributes_bloc/inventory_attributes_bloc.dart';
 import 'Inventory_screen/inventory_attributes/inventory_attributes_get_usecase.dart';
 import 'Inventory_screen/inventory_attributes/inventory_attributes_remote_data_source.dart';
 import 'Inventory_screen/inventory_attributes/inventory_attributes_repository_impl.dart';
@@ -29,6 +38,10 @@ import 'Inventory_screen/inventory_categories/inventory_categories_bloc/inventor
 import 'Inventory_screen/inventory_categories/inventory_categories_get_usecase.dart';
 import 'Inventory_screen/inventory_categories/inventory_categories_remote_data_source.dart';
 import 'Inventory_screen/inventory_categories/inventory_categories_repository_impl.dart';
+import 'Inventory_screen/inventory_get_product_types/inventory_get_product_types_bloc/inventory_get_product_types_bloc.dart';
+import 'Inventory_screen/inventory_get_product_types/inventory_get_product_types_get_usecase.dart';
+import 'Inventory_screen/inventory_get_product_types/inventory_get_product_types_remote_data_source.dart';
+import 'Inventory_screen/inventory_get_product_types/inventory_get_product_types_repository_impl.dart';
 import 'Preferences/pinaka_preferences.dart';
 import 'Screens/Auth/splash_screen.dart';
 import 'package:flutter/services.dart';
@@ -109,17 +122,38 @@ void main() async {
   final inventoryCategoriesUseCase = InventoryCategoriesGetUseCase(repository: inventoryCategoriesRepository);
 
   // Inventory Attributes
-  final inventoryAttributesRemoteDataSource =
-  InventoryAttributesRemoteDataSourceImpl(client: httpClient);
+  final inventoryAttributesRemoteDataSource = InventoryAttributesRemoteDataSourceImpl(client: httpClient);
+  final inventoryAttributesRepository = InventoryAttributesRepositoryImpl(remoteDataSource: inventoryAttributesRemoteDataSource);
+  final inventoryAttributesUseCase = InventoryAttributesGetUseCase(repository: inventoryAttributesRepository);
 
-  final inventoryAttributesRepository =
-  InventoryAttributesRepositoryImpl(
-      remoteDataSource: inventoryAttributesRemoteDataSource);
 
-  final inventoryAttributesUseCase =
-  InventoryAttributesGetUseCase(
-      repository: inventoryAttributesRepository);
+  //  InventoryGetProductTypes setup
+  final inventoryProductTypesRemoteDataSource = InventoryGetProductTypesRemoteDataSourceImpl(client: httpClient);
+  final inventoryProductTypesRepository = InventoryGetProductTypesRepositoryImpl(remoteDataSource: inventoryProductTypesRemoteDataSource);
+  final inventoryProductTypesUseCase = InventoryGetProductTypesGetUseCase(repository: inventoryProductTypesRepository);
 
+  //  Create the remote data source
+  final inventoryAttributeItemsRemoteDataSource =
+  InventoryAttributeItemsRemoteDataSourceImpl(
+    client: http.Client(),
+  );
+
+// Create the repository and inject the remote data source
+  final inventoryAttributeItemsRepository = InventoryAttributeItemsRepositoryImpl(
+    remoteDataSource: inventoryAttributeItemsRemoteDataSource,
+  );
+
+//  Create the use case and inject the repository
+  final inventoryAttributeItemsUseCase = GetInventoryAttributeItemsUseCase(
+    repository: inventoryAttributeItemsRepository,
+  );
+
+  // Add Product WooCommerce setup
+
+  final addProductRemoteDataSource = AddProductInventoryTaxRemoteDataSource();
+  final addProductRepository = AddProductInventoryTaxRepositoryImpl(remoteDataSource: addProductRemoteDataSource);
+  final addProductUseCase = AddProductInventoryTaxGetUseCase(repository: addProductRepository);
+  final addProductBloc = AddProductInventoryTaxBloc(addProductUseCase: addProductUseCase);
 
   // runApp(
   //   ChangeNotifierProvider(
@@ -143,6 +177,23 @@ void main() async {
         BlocProvider<InventoryCategoriesBloc>(
           create: (_) => InventoryCategoriesBloc(getCategoriesUseCase: inventoryCategoriesUseCase),
         ),
+
+        BlocProvider<InventoryAttributesBloc>(
+          create: (_) => InventoryAttributesBloc(getUseCase: inventoryAttributesUseCase),
+        ),
+        BlocProvider<InventoryGetProductTypesBloc>(
+          create: (_) =>
+              InventoryGetProductTypesBloc(useCase: inventoryProductTypesUseCase),
+        ),
+
+        BlocProvider<InventoryAttributeItemsBloc>(
+          create: (_) => InventoryAttributeItemsBloc(getItemsUseCase: inventoryAttributeItemsUseCase),
+        ),
+
+
+        // Add Product Bloc
+        BlocProvider<AddProductInventoryTaxBloc>(create: (_) => addProductBloc),
+
 
       ],
       child: ChangeNotifierProvider(

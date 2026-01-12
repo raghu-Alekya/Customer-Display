@@ -83,13 +83,17 @@ import 'inventory_tax_bloc/inventory_tax_event.dart';
 import 'inventory_tax_bloc/inventory_tax_state.dart';
 
 class InventoryTaxDropdownWidget extends StatefulWidget {
-  const InventoryTaxDropdownWidget({super.key});
+  final ValueChanged<dynamic>? onTaxSelected;
+
+  const InventoryTaxDropdownWidget({super.key, this.onTaxSelected});
 
   @override
-  State<InventoryTaxDropdownWidget> createState() => _InventoryTaxDropdownWidgetState();
+  State<InventoryTaxDropdownWidget> createState() =>
+      _InventoryTaxDropdownWidgetState();
 }
 
-class _InventoryTaxDropdownWidgetState extends State<InventoryTaxDropdownWidget> {
+class _InventoryTaxDropdownWidgetState
+    extends State<InventoryTaxDropdownWidget> {
   dynamic _selectedTax;
 
   @override
@@ -100,65 +104,99 @@ class _InventoryTaxDropdownWidgetState extends State<InventoryTaxDropdownWidget>
 
   @override
   Widget build(BuildContext context) {
+    // Detect dark mode
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDark ? const Color(0xFF252837) : Colors.grey[200];
+    final borderColor = isDark ? const Color(0xFF3B4259) : Colors.grey;
+    final textColor = isDark ? Colors.white70 : Colors.black87;
+    final dropdownBackgroundColor = isDark ? const Color(0xFF2C2C3A) : Colors.white;
+
     return BlocBuilder<Inventory_Tax_Bloc, Inventory_Tax_State>(
+      buildWhen: (previous, current) {
+        return current is Inventory_Tax_Loaded || current is Inventory_Tax_Error;
+      },
       builder: (context, state) {
+        List taxes = [];
+        bool isLoading = false;
+        String hintText = 'Choose a tax';
+
         if (state is Inventory_Tax_Loading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (state is Inventory_Tax_Error) {
-          return Text(state.message, style: const TextStyle(color: Colors.red));
-        }
-
-        if (state is Inventory_Tax_Loaded) {
-          final taxes = state.taxes;
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Select a Tax:',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 8),
-
-              // Dropdown
-              DropdownButtonFormField<dynamic>(
-                value: _selectedTax,
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.grey[200],
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      vertical: 14, horizontal: 12),
-                ),
-                hint: const Text('Choose a tax'),
-                items: taxes.map((tax) {
-                  return DropdownMenuItem(
-                    value: tax,
-                    child: Text(tax.name),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  setState(() {
-                    _selectedTax = value;
-                  });
-                  if (value != null) {
-                    print('Selected Tax -> ID: ${value.id}, Name: ${value.name}');
-                  }
-                },
-                style: const TextStyle(color: Colors.black, fontSize: 16),
-                dropdownColor: Colors.white,
-              ),
-
-            ],
+          isLoading = true;
+          hintText = 'Loading taxes...';
+        } else if (state is Inventory_Tax_Loaded) {
+          taxes = state.taxes;
+        } else if (state is Inventory_Tax_Error) {
+          return Text(
+            state.message,
+            style: const TextStyle(color: Colors.red),
           );
         }
 
-        return const SizedBox();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DropdownButtonFormField<dynamic>(
+              value: _selectedTax,
+              hint: Text(
+                hintText,
+                style: TextStyle(color: textColor),
+              ),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: backgroundColor,
+                contentPadding:
+                const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: borderColor),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: borderColor),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: borderColor, width: 2),
+                ),
+              ),
+              items: taxes.map<DropdownMenuItem<dynamic>>((tax) {
+                return DropdownMenuItem(
+                  value: tax,
+                  child: Text(
+                    tax.name,
+                    style: TextStyle(color: textColor),
+                  ),
+                );
+              }).toList(),
+              onChanged: isLoading
+                  ? null
+                  : (value) {
+                setState(() {
+                  _selectedTax = value;
+                });
+
+                if (value != null) {
+                  debugPrint(
+                    'Selected Tax -> ID: ${value.id}, Name: ${value.name}, taxClass: ${value.taxClass}',
+                  );
+                }
+
+                if (widget.onTaxSelected != null) {
+                  widget.onTaxSelected!(value);
+                }
+              },
+              style: TextStyle(
+                color: textColor,
+                fontSize: 16,
+              ),
+              dropdownColor: dropdownBackgroundColor,
+              iconEnabledColor: Colors.grey,
+            ),
+          ],
+        );
       },
     );
   }
 }
+
+

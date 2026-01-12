@@ -267,15 +267,22 @@ class _LoginScreenState extends State<LoginScreen> {
                                       WidgetsBinding.instance.addPostFrameCallback((_) async {
                                         final loginResponse = snapshot.data!.data!;
 
-                                        // ✅ STORE SAFE ENABLE HERE
+// ✅ STORE SAFE FLAGS
                                         await SafeStorageHelper.saveSafeEnable(
                                           loginResponse.safeEnable == "1",
                                         );
-                                        // ✅ PRINT RESPONSE VALUE
+
+                                        await SafeStorageHelper.saveSafeEnableDrop(
+                                          loginResponse.safeEnableDrop == "1",
+                                        );
+
+// ✅ DEBUG
                                         if (kDebugMode) {
-                                          print("🔐 safe_enable from API = ${loginResponse.safeEnable}");
-                                          print("💾 safe_enable stored as bool = ${loginResponse.safeEnable == "1"}");
+                                          print("🔐 safe_enable = ${loginResponse.safeEnable}");
+                                          print("💾 safe_enable stored = ${loginResponse.safeEnable == "1"}");
+                                          print("🔽 safe_enable_drop = ${loginResponse.safeEnableDrop}");
                                         }
+
                                         // Build #1.0.163: Call image assets API in background without waiting for it
                                         unawaited(_assetBloc.fetchImageAssets()); // This will run in background
                                         // Build #1.0.69 : Call Fetch Assets Api after login api call success!

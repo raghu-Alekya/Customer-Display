@@ -22,9 +22,9 @@ class UrlHelper {
   ///
   /// Note: change _uat to _prod in release build
 
-  static const String pinakaBaseUrl = kDebugMode ? _dev : _uat  ;  ////release
+  // static const String pinakaBaseUrl = kDebugMode ? _dev : _uat  ;  ////release
 
-  // static const String pinakaBaseUrl = kDebugMode ? _uat : _dev  ;  //debug
+  static const String pinakaBaseUrl = kDebugMode ? _uat : _dev  ;  //debug
 
   static const String validateMerchant =  "$pinakaBaseUrl/wp-json/custom/v1/validate-merchant";  //Build #1.0.42
 
@@ -180,12 +180,15 @@ class EndUrlConstants { // Build #1.0.13
   static const String addDiscountEndUrl           = "/add-discount"; // Build #1.0.274 : Added for merchant discount API
 
 
-  static const String gettaxes          = "taxes"; // Build #1.0.274 : Added for merchant discount API
+  static const String gettaxes          = "taxes"; // Build #1.0.387 : Added for gettaxes API
 
-  static const String gettags          = "/tags"; // Build #1.0.274 : Added for merchant discount API
+  static const String gettags          = "/tags"; // Build #1.0.387 : Added for tags API
 
-  static const String getCategories           = "/categories"; // Build #1.0.274 : Added for merchant discount API
+  static const String getCategories           = "/categories"; // Build #1.0.387 : Added for getCategories  API
+  static const String attributes           = "/attributes"; // Build #1.0.387 : Added for attributes list API
+  static const String attributes_items           = "/attributes/20/terms"; // Build #1.0.387 : Added for attributes list API
 
-  static const String attributes           = "/attributes"; // Build #1.0.274 : Added for merchant discount API
+  static const String get_product_types           = "/get-product-types"; // Build #1.0.387 : Added for attributes list API
+
 
 }

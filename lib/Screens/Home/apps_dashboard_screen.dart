@@ -39,11 +39,13 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
   // Add variables to track which card is being pressed
   int? _pressedCardIndex;
   bool _isSafeEnabled = false;
+  bool _isSafeDropEnabled = false;
 
   @override
   void initState() {
     super.initState();
     _loadSafeEnable();
+    _loadSafeDropEnable();
     _selectedSidebarIndex = widget.lastSelectedIndex ??
         4; // Build #1.0.7: Restore previous selection
     // Simulate a loading delay
@@ -57,6 +59,16 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
     _isSafeEnabled = await SafeStorageHelper.getSafeEnable();
     if (mounted) setState(() {});
   }
+
+  Future<void> _loadSafeDropEnable() async {
+    final value = await SafeStorageHelper.getSafeEnableDrop();
+    if (mounted) {
+      setState(() {
+        _isSafeDropEnabled = value;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -141,7 +153,7 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
                             );
                           },
                         ),
-                        if (_isSafeEnabled)
+                        if (_isSafeDropEnabled)
                           _buildCard(
                             icon: themeHelper.themeMode == ThemeMode.dark
                                 ? Image.asset("assets/safedrop_dark.png")

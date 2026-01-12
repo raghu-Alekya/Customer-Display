@@ -1044,151 +1044,62 @@ class NestedGridWidget extends StatelessWidget {
                     GestureDetector(
                       onTap: () async {
                         if (orderHelper?.activeOrderId == null) {
-                          print("⛔ No active order → Show popup and block product adding");
-
                           await OrderPopupHelper.showNoOrderPopup(context);
-
-                          return; // 🚫 STOP item adding
+                          return;
                         }
 
                         try {
-                          print("🟩 TAP: Starting product add flow for item → ${item["fast_key_item_name"]}");
+                          if (kDebugMode) {
+                            print("🟩 FAST TAP → ${item["fast_key_item_name"]}");
+                          }
 
-                          // 👇 Print complete product data for debug
-                          print("🧾 Full product data dump:");
-                          print(const JsonEncoder.withIndent('  ').convert(item));
-                          // 🏷 Extract tags
+                          // =====================================================
+                          // 1️⃣ CORE PRODUCT DATA (CHEAP — MEMORY ONLY)
+                          // =====================================================
+                          final int productId =
+                              int.tryParse(item["fast_key_product_id"]?.toString() ?? "") ?? -1;
+
+                          final String productName =
+                              item["fast_key_item_name"]?.toString() ?? "Unnamed Product";
+
+                          final double productPrice =
+                              double.tryParse(item["fast_key_item_price"]?.toString() ?? "") ?? 0.0;
+
+                          final String productSku =
+                              item["fast_key_item_sku"]?.toString() ?? "SKU-$productId";
+
+                          final String productImage =
+                              item["fast_key_item_image"]?.toString() ?? "";
+
                           final List<Map<String, dynamic>> tags =
                           List<Map<String, dynamic>>.from(item["fast_key_item_tags"] ?? []);
 
-// ✅ DECLARE HERE (VERY IMPORTANT)
-                          bool hasVariablePriceTag = tags.any((t) =>
-                          t["slug"] == "variable-product" ||
-                              t["slug"] == "variable" ||
-                              t["name"] == "variable product" ||
-                              t["name"] == "variable");
+                          // =====================================================
+                          // 2️⃣ FAST FLAGS (NO HIVE / NO DIALOG)
+                          // =====================================================
+                          final bool isEbtEligible = tags.any((t) {
+                            final name = (t["name"] ?? "").toString().toLowerCase();
+                            final slug = (t["slug"] ?? "").toString().toLowerCase();
+                            return name.contains("ebt") || slug.contains("ebt");
+                          });
 
-                          if (kDebugMode) {
-                            print("🧪 hasVariablePriceTag = $hasVariablePriceTag");
-                          }
+                          final bool hasVariants =
+                              item["type"] == "variable" ||
+                                  (item["variations"] != null && item["variations"].isNotEmpty);
 
-                          // 🆔 Extract core product fields
-                          final productId =
-                              int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
+                          final bool hasVariablePriceTag = tags.any((t) {
+                            final name = (t["name"] ?? "").toString().toLowerCase();
+                            final slug = (t["slug"] ?? "").toString().toLowerCase();
+                            return name.contains("variable") || slug.contains("variable");
+                          });
 
-
-                          final productName = (item["fast_key_item_name"] is String)
-                              ? item["fast_key_item_name"]
-                              : item["fast_key_item_name"]?["rendered"] ?? "Unnamed Product";
-
-                          // ⭐ Load EBT eligibility from productCache normalized list
-                          bool isEbtEligible = false;
-
-                          try {
-                            final productBox = Hive.box('productCache');
-
-                            // Loop through all productCache keys (products_<category>)
-                            for (final key in productBox.keys) {
-                              if (!key.toString().startsWith("products_")) continue;
-
-                              final cached = productBox.get(key);
-                              if (cached == null) continue;
-
-                              // cached structure: { timestamp: ..., data: "[...json list...]" }
-                              if (cached is Map && cached["data"] != null) {
-                                final List<dynamic> products = jsonDecode(cached["data"]);
-
-                                final match = products.firstWhere(
-                                      (p) => p["fast_key_product_id"].toString() == productId.toString(),
-                                  orElse: () => null,
-                                );
-
-                                if (match != null) {
-                                  isEbtEligible = match["is_ebt_eligible"] == true;
-
-                                  print(
-                                      "🥗 EBT FOUND → Product: $productName | Eligible: $isEbtEligible | Found in: $key | TAGS: ${match["tags"]}");
-
-                                  break;
-                                }
-                              }
-                            }
-
-                            if (!isEbtEligible) {
-                              print("⚠ No EBT tag found in productCache for $productName (id=$productId)");
-                            }
-
-                          } catch (e) {
-                            print("⚠ Error reading EBT eligibility from productCache → $e");
-                          }
-
-
-                          try {
-                            final productBox = Hive.box('productCache');
-
-                            // Loop through all productCache keys (products_<category>)
-                            for (final key in productBox.keys) {
-                              if (!key.toString().startsWith("products_")) continue;
-
-                              final cached = productBox.get(key);
-                              if (cached == null) continue;
-
-                              // cached structure: { timestamp: ..., data: "[...json list...]" }
-                              if (cached is Map && cached["data"] != null) {
-                                final List<dynamic> products = jsonDecode(cached["data"]);
-
-                                final match = products.firstWhere(
-                                      (p) => p["fast_key_product_id"].toString() == productId.toString(),
-                                  orElse: () => null,
-                                );
-
-                                if (match != null) {
-                                  // Check if the product's tags contain the variable tag
-                                  final tags = match["tags"];
-                                  if (tags is List<dynamic>) {
-                                    hasVariablePriceTag = tags.any(
-                                          (t) => t is Map && t["slug"] == "variable-product",
-                                    );
-                                  }
-
-                                  print(
-                                      "💰 Variable Tag → Product: $productName | Has Variable Tag: $hasVariablePriceTag | Found in: $key | TAGS: $tags"
-                                  );
-
-                                  break;
-                                }
-                              }
-                            }
-
-                            if (!hasVariablePriceTag) {
-                              print("⚠ No variable product tag found in productCache for $productName (id=$productId)");
-                            }
-                          } catch (e) {
-                            print("⚠ Error reading variable product tag from productCache → $e");
-                          }
-
-
-
-                          var productPrice =
-                              double.tryParse(item["fast_key_item_price"].toString()) ?? 0.0;
-                          final productSku = item["fast_key_item_sku"] ?? "SKU-$productId";
-                          final productImage = (item["fast_key_item_image"] is String)
-                              ? item["fast_key_item_image"]
-                              : item["fast_key_item_image"]?["src"] ?? "";
-
-                          // ✅ Detect variants & restrictions
-                          final hasVariants = (item["type"] == "variable" ||
-                              (item["variations"] != null && item["variations"].isNotEmpty));
-                          // 🔞 Detect min age (field OR tags)
                           int minAge =
                               int.tryParse(item["fast_key_item_min_age"]?.toString() ?? "0") ?? 0;
 
-// ✅ FALLBACK → derive from tags (VERY IMPORTANT)
                           if (minAge == 0) {
                             for (final t in tags) {
                               final name = (t["name"] ?? "").toString().toLowerCase();
                               final slug = (t["slug"] ?? "").toString();
-
                               if (name.contains("age") || name.contains("restricted")) {
                                 final parsedAge = int.tryParse(slug);
                                 if (parsedAge != null && parsedAge > 0) {
@@ -1201,376 +1112,186 @@ class NestedGridWidget extends StatelessWidget {
 
                           final bool hasAgeRestriction = minAge > 0;
 
-                          if (kDebugMode) {
-                            print("🔞 Age detection → hasAgeRestriction=$hasAgeRestriction, minAge=$minAge");
-                          }
-
-
-                          print(
-                              "🔍 Product details: id=$productId, name=$productName, price=$productPrice, hasVariants=$hasVariants, hasAgeRestriction=$hasAgeRestriction, minAge=$minAge");
-
-                          // 🧠 Init or restore offline order
+                          // =====================================================
+                          // 3️⃣ ORDER ID (NO BLOCKING)
+                          // =====================================================
                           final box = Hive.box('offlineOrders');
                           int activeOrderId =
-                              orderHelper?.activeOrderId ?? box.get('lastOrderId', defaultValue: 1000);
+                              orderHelper!.activeOrderId ?? box.get('lastOrderId', defaultValue: 1000);
 
-                          if (orderHelper?.activeOrderId == null) {
-                            orderHelper?.activeOrderId = activeOrderId;
+                          if (orderHelper!.activeOrderId == null) {
+                            orderHelper!.activeOrderId = activeOrderId;
                             box.put('lastOrderId', activeOrderId);
                           }
 
-                          print("🆔 Active Order ID: $activeOrderId");
-
-                          // 🔞 Age Verification Flow
-                          if (hasAgeRestriction && minAge > 0) {
-                            print("🔞 Age restriction detected → Checking verification for order $activeOrderId...");
-                            // Use SAME age key as barcode scan flow
-                            // Use SAME age key as barcode scan flow
-                            final orderKey = activeOrderId.toString();
-                            final hiveOrder = Map<String, dynamic>.from(
-                              box.get(orderKey, defaultValue: {}),
-                            );
-
-                            final alreadyVerified =
-                                hiveOrder["age_verified"] == true ||
-                                    hiveOrder["age_verified"] == 1 ||
-                                    hiveOrder["age_verified"]?.toString().toLowerCase() == "true";
-
-                            if (alreadyVerified) {
-                              print("✅ Age already verified → Skipping popup (Unified).");
-                            } else {
-                              print("🔞 Showing Age Verification Popup (Unified)");
-
-                              // FIX → create provider
-                              final prov = AgeVerificationProvider();
-
-                              final isVerified =
-                              await prov.verifyAge(context, minAge: minAge);
-
-                              if (!isVerified) {
-                                print("❌ Age verification failed → Product blocked");
-                                return;
-                              }
-
-                              // SAVE SUCCESS FLAG
-                              hiveOrder["age_verified"] = true;
-                              await box.put(orderKey, hiveOrder);
-
-                              print("💾 Saved age_verified = TRUE for order $orderKey");
-                            }
-
-                          } else {
-                            print("✅ No age restriction for this product.");
-
-                          }
-// 💰 Variable Price (Manual Entry)
-                          // 💰 Variable Price (Manual Entry)
-                          double finalPrice = productPrice;
-
-// RUN THIS BEFORE ANY POPUP
-                          if (hasVariablePriceTag && !hasVariants) {
-                            print("💰 Variable price product detected → Checking global first-add status…");
-
-                            final orderKey = activeOrderId.toString();
-                            final hiveOrder = Map<String, dynamic>.from(
-                              box.get(orderKey, defaultValue: {}),
-                            );
-
-                            final variableKey = "variable_price_added_$productId";
-                            final savedPriceKey = "selected_price_$productId";
-                            final savedPrice = hiveOrder[savedPriceKey];
-
-                            if (savedPrice != null) {
-                              print("🔁 Auto-loading saved manual price for productId=$productId → ₹$savedPrice");
-                              productPrice = savedPrice; // <-- FORCE OVERRIDE DEFAULT PRICE
-                            }
-
-                            // ⛔ GLOBAL CHECK: Has popup been shown before?
-                            final alreadyAddedBefore =
-                                hiveOrder[variableKey] == true ||
-                                    hiveOrder[variableKey] == 1 ||
-                                    hiveOrder[variableKey]?.toString().toLowerCase() == "true";
-
-                            // -------------------------------------------------------------
-                            // 1️⃣ PRODUCT ADDED BEFORE → SKIP POPUP ALWAYS
-                            // -------------------------------------------------------------
-                            if (alreadyAddedBefore) {
-                              print("🔁 Variable product already added earlier → SKIPPING POPUP → increment quantity");
-
-                              // Load saved manual price
-                              final savedPrice = hiveOrder[savedPriceKey];
-                              finalPrice = savedPrice ?? productPrice;
-
-                              await orderHelper?.addItemToOrder(
-                                null,
-                                productName,
-                                productImage,
-                                finalPrice,
-                                1,
-                                productSku,
-                                activeOrderId,
-                                type: 'product',
-                                productId: productId,
-                                variationId: -1,
-                                salesPrice: finalPrice,
-                                regularPrice: finalPrice,
-                                unitPrice: finalPrice,
-                                isEbtEligible: isEbtEligible,
-                                onItemAdded: () async {
-                                  await orderHelper?.loadData();
-                                },
-                              );
-
-                              onItemTapped(index, variantAdded: false);
-                              return; // ⛔ VERY IMPORTANT — stop popup here
-                            }
-
-                            // -------------------------------------------------------------
-                            // 2️⃣ FIRST TIME EVER → SHOW POPUP
-                            // -------------------------------------------------------------
-                            print("💰 First-time variable product → showing manual price popup");
-
-                            final enteredPrice = await ManualPriceDialog.show(
-                              context,
-                              productName: productName,
-                              productImage: productImage,
-                              minPrice: productPrice,
-                            );
-
-                            if (enteredPrice == null) {
-                              print("❌ Manual price cancelled");
-                              return;
-                            }
-
-                            finalPrice = enteredPrice;
-
-                            // SAVE FLAGS
-                            hiveOrder[variableKey] = true;       // mark popup shown
-                            hiveOrder[savedPriceKey] = finalPrice; // store price
-
-                            await box.put(orderKey, hiveOrder);
-
-                            print("💾 Stored $variableKey = true");
-                            print("💾 Stored $savedPriceKey = $finalPrice");
-                          }
-
-                          // 🧩 Variant Handling
-                          if (hasVariants) {
-                            print("🧩 Product has variants → Loading offline variants...");
-                            List<Map<String, dynamic>> offlineVariations = [];
-
-                            try {
-                              final productBox = Hive.box('productCache');
-                              final cacheKey = "product_${productId}_variations";
-                              final cachedData = productBox.get(cacheKey);
-                              print("📦 Checking cachedData for key=$cacheKey");
-
-                              List rawVariations = [];
-
-                              // 🔹 Try cached data
-                              if (cachedData != null) {
-                                if (cachedData is Map && cachedData["variations"] is List) {
-                                  rawVariations = cachedData["variations"];
-                                } else if (cachedData is List) {
-                                  rawVariations = cachedData;
-                                } else if (cachedData is String) {
-                                  try {
-                                    final decoded = jsonDecode(cachedData);
-                                    rawVariations =
-                                    decoded is Map ? decoded["variations"] ?? [] : decoded;
-                                  } catch (_) {
-                                    print("⚠️ Error decoding cachedData string");
-                                  }
-                                }
-                              }
-
-                              // 🩵 Fallback: Try item["variations"] if cache is empty
-                              if (rawVariations.isEmpty && item["variations"] != null) {
-                                for (var id in item["variations"]) {
-                                  var variantData = productBox.get("product_$id");
-
-                                  if (variantData == null) {
-                                    print("⚠️ No cache found for variant id=$id, using fallback");
-                                    continue;
-                                  }
-
-                                  if (variantData is String) {
-                                    try {
-                                      variantData = jsonDecode(variantData);
-                                    } catch (_) {}
-                                  }
-
-                                  String name = "";
-                                  if (variantData?["name"] != null &&
-                                      variantData["name"].toString().isNotEmpty) {
-                                    name = variantData["name"];
-                                  } else if (variantData?["attributes"] != null &&
-                                      variantData["attributes"] is List &&
-                                      (variantData["attributes"] as List).isNotEmpty) {
-                                    name = (variantData["attributes"] as List)
-                                        .map((a) => a["option"] ?? "")
-                                        .where((o) => o.toString().isNotEmpty)
-                                        .join(", ");
-                                  } else {
-                                    name = "Variant $id";
-                                  }
-
-                                  final price = (variantData?["price"] ??
-                                      variantData?["regular_price"] ??
-                                      variantData?["sale_price"] ??
-                                      productPrice)
-                                      .toString();
-
-                                  final image = (variantData?["image"] is Map)
-                                      ? variantData["image"]["src"] ?? productImage
-                                      : (variantData?["image"] ?? productImage);
-
-                                  rawVariations.add({
-                                    "id": id,
-                                    "name": name,
-                                    "price": price,
-                                    "sku": variantData?["sku"] ?? "",
-                                    "image": image,
-                                  });
-                                }
-
-                                print("📥 Built ${rawVariations.length} variant objects manually.");
-                              }
-
-                              // 🧠 Normalize all variants
-                              offlineVariations = rawVariations.map<Map<String, dynamic>>((v) {
-                                if (v is String) {
-                                  try {
-                                    v = jsonDecode(v);
-                                  } catch (_) {}
-                                }
-                                if (v is Map) {
-                                  final map =
-                                  v.map((key, value) => MapEntry(key.toString(), value));
-
-                                  map["image"] = (map["image"] is Map && map["image"]["src"] != null)
-                                      ? map["image"]["src"]
-                                      : (map["image"] is String ? map["image"] : "");
-                                  map["name"] = (map["name"] is Map &&
-                                      map["name"]["rendered"] != null)
-                                      ? map["name"]["rendered"]
-                                      : (map["name"] is String
-                                      ? map["name"]
-                                      : "Unnamed Variant");
-                                  map["price"] = map["price"]?.toString() ?? "0";
-                                  return map;
-                                }
-                                return <String, dynamic>{};
-                              }).where((v) => v.isNotEmpty).toList();
-
-                              print("✅ Found ${offlineVariations.length} offline variants.");
-
-                              // 🧩 Auto-refetch if variants are incomplete
-                              final allSameAsParent = offlineVariations.isEmpty ||
-                                  offlineVariations
-                                      .every((v) => v["price"].toString() == productPrice.toString());
-
-                              if (allSameAsParent) {
-                                print("🔁 Cached variants incomplete → Refetching from API...");
-                                await ProductRepository().fetchProductVariations(productId);
-
-                                final refreshed = productBox.get(cacheKey);
-                                if (refreshed is Map && refreshed["variations"] is List) {
-                                  offlineVariations = (refreshed["variations"] as List)
-                                      .map((v) => Map<String, dynamic>.from(v as Map))
-                                      .toList();
-                                }
-                              }
-                            } catch (e, st) {
-                              print("⚠️ Error decoding offline variations: $e");
-                              print(st);
-                            }
-
-                            // 🪟 Show VariantsDialog
-                            print("🪟 Showing VariantsDialog for $productName...");
-                            await showDialog(
-                              context: context,
-                              builder: (ctx) => VariantsDialog(
-                                title: productName,
-                                variations: offlineVariations,
-                                onAddVariant: (selectedVariant, qty) async {
-                                  final variantId =
-                                      int.tryParse(selectedVariant["id"].toString()) ?? -1;
-                                  final variantName =
-                                      selectedVariant["name"] ?? "Variant";
-                                  final variantPrice =
-                                      double.tryParse(selectedVariant["price"].toString()) ??
-                                          productPrice;
-                                  final variantSku =
-                                      selectedVariant["sku"] ?? productSku;
-                                  final variantImage =
-                                      selectedVariant["image"] ?? productImage;
-
-                                  print(
-                                      "🧾 Adding variant → id:$variantId, name:$variantName, price:$variantPrice, qty:$qty");
-
-                                  await orderHelper?.addItemToOrder(
-                                    0,
-                                    "$productName - $variantName",
-                                    variantImage,
-                                    variantPrice,
-                                    qty,
-                                    variantSku,
-                                    activeOrderId,
-                                    type: 'variant',
-                                    productId: productId,
-                                    variationId: variantId,
-                                    variationName: variantName,
-                                    salesPrice: variantPrice,
-                                    regularPrice: variantPrice,
-                                    unitPrice: variantPrice,
-
-                                    /// 🔥 ADD THIS
-                                    isEbtEligible: isEbtEligible,
-
-                                    onItemAdded: () async {
-                                      print("✅ Variant item added successfully!");
-                                      onItemTapped(index, variantAdded: true);
-                                      await orderHelper?.loadData();
-                                    },
-                                  );
-
-                                },
-                              ),
-                            );
-                            print("🪟 VariantsDialog closed for $productName");
-                          } else {
-                            // 🟩 Simple Product
-                            print("🟩 Simple product, adding directly...");
-                            await orderHelper?.addItemToOrder(
-                              null,               // ✅ serverItemId
-                              productName,        // ✅ name
-                              productImage,       // ✅ image
-                              finalPrice,         // ✅ price (manual or default)
-                              1,                  // ✅ quantity
-                              productSku,         // ✅ sku
-                              activeOrderId,      // ✅ orderId
+                          // =====================================================
+                          // 4️⃣ 🚀 FAST PATH — SIMPLE PRODUCT (NO DIALOGS)
+                          // =====================================================
+                          if (!hasVariants && !hasVariablePriceTag && !hasAgeRestriction) {
+                            orderHelper!.addItemToOrder(
+                              null,
+                              productName,
+                              productImage,
+                              productPrice,
+                              1,
+                              productSku,
+                              activeOrderId,
                               type: 'product',
                               productId: productId,
                               variationId: -1,
-                              salesPrice: finalPrice,
-                              regularPrice: finalPrice,
-                              unitPrice: finalPrice,
+                              salesPrice: productPrice,
+                              regularPrice: productPrice,
+                              unitPrice: productPrice,
                               isEbtEligible: isEbtEligible,
-                              onItemAdded: () async {
-                                print("✅ Simple product added successfully!");
-                                onItemTapped(index, variantAdded: false);
-                                await orderHelper?.loadData();
-                              },
                             );
+
+                            // 🔥 UI updates instantly
+                            onItemTapped(index, variantAdded: false);
+
+                            // 🔁 Heavy work AFTER frame
+                            WidgetsBinding.instance.addPostFrameCallback((_) async {
+                              await orderHelper!.loadData();
+                            });
+
+                            return;
                           }
 
-                          print("🎉 Product flow completed for → $productName");
+                          // =====================================================
+                          // 5️⃣ AGE VERIFICATION (ONLY IF REQUIRED)
+                          // =====================================================
+                          if (hasAgeRestriction) {
+                            final orderKey = activeOrderId.toString();
+                            final hiveOrder =
+                            Map<String, dynamic>.from(box.get(orderKey, defaultValue: {}));
+
+                            final alreadyVerified =
+                                hiveOrder["age_verified"] == true ||
+                                    hiveOrder["age_verified"]?.toString() == "true";
+
+                            if (!alreadyVerified) {
+                              final verified = await AgeVerificationProvider()
+                                  .verifyAge(context, minAge: minAge);
+
+                              if (!verified) return;
+
+                              hiveOrder["age_verified"] = true;
+                              await box.put(orderKey, hiveOrder);
+                            }
+                          }
+
+                          // =====================================================
+                          // 6️⃣ VARIABLE PRICE (ONLY WHEN TAGGED)
+                          // =====================================================
+                          double finalPrice = productPrice;
+
+                          if (hasVariablePriceTag && !hasVariants) {
+                            final orderKey = activeOrderId.toString();
+                            final hiveOrder =
+                            Map<String, dynamic>.from(box.get(orderKey, defaultValue: {}));
+
+                            final flagKey = "variable_price_added_$productId";
+                            final priceKey = "selected_price_$productId";
+
+                            if (hiveOrder[flagKey] == true) {
+                              finalPrice =
+                                  double.tryParse(hiveOrder[priceKey]?.toString() ?? "") ??
+                                      productPrice;
+                            } else {
+                              final enteredPrice = await ManualPriceDialog.show(
+                                context,
+                                productName: productName,
+                                productImage: productImage,
+                                minPrice: productPrice,
+                              );
+
+                              if (enteredPrice == null) return;
+
+                              finalPrice = enteredPrice;
+                              hiveOrder[flagKey] = true;
+                              hiveOrder[priceKey] = finalPrice;
+                              await box.put(orderKey, hiveOrder);
+                            }
+                          }
+
+                          // =====================================================
+                          // 7️⃣ VARIANTS FLOW
+                          // =====================================================
+                          if (hasVariants) {
+                            final productBox = Hive.box('productCache');
+                            final cacheKey = "product_${productId}_variations";
+
+                            final variations =
+                            (productBox.get(cacheKey)?["variations"] ?? [])
+                                .map<Map<String, dynamic>>(
+                                    (v) => Map<String, dynamic>.from(v))
+                                .toList();
+
+                            await showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (_) => VariantsDialog(
+                                title: productName,
+                                variations: variations,
+                                onAddVariant: (variant, qty) async {
+                                  final double vPrice =
+                                      double.tryParse(variant["price"].toString()) ?? finalPrice;
+
+                                  await orderHelper!.addItemToOrder(
+                                    0,
+                                    "$productName - ${variant["name"]}",
+                                    variant["image"] ?? productImage,
+                                    vPrice,
+                                    qty,
+                                    variant["sku"] ?? productSku,
+                                    activeOrderId,
+                                    type: 'variant',
+                                    productId: productId,
+                                    variationId: variant["id"],
+                                    salesPrice: vPrice,
+                                    regularPrice: vPrice,
+                                    unitPrice: vPrice,
+                                    isEbtEligible: isEbtEligible,
+                                  );
+
+                                  onItemTapped(index, variantAdded: true);
+                                  await orderHelper!.loadData();
+                                },
+                              ),
+                            );
+                            return;
+                          }
+
+                          // =====================================================
+                          // 8️⃣ FINAL ADD (VARIABLE PRICE NO VARIANT)
+                          // =====================================================
+                          orderHelper!.addItemToOrder(
+                            null,
+                            productName,
+                            productImage,
+                            finalPrice,
+                            1,
+                            productSku,
+                            activeOrderId,
+                            type: 'product',
+                            productId: productId,
+                            variationId: -1,
+                            salesPrice: finalPrice,
+                            regularPrice: finalPrice,
+                            unitPrice: finalPrice,
+                            isEbtEligible: isEbtEligible,
+                          );
+
+                          onItemTapped(index, variantAdded: false);
+
+                          WidgetsBinding.instance.addPostFrameCallback((_) async {
+                            await orderHelper!.loadData();
+                          });
                         } catch (e, s) {
-                          print("❌ ERROR in offline onTap: $e");
+                          print("❌ FAST onTap ERROR → $e");
                           print(s);
                         }
                       },
+
                       onLongPress: () {
                         if (onLongPress != null) {
                           // Build #1.0.204
