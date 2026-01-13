@@ -1234,15 +1234,66 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   // Add Product BLoC
   late AddProductInventoryTaxBloc _addProductBloc;
 
+
+  // Add these controller declarations at the top of your State class
+  late TextEditingController _variantNameController;
+  late TextEditingController _stockController;
+
+  List<TextEditingController> _attributeControllers = [];
+
+// Add this in initState()
   @override
   void initState() {
     super.initState();
-    _selectedSidebarIndex = widget.lastSelectedIndex ?? 4;
-    shiftBloc = ShiftBloc(ShiftRepository());
+    _variantNameController = TextEditingController(text: _currentVariantName);
+    _stockController = TextEditingController(text: _currentStock);
+    // _regularPriceController = TextEditingController(text: _currentRegularPrice);
+    // _salePriceController = TextEditingController(text: _currentSalePrice);
+    _updateAttributeControllers();
 
-    // Initialize Add Product BLoC
-    _initializeAddProductBloc();
+    _selectedSidebarIndex = widget.lastSelectedIndex ?? 4;
+      shiftBloc = ShiftBloc(ShiftRepository());
+
+      // Initialize Add Product BLoC
+      _initializeAddProductBloc();
+
   }
+
+// Add this method to update attribute controllers
+  void _updateAttributeControllers() {
+    // Dispose old controllers
+    for (var controller in _attributeControllers) {
+      controller.dispose();
+    }
+
+    // Create new controllers for current attributes
+    _attributeControllers = _currentAttributes.map((attr) {
+      return TextEditingController(text: attr['name'] ?? '');
+    }).toList();
+  }
+
+// Add this in dispose()
+  @override
+  void dispose() {
+    _variantNameController.dispose();
+    _stockController.dispose();
+    _regularPriceController.dispose();
+    _salePriceController.dispose();
+    for (var controller in _attributeControllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  // @override
+  // void initState() {
+  //   super.initState();
+  //   _selectedSidebarIndex = widget.lastSelectedIndex ?? 4;
+  //   shiftBloc = ShiftBloc(ShiftRepository());
+  //
+  //   // Initialize Add Product BLoC
+  //   _initializeAddProductBloc();
+  // }
 
   void _initializeAddProductBloc() {
     final remoteDataSource = AddProductInventoryTaxRemoteDataSource();
@@ -1251,17 +1302,17 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     _addProductBloc = AddProductInventoryTaxBloc(addProductUseCase: useCase);
   }
 
-  @override
-  void dispose() {
-    _skuController.dispose();
-    _nameController.dispose();
-    _regularPriceController.dispose();
-    _salePriceController.dispose();
-    _qtyController.dispose();
-    _taxClassController.dispose();
-    _addProductBloc.close();
-    super.dispose();
-  }
+  // @override
+  // void dispose() {
+  //   _skuController.dispose();
+  //   _nameController.dispose();
+  //   _regularPriceController.dispose();
+  //   _salePriceController.dispose();
+  //   _qtyController.dispose();
+  //   _taxClassController.dispose();
+  //   _addProductBloc.close();
+  //   super.dispose();
+  // }
 
   // ------------------- PICK IMAGE -------------------
   Future<void> _pickImage() async {
@@ -1841,6 +1892,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+
         Expanded(
           flex: 3,
           child: Card(
@@ -1854,6 +1906,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Header
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -1862,7 +1915,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                       borderRadius: const BorderRadius.only(
                         topLeft: Radius.circular(12),
                         topRight: Radius.circular(12),
-                      ),),
+                      ),
+                    ),
                     child: Text(
                       'Basic Information',
                       style: TextStyle(
@@ -1872,11 +1926,14 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                       ),
                     ),
                   ),
+
+                  // Body
                   Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Product Image
                         Text(
                           'Product Image',
                           style: TextStyle(
@@ -1885,7 +1942,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                             color: isDark ? Colors.white70 : Colors.black87,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 14),
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1936,46 +1993,48 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     : null,
                               ),
                             ),
-                            const SizedBox(width: 6),
+
+                            const SizedBox(width: 16),
+
+                            // Fixed release-mode issue: Expanded outside Padding
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Please upload a clear image',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDark
-                                          ? Colors.white54
-                                          : Colors.black45,
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Please upload a clear image',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isDark ? Colors.white54 : Colors.black45,
+                                      ),
                                     ),
-                                  ),
-                                  Text(
-                                    'of the item',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDark
-                                          ? Colors.white54
-                                          : Colors.black45,
+                                    Text(
+                                      'of the item',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isDark ? Colors.white54 : Colors.black45,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Max File Size : 200KB',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                      color: isDark
-                                          ? Colors.white70
-                                          : Colors.black87,
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Max File Size : 200KB',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                        color: isDark ? Colors.white70 : Colors.black87,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
+
+                        // SKU
                         Text(
                           'SKU',
                           style: TextStyle(
@@ -1984,7 +2043,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                             color: isDark ? Colors.white70 : Colors.black87,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height:6),
                         Container(
                           height: 48,
                           decoration: BoxDecoration(
@@ -2010,8 +2069,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                       fontSize: 13,
                                     ),
                                     border: InputBorder.none,
-                                    contentPadding: const EdgeInsets.symmetric(
-                                        horizontal: 14, vertical: 12),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                                   ),
                                 ),
                               ),
@@ -2031,8 +2089,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     });
                                   },
                                   child: const Padding(
-                                    padding: EdgeInsets.symmetric(
-                                        horizontal: 20, vertical: 12),
+                                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                                     child: Text(
                                       'Generate',
                                       style: TextStyle(
@@ -2048,6 +2105,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                           ),
                         ),
                         const SizedBox(height: 8),
+
+                        // Product Name
                         Text(
                           'Product Name',
                           style: TextStyle(
@@ -2073,6 +2132,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                           },
                         ),
                         const SizedBox(height: 8),
+
+                        // Category
                         Text(
                           'Category',
                           style: TextStyle(
@@ -2096,6 +2157,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                           },
                         ),
                         const SizedBox(height: 8),
+
+                        // Product Type
                         Text(
                           'Product Type',
                           style: TextStyle(
@@ -2574,7 +2637,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                 ),
               ],
             ),
-            const SizedBox(height:12),
+            const SizedBox(height: 12),
 
             if (!isVariantsEnabled) ...[
               Container(
@@ -2789,6 +2852,14 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     {'id': '1', 'unit': 'units', 'name': 'name'}
                                   ],
                                 );
+
+                                // Update controllers with new values
+                                _variantNameController.text = _currentVariantName;
+                                _stockController.text = _currentStock;
+                                _regularPriceController.text = _currentRegularPrice;
+                                _salePriceController.text = _currentSalePrice;
+                                _updateAttributeControllers();
+
                                 _variants.removeAt(index);
                               });
                             },
@@ -2937,11 +3008,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                       ),
                                       SizedBox(height: 8),
                                       TextField(
-                                        controller: TextEditingController(text: _currentVariantName),
+                                        controller: _variantNameController,
                                         onChanged: (value) {
-                                          setState(() {
-                                            _currentVariantName = value;
-                                          });
+                                          _currentVariantName = value;
                                         },
                                         decoration: InputDecoration(
                                           hintText: 'Enter variant name',
@@ -2998,11 +3067,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                       ),
                                       SizedBox(height: 8),
                                       TextField(
-                                        controller: TextEditingController(text: _currentStock),
+                                        controller: _stockController,
                                         onChanged: (value) {
-                                          setState(() {
-                                            _currentStock = value;
-                                          });
+                                          _currentStock = value;
                                         },
                                         keyboardType: TextInputType.number,
                                         decoration: InputDecoration(
@@ -3063,11 +3130,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                       ),
                                       SizedBox(height: 8),
                                       TextField(
-                                        controller: TextEditingController(text: _currentRegularPrice),
+                                        controller: _regularPriceController,
                                         onChanged: (value) {
-                                          setState(() {
-                                            _currentRegularPrice = value;
-                                          });
+                                          _currentRegularPrice = value;
                                         },
                                         keyboardType: TextInputType.numberWithOptions(decimal: true),
                                         decoration: InputDecoration(
@@ -3124,11 +3189,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                       ),
                                       SizedBox(height: 8),
                                       TextField(
-                                        controller: TextEditingController(text: _currentSalePrice),
+                                        controller: _salePriceController,
                                         onChanged: (value) {
-                                          setState(() {
-                                            _currentSalePrice = value;
-                                          });
+                                          _currentSalePrice = value;
                                         },
                                         keyboardType: TextInputType.numberWithOptions(decimal: true),
                                         decoration: InputDecoration(
@@ -3191,129 +3254,105 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                     int attrIndex = entry.key;
                     var attribute = entry.value;
 
-                    return Row(
-                      children: [
-                        Expanded(
-                          child: InventoryAttributesDropdown(
-                            onAttributeSelected: (attribute) {
-                              print('Selected ID : ${attribute.id}');
-                              print('Selected Name : ${attribute.name}');
-                              print('Selected Slug : ${attribute.slug}');
-                              print('Selected Type : ${attribute.type}');
-                            },
+                    return Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: InventoryAttributesWithItemsWidget(
+                              onAttributeSelected: (attribute) {
+                                print(
+                                    'Parent: Attribute selected -> Name: ${attribute.name}, ID: ${attribute.id}, Slug: ${attribute.slug}');
+                              },
+                              onItemSelected: (attribute, itemId) {
+                                print(
+                                    'Parent: Item selected -> Item ID: $itemId under Attribute -> Name: ${attribute.name}, ID: ${attribute.id}, Slug: ${attribute.slug}');
+                              },
+                            ),
                           ),
-                        ),
-                        SizedBox(width: 1),
-
-                        // Expanded(
-                        //   child:
-                        //   // InventoryAttributesDropdown(
-                        //   //   onAttributeSelected: (attribute) {
-                        //   //     Navigator.push(
-                        //   //       context,
-                        //   //       MaterialPageRoute(
-                        //   //         builder: (_) => BlocProvider(
-                        //   //           create: (context) => InventoryAttributeItemsBloc(
-                        //   //             getItemsUseCase: GetInventoryAttributeItemsUseCase(
-                        //   //               repository: InventoryAttributeItemsRepositoryImpl(
-                        //   //                 remoteDataSource: InventoryAttributeItemsRemoteDataSourceImpl(client: http.Client()),
-                        //   //               ),
-                        //   //             ),
-                        //   //           ),
-                        //   //           child: InventoryAttributeItemsDropdown(
-                        //   //             attributeId: attribute.id,
-                        //   //             onItemSelected: (item) {
-                        //   //               print('Selected Item: ${item.name}');
-                        //   //             },
-                        //   //           ),
-                        //   //         ),
-                        //   //       ),
-                        //   //     );
-                        //   //   },
-                        //   // ),
-                        // ),
-
-                        SizedBox(width: 1),
-                        Expanded(
-                          child: TextField(
-                            controller: TextEditingController(text: attribute['name']),
-                            onChanged: (value) {
-                              setState(() {
+                          SizedBox(width: 8),
+                          SizedBox(
+                            width: MediaQuery.of(context).size.width * 0.07,
+                            child: TextField(
+                              controller: _attributeControllers[attrIndex],
+                              onChanged: (value) {
                                 _currentAttributes[attrIndex]['name'] = value;
+                              },
+                              decoration: InputDecoration(
+                                hintText: 'Unit Name',
+                                hintStyle: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade400,
+                                ),
+                                filled: true,
+                                fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                  borderSide: BorderSide(
+                                    color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                  borderSide: BorderSide(
+                                    color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                  borderSide: BorderSide(
+                                    color: Color(0xFF2196F3),
+                                    width: 1.5,
+                                  ),
+                                ),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 12,
+                                ),
+                              ),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          InkWell(
+                            onTap: () {
+                              setState(() {
+                                if (attrIndex == _currentAttributes.length - 1) {
+                                  _currentAttributes.add({
+                                    'id': (_currentAttributes.length + 1).toString(),
+                                    'unit': 'units',
+                                    'name': ''
+                                  });
+                                  _updateAttributeControllers();
+                                } else {
+                                  _currentAttributes.removeAt(attrIndex);
+                                  _updateAttributeControllers();
+                                }
                               });
                             },
-                            decoration: InputDecoration(
-                              hintText: 'Unit Name',
-                              hintStyle: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey.shade400,
-                              ),
-                              filled: true,
-                              fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-                              border: OutlineInputBorder(
+                            child: Container(
+                              width: 36,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: attrIndex == _currentAttributes.length - 1
+                                    ? Color(0xFF2196F3)
+                                    : Color(0xFFEF5350),
                                 borderRadius: BorderRadius.circular(6),
-                                borderSide: BorderSide(
-                                  color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
-                                ),
                               ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(6),
-                                borderSide: BorderSide(
-                                  color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
-                                ),
+                              child: Icon(
+                                attrIndex == _currentAttributes.length - 1
+                                    ? Icons.add
+                                    : Icons.close,
+                                color: Colors.white,
+                                size: 20,
                               ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(6),
-                                borderSide: BorderSide(
-                                  color: Color(0xFF2196F3),
-                                  width: 1.5,
-                                ),
-                              ),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
-                              ),
-                            ),
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: isDark ? Colors.white : Colors.black87,
                             ),
                           ),
-                        ),
-                        SizedBox(width: 12),
-                        InkWell(
-                          onTap: () {
-                            setState(() {
-                              if (attrIndex == _currentAttributes.length - 1) {
-                                _currentAttributes.add({
-                                  'id': (_currentAttributes.length + 1).toString(),
-                                  'unit': 'units',
-                                  'name': 'name'
-                                });
-                              } else {
-                                _currentAttributes.removeAt(attrIndex);
-                              }
-                            });
-                          },
-                          child: Container(
-                            width: 36,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: attrIndex == _currentAttributes.length - 1
-                                  ? Color(0xFF2196F3)
-                                  : Color(0xFFEF5350),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Icon(
-                              attrIndex == _currentAttributes.length - 1
-                                  ? Icons.add
-                                  : Icons.close,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     );
                   }).toList(),
                   SizedBox(height: 16),
@@ -3351,9 +3390,16 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                           _currentRegularPrice = '';
                           _currentSalePrice = '';
                           _currentAttributes = [
-                            {'id': '1', 'unit': 'units', 'name': 'name'}
+                            {'id': '1', 'unit': 'units', 'name': ''}
                           ];
                           _currentImageFile = null;
+
+                          // Reset controllers
+                          _variantNameController.clear();
+                          _stockController.clear();
+                          _regularPriceController.clear();
+                          _salePriceController.clear();
+                          _updateAttributeControllers();
                         });
                       }
                           : null,

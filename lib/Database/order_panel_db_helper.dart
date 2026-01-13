@@ -492,7 +492,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       final double itemSumPrice = double.parse(apiItem.subtotal);
 
       if (kDebugMode) {
-        print("         salesPrice: ${apiItem.productData.salePrice ?? "0.0"}, "
+        print("salesPrice: ${apiItem.productData.salePrice ?? "0.0"}, "
             "regularPrice:${apiItem.productData.regularPrice ?? "0.0"},"
             " unitPrice: ${apiItem.productData.price ?? "0.0"}");
       }

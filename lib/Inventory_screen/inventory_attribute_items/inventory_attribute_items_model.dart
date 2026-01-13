@@ -1,11 +1,13 @@
-import 'inventory_attribute_items_entity.dart';
+class InventoryAttributeItemsModel {
+  final int id;
+  final String name;
+  final String slug;
 
-class InventoryAttributeItemsModel extends InventoryAttributeItemsEntity {
   InventoryAttributeItemsModel({
-    required int id,
-    required String name,
-    required String slug,
-  }) : super(id: id, name: name, slug: slug);
+    required this.id,
+    required this.name,
+    required this.slug,
+  });
 
   factory InventoryAttributeItemsModel.fromJson(Map<String, dynamic> json) {
     return InventoryAttributeItemsModel(
@@ -14,10 +16,4 @@ class InventoryAttributeItemsModel extends InventoryAttributeItemsEntity {
       slug: json['slug'],
     );
   }
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'slug': slug,
-  };
 }

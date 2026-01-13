@@ -133,20 +133,20 @@ void main() async {
   final inventoryProductTypesUseCase = InventoryGetProductTypesGetUseCase(repository: inventoryProductTypesRepository);
 
   //  Create the remote data source
-  final inventoryAttributeItemsRemoteDataSource =
-  InventoryAttributeItemsRemoteDataSourceImpl(
-    client: http.Client(),
-  );
-
-// Create the repository and inject the remote data source
-  final inventoryAttributeItemsRepository = InventoryAttributeItemsRepositoryImpl(
-    remoteDataSource: inventoryAttributeItemsRemoteDataSource,
-  );
+//   final inventoryAttributeItemsRemoteDataSource =
+//   InventoryAttributeItemsRemoteDataSourceImpl(
+//     client: http.Client(),
+//   );
+//
+// // Create the repository and inject the remote data source
+//   final inventoryAttributeItemsRepository = InventoryAttributeItemsRepositoryImpl(
+//     remoteDataSource: inventoryAttributeItemsRemoteDataSource,
+//   );
 
 //  Create the use case and inject the repository
-  final inventoryAttributeItemsUseCase = GetInventoryAttributeItemsUseCase(
-    repository: inventoryAttributeItemsRepository,
-  );
+//   final inventoryAttributeItemsUseCase = GetInventoryAttributeItemsUseCase(
+//     repository: inventoryAttributeItemsRepository,
+//   );
 
   // Add Product WooCommerce setup
 
@@ -186,9 +186,9 @@ void main() async {
               InventoryGetProductTypesBloc(useCase: inventoryProductTypesUseCase),
         ),
 
-        BlocProvider<InventoryAttributeItemsBloc>(
-          create: (_) => InventoryAttributeItemsBloc(getItemsUseCase: inventoryAttributeItemsUseCase),
-        ),
+        // BlocProvider<InventoryAttributeItemsBloc>(
+        //   create: (_) => InventoryAttributeItemsBloc(getItemsUseCase: inventoryAttributeItemsUseCase),
+        // ),
 
 
         // Add Product Bloc
