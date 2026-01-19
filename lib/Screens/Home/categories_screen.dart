@@ -4,8 +4,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:hive/hive.dart';
+import 'package:isar/isar.dart';
 import 'package:intl/intl.dart';
+import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import '../../Blocs/Orders/order_bloc.dart';
 import '../../Blocs/Search/product_search_bloc.dart';
 import '../../Constants/misc_features.dart';
@@ -27,6 +28,7 @@ import '../../Widgets/widget_topbar.dart';
 import '../../Widgets/widget_navigation_bar.dart' as custom_widgets;
 import '../../Blocs/Category/category_bloc.dart';
 import '../../Repositories/Category/category_repository.dart';
+import '../../Database/isar_service.dart';
 import '../../Helper/api_response.dart';
 import '../../Models/Category/category_model.dart';
 import '../../Models/Category/category_product_model.dart';
@@ -464,9 +466,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
   }
 
   Future<bool> _isProductCacheEmpty() async {
-    final box = Hive.box(productBoxName);
-    final keys = box.keys.where((k) => k.toString().startsWith('products_'));
-    return keys.isEmpty;
+    final isar = await IsarService.instance;
+    final any = await isar.isarCacheEntrys.filter().keyStartsWith('products_').findFirst();
+    return any == null;
   }
 
 

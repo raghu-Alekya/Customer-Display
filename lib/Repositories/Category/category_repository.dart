@@ -4,6 +4,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import 'package:isar/isar.dart';
+
+import '../../Database/isar_cache_entry.dart';
+import '../../Database/isar_service.dart';
 import '../../Helper/api_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Category/category_model.dart';
@@ -23,13 +27,13 @@ class CategoryRepository {
 
   /// Load categories from cache first, then update from API
   Future<CategoryListResponse> getCategories({int parent = 0}) async {
-    final box = Hive.box(categoryBoxName);
     final cacheKey = "categories_$parent";
 
     // 🧠 Load cached categories instantly
-    final cachedData = box.get(cacheKey);
-    if (cachedData != null) {
-      final List<dynamic> cachedList = json.decode(cachedData['data']);
+    final isar = await IsarService.instance;
+    final cached = await isar.isarCacheEntrys.where().keyEqualTo(cacheKey).findFirst();
+    if (cached != null) {
+      final List<dynamic> cachedList = json.decode(cached.json);
       if (kDebugMode) print("📦 Loaded cached categories (parent: $parent)");
       // 🔄 Refresh in background
       _updateCategoriesFromApi(parent);
@@ -70,10 +74,14 @@ class CategoryRepository {
       throw Exception("Unexpected category response type");
     }
 
-    final box = Hive.box(categoryBoxName);
-    await box.put("categories_$parent", {
-      'timestamp': DateTime.now().toIso8601String(),
-      'data': json.encode(categoryList),
+    final isar = await IsarService.instance;
+    await isar.writeTxn(() async {
+      await isar.isarCacheEntrys.put(
+        IsarCacheEntry()
+          ..key = "categories_$parent"
+          ..json = json.encode(categoryList)
+          ..timestamp = DateTime.now(),
+      );
     });
 
     if (kDebugMode) print("💾 Cached categories (parent: $parent)");
@@ -83,15 +91,15 @@ class CategoryRepository {
 
   /// Load products by category (offline-first)
   Future<CategoryProductListResponse> getProductsByCategory(int categoryId) async {
-    final box = Hive.box(productBoxName);
     final cacheKey = "products_$categoryId";
 
-    final cachedData = box.get(cacheKey);
+    final isar = await IsarService.instance;
+    final cached = await isar.isarCacheEntrys.where().keyEqualTo(cacheKey).findFirst();
 
-    if (cachedData != null) {
-      print("🔍 RAW DATA FROM HIVE BOX [$cacheKey] → $cachedData");
+    if (cached != null) {
+      if (kDebugMode) print("🔍 RAW DATA FROM ISAR [$cacheKey] → ${cached.json.length} chars");
 
-      final List<dynamic> cachedList = json.decode(cachedData['data']);
+      final List<dynamic> cachedList = json.decode(cached.json);
 
       print("📦 Loaded cached products (category: $categoryId)");
 
@@ -261,10 +269,14 @@ class CategoryRepository {
 
   Future<void> _cacheProductsAndVariations(
       int categoryId, List<dynamic> productList, List<dynamic> normalizedProducts) async {
-    final box = Hive.box(productBoxName);
-    await box.put("products_$categoryId", {
-      'timestamp': DateTime.now().toIso8601String(),
-      'data': json.encode(normalizedProducts),
+    final isar = await IsarService.instance;
+    await isar.writeTxn(() async {
+      await isar.isarCacheEntrys.put(
+        IsarCacheEntry()
+          ..key = "products_$categoryId"
+          ..json = json.encode(normalizedProducts)
+          ..timestamp = DateTime.now(),
+      );
     });
 
     if (kDebugMode) {
@@ -272,6 +284,7 @@ class CategoryRepository {
     }
 
     final productRepo = ProductRepository();
+    // NOTE: keeping variations cache in Hive for now; only category/product list caching moved to Isar.
     final productCacheBox = Hive.box('productCache');
 
     for (final product in productList) {

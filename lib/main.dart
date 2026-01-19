@@ -8,6 +8,7 @@ import 'package:pinaka_pos/services/CustomerDisplayService.dart';
 import 'package:provider/provider.dart';
 import 'Constants/misc_features.dart';
 import 'Database/db_helper.dart';
+import 'Database/isar_service.dart';
 import 'Database/user_db_helper.dart';
 import 'Helper/Extentions/theme_notifier.dart';
 import 'Helper/cashbackhelper.dart';
@@ -50,6 +51,7 @@ void main() async {
 
   WidgetsFlutterBinding.ensureInitialized(); // Ensure Flutter services are ready
   await Hive.initFlutter();
+  await IsarService.init();
 
   await Hive.openBox('categoryCache');
   await Hive.openBox('productCache');

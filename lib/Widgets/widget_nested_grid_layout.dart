@@ -747,6 +747,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hive/hive.dart';
+import 'package:isar/isar.dart';
+import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import 'package:pinaka_pos/Helper/auto_search.dart';
 import 'package:pinaka_pos/Widgets/widget_age_verification_popup_dialog.dart';
 import 'package:pinaka_pos/Widgets/widget_variants_dialog.dart';
@@ -762,6 +764,7 @@ import '../Helper/api_response.dart';
 import '../Models/Search/product_variation_model.dart';
 import '../Providers/Age/age_verification_provider.dart';
 import '../Providers/Auth/product_variation_provider.dart';
+import '../Database/isar_service.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
 import '../Utilities/shimmer_effect.dart';
@@ -793,6 +796,9 @@ class NestedGridWidget extends StatelessWidget {
   final OrderBloc? orderBloc;
   final OrderHelper? orderHelper;
 
+  static final Map<int, Map<String, dynamic>> _productMetaCache = {};
+  static bool _productMetaInitialized = false;
+
   const NestedGridWidget({
     super.key,
     required this.isHorizontal,
@@ -815,74 +821,72 @@ class NestedGridWidget extends StatelessWidget {
     this.orderBloc,
     this.orderHelper,
   });
-  bool _isProductEbtEligible(Map<String, dynamic> item) {
+  Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
+    // 🔁 Fast path: in-memory cache already built
+    if (_productMetaInitialized && _productMetaCache.isNotEmpty) {
+      return _productMetaCache[productId];
+    }
+
     try {
-      final productBox = Hive.box('productCache');
-      final productId = item["fast_key_product_id"].toString();
+      final isar = await IsarService.instance;
+      final entries = await isar.isarCacheEntrys.where().findAll();
 
-      for (final key in productBox.keys) {
-        if (!key.toString().startsWith("products_")) continue;
+      for (final entry in entries) {
+        if (!entry.key.startsWith("products_")) continue;
 
-        final cached = productBox.get(key);
-        if (cached == null) continue;
+        final List<dynamic> products = jsonDecode(entry.json);
 
-        if (cached is Map && cached["data"] != null) {
-          final List<dynamic> products = jsonDecode(cached["data"]);
-
-          final match = products.firstWhere(
-                (p) => p["fast_key_product_id"].toString() == productId,
-            orElse: () => null,
-          );
-
-          if (match != null) {
-            return match["is_ebt_eligible"] == true;
+        for (final raw in products) {
+          if (raw is! Map) continue;
+          final map = Map<String, dynamic>.from(raw);
+          final idStr =
+              (map["fast_key_product_id"] ?? map["id"])?.toString();
+          final pid = int.tryParse(idStr ?? "");
+          if (pid != null) {
+            _productMetaCache[pid] = map;
           }
         }
       }
+
+      _productMetaInitialized = true;
+      return _productMetaCache[productId];
     } catch (e) {
-      print("EBT CHECK ERROR → $e");
+      if (kDebugMode) {
+        print("⚠️ Isar cache lookup failed → $e");
+      }
+    }
+    return null;
+  }
+
+  bool _isProductEbtEligible(Map<String, dynamic> item) {
+    if (item["is_ebt_eligible"] == true) return true;
+
+    final dynamic tagsRaw = item["fast_key_item_tags"] ?? item["tags"];
+    if (tagsRaw is List) {
+      for (final t in tagsRaw) {
+        if (t is Map) {
+          final name = (t["name"] ?? "").toString().toLowerCase();
+          final slug = (t["slug"] ?? "").toString().toLowerCase();
+          if (name.contains("ebt") || slug.contains("ebt")) return true;
+        }
+      }
     }
 
     return false;
   }
 
   bool _isVariableProduct(Map<String, dynamic> item) {
-    try {
-      final productBox = Hive.box('productCache');
-      final productId = item["fast_key_product_id"].toString();
-
-      for (final key in productBox.keys) {
-        if (!key.toString().startsWith("products_")) continue;
-
-        final cached = productBox.get(key);
-        if (cached == null) continue;
-
-        if (cached is Map && cached["data"] != null) {
-          final List<dynamic> products = jsonDecode(cached["data"]);
-
-          final match = products.firstWhere(
-                (p) => p["fast_key_product_id"].toString() == productId,
-            orElse: () => null,
-          );
-
-          if (match != null) {
-            final tags = match["tags"];
-            List<dynamic> tagList = [];
-
-            if (tags is String) {
-              tagList = jsonDecode(tags); // parse if tags stored as JSON string
-            } else if (tags is List) {
-              tagList = tags;
-            }
-
-            return tagList.contains("variable_product"); // use your actual tag key
-          }
+    final dynamic tagsRaw = item["fast_key_item_tags"] ?? item["tags"];
+    if (tagsRaw is List) {
+      return tagsRaw.any((t) {
+        if (t is Map) {
+          final name = (t["name"] ?? "").toString().toLowerCase();
+          final slug = (t["slug"] ?? "").toString().toLowerCase();
+          return name.contains("variable") || slug.contains("variable");
         }
-      }
-    } catch (e) {
-      print("VARIABLE PRODUCT CHECK ERROR → $e");
+        return false;
+      });
     }
-
     return false;
   }
 
@@ -1054,134 +1058,90 @@ class NestedGridWidget extends StatelessWidget {
                         try {
                           print("🟩 TAP: Starting product add flow for item → ${item["fast_key_item_name"]}");
 
-                          // 👇 Print complete product data for debug
-                          print("🧾 Full product data dump:");
-                          print(const JsonEncoder.withIndent('  ').convert(item));
-                          // 🏷 Extract tags
-                          final List<Map<String, dynamic>> tags =
-                          List<Map<String, dynamic>>.from(item["fast_key_item_tags"] ?? []);
+                          // 🧠 Hydrate from Isar cache (same flow as category load)
+                          final productId =
+                              int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
+                          final cachedProduct =
+                              productId > 0 ? await _getCachedProductFromIsar(productId) : null;
+
+                          // 🏷 Collect tags from item first, then from cache
+                          final List<Map<String, dynamic>> tags = [];
+                          void addTags(dynamic source) {
+                            if (source is List) {
+                              for (final t in source) {
+                                if (t is Map) {
+                                  tags.add(Map<String, dynamic>.from(t));
+                                }
+                              }
+                            }
+                          }
+
+                          addTags(item["fast_key_item_tags"]);
+                          if (tags.isEmpty) {
+                            addTags(cachedProduct?["tags"]);
+                          }
 
 // ✅ DECLARE HERE (VERY IMPORTANT)
-                          bool hasVariablePriceTag = tags.any((t) =>
-                          t["slug"] == "variable-product" ||
-                              t["slug"] == "variable" ||
-                              t["name"] == "variable product" ||
-                              t["name"] == "variable");
+                          bool hasVariablePriceTag = tags.any((t) {
+                            final slug = (t["slug"] ?? "").toString().toLowerCase();
+                            final name = (t["name"] ?? "").toString().toLowerCase();
+                            return slug.contains("variable") || name.contains("variable");
+                          });
 
                           if (kDebugMode) {
                             print("🧪 hasVariablePriceTag = $hasVariablePriceTag");
                           }
 
                           // 🆔 Extract core product fields
-                          final productId =
-                              int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
-
-
                           final productName = (item["fast_key_item_name"] is String)
                               ? item["fast_key_item_name"]
                               : item["fast_key_item_name"]?["rendered"] ?? "Unnamed Product";
 
-                          // ⭐ Load EBT eligibility from productCache normalized list
-                          bool isEbtEligible = false;
+                          // ⭐ EBT eligibility from Isar cache or tags
+                          bool isEbtEligible =
+                              item["is_ebt_eligible"] == true || cachedProduct?["is_ebt_eligible"] == true;
 
-                          try {
-                            final productBox = Hive.box('productCache');
-
-                            // Loop through all productCache keys (products_<category>)
-                            for (final key in productBox.keys) {
-                              if (!key.toString().startsWith("products_")) continue;
-
-                              final cached = productBox.get(key);
-                              if (cached == null) continue;
-
-                              // cached structure: { timestamp: ..., data: "[...json list...]" }
-                              if (cached is Map && cached["data"] != null) {
-                                final List<dynamic> products = jsonDecode(cached["data"]);
-
-                                final match = products.firstWhere(
-                                      (p) => p["fast_key_product_id"].toString() == productId.toString(),
-                                  orElse: () => null,
-                                );
-
-                                if (match != null) {
-                                  isEbtEligible = match["is_ebt_eligible"] == true;
-
-                                  print(
-                                      "🥗 EBT FOUND → Product: $productName | Eligible: $isEbtEligible | Found in: $key | TAGS: ${match["tags"]}");
-
-                                  break;
-                                }
-                              }
-                            }
-
-                            if (!isEbtEligible) {
-                              print("⚠ No EBT tag found in productCache for $productName (id=$productId)");
-                            }
-
-                          } catch (e) {
-                            print("⚠ Error reading EBT eligibility from productCache → $e");
+                          if (!isEbtEligible && tags.isNotEmpty) {
+                            isEbtEligible = tags.any((t) {
+                              final name = (t["name"] ?? "").toString().toLowerCase();
+                              final slug = (t["slug"] ?? "").toString().toLowerCase();
+                              return name.contains("ebt") || slug.contains("ebt");
+                            });
                           }
 
-
-                          try {
-                            final productBox = Hive.box('productCache');
-
-                            // Loop through all productCache keys (products_<category>)
-                            for (final key in productBox.keys) {
-                              if (!key.toString().startsWith("products_")) continue;
-
-                              final cached = productBox.get(key);
-                              if (cached == null) continue;
-
-                              // cached structure: { timestamp: ..., data: "[...json list...]" }
-                              if (cached is Map && cached["data"] != null) {
-                                final List<dynamic> products = jsonDecode(cached["data"]);
-
-                                final match = products.firstWhere(
-                                      (p) => p["fast_key_product_id"].toString() == productId.toString(),
-                                  orElse: () => null,
-                                );
-
-                                if (match != null) {
-                                  // Check if the product's tags contain the variable tag
-                                  final tags = match["tags"];
-                                  if (tags is List<dynamic>) {
-                                    hasVariablePriceTag = tags.any(
-                                          (t) => t is Map && t["slug"] == "variable-product",
-                                    );
-                                  }
-
-                                  print(
-                                      "💰 Variable Tag → Product: $productName | Has Variable Tag: $hasVariablePriceTag | Found in: $key | TAGS: $tags"
-                                  );
-
-                                  break;
-                                }
-                              }
-                            }
-
-                            if (!hasVariablePriceTag) {
-                              print("⚠ No variable product tag found in productCache for $productName (id=$productId)");
-                            }
-                          } catch (e) {
-                            print("⚠ Error reading variable product tag from productCache → $e");
+                          if (kDebugMode) {
+                            print(
+                                "🥗 EBT CHECK → Product: $productName | Eligible: $isEbtEligible | Cached=${cachedProduct != null}");
                           }
 
-
-
+                          final dynamic priceSource = cachedProduct?["fast_key_item_price"] ??
+                              cachedProduct?["price"] ??
+                              item["fast_key_item_price"] ??
+                              item["price"];
                           var productPrice =
-                              double.tryParse(item["fast_key_item_price"].toString()) ?? 0.0;
-                          final productSku = item["fast_key_item_sku"] ?? "SKU-$productId";
-                          final productImage = (item["fast_key_item_image"] is String)
-                              ? item["fast_key_item_image"]
-                              : item["fast_key_item_image"]?["src"] ?? "";
+                              double.tryParse(priceSource?.toString() ?? "0") ?? 0.0;
+
+                          final productSku =
+                              cachedProduct?["sku"] ?? item["fast_key_item_sku"] ?? "SKU-$productId";
+
+                          final dynamic rawImage =
+                              cachedProduct?["fast_key_item_image"] ??
+                                  cachedProduct?["image"] ??
+                                  item["fast_key_item_image"];
+                          final productImage = rawImage is String
+                              ? rawImage
+                              : (rawImage is Map ? rawImage["src"] ?? "" : "");
 
                           // ✅ Detect variants & restrictions
-                          final hasVariants = (item["type"] == "variable" ||
-                              (item["variations"] != null && item["variations"].isNotEmpty));
+                          final hasVariants = (cachedProduct?["has_variants"] == true) ||
+                              (item["type"] == "variable" ||
+                                  (item["variations"] != null && item["variations"].isNotEmpty));
+
                           // 🔞 Detect min age (field OR tags)
+                          final dynamic minAgeSource =
+                              cachedProduct?["min_age"] ?? item["fast_key_item_min_age"];
                           int minAge =
-                              int.tryParse(item["fast_key_item_min_age"]?.toString() ?? "0") ?? 0;
+                              int.tryParse(minAgeSource?.toString() ?? "0") ?? 0;
 
 // ✅ FALLBACK → derive from tags (VERY IMPORTANT)
                           if (minAge == 0) {

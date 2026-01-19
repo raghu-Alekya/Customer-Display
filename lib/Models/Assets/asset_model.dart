@@ -121,7 +121,6 @@ class AssetResponse {
     );
   }
 }
-
 class Media {
   final int id;
   final String title;
@@ -137,6 +136,15 @@ class Media {
     );
   }
 
+  // Add this to convert DB rows to Media
+  factory Media.fromMap(Map<String, dynamic> map) {
+    return Media(
+      id: map['id'] ?? 0,
+      title: map['title'] ?? '',
+      url: map['url'] ?? '',
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -145,6 +153,29 @@ class Media {
     };
   }
 }
+// class Media {
+//   final int id;
+//   final String title;
+//   final String url;
+//
+//   Media({required this.id, required this.title, required this.url});
+//
+//   factory Media.fromJson(Map<String, dynamic> json) {
+//     return Media(
+//       id: int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+//       title: json['title']?.toString() ?? '',
+//       url: json['url']?.toString() ?? '',
+//     );
+//   }
+//
+//   Map<String, dynamic> toMap() {
+//     return {
+//       'id': id,
+//       'title': title,
+//       'url': url,
+//     };
+//   }
+// }
 
 class Tax {  //Build #1.0.68: updated
   final String slug;
