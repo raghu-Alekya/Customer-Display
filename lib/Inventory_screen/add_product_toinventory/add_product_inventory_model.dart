@@ -15,7 +15,7 @@ class AddProductInventoryTaxModel extends AddProductInventoryTaxEntity {
     required super.manageStock,
     required super.stockQuantity,
     required super.taxStatus,
-    required super.taxClass,
+    required super.taxClass, required super.attributes,
   });
 
   factory AddProductInventoryTaxModel.fromJson(Map<String, dynamic> json) {
@@ -33,7 +33,7 @@ class AddProductInventoryTaxModel extends AddProductInventoryTaxEntity {
       manageStock: json['manage_stock'] ?? false,
       stockQuantity: json['stock_quantity'] ?? 0,
       taxStatus: json['tax_status'] ?? 'taxable',
-      taxClass: json['tax_class'] ?? '',
+      taxClass: json['tax_class'] ?? '', attributes: [],
     );
   }
 

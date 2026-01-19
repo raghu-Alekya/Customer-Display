@@ -9,6 +9,7 @@ class AddProductInventoryTaxEntity {
   final List<Map<String, dynamic>> tags;
   final List<Map<String, dynamic>> images;
   final List<Map<String, dynamic>> metaData;
+  final List<Map<String, dynamic>> attributes; // ✅ NEW
   final bool manageStock;
   final int stockQuantity;
   final String taxStatus;
@@ -25,6 +26,7 @@ class AddProductInventoryTaxEntity {
     required this.tags,
     required this.images,
     required this.metaData,
+    required this.attributes, // ✅ NEW
     required this.manageStock,
     required this.stockQuantity,
     required this.taxStatus,
@@ -43,6 +45,7 @@ class AddProductInventoryTaxEntity {
       tags: List<Map<String, dynamic>>.from(json['tags'] ?? []),
       images: List<Map<String, dynamic>>.from(json['images'] ?? []),
       metaData: List<Map<String, dynamic>>.from(json['meta_data'] ?? []),
+      attributes: List<Map<String, dynamic>>.from(json['attributes'] ?? []), // ✅ NEW
       manageStock: json['manage_stock'] ?? false,
       stockQuantity: json['stock_quantity'] ?? 0,
       taxStatus: json['tax_status'] ?? 'taxable',
@@ -61,6 +64,7 @@ class AddProductInventoryTaxEntity {
       'tags': tags,
       'images': images,
       'meta_data': metaData,
+      'attributes': attributes, // ✅ NEW
       'manage_stock': manageStock,
       'stock_quantity': stockQuantity,
       'tax_status': taxStatus,

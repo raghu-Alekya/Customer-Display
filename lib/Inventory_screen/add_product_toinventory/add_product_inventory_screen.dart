@@ -449,7 +449,7 @@ class _AddProductInventoryTaxScreenState
       taxStatus: 'taxable',
       taxClass: taxClassController.text.isEmpty
           ? 'standard'
-          : taxClassController.text,
+          : taxClassController.text, attributes: [],
     );
 
     bloc.add(AddProductInventoryTaxSubmitEvent(product: product));
@@ -461,66 +461,78 @@ class _AddProductInventoryTaxScreenState
       appBar: AppBar(title: const Text('Add Product Dynamically')),
       body: BlocProvider.value(
         value: bloc,
-        child: BlocBuilder<AddProductInventoryTaxBloc,
-            AddProductInventoryTaxState>(
-          builder: (context, state) {
-            if (state is AddProductInventoryTaxLoading) {
-              return const Center(child: CircularProgressIndicator());
-            } else if (state is AddProductInventoryTaxLoaded) {
-              return Center(
-                  child: Text('✅ Product Added: ${state.product.name}'));
-            } else if (state is AddProductInventoryTaxError) {
-              return Center(child: Text('❌ Error: ${state.message}'));
-            }
-
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    _buildTextField(controller: nameController, label: 'Name'),
-                    _buildTextField(controller: skuController, label: 'SKU'),
-                    _buildTextField(
-                        controller: regularPriceController,
-                        label: 'Regular Price',
-                        keyboardType: TextInputType.number),
-                    _buildTextField(
-                        controller: salePriceController,
-                        label: 'Sale Price',
-                        keyboardType: TextInputType.number),
-                    _buildTextField(
-                        controller: categoryIdController,
-                        label: 'Category ID',
-                        keyboardType: TextInputType.number),
-                    _buildTextField(
-                        controller: tagNameController, label: 'Tag Name'),
-                    _buildTextField(
-                        controller: tagSlugController, label: 'Tag Slug'),
-                    _buildTextField(
-                        controller: stockQuantityController,
-                        label: 'Stock Quantity',
-                        keyboardType: TextInputType.number),
-                    _buildTextField(
-                        controller: taxClassController, label: 'Tax Class'),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: _pickImage,
-                      child: const Text('Pick Image from Gallery'),
-                    ),
-                    if (_pickedImage != null) ...[
-                      const SizedBox(height: 16),
-                      Image.file(File(_pickedImage!.path), height: 150),
-                    ],
-                    const SizedBox(height: 20),
-                    ElevatedButton(
-                        onPressed: _submitProduct,
-                        child: const Text('Add Product'))
-                  ],
+        child: BlocListener<AddProductInventoryTaxBloc, AddProductInventoryTaxState>(
+          listener: (context, state) {
+            if (state is AddProductInventoryTaxLoaded) {
+              // Show success SnackBar
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('✅ Product Added: ${state.product.name}'),
+                  backgroundColor: Colors.green,
                 ),
-              ),
-            );
+              );
+            } else if (state is AddProductInventoryTaxError) {
+              // Show error SnackBar
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('❌ Error: ${state.message}'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
           },
+          child: BlocBuilder<AddProductInventoryTaxBloc, AddProductInventoryTaxState>(
+            builder: (context, state) {
+              if (state is AddProductInventoryTaxLoading) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      _buildTextField(controller: nameController, label: 'Name'),
+                      _buildTextField(controller: skuController, label: 'SKU'),
+                      _buildTextField(
+                          controller: regularPriceController,
+                          label: 'Regular Price',
+                          keyboardType: TextInputType.number),
+                      _buildTextField(
+                          controller: salePriceController,
+                          label: 'Sale Price',
+                          keyboardType: TextInputType.number),
+                      _buildTextField(
+                          controller: categoryIdController,
+                          label: 'Category ID',
+                          keyboardType: TextInputType.number),
+                      _buildTextField(controller: tagNameController, label: 'Tag Name'),
+                      _buildTextField(controller: tagSlugController, label: 'Tag Slug'),
+                      _buildTextField(
+                          controller: stockQuantityController,
+                          label: 'Stock Quantity',
+                          keyboardType: TextInputType.number),
+                      _buildTextField(controller: taxClassController, label: 'Tax Class'),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _pickImage,
+                        child: const Text('Pick Image from Gallery'),
+                      ),
+                      if (_pickedImage != null) ...[
+                        const SizedBox(height: 16),
+                        Image.file(File(_pickedImage!.path), height: 150),
+                      ],
+                      const SizedBox(height: 20),
+                      ElevatedButton(
+                          onPressed: _submitProduct,
+                          child: const Text('Add Product'))
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ),
     );

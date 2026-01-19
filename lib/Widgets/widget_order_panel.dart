@@ -16,6 +16,8 @@ import 'package:flutter_svg/svg.dart';
 import 'package:focus_detector/focus_detector.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
+import 'package:isar/isar.dart';
+import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 import 'package:pinaka_pos/Models/Search/product_search_model.dart';
 import 'package:pinaka_pos/Providers/Auth/product_variation_provider.dart';
@@ -39,6 +41,7 @@ import '../Constants/layout_values.dart';
 import '../Constants/misc_features.dart';
 import '../Constants/text.dart';
 import '../Database/db_helper.dart';
+import '../Database/isar_service.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
@@ -2549,65 +2552,164 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
   }
 
-
+  //
+  // double getProductTaxFromHive(
+  //     int productId,
+  //     double price,
+  //     int qty,
+  //     ) {
+  //   try {
+  //     final box = Hive.box('productCache');
+  //
+  //     // 🔹 get auto discount FIRST
+  //     final double autoDiscount = getProductDiscountFromHive(productId, qty);
+  //
+  //     final double originalTotal = price * qty;
+  //
+  //     // ✅ discounted base (never negative)
+  //     final double taxableBase =
+  //     (originalTotal - autoDiscount).clamp(0.0, double.infinity);
+  //
+  //     for (var key in box.keys) {
+  //       if (!key.toString().startsWith("products_")) continue;
+  //
+  //       final cached = box.get(key);
+  //       if (cached == null) continue;
+  //
+  //       final List products = json.decode(cached['data']);
+  //
+  //       final product = products.firstWhere(
+  //             (p) => p['id'] == productId,
+  //         orElse: () => null,
+  //       );
+  //
+  //       if (product == null) continue;
+  //
+  //       if (product['tax'] != null &&
+  //           product['tax']['tax_rates'] is List &&
+  //           product['tax']['tax_rates'].isNotEmpty) {
+  //
+  //         double taxTotal = 0.0;
+  //
+  //         for (final tax in product['tax']['tax_rates']) {
+  //           final rate =
+  //               double.tryParse(tax['rate']?.toString() ?? '0') ?? 0.0;
+  //
+  //           final taxAmount = (taxableBase * rate) / 100;
+  //
+  //           taxTotal += double.parse(taxAmount.toStringAsFixed(2));
+  //         }
+  //
+  //         return taxTotal;
+  //       }
+  //     }
+  //   } catch (e) {
+  //     print("❌ Tax error (discounted base) → $e");
+  //   }
+  //
+  //   return 0.0;
+  // }
   double getProductTaxFromHive(
       int productId,
       double price,
       int qty,
       ) {
     try {
-      final box = Hive.box('productCache');
+      debugPrint("🧾 TAX START → productId:$productId price:$price qty:$qty");
 
-      // 🔹 get auto discount FIRST
-      final double autoDiscount = getProductDiscountFromHive(productId, qty);
+      // 🔹 auto discount FIRST
+      final double autoDiscount =
+      getProductDiscountFromHive(productId, qty);
+
+      debugPrint("🔻 Auto discount → $autoDiscount");
 
       final double originalTotal = price * qty;
+      debugPrint("💰 Original total → $originalTotal");
 
-      // ✅ discounted base (never negative)
       final double taxableBase =
       (originalTotal - autoDiscount).clamp(0.0, double.infinity);
 
-      for (var key in box.keys) {
-        if (!key.toString().startsWith("products_")) continue;
+      debugPrint("📐 Taxable base (after discount) → $taxableBase");
 
-        final cached = box.get(key);
-        if (cached == null) continue;
+      final isar = IsarService.sync;
+      if (isar == null) {
+        debugPrint("⚠️ Isar NOT initialized → returning 0 tax");
+        return 0.0;
+      }
 
-        final List products = json.decode(cached['data']);
+      debugPrint("📦 Isar initialized → searching cached products");
+
+      final cachedEntries = isar.isarCacheEntrys
+          .where()
+          .filter()
+          .keyStartsWith("products_")
+          .findAllSync();
+
+      debugPrint("📂 Found ${cachedEntries.length} product cache entries");
+
+      for (final entry in cachedEntries) {
+        debugPrint("🔍 Checking cache key → ${entry.key}");
+
+        final List products = json.decode(entry.json);
+        debugPrint("📋 Products in this cache → ${products.length}");
 
         final product = products.firstWhere(
-              (p) => p['id'] == productId,
+              (p) =>
+          p["fast_key_product_id"] == productId ||
+              p["id"] == productId,
           orElse: () => null,
         );
 
-        if (product == null) continue;
+        if (product == null) {
+          debugPrint("⏭️ Product NOT found in this cache");
+          continue;
+        }
 
-        if (product['tax'] != null &&
-            product['tax']['tax_rates'] is List &&
-            product['tax']['tax_rates'].isNotEmpty) {
+        debugPrint("✅ Product FOUND → ID:$productId");
+        debugPrint("🏷️ Tax status → ${product["tax_status"]}");
+
+        if (product["tax_status"] == "none") {
+          debugPrint("🚫 Product is non-taxable → tax = 0");
+          return 0.0;
+        }
+
+        final taxRates = product["tax"]?["tax_rates"];
+
+        if (taxRates is List && taxRates.isNotEmpty) {
+          debugPrint("🧮 Tax rates found → ${taxRates.length}");
 
           double taxTotal = 0.0;
 
-          for (final tax in product['tax']['tax_rates']) {
+          for (final tax in taxRates) {
             final rate =
-                double.tryParse(tax['rate']?.toString() ?? '0') ?? 0.0;
+                double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
 
             final taxAmount = (taxableBase * rate) / 100;
 
-            taxTotal += double.parse(taxAmount.toStringAsFixed(2));
+            debugPrint(
+                "➕ Applying tax → rate:$rate% amount:$taxAmount");
+
+            taxTotal += taxAmount;
           }
 
-          return taxTotal;
+          final roundedTax =
+          double.parse(taxTotal.toStringAsFixed(2));
+
+          debugPrint("✅ TOTAL TAX (rounded) → $roundedTax");
+          return roundedTax;
+        } else {
+          debugPrint("⚠️ No tax rates found for product");
         }
       }
-    } catch (e) {
-      print("❌ Tax error (discounted base) → $e");
+
+      debugPrint("❌ Product not found in ANY cache → tax = 0");
+    } catch (e, st) {
+      debugPrint("❌ Tax error (Isar sync) → $e");
+      debugPrint(st.toString());
     }
 
     return 0.0;
   }
-
-
 
 // Current Order UI
   Widget buildCurrentOrder() {
@@ -4243,7 +4345,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               }
                             }
 
-
                             // =======================================================
                             // 🔹 LOAD VALUES FOR SUMMARY
                             // =======================================================
@@ -4257,9 +4358,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                             final double discountAmount =
                             (box.get(hiveKey)?["discount_amount"] ?? 0.0).toDouble();
-// =======================================================
-// ⭐ MAP AUTO / COMBO / MULTIPACK DISCOUNT FROM WOO → UI ITEMS
-// =======================================================
+
+                            // =======================================================
+                            // ⭐ MAP AUTO / COMBO / MULTIPACK DISCOUNT FROM WOO → UI ITEMS
+                            // =======================================================
                             for (final item in orderItems) {
                               final int localPid =
                                   int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
@@ -4284,10 +4386,45 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                               bool isCombo = false;
                               bool isMultipack = false;
+                              bool hasAutoDiscount = false;
 
                               double comboDiscount = 0.0;
                               double multipackDiscount = 0.0;
+                              double autoDiscount = 0.0;
 
+                              // =======================================================
+                              // 🔹 CHECK FOR AUTO DISCOUNT (From your WooCommerce response)
+                              // =======================================================
+                              // First, check for auto_discount_amount in meta_data
+                              for (final m in meta) {
+                                if (m['key'] == 'auto_discount_amount') {
+                                  autoDiscount = double.tryParse(m['value']?.toString() ?? '0') ?? 0.0;
+                                  hasAutoDiscount = autoDiscount > 0;
+
+                                  if (kDebugMode) {
+                                    print("✅ Found auto_discount_amount: $autoDiscount for ${item['item_name']}");
+                                  }
+                                }
+                              }
+
+                              // If no auto_discount_amount found, check difference between subtotal and total
+                              if (autoDiscount == 0.0) {
+                                final double subtotal = double.tryParse(wooItem['subtotal']?.toString() ?? '0') ?? 0.0;
+                                final double total = double.tryParse(wooItem['total']?.toString() ?? '0') ?? 0.0;
+
+                                if (subtotal > total) {
+                                  autoDiscount = subtotal - total;
+                                  hasAutoDiscount = autoDiscount > 0;
+
+                                  if (kDebugMode) {
+                                    print("📊 Calculated auto discount from subtotal ($subtotal) - total ($total) = $autoDiscount");
+                                  }
+                                }
+                              }
+
+                              // =======================================================
+                              // 🔹 CHECK FOR COMBO DISCOUNT (EXISTING CODE)
+                              // =======================================================
                               for (final m in meta) {
                                 // ---------- COMBO ----------
                                 if (m['key'] == 'Discount Type' &&
@@ -4315,10 +4452,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               // 🔹 STORE RAW META (NEW)
                               item['combo_discount'] = comboDiscount;
                               item['multipack_discount'] = multipackDiscount;
+                              item['auto_discount_raw'] = autoDiscount; // Store auto discount separately
                               item['has_combo_discount'] = isCombo;
                               item['has_multipack_discount'] = isMultipack;
+                              item['has_auto_discount'] = hasAutoDiscount;
 
-                              // ---------- APPLY PRIORITY ----------
+                              // =======================================================
+                              // 🔹 APPLY DISCOUNT PRIORITY (Updated to include auto discount)
+                              // =======================================================
+                              // Priority: Combo > Multipack > Auto Discount
                               if (isCombo && comboDiscount > 0) {
                                 item['auto_discount'] = comboDiscount;
                                 item['discount_type'] = 'combo';
@@ -4326,6 +4468,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               } else if (isMultipack && multipackDiscount > 0) {
                                 item['auto_discount'] = multipackDiscount;
                                 item['discount_type'] = 'multipack';
+                                item['discount_source'] = 'woo';
+                              } else if (hasAutoDiscount && autoDiscount > 0) {
+                                // Apply auto discount if no combo or multipack
+                                item['auto_discount'] = autoDiscount;
+                                item['discount_type'] = 'auto';
                                 item['discount_source'] = 'woo';
                               }
 
@@ -4335,18 +4482,20 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                         "name=${item['item_name']} | "
                                         "combo=$comboDiscount | "
                                         "multipack=$multipackDiscount | "
+                                        "auto=$autoDiscount | "
                                         "hasCombo=$isCombo | "
                                         "hasMultipack=$isMultipack | "
+                                        "hasAuto=$hasAutoDiscount | "
                                         "applied=${item['auto_discount']} | "
                                         "type=${item['discount_type']}"
                                 );
                               }
-
                             }
+
                             final localKey = orderHelper.activeOrderId.toString();
                             final serverKey = serverOrderId?.toString();
 
-// Save to local order
+                            // Save to local order
                             final existingLocal = box.get(localKey);
                             if (existingLocal != null) {
                               final updated = Map<String, dynamic>.from(existingLocal);
@@ -4354,7 +4503,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               await box.put(localKey, updated);
                             }
 
-// Save to server order (if exists)
+                            // Save to server order (if exists)
                             if (serverKey != null) {
                               final existingServer = box.get(serverKey);
                               if (existingServer != null) {
@@ -4364,23 +4513,48 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               }
                             }
 
-// 🔥 Call customer display AFTER saving
+                            // 🔥 Call customer display AFTER saving
                             await CustomerDisplayHelper.updateCustomerDisplay(
                               orderHelper.activeOrderId!,
                             );
-// =======================================================
-// ⭐ CALCULATE TOTAL AUTO DISCOUNT (COMBO + MULTIPACK)
-// =======================================================
+
+                            // =======================================================
+                            // ⭐ CALCULATE TOTAL AUTO DISCOUNT (COMBO + MULTIPACK + AUTO)
+                            // =======================================================
                             double totalAutoDiscount = 0.0;
 
                             for (final item in orderItems) {
                               final double d = double.tryParse(
                                   item['auto_discount']?.toString() ?? '0') ?? 0.0;
 
+                              // Include ALL auto discount types: combo, multipack, and auto
                               if ((item['discount_type'] == 'combo' ||
-                                  item['discount_type'] == 'multipack') &&
+                                  item['discount_type'] == 'multipack' ||
+                                  item['discount_type'] == 'auto') &&
                                   d > 0) {
                                 totalAutoDiscount += d;
+                              }
+                            }
+
+                            // =======================================================
+                            // 🔹 ADDITIONAL CHECK: Calculate from WooCommerce directly if needed
+                            // =======================================================
+                            if (totalAutoDiscount == 0.0 && wooLineItems.isNotEmpty) {
+                              double wooTotalAutoDiscount = 0.0;
+                              for (final wooItem in wooLineItems) {
+                                final double subtotal = double.tryParse(wooItem['subtotal']?.toString() ?? '0') ?? 0.0;
+                                final double total = double.tryParse(wooItem['total']?.toString() ?? '0') ?? 0.0;
+
+                                if (subtotal > total) {
+                                  wooTotalAutoDiscount += (subtotal - total);
+                                }
+                              }
+
+                              if (wooTotalAutoDiscount > 0) {
+                                totalAutoDiscount = wooTotalAutoDiscount;
+                                if (kDebugMode) {
+                                  print("🔄 Using WooCommerce calculated auto discount: $totalAutoDiscount");
+                                }
                               }
                             }
 
@@ -4392,8 +4566,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 grossTotal.toDouble() - totalAutoDiscount;
 
                             // =======================================================
-// 🧪 PRE-NAVIGATION FINAL CHECKPOINT
-// =======================================================
+                            // 🧪 PRE-NAVIGATION FINAL CHECKPOINT
+                            // =======================================================
                             if (kDebugMode) {
                               print("\n========== 🧾 FINAL CHECKOUT SNAPSHOT ==========");
                               print("📅 Date / Time        : $displayDate  $displayTime");
@@ -4403,8 +4577,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 print("• ${item['item_name']}"
                                     " | qty=${item['quantity']}"
                                     " | price=${item['price']}"
+                                    " | subtotal=${double.tryParse(item['price']?.toString() ?? '0') ?? 0.0 * (item['quantity'] ?? 1)}"
                                     " | autoDisc=${item['auto_discount']}"
-                                    " | type=${item['discount_type']}");
+                                    " | type=${item['discount_type']}"
+                                    " | source=${item['discount_source']}");
                               }
 
                               print("\n💰 TOTALS");
@@ -4422,9 +4598,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               print("Offline Order ID    : ${orderHelper.activeOrderId}");
                               print("Is Offline Synced   : ${serverOrderId != null}");
 
+                              // Show WooCommerce line items for verification
+                              print("\n🔄 WOOCOMMERCE LINE ITEMS VERIFICATION");
+                              for (final wooItem in wooLineItems) {
+                                final double subtotal = double.tryParse(wooItem['subtotal']?.toString() ?? '0') ?? 0.0;
+                                final double total = double.tryParse(wooItem['total']?.toString() ?? '0') ?? 0.0;
+                                print("• ${wooItem['name']}: subtotal=$subtotal, total=$total, discount=${subtotal - total}");
+                              }
+
                               print("===============================================\n");
                             }
-
 
                             // =======================================================
                             // 🔹 NAVIGATE TO SUMMARY
@@ -4484,7 +4667,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                         ),
                       ),
-
                     ),
                 ],
               ),

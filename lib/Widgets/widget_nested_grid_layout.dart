@@ -840,7 +840,7 @@ class NestedGridWidget extends StatelessWidget {
           if (raw is! Map) continue;
           final map = Map<String, dynamic>.from(raw);
           final idStr =
-              (map["fast_key_product_id"] ?? map["id"])?.toString();
+          (map["fast_key_product_id"] ?? map["id"])?.toString();
           final pid = int.tryParse(idStr ?? "");
           if (pid != null) {
             _productMetaCache[pid] = map;
@@ -1062,7 +1062,7 @@ class NestedGridWidget extends StatelessWidget {
                           final productId =
                               int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
                           final cachedProduct =
-                              productId > 0 ? await _getCachedProductFromIsar(productId) : null;
+                          productId > 0 ? await _getCachedProductFromIsar(productId) : null;
 
                           // 🏷 Collect tags from item first, then from cache
                           final List<Map<String, dynamic>> tags = [];

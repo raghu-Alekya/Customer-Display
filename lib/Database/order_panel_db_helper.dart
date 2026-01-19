@@ -48,6 +48,36 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     loadData(); // Load existing order data on initialization
   }
 
+  void _upsertOfflineOrderInMemory(int orderId, Map<String, dynamic> updatedOrder) {
+    // Keep the in-memory offline snapshot in sync without re-reading the entire Hive box.
+    // ⚡ Ensure orders is mutable (convert fixed-length list to growable if needed)
+    if (orders is! List || orders.isEmpty) {
+      orders = <Map<String, dynamic>>[];
+    } else {
+      // Convert to mutable list if it's read-only
+      orders = List<Map<String, dynamic>>.from(orders);
+    }
+
+    final idx = orders.indexWhere((o) {
+      final oid = o['order_id'] ?? o['id'];
+      if (oid is int) return oid == orderId;
+      return int.tryParse(oid?.toString() ?? '') == orderId;
+    });
+
+    if (idx != -1) {
+      orders[idx] = updatedOrder;
+    } else {
+      orders.add(updatedOrder);
+    }
+
+    if (!orderIds.contains(orderId)) {
+      orderIds.add(orderId);
+    }
+
+    // Maintain a sensible active order pointer.
+    activeOrderId ??= orderId;
+  }
+
   // Loads processing order data from the local database and shared preferences
   Future<void> loadProcessingData() async {
     final prefs = await SharedPreferences.getInstance();
@@ -62,7 +92,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     }
     // Fetch the user's orders from the database
     final db = await DBHelper.instance.database;
-    orders = await db.query(
+    final queryResult = await db.query(
       AppDBConst.orderTable,
       where: '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} = ?',
       whereArgs: [activeUserId ?? 1, 'processing'],
@@ -71,6 +101,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       /// Build #1.0.251 : FIXED - We have to use orderServerId rather than orderDate, it is already latest based on backend
       orderBy: '${AppDBConst.orderServerId} ASC', // Ensure orders are sorted by creation date
     );
+    // ⚡ Ensure mutable list (db.query returns fixed-length list)
+    orders = List<Map<String, dynamic>>.from(queryResult);
 
     if (orders.isNotEmpty) {
       // Convert order list from DB into a list of order IDs
@@ -147,7 +179,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         .toList();
 
     if (validEntries.isNotEmpty) {
-      orders = validEntries.map((e) => e.value).toList();
+      // ⚡ Ensure mutable list (not fixed-length)
+      orders = List<Map<String, dynamic>>.from(validEntries.map((e) => e.value));
 
       // ✅ Extract order IDs safely
       orderIds = validEntries.map((e) {
@@ -1315,14 +1348,15 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         });
       }
 
-      await box.put(orderId.toString(), {...order, 'products': products});
+      final updatedOrder = {...order, 'products': products};
+      await box.put(orderId.toString(), updatedOrder);
+      _upsertOfflineOrderInMemory(orderId, Map<String, dynamic>.from(updatedOrder as Map));
 
       print("💾 ORDER UPDATED → Product Count: ${products.length}");
       for (var p in products) {
         print("   ▶ ${p['name']} | Qty: ${p['quantity']} | EBT: ${p['is_ebt_eligible']}");
       }
 
-      await loadData();
       if (onItemAdded != null) onItemAdded();
 
     } finally {

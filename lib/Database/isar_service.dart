@@ -25,5 +25,6 @@ class IsarService {
     );
     return _isar!;
   }
+  static Isar? get sync => _isar;
 }
 
