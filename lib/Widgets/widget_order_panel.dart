@@ -3490,69 +3490,69 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   ),
                                   child: Row(
                                     children: [
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(5),
-                                        child: orderItem[AppDBConst.itemImage].toString().startsWith('http')
-                                            ? SizedBox(
-                                          height: MediaQuery.of(context).size.height * 0.08,
-                                          width: MediaQuery.of(context).size.height * 0.075,
-                                          child: Image.network(
-                                            orderItem[AppDBConst.itemImage],
-                                            height: MediaQuery.of(context).size.height * 0.08,
-                                            width: MediaQuery.of(context).size.height * 0.075,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (context, error,
-                                                stackTrace) {
-                                              return Image.asset(
-                                                'assets/custom.png',
-                                                height: MediaQuery.of(context).size.height * 0.08,
-                                                width: MediaQuery.of(context).size.height * 0.08,
-                                                fit: BoxFit.cover,
-                                              );
-
-                                            },
-                                          ),
-                                        )
-                                            : orderItem[AppDBConst.itemImage].toString().startsWith('assets/')
-                                            ? (
-                                            orderItem[AppDBConst.itemImage].toString().endsWith('.svg')
-                                                ? SvgPicture.asset(
-                                              orderItem[AppDBConst.itemImage],
-                                              height: MediaQuery.of(context).size.height * 0.08,
-                                              width: MediaQuery.of(context).size.height * 0.075,
-                                              fit: BoxFit.cover,
-                                            )
-                                                : Image.asset(
-                                              orderItem[AppDBConst.itemImage],
-                                              height: MediaQuery.of(context).size.height * 0.08,
-                                              width: MediaQuery.of(context).size.height * 0.075,
-                                              fit: BoxFit.cover,
-                                            )
-                                        )
-
-                                            : Platform.isWindows
-                                            ? Image.asset(
-                                          'assets/custom.png',
-                                          height: MediaQuery.of(context).size.height * 0.08,
-                                          width: MediaQuery.of(context).size.height * 0.075,
-                                          fit: BoxFit.cover,
-                                        )
-                                            : Image.file(
-                                          File(orderItem[AppDBConst.itemImage]),
-                                          height: MediaQuery.of(context).size.height * 0.08,
-                                          width: MediaQuery.of(context).size.height * 0.075,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) {
-                                            return Image.asset(
-                                              'assets/custom.png',
-                                              height: MediaQuery.of(context).size.height * 0.08,
-                                              width: MediaQuery.of(context).size.height * 0.08,
-                                              fit: BoxFit.cover,
-                                            );
-
-                                          },
-                                        ),
-                                      ),
+                                      // ClipRRect(
+                                      //   borderRadius: BorderRadius.circular(5),
+                                      //   child: orderItem[AppDBConst.itemImage].toString().startsWith('http')
+                                      //       ? SizedBox(
+                                      //     height: MediaQuery.of(context).size.height * 0.08,
+                                      //     width: MediaQuery.of(context).size.height * 0.075,
+                                      //     child: Image.network(
+                                      //       orderItem[AppDBConst.itemImage],
+                                      //       height: MediaQuery.of(context).size.height * 0.08,
+                                      //       width: MediaQuery.of(context).size.height * 0.075,
+                                      //       fit: BoxFit.cover,
+                                      //       errorBuilder: (context, error,
+                                      //           stackTrace) {
+                                      //         return Image.asset(
+                                      //           'assets/custom.png',
+                                      //           height: MediaQuery.of(context).size.height * 0.08,
+                                      //           width: MediaQuery.of(context).size.height * 0.08,
+                                      //           fit: BoxFit.cover,
+                                      //         );
+                                      //
+                                      //       },
+                                      //     ),
+                                      //   )
+                                      //       : orderItem[AppDBConst.itemImage].toString().startsWith('assets/')
+                                      //       ? (
+                                      //       orderItem[AppDBConst.itemImage].toString().endsWith('.svg')
+                                      //           ? SvgPicture.asset(
+                                      //         orderItem[AppDBConst.itemImage],
+                                      //         height: MediaQuery.of(context).size.height * 0.08,
+                                      //         width: MediaQuery.of(context).size.height * 0.075,
+                                      //         fit: BoxFit.cover,
+                                      //       )
+                                      //           : Image.asset(
+                                      //         orderItem[AppDBConst.itemImage],
+                                      //         height: MediaQuery.of(context).size.height * 0.08,
+                                      //         width: MediaQuery.of(context).size.height * 0.075,
+                                      //         fit: BoxFit.cover,
+                                      //       )
+                                      //   )
+                                      //
+                                      //       : Platform.isWindows
+                                      //       ? Image.asset(
+                                      //     'assets/custom.png',
+                                      //     height: MediaQuery.of(context).size.height * 0.08,
+                                      //     width: MediaQuery.of(context).size.height * 0.075,
+                                      //     fit: BoxFit.cover,
+                                      //   )
+                                      //       : Image.file(
+                                      //     File(orderItem[AppDBConst.itemImage]),
+                                      //     height: MediaQuery.of(context).size.height * 0.08,
+                                      //     width: MediaQuery.of(context).size.height * 0.075,
+                                      //     fit: BoxFit.cover,
+                                      //     errorBuilder: (context, error, stackTrace) {
+                                      //       return Image.asset(
+                                      //         'assets/custom.png',
+                                      //         height: MediaQuery.of(context).size.height * 0.08,
+                                      //         width: MediaQuery.of(context).size.height * 0.08,
+                                      //         fit: BoxFit.cover,
+                                      //       );
+                                      //
+                                      //     },
+                                      //   ),
+                                      // ),
                                       const SizedBox(width: 10),
 
                                       Expanded(

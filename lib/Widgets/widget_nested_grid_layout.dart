@@ -1277,7 +1277,7 @@ class NestedGridWidget extends StatelessWidget {
                                 unitPrice: finalPrice,
                                 isEbtEligible: isEbtEligible,
                                 onItemAdded: () async {
-                                  await orderHelper?.loadData();
+                                  //await orderHelper?.loadData();
                                 },
                               );
 
@@ -1491,7 +1491,7 @@ class NestedGridWidget extends StatelessWidget {
                                     onItemAdded: () async {
                                       print("✅ Variant item added successfully!");
                                       onItemTapped(index, variantAdded: true);
-                                      await orderHelper?.loadData();
+                                      //await orderHelper?.loadData();
                                     },
                                   );
 
@@ -1520,7 +1520,7 @@ class NestedGridWidget extends StatelessWidget {
                               onItemAdded: () async {
                                 print("✅ Simple product added successfully!");
                                 onItemTapped(index, variantAdded: false);
-                                await orderHelper?.loadData();
+                                //await orderHelper?.loadData();
                               },
                             );
                           }
@@ -1550,7 +1550,7 @@ class NestedGridWidget extends StatelessWidget {
                             padding: const EdgeInsets.all(10.0),
                             child: Row(
                               children: [
-                                _buildImage(item["fast_key_item_image"]),
+                                //_buildImage(item["fast_key_item_image"]),
                                 const SizedBox(width: 7),
                                 Expanded(
                                   child: Column(
@@ -1562,7 +1562,7 @@ class NestedGridWidget extends StatelessWidget {
                                       Text(
                                         item["fast_key_item_name"],
                                         style: TextStyle(
-                                          fontSize: 10,
+                                          fontSize: 12,
                                           color: themeHelper.themeMode == ThemeMode.dark
                                               ? ThemeNotifier.textDark
                                               : ThemeNotifier.textLight,
@@ -1576,7 +1576,7 @@ class NestedGridWidget extends StatelessWidget {
                                           Text(
                                             '${TextConstants.currencySymbol}${double.tryParse(item["fast_key_item_price"].toString())?.toStringAsFixed(2) ?? "0.00"}',
                                             style: TextStyle(
-                                              fontSize: 10,
+                                              fontSize: 12,
                                               fontWeight: FontWeight.bold,
                                               color: themeHelper
                                                   .themeMode ==

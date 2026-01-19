@@ -4,8 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hive/hive.dart';
+import 'package:isar/isar.dart';
+import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import 'package:provider/provider.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';
+
+
 
 // Import your custom numpad
 import '../Blocs/Assets/asset_bloc.dart';
@@ -15,6 +19,7 @@ import '../Constants/misc_features.dart';
 import '../Constants/text.dart';
 import '../Database/assets_db_helper.dart';
 import '../Database/db_helper.dart';
+import '../Database/isar_service.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/api_response.dart';
@@ -1863,6 +1868,114 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     );
   }
 
+  static final Map<int, Map<String, dynamic>> _productMetaCache = {};
+  static bool _productMetaInitialized = false;
+
+
+  Future<Map<String, dynamic>?> _getCashbackProductFromIsar() async {
+    // ⚡ FAST PATH — already cached
+    if (_productMetaInitialized && _productMetaCache.isNotEmpty) {
+      for (final p in _productMetaCache.values) {
+        final name =
+        (p["fast_key_item_name"] ?? p["name"] ?? "")
+            .toString()
+            .toLowerCase();
+
+        if (name.contains("cashback")) {
+          return p;
+        }
+      }
+    }
+
+    try {
+      final isar = await IsarService.instance;
+      final entries = await isar.isarCacheEntrys.where().findAll();
+
+      for (final entry in entries) {
+        if (!entry.key.startsWith("products_")) continue;
+
+        final List<dynamic> products = jsonDecode(entry.json);
+
+        for (final raw in products) {
+          if (raw is! Map) continue;
+
+          final map = Map<String, dynamic>.from(raw);
+          final name =
+          (map["fast_key_item_name"] ?? map["name"] ?? "")
+              .toString()
+              .toLowerCase();
+
+          if (name.contains("cashback")) {
+            final pid = int.tryParse(
+                (map["fast_key_product_id"] ?? map["id"])?.toString() ?? "");
+
+            if (pid != null) {
+              _productMetaCache[pid] = map;
+              _productMetaInitialized = true;
+            }
+            return map;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("⚠️ Cashback Isar lookup failed → $e");
+    }
+
+    return null;
+  }
+
+
+  Future<Map<String, dynamic>?> _getDiscountProductFromIsar() async {
+    // 🔁 Fast path: already cached
+    if (_productMetaInitialized && _productMetaCache.isNotEmpty) {
+      for (final p in _productMetaCache.values) {
+        final name =
+        (p["fast_key_item_name"] ?? p["name"] ?? "")
+            .toString()
+            .toLowerCase();
+        if (name.contains("discount")) return p;
+      }
+    }
+
+    try {
+      final isar = await IsarService.instance;
+      final entries = await isar.isarCacheEntrys.where().findAll();
+
+      for (final entry in entries) {
+        if (!entry.key.startsWith("products_")) continue;
+
+        final List<dynamic> products = jsonDecode(entry.json);
+        for (final raw in products) {
+          if (raw is! Map) continue;
+          final map = Map<String, dynamic>.from(raw);
+
+          final name =
+          (map["fast_key_item_name"] ?? map["name"] ?? "")
+              .toString()
+              .toLowerCase();
+
+          if (name.contains("discount")) {
+            // cache it for future
+            final pid = int.tryParse(
+                (map["fast_key_product_id"] ?? map["id"])?.toString() ?? "");
+            if (pid != null) {
+              _productMetaCache[pid] = map;
+              _productMetaInitialized = true;
+            }
+            return map;
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("⚠️ Discount lookup failed → $e");
+      }
+    }
+
+    return null;
+  }
+
+
   // Build the discount value display
 
   // Handle adding the discount
@@ -1893,7 +2006,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
     try {
       final offlineBox = Hive.box('offlineOrders');
-      final productBox = Hive.box('productCache');
       final orderHelper = OrderHelper();
 
       int? orderId = orderHelper.activeOrderId;
@@ -1933,60 +2045,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       // 🔎 UNIVERSAL SEARCH FOR DISCOUNT PRODUCT
       // Same logic as cashback
       // ------------------------------
-      Map<String, dynamic>? discountProduct;
 
-      for (final k in productBox.keys) {
-        final data = productBox.get(k);
-        if (data == null) continue;
-
-        // Case A: Direct map
-        if (data is Map) {
-          final n = (data["fast_key_item_name"] ?? data["name"] ?? "")
-              .toString()
-              .toLowerCase();
-
-          if (n.contains("discount")) {
-            discountProduct = Map<String, dynamic>.from(data);
-            break;
-          }
-        }
-
-        // Case B: products list
-        if (data is Map && data.containsKey("products")) {
-          for (final item in data["products"]) {
-            final n = (item["fast_key_item_name"] ?? item["name"] ?? "")
-                .toString()
-                .toLowerCase();
-
-            if (n.contains("discount")) {
-              discountProduct = Map<String, dynamic>.from(item);
-              break;
-            }
-          }
-          if (discountProduct != null) break;
-        }
-
-        // Case C: data: JSON array
-        if (data is Map && data.containsKey("data")) {
-          final list = json.decode(data["data"]);
-          for (final item in list) {
-            final n = (item["fast_key_item_name"] ?? item["name"] ?? "")
-                .toString()
-                .toLowerCase();
-
-            if (n.contains("discount")) {
-              discountProduct = Map<String, dynamic>.from(item);
-              break;
-            }
-          }
-          if (discountProduct != null) break;
-        }
-      }
+      // 🔎 DISCOUNT PRODUCT FROM ISAR (FAST)
+      final discountProduct = await _getDiscountProductFromIsar();
 
       if (discountProduct == null) {
-        print("🟥 Discount Product Not Found in Cache!");
         setState(() => _isDiscountLoading = false);
-
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
             content: Text("Discount product not found!"),
@@ -1995,6 +2059,71 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         );
         return;
       }
+
+      print("🟢 FOUND DISCOUNT PRODUCT → $discountProduct");
+
+      // Map<String, dynamic>? discountProduct;
+      //
+      // for (final k in productBox.keys) {
+      //   final data = productBox.get(k);
+      //   if (data == null) continue;
+      //
+      //   // Case A: Direct map
+      //   if (data is Map) {
+      //     final n = (data["fast_key_item_name"] ?? data["name"] ?? "")
+      //         .toString()
+      //         .toLowerCase();
+      //
+      //     if (n.contains("discount")) {
+      //       discountProduct = Map<String, dynamic>.from(data);
+      //       break;
+      //     }
+      //   }
+      //
+      //   // Case B: products list
+      //   if (data is Map && data.containsKey("products")) {
+      //     for (final item in data["products"]) {
+      //       final n = (item["fast_key_item_name"] ?? item["name"] ?? "")
+      //           .toString()
+      //           .toLowerCase();
+      //
+      //       if (n.contains("discount")) {
+      //         discountProduct = Map<String, dynamic>.from(item);
+      //         break;
+      //       }
+      //     }
+      //     if (discountProduct != null) break;
+      //   }
+      //
+      //   // Case C: data: JSON array
+      //   if (data is Map && data.containsKey("data")) {
+      //     final list = json.decode(data["data"]);
+      //     for (final item in list) {
+      //       final n = (item["fast_key_item_name"] ?? item["name"] ?? "")
+      //           .toString()
+      //           .toLowerCase();
+      //
+      //       if (n.contains("discount")) {
+      //         discountProduct = Map<String, dynamic>.from(item);
+      //         break;
+      //       }
+      //     }
+      //     if (discountProduct != null) break;
+      //   }
+      // }
+      //
+      // if (discountProduct == null) {
+      //   print("🟥 Discount Product Not Found in Cache!");
+      //   setState(() => _isDiscountLoading = false);
+      //
+      //   ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+      //     const SnackBar(
+      //       content: Text("Discount product not found!"),
+      //       backgroundColor: Colors.red,
+      //     ),
+      //   );
+      //   return;
+      // }
 
       print("🟢 FOUND DISCOUNT PRODUCT → $discountProduct");
 
@@ -2412,71 +2541,78 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         );
         return;
       }
+      final cashbackProduct = await _getCashbackProductFromIsar();
+
+      if (cashbackProduct == null) {
+        throw "Dynamic cashback product not found in Isar cache!";
+      }
+
+      print("🟢 FOUND CASHBACK PRODUCT → $cashbackProduct");
 
       // -------------------------------------------------------
       // 🟢 UNIVERSAL PRODUCT SEARCH FOR "Cashback"
       // -------------------------------------------------------
-      Map<String, dynamic>? cashbackProduct;
-
-      for (final k in productBox.keys) {
-        final data = productBox.get(k);
-
-        if (data == null) continue;
-
-        // Case A: Direct product map (YOUR MAIN storage)
-        if (data is Map) {
-          final name = (data["fast_key_item_name"] ??
-              data["name"] ??
-              "").toString().toLowerCase();
-
-          if (name.contains("cashback")) {
-            cashbackProduct = Map<String, dynamic>.from(data);
-            break;
-          }
-        }
-
-        // Case B: { "products": [ ... ] } format
-        if (data is Map && data.containsKey("products")) {
-          final list = data["products"];
-          if (list is List) {
-            for (final item in list) {
-              final name = (item["fast_key_item_name"] ??
-                  item["name"] ??
-                  "").toString().toLowerCase();
-
-              if (name.contains("cashback")) {
-                cashbackProduct = Map<String, dynamic>.from(item);
-                break;
-              }
-            }
-          }
-        }
-
-        // Case C: { "data": [...] } format
-        if (data is Map && data.containsKey("data")) {
-          final list = json.decode(data["data"]);
-          if (list is List) {
-            for (final item in list) {
-              final name = (item["fast_key_item_name"] ??
-                  item["name"] ??
-                  "").toString().toLowerCase();
-
-              if (name.contains("cashback")) {
-                cashbackProduct = Map<String, dynamic>.from(item);
-                break;
-              }
-            }
-          }
-        }
-
-        if (cashbackProduct != null) break;
-      }
-
-      if (cashbackProduct == null) {
-        throw "Dynamic cashback product not found in productCache!";
-      }
-
-      print("🟢 FOUND CASHBACK PRODUCT → $cashbackProduct");
+      // Map<String, dynamic>? cashbackProduct;
+      //
+      // for (final k in productBox.keys) {
+      //   final data = productBox.get(k);
+      //
+      //   if (data == null) continue;
+      //
+      //   // Case A: Direct product map (YOUR MAIN storage)
+      //   if (data is Map) {
+      //     final name = (data["fast_key_item_name"] ??
+      //         data["name"] ??
+      //         "").toString().toLowerCase();
+      //
+      //     if (name.contains("cashback")) {
+      //       cashbackProduct = Map<String, dynamic>.from(data);
+      //       break;
+      //     }
+      //   }
+      //
+      //   // Case B: { "products": [ ... ] } format
+      //   if (data is Map && data.containsKey("products")) {
+      //     final list = data["products"];
+      //     if (list is List) {
+      //       for (final item in list) {
+      //         final name = (item["fast_key_item_name"] ??
+      //             item["name"] ??
+      //             "").toString().toLowerCase();
+      //
+      //         if (name.contains("cashback")) {
+      //           cashbackProduct = Map<String, dynamic>.from(item);
+      //           break;
+      //         }
+      //       }
+      //     }
+      //   }
+      //
+      //   // Case C: { "data": [...] } format
+      //   if (data is Map && data.containsKey("data")) {
+      //     final list = json.decode(data["data"]);
+      //     if (list is List) {
+      //       for (final item in list) {
+      //         final name = (item["fast_key_item_name"] ??
+      //             item["name"] ??
+      //             "").toString().toLowerCase();
+      //
+      //         if (name.contains("cashback")) {
+      //           cashbackProduct = Map<String, dynamic>.from(item);
+      //           break;
+      //         }
+      //       }
+      //     }
+      //   }
+      //
+      //   if (cashbackProduct != null) break;
+      // }
+      //
+      // if (cashbackProduct == null) {
+      //   throw "Dynamic cashback product not found in productCache!";
+      // }
+      //
+      // print("🟢 FOUND CASHBACK PRODUCT → $cashbackProduct");
 
 
 
@@ -3003,6 +3139,56 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       return value; // primitives remain unchanged
     }
   }
+  Future<Map<String, dynamic>?> _getPayoutProductFromIsar() async {
+    // ⚡ FAST PATH — in-memory cache
+    if (_productMetaInitialized && _productMetaCache.isNotEmpty) {
+      for (final p in _productMetaCache.values) {
+        final name =
+        (p["fast_key_item_name"] ?? p["name"] ?? "")
+            .toString()
+            .toLowerCase();
+
+        if (name.contains("payout")) {
+          return p;
+        }
+      }
+    }
+
+    try {
+      final isar = await IsarService.instance;
+      final entries = await isar.isarCacheEntrys.where().findAll();
+
+      for (final entry in entries) {
+        if (!entry.key.startsWith("products_")) continue;
+
+        final List<dynamic> products = jsonDecode(entry.json);
+        for (final raw in products) {
+          if (raw is! Map) continue;
+
+          final map = Map<String, dynamic>.from(raw);
+          final name =
+          (map["fast_key_item_name"] ?? map["name"] ?? "")
+              .toString()
+              .toLowerCase();
+
+          if (name.contains("payout")) {
+            final pid = int.tryParse(
+                (map["fast_key_product_id"] ?? map["id"])?.toString() ?? "");
+
+            if (pid != null) {
+              _productMetaCache[pid] = map;
+              _productMetaInitialized = true;
+            }
+            return map;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("⚠️ Payout Isar lookup failed → $e");
+    }
+
+    return null;
+  }
 
   // Handle adding the payout
   //Build #1.0.78: Explanation!
@@ -3064,24 +3250,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         );
         return;
       }
-      Map<String, dynamic>? payoutProduct;
-      for (final k in productBox.keys) {
-        if (k.toString().startsWith("products_")) {
-          final data = productBox.get(k);
-          if (data == null) continue;
+      Map<String, dynamic>? payoutProduct =
+      await _getPayoutProductFromIsar();
 
-          final list = json.decode(data["data"]);
-          for (final item in list) {
-            final name = (item["fast_key_item_name"] ?? "").toString().toLowerCase();
-            if (name.contains("payout")) {
-              payoutProduct = Map<String, dynamic>.from(item);
-              print("✅ [PAYOUT] Found dynamic payout product in Hive → $payoutProduct");
-              break;
-            }
-          }
-        }
-        if (payoutProduct != null) break;
-      }
+// Fallback only if not found in catalog
       payoutProduct ??= {
         "fast_key_product_id": DateTime.now().millisecondsSinceEpoch,
         "fast_key_item_name": "Payout",
@@ -3090,6 +3262,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/payout-2-1.png",
         "type": "simple",
       };
+
+      print("🟢 FOUND PAYOUT PRODUCT → $payoutProduct");
       final payoutEntry = {
         "order_id": orderId,
         "payout_product_id": payoutProduct["fast_key_product_id"],
