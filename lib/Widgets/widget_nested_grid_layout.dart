@@ -857,6 +857,19 @@ class NestedGridWidget extends StatelessWidget {
     }
     return null;
   }
+  Future<bool> _fastKeyHasVariants(Map<String, dynamic> item) async {
+    final productId =
+    int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
+
+    if (productId == null) return false;
+
+    final cached = await _getCachedProductFromIsar(productId);
+
+    return cached?["has_variants"] == true ||
+        cached?["type"] == "variable" ||
+        (cached?["variations"] is List &&
+            (cached!["variations"] as List).isNotEmpty);
+  }
 
   bool _isProductEbtEligible(Map<String, dynamic> item) {
     if (item["is_ebt_eligible"] == true) return true;
@@ -1594,27 +1607,42 @@ class NestedGridWidget extends StatelessWidget {
                                           const SizedBox(
                                               width:
                                               16), // Space between price and variations
-                                          if (item['variations'] !=
-                                              null &&
-                                              item['variations']
-                                                  .isNotEmpty) // Build #1.0.157: show variationIcon with count
-                                            Row(
-                                              children: [
-                                                SvgPicture.asset(
-                                                    SvgUtils
-                                                        .variationIcon,
-                                                    height: 10,
-                                                    width: 10),
-                                                // SizedBox(width: 4),
-                                                // Text(
-                                                //   '${item["variations"].length}',
-                                                //   style: TextStyle(
-                                                //     fontSize: 12,
-                                                //     color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
-                                                //   ),
-                                                // ),
-                                              ],
-                                            ),
+
+                                          FutureBuilder<bool>(
+                                            future: _fastKeyHasVariants(item),
+                                            builder: (context, snapshot) {
+                                              if (snapshot.data == true) {
+                                                return SvgPicture.asset(
+                                                  SvgUtils.variationIcon,
+                                                  height: 10,
+                                                  width: 10,
+                                                );
+                                              }
+                                              return const SizedBox.shrink();
+                                            },
+                                          ),
+
+                                          // if (item['variations'] !=
+                                          //     null &&
+                                          //     item['variations']
+                                          //         .isNotEmpty) // Build #1.0.157: show variationIcon with count
+                                          //   Row(
+                                          //     children: [
+                                          //       SvgPicture.asset(
+                                          //           SvgUtils
+                                          //               .variationIcon,
+                                          //           height: 10,
+                                          //           width: 10),
+                                          //       // SizedBox(width: 4),
+                                          //       // Text(
+                                          //       //   '${item["variations"].length}',
+                                          //       //   style: TextStyle(
+                                          //       //     fontSize: 12,
+                                          //       //     color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
+                                          //       //   ),
+                                          //       // ),
+                                          //     ],
+                                          //   ),
 
                                           const SizedBox(width: 7),
                                           if (showEbtTag)
