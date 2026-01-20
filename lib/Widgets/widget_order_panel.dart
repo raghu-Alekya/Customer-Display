@@ -775,6 +775,14 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         useKeyDownEvent: Platform.isWindows,
         caseSensitive: true,
         onBarcodeScanned: (barcode) async {
+
+          if (ScannerGuard.isCouponPopupOpen) {
+            if (kDebugMode) {
+              print("🚫 Scanner blocked (OrderSummary / Popup / Payment)");
+            }
+            return;
+          }
+
           //  ⛔ HARD BLOCK — prevents duplicate scans
           if (_scanLocked) return;
 

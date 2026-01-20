@@ -209,6 +209,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   StreamSubscription? _paymentListSubscription;
   bool isLoading = false; // Add this to track loading state
   bool isSummaryLoading = false;
+  String? _processingPaymentMethod; // Track which payment method is currently processing
   // final TextEditingController _paymentController = TextEditingController();
   var _printerSettings = PrinterSettings();
   List<int> bytes = [];
@@ -360,6 +361,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   @override
   void initState() {
     super.initState();
+    ScannerGuard.isCouponPopupOpen = true;
 
     amountController.addListener(() {
       if (balanceAmount < 0 && amountController.text != '${TextConstants.currencySymbol}0.00') {
@@ -501,6 +503,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   @override
   void dispose() {
     //Build #1.0.99: Added Dispose
+    ScannerGuard.isCouponPopupOpen = false;
     _paymentListSubscription?.cancel();
     paymentBloc.dispose();
     _scrollController.dispose();
@@ -597,117 +600,140 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     required double amount,
     required String orderId,
   }) async {
-    final result = await _paymentChannel.invokeMethod("startSale", {
-      "amount": amount.toString(),
-      "orderId": orderId,
+    setState(() {
+      _processingPaymentMethod = TextConstants.card;
+      isLoading = true;
     });
 
-    final data = jsonDecode(result);
-    final fullSunmi = jsonDecode(data["fullResponse"]);
+    try {
+      final result = await _paymentChannel.invokeMethod("startSale", {
+        "amount": amount.toString(),
+        "orderId": orderId,
+      });
 
-    double paidAmount =
-        double.tryParse(fullSunmi["processedAmount"] ?? "0") ?? 0.0;
+      final data = jsonDecode(result);
+      final fullSunmi = jsonDecode(data["fullResponse"]);
 
-    // --------------------------------------------------
-    // 1️⃣ CARD TOTAL
-    // --------------------------------------------------
-    payByCard += paidAmount;
-    selectedPaymentMethod = TextConstants.card;
+      double paidAmount =
+          double.tryParse(fullSunmi["processedAmount"] ?? "0") ?? 0.0;
 
-    // --------------------------------------------------
-    // 2️⃣ BALANCE CALCULATION (same logic as API flow)
-    // --------------------------------------------------
-    final double previousBalance = balanceAmount;
+      // --------------------------------------------------
+      // 1️⃣ CARD TOTAL
+      // --------------------------------------------------
+      payByCard += paidAmount;
+      selectedPaymentMethod = TextConstants.card;
 
-    if (paidAmount >= previousBalance) {
-      changeAmount = paidAmount - previousBalance;
-      balanceAmount = 0.0;
-    } else {
-      balanceAmount = previousBalance - paidAmount;
-      changeAmount = 0.0;
-    }
+      // --------------------------------------------------
+      // 2️⃣ BALANCE CALCULATION (same logic as API flow)
+      // --------------------------------------------------
+      final double previousBalance = balanceAmount;
 
-    balanceAmount =
-        double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
+      if (paidAmount >= previousBalance) {
+        changeAmount = paidAmount - previousBalance;
+        balanceAmount = 0.0;
+      } else {
+        balanceAmount = previousBalance - paidAmount;
+        changeAmount = 0.0;
+      }
 
-    // --------------------------------------------------
-    // 3️⃣ TENDER UPDATE
-    // --------------------------------------------------
-    tenderAmount += paidAmount;
+      balanceAmount =
+          double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
 
-    _order["balanceAmount"] = balanceAmount;
-    _order["paidAmount"] = tenderAmount;
-    _order["tenderAmount"] = tenderAmount;
+      // --------------------------------------------------
+      // 3️⃣ TENDER UPDATE
+      // --------------------------------------------------
+      tenderAmount += paidAmount;
 
-    setState(() {});
+      _order["balanceAmount"] = balanceAmount;
+      _order["paidAmount"] = tenderAmount;
+      _order["tenderAmount"] = tenderAmount;
 
-    // --------------------------------------------------
-    // 4️⃣ AUTO CREATE PAYMENT ENTRY (SERVER)
-    // --------------------------------------------------
-    _createPaymentFromSunmi(paidAmount, fullSunmi);
+      setState(() {});
 
-    // --------------------------------------------------
-    // 5️⃣ OFFLINE DELETE (same as cash flow)
-    // --------------------------------------------------
-    if (widget.isOfflineSynced && widget.offlineOrderId != null) {
+      // --------------------------------------------------
+      // 4️⃣ AUTO CREATE PAYMENT ENTRY (SERVER)
+      // --------------------------------------------------
+      _createPaymentFromSunmi(paidAmount, fullSunmi);
+
+      // --------------------------------------------------
+      // 5️⃣ OFFLINE DELETE (same as cash flow)
+      // --------------------------------------------------
+      if (widget.isOfflineSynced && widget.offlineOrderId != null) {
+        try {
+          final offlineId = widget.offlineOrderId!;
+          final box = Hive.box('offlineOrders');
+
+          if (box.containsKey(offlineId.toString())) {
+            await box.delete(offlineId.toString());
+          }
+
+          await orderHelper.deleteOrder(offlineId);
+        } catch (e) {
+          print("⚠ Failed deleting offline order: $e");
+        }
+      }
+
+      // --------------------------------------------------
+      // 6️⃣ SAVE TO HIVE (balance + tender + ebt)
+      // --------------------------------------------------
       try {
-        final offlineId = widget.offlineOrderId!;
-        final box = Hive.box('offlineOrders');
+        final offlineBox = Hive.box('offlineOrders');
+        final key = (this.orderId ?? 0).toString();
 
-        if (box.containsKey(offlineId.toString())) {
-          await box.delete(offlineId.toString());
+        if (offlineBox.containsKey(key)) {
+          final updated =
+          Map<String, dynamic>.from(offlineBox.get(key));
+
+          updated["balanceAmount"] = balanceAmount;
+          updated["paidAmount"] = tenderAmount;
+          updated["tenderAmount"] = tenderAmount;
+          updated["ebtTotal"] = ebtTotal;
+
+          offlineBox.put(key, updated);
+        } else {
+          offlineBox.put(key, {
+            "balanceAmount": balanceAmount,
+            "paidAmount": tenderAmount,
+            "tenderAmount": tenderAmount,
+            "payByCard": payByCard,
+            "ebtTotal": ebtTotal,
+          });
         }
 
-        await orderHelper.deleteOrder(offlineId);
+        print(
+            "✔ Hive updated → balance=$balanceAmount paid=$tenderAmount card=$payByCard");
       } catch (e) {
-        print("⚠ Failed deleting offline order: $e");
+        print("⚠ Hive update error: $e");
       }
-    }
 
-    // --------------------------------------------------
-    // 6️⃣ SAVE TO HIVE (balance + tender + ebt)
-    // --------------------------------------------------
-    try {
-      final offlineBox = Hive.box('offlineOrders');
-      final key = (this.orderId ?? 0).toString();
-
-      if (offlineBox.containsKey(key)) {
-        final updated =
-        Map<String, dynamic>.from(offlineBox.get(key));
-
-        updated["balanceAmount"] = balanceAmount;
-        updated["paidAmount"] = tenderAmount;
-        updated["tenderAmount"] = tenderAmount;
-        updated["ebtTotal"] = ebtTotal;
-
-        offlineBox.put(key, updated);
+      // --------------------------------------------------
+      // 7️⃣ POPUPS
+      // --------------------------------------------------
+      if (balanceAmount > 0) {
+        _showPartialPaymentDialog(context, paidAmount);
       } else {
-        offlineBox.put(key, {
-          "balanceAmount": balanceAmount,
-          "paidAmount": tenderAmount,
-          "tenderAmount": tenderAmount,
-          "payByCard": payByCard,
-          "ebtTotal": ebtTotal,
-        });
+        _showPaymentDialog(
+          context,
+          paidAmount,
+          changeAmount: 0,
+          showChange: false,
+        );
       }
 
-      print(
-          "✔ Hive updated → balance=$balanceAmount paid=$tenderAmount card=$payByCard");
+      // Reset loading state after successful payment
+      setState(() {
+        _processingPaymentMethod = null;
+        isLoading = false;
+      });
     } catch (e) {
-      print("⚠ Hive update error: $e");
-    }
-
-    // --------------------------------------------------
-    // 7️⃣ POPUPS
-    // --------------------------------------------------
-    if (balanceAmount > 0) {
-      _showPartialPaymentDialog(context, paidAmount);
-    } else {
-      _showPaymentDialog(
-        context,
-        paidAmount,
-        changeAmount: 0,
-        showChange: false,
+      // Reset loading state on error
+      setState(() {
+        _processingPaymentMethod = null;
+        isLoading = false;
+      });
+      print("⚠ Card payment error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Card payment failed: ${e.toString()}")),
       );
     }
   }
@@ -1183,7 +1209,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     _amountErrorText = null;
     double remainingBalance = balanceAmount;
 
-    setState(() => isLoading = true);
+    setState(() {
+      _processingPaymentMethod = selectedPaymentMethod;
+      isLoading = true;
+    });
 
     final String datetime =
     DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
@@ -1216,7 +1245,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         }
 
         if (paymentResponse.status == Status.ERROR) {
-          setState(() => isLoading = false);
+          setState(() {
+            _processingPaymentMethod = null;
+            isLoading = false;
+          });
           subscription?.cancel();
           return;
         }
@@ -1226,9 +1258,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             paymentResponse.data!.message == "Payment Created Successfully") {
           setState(() {
             isPaymentStarted = true;
+            _processingPaymentMethod = null;
+            isLoading = false;
           });
-
-          setState(() => isLoading = false);
 
           final paymentData = paymentResponse.data!;
           paidAmount = amount;
@@ -1519,6 +1551,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 ),
                                 borderColor: const Color(0xFF9CCD7B),
                                 iconColor: Color(0xFF9CCD7B),
+                                isLoading: _processingPaymentMethod == TextConstants.cash && isLoading,
+                                isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.cash,
                                 onTap: () {
                                   _selectPaymentMethod(TextConstants.cash);
                                   _handlePay();
@@ -1538,6 +1572,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 ),
                                 borderColor: const Color(0xFFA484C8),
                                 iconColor: Color(0xFFA484C8),
+                                isLoading: _processingPaymentMethod == TextConstants.card && isLoading,
+                                isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.card,
                                 onTap: () {
                                   _selectPaymentMethod(
                                     TextConstants.card,
@@ -1561,6 +1597,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 ),
                                 borderColor: const Color(0xFFCCB985),
                                 iconColor: Color(0xFFCCB985),
+                                isLoading: _processingPaymentMethod == TextConstants.wallet && isLoading,
+                                isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.wallet,
                                 onTap: () {
                                   _selectPaymentMethod(
                                     TextConstants.wallet,
@@ -1584,6 +1622,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 ),
                                 borderColor: const Color(0xFF84A2CB),
                                 iconColor: Colors.white,
+                                isLoading: _processingPaymentMethod == TextConstants.ebtText && isLoading,
+                                isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.ebtText,
                                 onTap: () {
                                   // 1️⃣ Check if there is any EBT left
                                   if (ebtTotal <= 0) {
@@ -3802,10 +3842,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           : Colors.black,
                                     ),
                                   ),
-                        
+
                                   SizedBox(height: ResponsiveLayout.getHeight(15)),
-                        
-                        
+
+
                                   // Balance Amount
                                   Container(
                                     padding: const EdgeInsets.only(
@@ -3849,10 +3889,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           : Colors.black,
                                     ),
                                   ),
-                        
+
                                   SizedBox(height: ResponsiveLayout.getHeight(15)),
-                        
-                        
+
+
                                   // EBT Amount
                                   Container(
                                     padding: const EdgeInsets.only(
@@ -3896,11 +3936,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                           : Colors.black,
                                     ),
                                   ),
-                        
+
                                 ],
                               ),
                             )
-                        
+
                           ],
                         ),
                       ),
@@ -4700,78 +4740,93 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         required Color borderColor,
         Color? iconColor, // optional
         VoidCallback? onTap,
+        bool isLoading = false,
+        bool isDisabled = false,
       }) {
     double _scale = 1.0;
+    final bool isEnabled = !isDisabled && !isLoading && onTap != null;
 
     return StatefulBuilder(
       builder: (context, setState) {
         return GestureDetector(
-          onTapDown: (_) {
+          onTapDown: isEnabled ? (_) {
             setState(() {
               _scale = 0.95; // press effect
             });
-          },
-          onTapUp: (_) {
+          } : null,
+          onTapUp: isEnabled ? (_) {
             setState(() {
               _scale = 1.0;
             });
             if (onTap != null) onTap();
-          },
-          onTapCancel: () {
+          } : null,
+          onTapCancel: isEnabled ? () {
             setState(() {
               _scale = 1.0;
             });
-          },
+          } : null,
           child: AnimatedScale(
             scale: _scale,
             duration: const Duration(milliseconds: 100),
             curve: Curves.easeInOut,
-            child: Container(
-              width: ResponsiveLayout.getWidth(178),
-              height: ResponsiveLayout.getHeight(54),
-              margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-              decoration: BoxDecoration(
-                gradient: gradient,
-                borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
-                border: Border.all(color: borderColor),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x3F000000),
-                    blurRadius: 4,
-                    offset: Offset(2, 4),
-                  ),
-                ],
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
+            child: Opacity(
+              opacity: isEnabled ? 1.0 : 0.5,
+              child: Container(
+                width: ResponsiveLayout.getWidth(178),
+                height: ResponsiveLayout.getHeight(54),
+                margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                decoration: BoxDecoration(
+                  gradient: gradient,
                   borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
-                  onTap: onTap,
-                  splashColor: Colors.white24,
-                  highlightColor: Colors.transparent,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Icon inside circle
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white,
+                  border: Border.all(color: borderColor),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x3F000000),
+                      blurRadius: 4,
+                      offset: Offset(2, 4),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                    onTap: isEnabled ? onTap : null,
+                    splashColor: Colors.white24,
+                    highlightColor: Colors.transparent,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Icon inside circle or loading indicator
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                          ),
+                          child: isLoading
+                              ? SizedBox(
+                            width: ResponsiveLayout.getIconSize(24),
+                            height: ResponsiveLayout.getIconSize(24),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(borderColor),
+                            ),
+                          )
+                              : iconWidget,
                         ),
-                        child: iconWidget,
-                      ),
-                      SizedBox(width: ResponsiveLayout.getWidth(12)),
-                      Text(
-                        label,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontFamily: 'Montserrat',
-                          fontWeight: FontWeight.bold,
-                          fontSize: ResponsiveLayout.getFontSize(18),
+                        SizedBox(width: ResponsiveLayout.getWidth(12)),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontFamily: 'Montserrat',
+                            fontWeight: FontWeight.bold,
+                            fontSize: ResponsiveLayout.getFontSize(18),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

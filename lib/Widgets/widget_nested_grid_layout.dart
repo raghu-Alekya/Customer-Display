@@ -1113,13 +1113,18 @@ class NestedGridWidget extends StatelessWidget {
                             print(
                                 "🥗 EBT CHECK → Product: $productName | Eligible: $isEbtEligible | Cached=${cachedProduct != null}");
                           }
-
-                          final dynamic priceSource = cachedProduct?["fast_key_item_price"] ??
-                              cachedProduct?["price"] ??
-                              item["fast_key_item_price"] ??
-                              item["price"];
+                          final dynamic priceSource = item["fast_key_item_price"] ??
+                              item["price"] ??
+                              cachedProduct?["fast_key_item_price"] ??
+                              cachedProduct?["price"];
                           var productPrice =
                               double.tryParse(priceSource?.toString() ?? "0") ?? 0.0;
+                          
+                          if (kDebugMode) {
+                            final itemPrice = item["fast_key_item_price"] ?? item["price"];
+                            final cachedPrice = cachedProduct?["fast_key_item_price"] ?? cachedProduct?["price"];
+                            print("💰 PRICE SOURCE → Item: $itemPrice | Cached: $cachedPrice | Final: $productPrice");
+                          }
 
                           final productSku =
                               cachedProduct?["sku"] ?? item["fast_key_item_sku"] ?? "SKU-$productId";
