@@ -96,7 +96,9 @@ import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:focus_detector/focus_detector.dart';
 import 'package:hive/hive.dart';
+import 'package:isar/isar.dart';
 import 'package:pinaka_pos/Constants/misc_features.dart';
+import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import 'package:pinaka_pos/Utilities/printer_settings.dart';
 // import 'package:pinaka_pos/Widgets/widget_variableprice.dart';
 import 'package:pinaka_pos/Widgets/widget_variants_dialog.dart';
@@ -111,6 +113,7 @@ import '../Blocs/Orders/order_bloc.dart';
 import '../Blocs/Search/product_search_bloc.dart';
 import '../Constants/text.dart';
 import '../Database/db_helper.dart';
+import '../Database/isar_service.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
@@ -575,37 +578,42 @@ class _TopBarState extends State<TopBar> {
                                             bool isEbtEligible = false;
 
                                             try {
-                                              final productBox = Hive.box('productCache');
+                                              final isar = await IsarService.instance;
 
-                                              for (final key in productBox.keys) {
-                                                if (!key.toString().startsWith("products_")) continue;
+                                              // 🔍 Query all cached product lists (products_*)
+                                              final cachedEntries = await isar.isarCacheEntrys
+                                                  .where()
+                                                  .filter()
+                                                  .keyStartsWith("products_")
+                                                  .findAll();
 
-                                                final cached = productBox.get(key);
-                                                if (cached == null) continue;
+                                              for (final entry in cachedEntries) {
+                                                final List<dynamic> products = jsonDecode(entry.json);
 
-                                                if (cached is Map && cached["data"] != null) {
-                                                  final List<dynamic> products = jsonDecode(cached["data"]);
+                                                final match = products.firstWhere(
+                                                      (p) =>
+                                                  p["fast_key_product_id"]?.toString() ==
+                                                      product.id.toString(),
+                                                  orElse: () => null,
+                                                );
 
-                                                  final match = products.firstWhere(
-                                                        (p) => p["fast_key_product_id"].toString() ==
-                                                        product.id.toString(),
-                                                    orElse: () => null,
-                                                  );
+                                                if (match != null) {
+                                                  isEbtEligible = match["is_ebt_eligible"] == true;
 
-                                                  if (match != null) {
-                                                    isEbtEligible = match["is_ebt_eligible"] == true;
-
-                                                    if (kDebugMode) {
-                                                      print(
-                                                          "🥗 EBT FOUND (SEARCH FLOW) → ${product.name} | Eligible: $isEbtEligible");
-                                                    }
-                                                    break;
+                                                  if (kDebugMode) {
+                                                    print(
+                                                      "🥗 EBT FOUND (ISAR) → ${match["fast_key_item_name"]} | Eligible: $isEbtEligible",
+                                                    );
                                                   }
+                                                  break;
                                                 }
                                               }
                                             } catch (e) {
-                                              print("⚠️ Error resolving EBT eligibility (SEARCH FLOW): $e");
+                                              if (kDebugMode) {
+                                                print("⚠️ Error resolving EBT eligibility (ISAR): $e");
+                                              }
                                             }
+
 
 // --- Step 2: Variable product / manual price check ---
                                             final bool hasVariants = product.variations != null && product.variations!.isNotEmpty;

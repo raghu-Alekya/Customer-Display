@@ -2926,7 +2926,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-
                       /// ROW 1 — NAME + QTY
                       SizedBox(
                         height: 16,
@@ -2951,18 +2950,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            Text(
-                              "${TextConstants.currencySymbol}${itemPrice
-                                  .toStringAsFixed(2)} x $itemCount",
-                              style: TextStyle(
-                                fontSize: 14,
-                                height: 1.0,
-                                fontWeight: FontWeight.bold,
-                                color: themeHelper.themeMode == ThemeMode.dark
-                                    ? ThemeNotifier.textDark
-                                    : Colors.black87,
+
+                            if (!isPayoutOrCoupon)
+                              Text(
+                                "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  height: 1.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: themeHelper.themeMode == ThemeMode.dark
+                                      ? ThemeNotifier.textDark
+                                      : Colors.black87,
+                                ),
                               ),
-                            ),
+
                           ],
                         ),
                       ),
@@ -5166,6 +5167,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
+
 
   void _showPaymentDialog(
       BuildContext context,
