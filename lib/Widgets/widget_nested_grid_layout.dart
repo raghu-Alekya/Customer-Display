@@ -1615,24 +1615,42 @@ class NestedGridWidget extends StatelessWidget {
                                                 // ),
                                               ],
                                             ),
+
+                                          const SizedBox(width: 7),
+                                          if (showEbtTag)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical:1 ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green.shade600,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: const Text(
+                                                "EBT",
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 6,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
                                         ],
                                       ),
-                                      if (showEbtTag)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical:1 ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.green.shade600,
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: const Text(
-                                            "EBT",
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 6,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
+                                      // if (showEbtTag)
+                                      //   Container(
+                                      //     padding: const EdgeInsets.symmetric(horizontal: 4, vertical:1 ),
+                                      //     decoration: BoxDecoration(
+                                      //       color: Colors.green.shade600,
+                                      //       borderRadius: BorderRadius.circular(4),
+                                      //     ),
+                                      //     child: const Text(
+                                      //       "EBT",
+                                      //       style: TextStyle(
+                                      //         color: Colors.white,
+                                      //         fontSize: 6,
+                                      //         fontWeight: FontWeight.bold,
+                                      //       ),
+                                      //     ),
+                                      //   ),
                                     ],
                                   ),
                                 ),

@@ -21,6 +21,8 @@ import '../../../Preferences/pinaka_preferences.dart';
 import '../../../Repositories/Auth/store_validation_repository.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../Widgets/scanner_guard.dart';
+
 class SettingsScreen extends StatefulWidget { // Build #1.0.6 - Added Settings Screen
   const SettingsScreen({super.key});
 
@@ -59,6 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    ScannerGuard.isCouponPopupOpen = true;
     _themeHelper = Provider.of<ThemeNotifier>(context, listen: false); // Build #1.0.207: Initialize here
     _loadUserDataFromDB();
     _loadPrinterData(); //Build #1.0.122: Updated code: data loading from db
@@ -305,6 +308,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    ScannerGuard.isCouponPopupOpen = false;
     _themeHelper.removeListener(_onThemeChanged);  // # Build 1.0.182(option automatically change when tapped in top bar)
     nameController.dispose();
     contactNoController.dispose();

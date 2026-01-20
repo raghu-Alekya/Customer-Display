@@ -5,6 +5,7 @@ import 'package:pinaka_pos/Screens/Auth/login_screen.dart';
 import 'package:pinaka_pos/Screens/Home/apps_dashboard_screen.dart';
 import 'package:pinaka_pos/Screens/Home/categories_screen.dart';
 import 'package:pinaka_pos/Screens/Home/fast_key_screen.dart';
+import 'package:pinaka_pos/Widgets/scanner_guard.dart';
 import 'package:provider/provider.dart';
 import 'package:quickalert/models/quickalert_animtype.dart';
 import 'package:quickalert/models/quickalert_type.dart';
@@ -671,7 +672,7 @@ class NavigationBar extends StatelessWidget {
   }
 
   void _showLogoutDialog(BuildContext context,LogoutBloc logoutBloc, ThemeNotifier themeHelper){
-
+    ScannerGuard.isCouponPopupOpen = true;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -866,6 +867,7 @@ class NavigationBar extends StatelessWidget {
                                                   ),
                                                 ),
                                                 onPressed: () {
+                                                  ScannerGuard.isCouponPopupOpen = false;
                                                   Navigator.of(dialogContext).pop(); // ✅ closes only this popup
                                                 },
                                                 child: const Text(
@@ -891,6 +893,7 @@ class NavigationBar extends StatelessWidget {
                                 print("Shift closed");
                               }
                               Navigator.of(context).pop();
+                              ScannerGuard.isCouponPopupOpen = false;
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -921,6 +924,7 @@ class NavigationBar extends StatelessWidget {
                                 ),
                               ),
                               onPressed: () {
+                                ScannerGuard.isCouponPopupOpen = false;
                                 Navigator.of(context).pop();
                               },
                               child: Text(
@@ -983,7 +987,7 @@ class NavigationBar extends StatelessWidget {
                                         );
 
                                         Navigator.of(context).pop(); // Close loader
-                                        Navigator.of(context).pop(); // Close logout dialog
+                                        ScannerGuard.isCouponPopupOpen = false; // 🔓 enable scanner
                                         Navigator.pushReplacement(
                                           context,
                                           MaterialPageRoute(builder: (context) => LoginScreen()),
