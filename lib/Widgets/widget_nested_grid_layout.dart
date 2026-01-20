@@ -1607,21 +1607,47 @@ class NestedGridWidget extends StatelessWidget {
                                           const SizedBox(
                                               width:
                                               16), // Space between price and variations
-
+                                          //
+                                          // FutureBuilder<bool>(
+                                          //   future: _fastKeyHasVariants(item),
+                                          //   builder: (context, snapshot) {
+                                          //     if (snapshot.data == true) {
+                                          //       return SvgPicture.asset(
+                                          //         SvgUtils.variationIcon,
+                                          //         height: 10,
+                                          //         width: 10,
+                                          //       );
+                                          //     }
+                                          //     return const SizedBox.shrink();
+                                          //   },
+                                          // ),
                                           FutureBuilder<bool>(
                                             future: _fastKeyHasVariants(item),
                                             builder: (context, snapshot) {
-                                              if (snapshot.data == true) {
-                                                return SvgPicture.asset(
-                                                  SvgUtils.variationIcon,
-                                                  height: 10,
-                                                  width: 10,
+                                              final bool hasFastKeyVariants = snapshot.data == true;
+
+                                              final bool hasItemVariants =
+                                                  item['variations'] != null &&
+                                                      item['variations'].isNotEmpty;
+
+                                              if (hasFastKeyVariants || hasItemVariants) {
+                                                return Row(
+                                                  children: [
+                                                    SvgPicture.asset(
+                                                      SvgUtils.variationIcon,
+                                                      height: 10,
+                                                      width: 10,
+                                                    ),
+                                                  ],
                                                 );
                                               }
+
                                               return const SizedBox.shrink();
                                             },
                                           ),
 
+
+                                          //
                                           // if (item['variations'] !=
                                           //     null &&
                                           //     item['variations']
