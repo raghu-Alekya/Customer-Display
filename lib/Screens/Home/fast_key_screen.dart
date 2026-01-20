@@ -200,13 +200,16 @@ import 'package:flutter_svg/svg.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:isar/isar.dart';
 import 'package:pinaka_pos/Database/assets_db_helper.dart';
+import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import '../../Blocs/Orders/order_bloc.dart';
 import '../../Blocs/Search/product_search_bloc.dart';
 import '../../Constants/misc_features.dart';
+import '../../Database/isar_service.dart';
 import '../../Database/order_panel_db_helper.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
@@ -272,6 +275,8 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
   int? _selectedCategoryIndex;
   int? _editingCategoryIndex;
   int? userId;
+  static final Map<int, Map<String, dynamic>> _productMetaCache = {};
+  static bool _productMetaInitialized = false;
 
   late FastKeyProductBloc _fastKeyProductBloc;
   List<Map<String, dynamic>> fastKeyProductItems = [];
@@ -392,6 +397,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
         print("### FastKeyScreen: Saved active tab ID in _onTabChanged: $_fastKeyTabId");
       }
       await _loadFastKeyTabItems();
+      await _resolveFastKeyVariants();
     }
   }
 
@@ -691,6 +697,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
 
     if (_fastKeyTabId != null) {
       await _loadFastKeyTabItems();
+      await _resolveFastKeyVariants();
     }
   }
 
@@ -749,7 +756,84 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
       }
     });
   }
+  Future<void> _resolveFastKeyVariants() async {
+    for (final item in fastKeyProductItems) {
+      if (item.containsKey('has_variants')) continue;
 
+      item['has_variants'] = await _fastKeyHasVariants(item);
+    }
+
+    if (mounted) setState(() {});
+  }
+  Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
+    if (_productMetaCache.isNotEmpty) {
+      return _productMetaCache[productId];
+    }
+
+    try {
+      final isar = await IsarService.instance;
+      final entries = await isar.isarCacheEntrys.where().findAll();
+
+      for (final entry in entries) {
+        if (!entry.key.startsWith("products_")) continue;
+
+        final List<dynamic> products = jsonDecode(entry.json);
+
+        for (final raw in products) {
+          if (raw is! Map) continue;
+          final map = Map<String, dynamic>.from(raw);
+          final idStr =
+          (map["fast_key_product_id"] ?? map["id"])?.toString();
+          final pid = int.tryParse(idStr ?? "");
+          if (pid != null) {
+            _productMetaCache[pid] = map;
+          }
+        }
+      }
+
+      return _productMetaCache[productId];
+    } catch (e) {
+      if (kDebugMode) {
+        print("⚠️ Isar cache lookup failed → $e");
+      }
+    }
+    return null;
+  }
+  Future<bool> _fastKeyHasVariants(Map<String, dynamic> item) async {
+    final int? productId =
+    int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
+
+    if (productId == null) return false;
+
+    // 1️⃣ Fast item-level check
+    if (item["type"] == "variable") return true;
+    if (item["variations"] is List && item["variations"].isNotEmpty) return true;
+
+    // 2️⃣ Check product meta cache
+    final cached = await _getCachedProductFromIsar(productId);
+
+    if (cached?["type"] == "variable") return true;
+    if (cached?["has_variants"] == true) return true;
+
+    // 3️⃣ 🔥 CHECK VARIATION CACHE (THIS WAS MISSING)
+    try {
+      final box = Hive.box('productCache');
+      final variationKey = "product_${productId}_variations";
+      final variationData = box.get(variationKey);
+
+      if (variationData is Map &&
+          variationData["variations"] is List &&
+          (variationData["variations"] as List).isNotEmpty) {
+        return true;
+      }
+
+      if (variationData is List && variationData.isNotEmpty) {
+        return true;
+      }
+    } catch (_) {}
+
+    return false;
+  }
   // Build #1.0.87 : Reload fastKey tab products after adding new item into fastKey
   Future<void> _refreshFastKeyTabItems() async {
     if (_fastKeyTabId == null) {

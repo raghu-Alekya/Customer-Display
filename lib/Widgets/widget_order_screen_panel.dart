@@ -981,7 +981,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             ? Colors.white
                             : Colors.black,),
                         Text(displayDate,  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.secondaryHeaderColor)),
-                        const SizedBox(width: 120),
+                        const SizedBox(width: 110),
                         SvgPicture.asset('assets/svg/clock.svg',width: 22,height: 22,color: Theme.of(context).brightness == Brightness.dark
                             ? Colors.white
                             : Colors.black,),

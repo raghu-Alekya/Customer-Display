@@ -822,8 +822,7 @@ class NestedGridWidget extends StatelessWidget {
     this.orderHelper,
   });
   Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
-    // 🔁 Fast path: in-memory cache already built
-    if (_productMetaInitialized && _productMetaCache.isNotEmpty) {
+    if (_productMetaCache.isNotEmpty) {
       return _productMetaCache[productId];
     }
 
@@ -848,7 +847,6 @@ class NestedGridWidget extends StatelessWidget {
         }
       }
 
-      _productMetaInitialized = true;
       return _productMetaCache[productId];
     } catch (e) {
       if (kDebugMode) {
@@ -858,17 +856,39 @@ class NestedGridWidget extends StatelessWidget {
     return null;
   }
   Future<bool> _fastKeyHasVariants(Map<String, dynamic> item) async {
-    final productId =
+    final int? productId =
     int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
 
     if (productId == null) return false;
 
+    // 1️⃣ Fast item-level check
+    if (item["type"] == "variable") return true;
+    if (item["variations"] is List && item["variations"].isNotEmpty) return true;
+
+    // 2️⃣ Check product meta cache
     final cached = await _getCachedProductFromIsar(productId);
 
-    return cached?["has_variants"] == true ||
-        cached?["type"] == "variable" ||
-        (cached?["variations"] is List &&
-            (cached!["variations"] as List).isNotEmpty);
+    if (cached?["type"] == "variable") return true;
+    if (cached?["has_variants"] == true) return true;
+
+    // 3️⃣ 🔥 CHECK VARIATION CACHE (THIS WAS MISSING)
+    try {
+      final box = Hive.box('productCache');
+      final variationKey = "product_${productId}_variations";
+      final variationData = box.get(variationKey);
+
+      if (variationData is Map &&
+          variationData["variations"] is List &&
+          (variationData["variations"] as List).isNotEmpty) {
+        return true;
+      }
+
+      if (variationData is List && variationData.isNotEmpty) {
+        return true;
+      }
+    } catch (_) {}
+
+    return false;
   }
 
   bool _isProductEbtEligible(Map<String, dynamic> item) {
@@ -1622,30 +1642,32 @@ class NestedGridWidget extends StatelessWidget {
                                           //   },
                                           // ),
                                           FutureBuilder<bool>(
+                                            key: ValueKey(item['fast_key_product_id']),
                                             future: _fastKeyHasVariants(item),
                                             builder: (context, snapshot) {
-                                              final bool hasFastKeyVariants = snapshot.data == true;
+                                              if (snapshot.connectionState == ConnectionState.waiting) {
+                                                return const SizedBox.shrink();
+                                              }
+
+                                              final bool hasFastKeyVariants = snapshot.data ?? false;
 
                                               final bool hasItemVariants =
-                                                  item['variations'] != null &&
-                                                      item['variations'].isNotEmpty;
+                                                  item['variations'] is List && item['variations'].isNotEmpty;
 
                                               if (hasFastKeyVariants || hasItemVariants) {
-                                                return Row(
-                                                  children: [
-                                                    SvgPicture.asset(
-                                                      SvgUtils.variationIcon,
-                                                      height: 10,
-                                                      width: 10,
-                                                    ),
-                                                  ],
+                                                return Padding(
+                                                  padding: const EdgeInsets.only(left: 4),
+                                                  child: SvgPicture.asset(
+                                                    SvgUtils.variationIcon,
+                                                    height: 10,
+                                                    width: 10,
+                                                  ),
                                                 );
                                               }
 
                                               return const SizedBox.shrink();
                                             },
                                           ),
-
 
                                           //
                                           // if (item['variations'] !=
