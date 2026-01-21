@@ -94,7 +94,9 @@ class PaymentNumPad extends StatelessWidget {
                             vertical: 3,
                           ),
                           child: _QuickAmountKey(
-                            text: '\$${amount.toStringAsFixed(2)}',
+                            text: amount < 0
+                                ? '-\$${amount.abs().toStringAsFixed(2)}'
+                                : '\$${amount.toStringAsFixed(2)}',
                             onTap: () => onQuickAmountSelected(amount),
                           ),
 

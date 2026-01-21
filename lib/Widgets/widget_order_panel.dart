@@ -4250,14 +4250,23 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             Row(
                               children: [
                                 Text(
-                                    _showFullSummary
-                                        ? 'Amount: ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}'
-                                        : 'Amount: ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}',
-                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                  'Amount: ${netPayable < 0
+                                      ? '-${TextConstants.currencySymbol}${netPayable.abs().toStringAsFixed(2)}'
+                                      : '${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}'}',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 const SizedBox(width: 8),
-                                Icon(_showFullSummary ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up),
+                                Icon(
+                                  _showFullSummary
+                                      ? Icons.keyboard_arrow_down
+                                      : Icons.keyboard_arrow_up,
+                                ),
                               ],
                             ),
+
                           ],
                         ),
                       ),

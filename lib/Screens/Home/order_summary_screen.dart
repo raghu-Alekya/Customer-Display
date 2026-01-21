@@ -19,6 +19,7 @@ import 'package:thermal_printer/esc_pos_utils_platform/esc_pos_utils_platform.da
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:flutter/cupertino.dart';
 
 import '../../Blocs/Orders/order_bloc.dart';
 import '../../Blocs/Payment/payment_bloc.dart';
@@ -192,6 +193,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isPaymentDone = false;
   Map<String, dynamic> _order = {};
   bool couponPopupActive = false;
+  bool _successPopupShown = false;
+
+  final bool enableCardPayment = false;
+  final bool enableWalletPayment = false;
+
+
 
 
 
@@ -338,6 +345,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     // ⭐ CARD → Sunmi ONLY
     if (selectedPaymentMethod == TextConstants.card) {
+      _showPaymentProgressDialog(context);
       _openSunmiSaleScreen(
         amount: amount,
         orderId: (widget.orderId ?? widget.offlineOrderId).toString(),
@@ -1124,19 +1132,27 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
 
     // ===================================================
+// 🔁 RESET SUCCESS POPUP AFTER VOID / PARTIAL PAYMENT
+// ===================================================
+    if (finalBalance > 0) {
+      _successPopupShown = false;
+    }
+
+
+    // ===================================================
     // 🔔 PAYMENT COMPLETE (ZERO OR NEGATIVE)
     // ===================================================
-    if (payments.isNotEmpty && finalBalance <= 0) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showPaymentDialog(
-          context,
-          tenderAmount,
-          changeAmount: changeAmount, // 👈 negative allowed
-          showChange: true,
-          couponResponse: couponResponse,
-        );
-      });
-    }
+    // if (payments.isNotEmpty && finalBalance <= 0) {
+    //   WidgetsBinding.instance.addPostFrameCallback((_) {
+    //     _showPaymentDialog(
+    //       context,
+    //       tenderAmount,
+    //       changeAmount: changeAmount, // 👈 negative allowed
+    //       showChange: true,
+    //       couponResponse: couponResponse,
+    //     );
+    //   });
+    // }
   }
 
 
@@ -1213,6 +1229,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       _processingPaymentMethod = selectedPaymentMethod;
       isLoading = true;
     });
+    _showPaymentProgressDialog(context);
 
     final String datetime =
     DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
@@ -1245,6 +1262,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         }
 
         if (paymentResponse.status == Status.ERROR) {
+          _hidePaymentProgressDialog();
+
           setState(() {
             _processingPaymentMethod = null;
             isLoading = false;
@@ -1421,23 +1440,63 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           // ------------------------------------------
           // SHOW POPUPS (unchanged)
           // ------------------------------------------
-          if (isPartialPayment && balanceAmount > 0) {
+          // if (isPartialPayment && balanceAmount > 0) {
+          //   _showPartialPaymentDialog(context, amount);
+          // } else {
+          //   _fetchPaymentsByOrderId();
+          //   // _showPaymentDialog(
+          //   //   context,
+          //   //   amount,
+          //   //   changeAmount: changeAmount,
+          //   //   showChange: changeAmount > 0,
+          //   // );
+          // }
+
+          // ------------------------------------------------------
+// ⭐ FINAL POPUP CONTROL (CREATE PAYMENT METHOD ONLY)
+// ------------------------------------------------------
+
+          _fetchPaymentsByOrderId(); // keep for UI refresh
+
+          final bool isPaymentComplete = balanceAmount <= 0;
+
+          if (isPaymentComplete && !_successPopupShown) {
+            _successPopupShown = true;
+            _hidePaymentProgressDialog();
+
+            final box = Hive.box('offlineOrders');
+            final key = (orderId ?? 0).toString();
+
+            final couponResponse =
+                (box.get(key)?["coupon_response"] as Map?)
+                    ?.cast<String, dynamic>() ??
+                    {};
+
+            _showPaymentDialog(
+              context,
+              tenderAmount,
+              changeAmount: changeAmount,
+              showChange: changeAmount != null && changeAmount! > 0,
+              couponResponse: couponResponse,
+            );
+          } else if (balanceAmount > 0) {
+            _hidePaymentProgressDialog();
             _showPartialPaymentDialog(context, amount);
-          } else {
-            _fetchPaymentsByOrderId();
-            // _showPaymentDialog(
-            //   context,
-            //   amount,
-            //   changeAmount: changeAmount,
-            //   showChange: changeAmount > 0,
-            // );
           }
+
 
           subscription?.cancel();
         }
       },
     );
   }
+
+  void _hidePaymentProgressDialog() {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -1572,8 +1631,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 ),
                                 borderColor: const Color(0xFFA484C8),
                                 iconColor: Color(0xFFA484C8),
-                                isLoading: _processingPaymentMethod == TextConstants.card && isLoading,
-                                isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.card,
+                                // isLoading: _processingPaymentMethod == TextConstants.card && isLoading,
+                                // isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.card,
+                                // ❌ FORCE DISABLE
+                                isLoading: false,
+                                isDisabled: true,
                                 onTap: () {
                                   _selectPaymentMethod(
                                     TextConstants.card,
@@ -1597,9 +1659,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 ),
                                 borderColor: const Color(0xFFCCB985),
                                 iconColor: Color(0xFFCCB985),
-                                isLoading: _processingPaymentMethod == TextConstants.wallet && isLoading,
-                                isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.wallet,
-                                onTap: () {
+                                // isLoading: _processingPaymentMethod == TextConstants.wallet && isLoading,
+                                // isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.wallet,
+                                // ❌ FORCE DISABLE
+                                isLoading: false,
+                                isDisabled: true,
+                                 onTap: () {
                                   _selectPaymentMethod(
                                     TextConstants.wallet,
                                     //autoFillAmount: true,
@@ -1667,6 +1732,84 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
+  void _showPaymentProgressDialog(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // THEME COLORS (same pattern as coupon popup)
+    final Color dialogBg = isDark ? const Color(0xFF252837) : Colors.white;
+    final Color textPrimary = isDark ? Colors.white : const Color(0xFF1F2937);
+    final Color textSecondary = isDark ? Colors.white70 : const Color(0xFF6B7280);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return WillPopScope(
+          onWillPop: () async => false,
+          child: Dialog(
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            child: Center(
+              child: Container(
+                width: 300,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 28,
+                  horizontal: 24,
+                ),
+                decoration: BoxDecoration(
+                  color: dialogBg,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    if (!isDark)
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
+                      ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CupertinoActivityIndicator(
+                      radius: 22,
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    Text(
+                      "Payment in progress",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: textPrimary,
+                      ),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    if (_processingPaymentMethod != null)
+                      Text(
+                        "Processing ${_processingPaymentMethod!}",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.3,
+                          color: textSecondary,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+
 
   Widget _buildHeader() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -2532,9 +2675,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         child: Column(
                           children: [
                             _buildOrderCalculation(
-                                TextConstants.grossTotal,
-                                '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
-                                isTotal: true),
+                              TextConstants.grossTotal,
+                              grossTotal < 0
+                                  ? '-${TextConstants.currencySymbol}${grossTotal.abs().toStringAsFixed(2)}'
+                                  : '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
+                              isTotal: true,
+                            ),
+
                             _buildOrderCalculation(
                                 TextConstants.discountText,
                                 '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}',
@@ -2573,11 +2720,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                     .black, // ✅ ensures gradient works correctly
                               ),
                             ),
-
                             _buildOrderCalculation(
                               TextConstants.NetTotal,
-                              '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
+                              NetTotal < 0
+                                  ? '-${TextConstants.currencySymbol}${NetTotal.abs().toStringAsFixed(2)}'
+                                  : '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
                             ),
+
 
                             _buildOrderCalculation(
                                 TextConstants.taxText,
@@ -2634,9 +2783,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
 
                             _buildOrderCalculation(
-                                TextConstants.netPayable,
-                                '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
-                                isTotal: true),
+                              TextConstants.netPayable,
+                              computedNetPayable < 0
+                                  ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}'
+                                  : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                              isTotal: true,
+                            ),
+
 
                             if (redeemedValue > 0)
                               _buildOrderCalculation(
@@ -2730,8 +2883,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         children: [
                           Text(
                             _showFullSummary
-                                ? ' ${TextConstants.netPayable} : ${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}'
-                                : '${TextConstants.netPayable} ${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                                ? ' ${TextConstants.netPayable} : '
+                                '${computedNetPayable < 0
+                                ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}'
+                                : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}'}'
+                                : '${TextConstants.netPayable} '
+                                '${computedNetPayable < 0
+                                ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}'
+                                : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}'}',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
@@ -2740,6 +2899,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                   : ThemeNotifier.textLight,
                             ),
                           ),
+
                           SizedBox(width: ResponsiveLayout.getPadding(8)),
                           Icon(
                             _showFullSummary
@@ -3856,12 +4016,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                     ),
                                     child: _buildAmountDisplay(
                                       TextConstants.netPayable,
-                                      '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                                      computedNetPayable < 0
+                                          ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}'
+                                          : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
                                       leftBarColor: const Color(0xFF3EAE4C),
                                       amountColor: themeHelper.themeMode == ThemeMode.dark
                                           ? Colors.white
                                           : Colors.black,
                                     ),
+
                                   ),
 
                                   SizedBox(height: ResponsiveLayout.getHeight(15)),
@@ -3903,12 +4066,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                     ),
                                     child: _buildAmountDisplay(
                                       TextConstants.balanceAmount,
-                                      '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
+                                      balanceAmount < 0
+                                          ? '-${TextConstants.currencySymbol}${balanceAmount.abs().toStringAsFixed(2)}'
+                                          : '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
                                       leftBarColor: const Color(0xFFE85C43),
                                       amountColor: themeHelper.themeMode == ThemeMode.dark
                                           ? Colors.white
                                           : Colors.black,
                                     ),
+
                                   ),
 
                                   SizedBox(height: ResponsiveLayout.getHeight(15)),
@@ -3950,12 +4116,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                     ),
                                     child: _buildAmountDisplay(
                                       TextConstants.EBTAmount,
-                                      '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
+                                      ebtTotal < 0
+                                          ? '-${TextConstants.currencySymbol}${ebtTotal.abs().toStringAsFixed(2)}'
+                                          : '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
                                       leftBarColor: const Color(0xFF3B7DDD),
                                       amountColor: themeHelper.themeMode == ThemeMode.dark
                                           ? Colors.white
                                           : Colors.black,
                                     ),
+
                                   ),
 
                                 ],

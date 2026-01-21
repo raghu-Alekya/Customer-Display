@@ -174,6 +174,18 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
     }
   }
 
+  final Set<String> _hiddenCategoryNames = {
+    "promotions",
+    "uncategorized",
+  };
+  List<CategoryModel> get visibleCategories {
+    return categories.where((c) {
+      final name = c.name.toLowerCase().trim();
+      return !_hiddenCategoryNames.contains(name);
+    }).toList();
+  }
+
+
 
   void _hideAutoLoadingDialog() {
     if (Navigator.of(context, rootNavigator: true).canPop()) {
@@ -793,13 +805,19 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
 
   @override
   Widget build(BuildContext context) {
-    final categoryListItems = categories.map((category) {
+    final visibleCategories = categories.where((c) {
+      final name = c.name.toLowerCase().trim();
+      return !_hiddenCategoryNames.contains(name);
+    }).toList();
+
+    final categoryListItems = visibleCategories.map((category) {
       return {
         'title': category.name,
         'image': category.image ?? 'assets/default.png',
         'itemCount': category.count,
       };
     }).toList();
+
 
     final subCategoryListItems = subCategories.map((subCategory) {
       return {
@@ -941,11 +959,24 @@ class _CategoriesScreenState extends State<CategoriesScreen> with WidgetsBinding
                         isLoading: isLoading,
                         isAddButtonEnabled: false,
                         categories: categoryListItems,
-                        selectedIndex: _selectedCategoryIndex,
+                        selectedIndex: _selectedCategoryIndex == null
+                            ? null
+                            : visibleCategories.indexWhere(
+                              (c) => c.id == categories[_selectedCategoryIndex!].id,
+                        ),
                         editingIndex: _editingCategoryIndex,
                         scrollController: _categoryScrollController,
                         onAddButtonPressed: null,
-                        onCategoryTapped: _onCategoryTapped,
+                        onCategoryTapped: (uiIndex) {
+                          final selectedCategory = visibleCategories[uiIndex];
+                          final realIndex =
+                          categories.indexWhere((c) => c.id == selectedCategory.id);
+
+                          if (realIndex != -1) {
+                            _onCategoryTapped(realIndex);
+                          }
+                        },
+
                         // In CategoriesScreen.dart, update the onReorder callback in the CategoryList widget
                         onReorder: (oldIndex, newIndex) { //Build 1.1.36: code updated
                           if (kDebugMode) {

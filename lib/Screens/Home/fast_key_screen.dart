@@ -397,7 +397,8 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
         print("### FastKeyScreen: Saved active tab ID in _onTabChanged: $_fastKeyTabId");
       }
       await _loadFastKeyTabItems();
-      await _resolveFastKeyVariants();
+      await _resolveFastKeyMeta();
+
     }
   }
 
@@ -697,7 +698,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
 
     if (_fastKeyTabId != null) {
       await _loadFastKeyTabItems();
-      await _resolveFastKeyVariants();
+      await _resolveFastKeyMeta();
     }
   }
 
@@ -868,6 +869,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
           isItemsLoading = false;
         });
       }
+      await _resolveFastKeyMeta();
     } catch (e) {
       if (kDebugMode) {
         print("Error loading FastKey tab items: $e");
@@ -1647,11 +1649,21 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
 
                       isBulkAdding = false;   // 🚀 allow refresh again
 
-                      // 🔥 Refresh only once after all items are added
-                      _refreshFastKeyTabItems();
-                      fastKeyTabIdNotifier.notifyListeners();
+                      await _refreshFastKeyTabItems();
+
+// 🔥 Ensure Isar cache exists for new items
+                      for (final item in fastKeyProductItems) {
+                        final pid =
+                        int.tryParse(item[AppDBConst.fastKeyProductId]?.toString() ?? '');
+                        if (pid != null) {
+                          await _getCachedProductFromIsar(pid);
+                        }
+                      }
+
+                      await _resolveFastKeyMeta();
 
                       if (mounted) setState(() {});
+
                     });
                   }
                       : null,
@@ -2412,6 +2424,76 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
   //     },
   //   );
   // }
+  Future<void> _resolveFastKeyMeta() async {
+    debugPrint("🧠 START _resolveFastKeyMeta");
+
+    for (int i = 0; i < fastKeyProductItems.length; i++) {
+      // 🔑 Convert QueryRow → mutable Map
+      final item = Map<String, dynamic>.from(fastKeyProductItems[i]);
+      fastKeyProductItems[i] = item;
+
+      final productId =
+      int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
+
+      if (productId == null) {
+        debugPrint("⛔ Skipping item without productId");
+        continue;
+      }
+
+      debugPrint("🔍 Resolving meta for productId=$productId");
+
+      final cached = await _getCachedProductFromIsar(productId);
+
+      // -------- VARIANTS --------
+      final hasVariants = await _fastKeyHasVariants(item);
+      item['has_variants'] = hasVariants;
+
+      debugPrint(
+        "🧩 VARIANT → productId=$productId | hasVariants=$hasVariants",
+      );
+
+      // -------- EBT --------
+      bool isEbt = false;
+
+      if (item['is_ebt_eligible'] == true) {
+        isEbt = true;
+      } else if (cached?['is_ebt_eligible'] == true) {
+        isEbt = true;
+      } else {
+        isEbt = _isProductEbtEligible({
+          "fast_key_item_tags": cached?['tags'],
+        });
+      }
+
+      item['is_ebt_eligible'] = isEbt;
+
+      debugPrint(
+        "🥗 EBT → productId=$productId | isEbt=$isEbt",
+      );
+    }
+
+    debugPrint("✅ END _resolveFastKeyMeta");
+
+    if (mounted) setState(() {});
+  }
+
+  bool _isProductEbtEligible(Map<String, dynamic> item) {
+    if (item["is_ebt_eligible"] == true) return true;
+
+    final dynamic tagsRaw = item["fast_key_item_tags"] ?? item["tags"];
+    if (tagsRaw is List) {
+      for (final t in tagsRaw) {
+        if (t is Map) {
+          final name = (t["name"] ?? "").toString().toLowerCase();
+          final slug = (t["slug"] ?? "").toString().toLowerCase();
+          if (name.contains("ebt") || slug.contains("ebt")) return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
 
   @override
   void dispose() {

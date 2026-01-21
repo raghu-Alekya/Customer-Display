@@ -1063,7 +1063,9 @@ class NestedGridWidget extends StatelessWidget {
               final isReordered = reorderedIndices.isNotEmpty &&
                   reorderedIndices[itemIndex] != null;
               final item = items[itemIndex];
-              final bool showEbtTag = _isProductEbtEligible(item);
+              final bool showEbtTag =
+                  item['is_ebt_eligible'] == true || _isProductEbtEligible(item);
+
 
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
@@ -1509,7 +1511,7 @@ class NestedGridWidget extends StatelessWidget {
 
                                   await orderHelper?.addItemToOrder(
                                     0,
-                                    "$productName - $variantName",
+                                    "$variantName",
                                     variantImage,
                                     variantPrice,
                                     qty,
@@ -1641,33 +1643,25 @@ class NestedGridWidget extends StatelessWidget {
                                           //     return const SizedBox.shrink();
                                           //   },
                                           // ),
-                                          FutureBuilder<bool>(
-                                            key: ValueKey(item['fast_key_product_id']),
-                                            future: _fastKeyHasVariants(item),
-                                            builder: (context, snapshot) {
-                                              if (snapshot.connectionState == ConnectionState.waiting) {
-                                                return const SizedBox.shrink();
-                                              }
+                                          const SizedBox(width: 16),
 
-                                              final bool hasFastKeyVariants = snapshot.data ?? false;
+                                          if (
+                                          item['has_variants'] == true ||
+                                              (item['variations'] is List && item['variations'].isNotEmpty) ||
+                                              item['type'] == 'variable'
+                                          )
 
-                                              final bool hasItemVariants =
-                                                  item['variations'] is List && item['variations'].isNotEmpty;
 
-                                              if (hasFastKeyVariants || hasItemVariants) {
-                                                return Padding(
-                                                  padding: const EdgeInsets.only(left: 4),
-                                                  child: SvgPicture.asset(
-                                                    SvgUtils.variationIcon,
-                                                    height: 10,
-                                                    width: 10,
-                                                  ),
-                                                );
-                                              }
+                                            Padding(
+                                              padding: const EdgeInsets.only(left: 4),
+                                              child: SvgPicture.asset(
+                                                SvgUtils.variationIcon,
+                                                height: 10,
+                                                width: 10,
+                                              ),
+                                            ),
 
-                                              return const SizedBox.shrink();
-                                            },
-                                          ),
+                                          const SizedBox(width: 7),
 
                                           //
                                           // if (item['variations'] !=
