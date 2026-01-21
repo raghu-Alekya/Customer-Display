@@ -1796,14 +1796,18 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                               fontSize: 18),
                                         ),
                                         Text(
-                                            "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", //Build #1.0.68
-                                            style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 14,
-                                                color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                    ? ThemeNotifier.textDark
-                                                    : ThemeNotifier.textLight)),
+                                          grossTotal < 0
+                                              ? '-${TextConstants.currencySymbol}${grossTotal.abs().toStringAsFixed(2)}'
+                                              : '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: themeHelper.themeMode == ThemeMode.dark
+                                                ? ThemeNotifier.textDark
+                                                : ThemeNotifier.textLight,
+                                          ),
+                                        ),
+
                                       ],
                                     ),
                                     SizedBox(

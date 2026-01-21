@@ -502,7 +502,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       setState(() {
         isLoading = false;
         isSummaryLoading = false;
-        balanceAmount = widget.grossTotal; // negative
+        balanceAmount = widget.netPayable; // negative
       });
     }
 
