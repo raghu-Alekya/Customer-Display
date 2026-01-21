@@ -3013,12 +3013,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                               ],
 
                               if (isComboDiscount) ...[
-                                const SizedBox(width: 5),
                                 _discountBadge("MM", Colors.orange),
                               ],
 
                               if (isMultipackDiscount) ...[
-                                const SizedBox(width: 5),
                                 _discountBadge("MP", Colors.blue),
                               ],
                             ],

@@ -1,52 +1,6 @@
-// import 'package:flutter/material.dart';
-// import 'package:flutter_bloc/flutter_bloc.dart';
-//
-// import 'inventory_attributes_bloc/inventory_attributes_bloc.dart';
-// import 'inventory_attributes_bloc/inventory_attributes_event.dart';
-// import 'inventory_attributes_bloc/inventory_attributes_state.dart';
-//
-//
-// class InventoryAttributesScreen extends StatelessWidget {
-//   const InventoryAttributesScreen({super.key});
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: AppBar(title: const Text('Inventory Attributes')),
-//       body: BlocBuilder<InventoryAttributesBloc, InventoryAttributesState>(
-//         builder: (context, state) {
-//           if (state is InventoryAttributesLoading) {
-//             return const Center(child: CircularProgressIndicator());
-//           } else if (state is InventoryAttributesLoaded) {
-//             return ListView.builder(
-//               itemCount: state.attributes.length,
-//               itemBuilder: (context, index) {
-//                 final attr = state.attributes[index];
-//                 return ListTile(
-//                   title: Text(attr.name),
-//                   subtitle: Text(attr.slug),
-//                 );
-//               },
-//             );
-//           } else if (state is InventoryAttributesError) {
-//             return Center(child: Text(state.message));
-//           }
-//           return const Center(child: Text('Press button to fetch attributes'));
-//         },
-//       ),
-//       floatingActionButton: FloatingActionButton(
-//         child: const Icon(Icons.refresh),
-//         onPressed: () {
-//           context.read<InventoryAttributesBloc>().add(FetchInventoryAttributesEvent());
-//         },
-//       ),
-//     );
-//   }
-// }
-
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:image/image.dart';
 
 import '../inventory_attribute_items/inventory_attribute_items_bloc/inventory_attribute_items_bloc.dart';
 import '../inventory_attribute_items/inventory_attribute_items_bloc/inventory_attribute_items_event.dart';
@@ -190,16 +144,20 @@ class _InventoryAttributesDropdownState
 ///
 
 
+
+
 class InventoryAttributesWithItemsWidget extends StatefulWidget {
   const InventoryAttributesWithItemsWidget({
     super.key,
     this.onAttributeSelected,
-    this.onItemSelected,
+    this.onItemSelected,       // kept for backward compatibility
+    this.onItemSlugSelected,   // new recommended callback for slug
   });
 
-  // New optional callbacks
+  // Callbacks
   final void Function(InventoryAttributesEntity attribute)? onAttributeSelected;
   final void Function(InventoryAttributesEntity attribute, int itemId)? onItemSelected;
+  final void Function(InventoryAttributesEntity attribute, String slug)? onItemSlugSelected;
 
   @override
   State<InventoryAttributesWithItemsWidget> createState() =>
@@ -218,95 +176,86 @@ class _InventoryAttributesWithItemsWidgetState
       ),
       child: Builder(
         builder: (context) {
-          // Using Builder so context.read works correctly
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // LEFT: Attribute Dropdown
-              Expanded(
-                flex: 2,
-                child: InventoryAttributesDropdown(
-                  onAttributeSelected: (attribute) {
-                    // Update local state
-                    setState(() {
-                      selectedAttribute = attribute;
-                    });
+              Container(
+                // height: 48,
+                child: Expanded(
+                  flex: 2,
+                  child: InventoryAttributesDropdown(
+                    onAttributeSelected: (attribute) {
+                      setState(() {
+                        selectedAttribute = attribute;
+                      });
 
-                    // Print attribute details to console
-                    debugPrint('Selected Attribute Details:');
-                    debugPrint('ID   : ${attribute.id}');
-                    debugPrint('Name : ${attribute.name}');
-                    debugPrint('Slug : ${attribute.slug}');
-                    debugPrint('Type : ${attribute.type}');
+                      debugPrint('Selected Attribute:');
+                      debugPrint('  • ID   : ${attribute.id}');
+                      debugPrint('  • Name : ${attribute.name}');
+                      debugPrint('  • Slug : ${attribute.slug}');
+                      debugPrint('  • Type : ${attribute.type}');
 
-                    // Trigger API in Bloc
-                    context
-                        .read<InventoryAttributeItemsBloc>()
-                        .add(FetchInventoryAttributeItems(attribute.id));
+                      // Load items for selected attribute
+                      context
+                          .read<InventoryAttributeItemsBloc>()
+                          .add(FetchInventoryAttributeItems(attribute.id));
 
-                    // Call parent callback if provided
-                    if (widget.onAttributeSelected != null) {
-                      widget.onAttributeSelected!(attribute);
-                    }
-                  },
+                      widget.onAttributeSelected?.call(attribute);
+                    },
+                  ),
                 ),
               ),
 
-              const SizedBox(width: 2),
+              const SizedBox(width:4), // slightly better spacing
 
-              // RIGHT: Items widget or placeholder
+              // RIGHT: Items selector or placeholder
               Expanded(
                 flex: 2,
                 child: selectedAttribute == null
                     ? Padding(
-                  padding: const EdgeInsets.all(3),
+                  padding: const EdgeInsets.all(4),
                   child: Container(
-                    height: MediaQuery.of(context).size.height * 0.06,
-                    width: MediaQuery.of(context).size.width * 0.6,
+                    height: 48,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      border: Border.all(
-                          color: Colors.blueGrey.shade200, width: 0.5),
-                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.blueGrey.shade200, width: 0.8),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    child: DropdownButtonFormField<InventoryAttributesEntity>(
-                      isExpanded: true,
-                      isDense: true,
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(
-                            vertical: 0, horizontal: 8),
+                    child: const Text(
+                      'Select an attribute first',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 14,
+                        fontStyle: FontStyle.italic,
                       ),
-                      hint: Center(
-                        child: Text(
-                          'Select an attribute',
-                          style: TextStyle(
-                              color: Colors.grey, fontSize: 14),
-                        ),
-                      ),
-                      items: const [],
-                      onChanged: null, // disabled
-                      icon: const Icon(Icons.arrow_drop_down, size: 24),
                     ),
                   ),
                 )
                     : Container(
-                  height: MediaQuery.of(context).size.height * 0.06,
-                  width: MediaQuery.of(context).size.width * 0.6,
+                  height: 48,
                   child: InventoryAttributeItemsWidget(
                     attributeId: selectedAttribute!.id,
+                    onItemSelected: (itemSlug) {
+                      if (selectedAttribute == null || itemSlug == null || itemSlug.trim().isEmpty) {
+                        debugPrint('Invalid selection: no attribute or empty slug');
+                        return;
+                      }
 
-                    // Callback for item selection
-                    onItemSelected: (itemId) {
-                      // Print inside the widget
-                      debugPrint(
-                          'Selected Attribute -> ID: ${selectedAttribute!.id}, Name: ${selectedAttribute!.name}, Slug: ${selectedAttribute!.slug}');
-                      debugPrint('Selected Item ID: $itemId');
+                      debugPrint('Item selected:');
+                      debugPrint('  • Attribute ID   : ${selectedAttribute!.id}');
+                      debugPrint('  • Attribute Name : ${selectedAttribute!.name}');
+                      debugPrint('  • Attribute Slug : ${selectedAttribute!.slug}');
+                      debugPrint('  • Selected Slug  : $itemSlug');
 
-                      // Call parent callback if provided
-                      if (widget.onItemSelected != null &&
-                          selectedAttribute != null) {
-                        widget.onItemSelected!(selectedAttribute!, itemId);
+                      // Pass slug to parent (preferred)
+                      widget.onItemSlugSelected?.call(selectedAttribute!, itemSlug);
+
+                      // Optional: if some old code still uses itemId, you can try to parse
+                      // (only if slug contains numeric ID — otherwise skip)
+                      final possibleId = int.tryParse(itemSlug);
+                      if (possibleId != null && widget.onItemSelected != null) {
+                        widget.onItemSelected!(selectedAttribute!, possibleId);
                       }
                     },
                   ),
@@ -319,4 +268,3 @@ class _InventoryAttributesWithItemsWidgetState
     );
   }
 }
-

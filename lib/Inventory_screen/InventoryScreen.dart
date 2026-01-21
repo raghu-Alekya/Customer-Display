@@ -26,6 +26,7 @@ import 'add_product_toinventory/add_product_inventory_entity.dart';
 import 'add_product_toinventory/add_product_inventory_get_usecase.dart';
 import 'add_product_toinventory/add_product_inventory_remote_data_source.dart';
 import 'add_product_toinventory/add_product_inventory_repository_impl.dart';
+import 'image_upload_repository.dart';
 import 'inventory_Tax/inventory_tax_screen.dart';
 
 import 'inventory_attributes/inventory_attributes_widgets.dart';
@@ -82,6 +83,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   Map<String, dynamic>? _currentVariantAttribute;
   Map<String, dynamic>? _currentVariantAttributeItem;
 
+  String? _selectedItemSlug;
+
   List<Map<String, dynamic>> _currentAttributes = [
     {'id': '1', 'unit': 'units', 'name': ''}
   ];
@@ -90,24 +93,36 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   String _currentRegularPrice = '';
   String _currentSalePrice = '';
   File? _currentImageFile;
-
+  String? _selectedItemName;
   // Current variant index for editing
   int _currentVariantIndex = -1;
 
   // Add Product BLoC
   late AddProductInventoryTaxBloc _addProductBloc;
 
-  // Add these controller declarations at the top of your State class
+  // Controllers
   late TextEditingController _variantNameController;
   late TextEditingController _stockController;
 
   List<TextEditingController> _attributeControllers = [];
 
-  // Validation state
+  // Validation & Loading
   final Map<String, String?> _fieldErrors = {};
-
-  // Loading state
   bool _isSaving = false;
+  List<Map<String, dynamic>> _currentVariantAttributes = [];
+
+  // Add this to your existing state variables
+  List<Map<String, dynamic>> _variantAttributes = [
+    {
+      'attribute': null,
+      'attributeItem': null,
+      'selectedSlug': null,
+    }
+  ];
+
+
+  late final ImageUploadRepository _imageUploadRepo;
+
 
   @override
   void initState() {
@@ -119,17 +134,15 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     _selectedSidebarIndex = widget.lastSelectedIndex ?? 4;
     shiftBloc = ShiftBloc(ShiftRepository());
 
-    // Initialize Add Product BLoC
     _initializeAddProductBloc();
+
+    _imageUploadRepo = ImageUploadRepository();
   }
 
   void _updateAttributeControllers() {
-    // Dispose old controllers
     for (var controller in _attributeControllers) {
       controller.dispose();
     }
-
-    // Create new controllers for current attributes
     _attributeControllers = _currentAttributes.map((attr) {
       return TextEditingController(text: attr['name'] ?? '');
     }).toList();
@@ -149,25 +162,17 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
 
   void _initializeAddProductBloc() {
     final remoteDataSource = AddProductInventoryTaxRemoteDataSource();
-    final repository = AddProductInventoryTaxRepositoryImpl(
-        remoteDataSource: remoteDataSource);
+    final repository = AddProductInventoryTaxRepositoryImpl(remoteDataSource: remoteDataSource);
     final useCase = AddProductInventoryTaxGetUseCase(repository: repository);
     _addProductBloc = AddProductInventoryTaxBloc(addProductUseCase: useCase);
   }
 
   Future<void> _pickImage() async {
-    final XFile? image = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-    );
-
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
     if (image == null) return;
 
     final bytes = await image.readAsBytes();
-    final extension = image.path
-        .split('.')
-        .last
-        .toLowerCase();
+    final extension = image.path.split('.').last.toLowerCase();
 
     img.Image? decoded = img.decodeImage(bytes);
     if (decoded == null) return;
@@ -186,38 +191,45 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     });
   }
 
-  Future<String?> _uploadImage(String filename, List<int> bytes) async {
-    try {
-      const String url = 'https://yourdomain.com/wp-json/wp/v2/media';
-      const String username = 'ck_xxx';
-      const String password = 'cs_xxx';
+  // Future<String?> _uploadImage(String filename, List<int> bytes) async {
+  //   try {
+  //     const String url = 'https://merchantretail.alektasolutions.com/wp-json/wp/v2/media';
+  //     const String username = 'ck_xxx'; // ← replace with real keys
+  //     const String password = 'cs_xxx';
+  //
+  //     final request = http.MultipartRequest('POST', Uri.parse(url));
+  //     request.headers['Authorization'] = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
+  //     request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+  //
+  //     final response = await request.send();
+  //
+  //     if (response.statusCode == 201) {
+  //       final respStr = await response.stream.bytesToString();
+  //       final data = jsonDecode(respStr);
+  //       return data['source_url'];
+  //     } else {
+  //       print('Image upload failed → ${response.statusCode} ${await response.stream.bytesToString()}');
+  //       return null;
+  //     }
+  //   } catch (e) {
+  //     print('Image upload exception: $e');
+  //     return null;
+  //   }
+  // }
 
-      final request = http.MultipartRequest('POST', Uri.parse(url));
-      request.headers['Authorization'] =
-      'Basic ${base64Encode(utf8.encode('$username:$password'))}';
-      request.files.add(
-          http.MultipartFile.fromBytes('file', bytes, filename: filename));
-
-      final response = await request.send();
-
-      if (response.statusCode == 201) {
-        final respStr = await response.stream.bytesToString();
-        final data = jsonDecode(respStr);
-        return data['source_url'];
-      } else {
-        print('Image upload failed: ${response.statusCode}');
-        return null;
-      }
-    } catch (e) {
-      print('Image upload exception: $e');
-      return null;
-    }
+  Future<String?> _uploadImageForProduct(File imageFile, {String? customFileName}) async {
+    final url = await _imageUploadRepo.uploadImage(
+      imageFile: imageFile,
+      fileName: customFileName,
+    );
+    return url;
   }
+
 
   String? _validateForm() {
     _fieldErrors.clear();
 
-    if (_nameController.text.isEmpty) {
+    if (_nameController.text.trim().isEmpty) {
       _fieldErrors['name'] = 'Product name is required';
     }
     if (_selectedCategory == null) {
@@ -226,324 +238,239 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     if (_selectedProductType == null || _selectedProductType!.isEmpty) {
       _fieldErrors['productType'] = 'Product type is required';
     }
-    if (!_hasVariablePrice) {
-      if (_regularPriceController.text.isEmpty) {
+
+    if (_selectedProductType?.toLowerCase() == 'variable') {
+      if (_variants.isEmpty) {
+        _fieldErrors['variants'] = 'At least one variant is required for variable products';
+      }
+    } else {
+      if (_regularPriceController.text.trim().isEmpty) {
         _fieldErrors['regularPrice'] = 'Regular price is required';
       }
-      if (_qtyController.text.isEmpty) {
-        _fieldErrors['quantity'] = 'Stock quantity is required';
-      }
-    }
-
-    if (_selectedProductType?.toLowerCase() == 'variable' &&
-        _variants.isEmpty) {
-      _fieldErrors['variants'] =
-      'At least one variant is required for variable products';
     }
 
     return _fieldErrors.isNotEmpty ? _fieldErrors.values.first : null;
   }
 
-  // Future<AddProductInventoryTaxEntity?> _buildProductEntity() async {
-  //   final validationError = _validateForm();
-  //   if (validationError != null) {
-  //     return null;
-  //   }
-  //
-  //   String? imageUrl;
-  //   if (_imageFile != null && _imageBytes != null) {
-  //     imageUrl = await _uploadImage(_imageFile!
-  //         .path
-  //         .split('/')
-  //         .last, _imageBytes!);
-  //     if (imageUrl == null) {
-  //       return null;
-  //     }
-  //   }
-  //
-  //   List<Map<String, dynamic>> categories = [];
-  //   if (_selectedCategory != null) {
-  //     categories.add({
-  //       'id': _selectedCategory.id ?? 0,
-  //     });
-  //   }
-  //
-  //   List<Map<String, dynamic>> tags = [];
-  //   Set<String> uniqueTags = Set();
-  //   for (var tag in _selectedTags) {
-  //     final tagSlug = tag.slug ?? '';
-  //     if (!uniqueTags.contains(tagSlug)) {
-  //       tags.add({
-  //         'name': tag.name ?? '',
-  //         'slug': tag.slug ?? '',
-  //       });
-  //       uniqueTags.add(tagSlug);
-  //     }
-  //   }
-  //
-  //   List<Map<String, dynamic>> images = [];
-  //   if (imageUrl != null) {
-  //     images.add({'src': imageUrl});
-  //   }
-  //
-  //   List<Map<String, dynamic>> metaData = [
-  //     {'key': 'custom_product', 'value': 'yes'},
-  //     {'key': 'product_created_by', 'value': 1},
-  //   ];
-  //
-  //   if (_selectedProductType?.toLowerCase() == 'variable' &&
-  //       _variants.isNotEmpty) {
-  //     List<Map<String, dynamic>> variationsPayload = [];
-  //
-  //     for (var variant in _variants) {
-  //       Map<String, dynamic> attributes = {};
-  //
-  //       // Add selected attribute and item
-  //       if (variant['attribute'] != null && variant['attributeItem'] != null) {
-  //         final attrSlug = variant['attribute']['slug'] ?? '';
-  //         final itemName = variant['attributeItem']['name'] ??
-  //             variant['attributeItem']['item_id']?.toString() ?? '';
-  //         if (attrSlug.isNotEmpty && itemName.isNotEmpty) {
-  //           attributes[attrSlug] = itemName;
-  //         }
-  //       }
-  //
-  //       // Add custom attributes
-  //       if (variant['attributes'] != null && variant['attributes'] is List) {
-  //         for (var attr in variant['attributes']) {
-  //           if (attr['name'] != null && attr['name']
-  //               .toString()
-  //               .isNotEmpty) {
-  //             final slug = attr['slug'] ??
-  //                 'custom_${attr['name'].toString().toLowerCase().replaceAll(
-  //                     ' ', '-')}';
-  //             attributes[slug] = attr['name'].toString();
-  //           }
-  //         }
-  //       }
-  //
-  //       String? variantImageUrl;
-  //       if (variant['imageFile'] != null) {
-  //         final variantBytes = await variant['imageFile'].readAsBytes();
-  //         variantImageUrl = await _uploadImage(
-  //             variant['imageFile'].path
-  //                 .split('/')
-  //                 .last,
-  //             variantBytes
-  //         );
-  //       }
-  //
-  //       Map<String, dynamic> variantPayload = {
-  //         'attributes': attributes,
-  //         'regular_price': variant['regularPrice'] ?? '0.00',
-  //         'sale_price': variant['salePrice']?.isNotEmpty == true
-  //             ? variant['salePrice']
-  //             : '',
-  //         'stock': int.tryParse(variant['stock'] ?? '0') ?? 0,
-  //       };
-  //
-  //       if (variantImageUrl != null) {
-  //         variantPayload['image'] = {
-  //           'src': variantImageUrl,
-  //         };
-  //       }
-  //
-  //       variationsPayload.add(variantPayload);
-  //     }
-  //
-  //     metaData.add({
-  //       'key': '_pos_variations_payload',
-  //       'value': variationsPayload,
-  //     });
-  //   }
-  //
-  //   return AddProductInventoryTaxEntity(
-  //     id: 0,
-  //     name: _nameController.text,
-  //     type: (_selectedProductType?.toLowerCase() == 'variable')
-  //         ? 'variable'
-  //         : 'simple',
-  //     sku: _skuController.text.isEmpty ? 'SKU${DateTime
-  //         .now()
-  //         .millisecondsSinceEpoch}' : _skuController.text,
-  //     regularPrice: _hasVariablePrice ? '' : _regularPriceController.text,
-  //     salePrice: _hasVariablePrice ? '' : _salePriceController.text,
-  //     categories: categories,
-  //     tags: tags,
-  //     images: images,
-  //     metaData: metaData,
-  //     manageStock: _manageStock,
-  //     stockQuantity: _hasVariablePrice ? 0 : int.tryParse(
-  //         _qtyController.text) ?? 0,
-  //     taxStatus: _selectedTax != null ? 'taxable' : 'none',
-  //     taxClass: _selectedTax?.taxClass ?? 'standard', attributes: [],
-  //   );
-  // }
-
-
   Future<AddProductInventoryTaxEntity?> _buildProductEntity() async {
-    // ── Validate form ─────────────────────────────────────────────────────────
     final validationError = _validateForm();
     if (validationError != null) return null;
 
-    // ── Image upload with default fallback ─────────────────────────────────────
-    // ── Image upload with fallback ──────────────────────────────────────────────
-    String imageUrl;
+    // ── Main product image ────────────────────────────────────────
+    String mainImageUrl = 'https://merchantretail.alektasolutions.com/wp-content/uploads/2025/12/biryani-removebg-preview-1.png';
 
-    if (_imageFile != null && _imageBytes != null) {
-      imageUrl = await _uploadImage(
-        _imageFile!.path.split('/').last,
-        _imageBytes!,
-      ) ?? 'https://merchantretail.alektasolutions.com/wp-content/uploads/2025/12/biryani-removebg-preview-1.png';
-    } else {
-      // Default image if no file
-      imageUrl = 'https://merchantretail.alektasolutions.com/wp-content/uploads/2025/12/biryani-removebg-preview-1.png';
-    }
+    if (_imageFile != null) {
+      final uploadedUrl = await _uploadImageForProduct(
+        _imageFile!,
+        customFileName: 'product-${DateTime.now().millisecondsSinceEpoch}.jpg',
 
+      );
+      if (uploadedUrl != null) {
+        mainImageUrl = uploadedUrl;
+        print('╔═══════════════════════════════════════════════');
+        print('║               UPLOAD SUCCESS                  ║');
+        print('╚═══════════════════════════════════════════════');
+        print('URL: $mainImageUrl');
 
-    // ── Categories ─────────────────────────────────────────────────────────────
-    final List<Map<String, dynamic>> categories = [];
-    if (_selectedCategory != null) {
-      categories.add({'id': _selectedCategory.id ?? 0});
-    }
-
-    // ── Tags (unique by slug) ──────────────────────────────────────────────────
-    final List<Map<String, dynamic>> tags = [];
-    final Set<String> uniqueTagSlugs = {};
-    for (final Inventory_Tag_Entity tag in _selectedTags) {
-      final slug = tag.slug?.trim() ?? '';
-      if (slug.isEmpty) continue;
-      if (uniqueTagSlugs.add(slug)) {
-        tags.add({
-          'id': tag.id ?? 0,
-          'name': tag.name?.trim() ?? '',
-          'slug': slug,
-        });
+      } else {
+        // Optional: show snackbar or log
+        print('Main image upload failed → using fallback');
       }
     }
 
-    // ── Images ─────────────────────────────────────────────────────────────────
-    final List<Map<String, dynamic>> images = [
-      {'src': imageUrl},
-    ];
+    // ── Categories & Tags ─────────────────────────────────────────
+    final List<Map<String, dynamic>> categories = _selectedCategory != null
+        ? [{'id': _selectedCategory.id ?? 0}]
+        : [];
 
-    // ── Common metadata ────────────────────────────────────────────────────────
+    final List<Map<String, dynamic>> tags = [];
+    final Set<String> seenSlugs = {};
+    for (final tag in _selectedTags) {
+      final slug = (tag.slug ?? '').trim();
+      if (slug.isEmpty || seenSlugs.contains(slug)) continue;
+      seenSlugs.add(slug);
+      tags.add({
+        'id': tag.id ?? 0,
+        'name': tag.name?.trim() ?? slug,
+        'slug': slug,
+      });
+    }
+
+    // ── Images ────────────────────────────────────────────────────
+    final List<Map<String, dynamic>> images = [{'src': mainImageUrl}];
+
+    // ── Common meta ───────────────────────────────────────────────
     final List<Map<String, dynamic>> metaData = [
       {'key': 'custom_product', 'value': 'yes'},
       {'key': 'product_created_by', 'value': '1'},
       {'key': 'has_variable_price', 'value': _hasVariablePrice ? 'yes' : 'no'},
     ];
 
-    // ────────────────────────────── VARIABLE PRODUCT ────────────────────────────
-    if (_selectedProductType?.toLowerCase() == 'variable' && _variants.isNotEmpty) {
-      // Track all possible attribute values to build product attributes
-      final Map<String, Set<String>> trackedAttributes = {};
-
-      for (final variant in _variants) {
-        // Pre-defined attribute
-        if (variant['attribute'] != null && variant['attributeItem'] != null) {
-          final String slug = (variant['attribute']['slug'] as String?)?.trim() ?? '';
-          final String value = (variant['attributeItem']['name'] as String?)?.trim() ??
-              (variant['attributeItem']['item_id']?.toString() ?? '');
-          if (slug.isNotEmpty && value.isNotEmpty) {
-            trackedAttributes.putIfAbsent(slug, () => <String>{}).add(value);
-          }
-        }
-
-        // Custom attributes
-        if (variant['attributes'] is List<Map<String, dynamic>>) {
-          for (final attr in variant['attributes'] as List) {
-            final String name = (attr['name'] as String?)?.trim() ?? '';
-            if (name.isEmpty) continue;
-            final String slug = 'pa_${name.toLowerCase().replaceAll(' ', '-')}';
-            trackedAttributes.putIfAbsent(slug, () => <String>{}).add(name);
-          }
-        }
-      }
-
-      // Convert tracked attributes → WooCommerce format
-      final List<Map<String, dynamic>> productAttributes = trackedAttributes.entries.map((entry) {
-        return {
-          'id': 0,
-          'name': entry.key.replaceFirst('pa_', '').replaceAll('-', ' ').split(' ').map((w) => w[0].toUpperCase() + w.substring(1)).join(' '),
-          'slug': entry.key,
-          'visible': true,
-          'variation': true,
-          'options': entry.value.toList(),
-        };
-      }).toList();
-
-      // Optional: Store full variations payload for debugging
-      final List<Map<String, dynamic>> variationsPayloadForMeta = _variants.map((v) {
-        final Map<String, dynamic> attrs = {};
-        if (v['attribute'] != null && v['attributeItem'] != null) {
-          final slug = v['attribute']['slug'] ?? '';
-          final value = v['attributeItem']['name'] ?? v['attributeItem']['item_id']?.toString() ?? '';
-          if (slug.isNotEmpty && value.isNotEmpty) attrs[slug] = value;
-        }
-        if (v['attributes'] is List) {
-          for (final attr in v['attributes']) {
-            final name = attr['name']?.toString().trim() ?? '';
-            if (name.isNotEmpty) attrs['pa_${name.toLowerCase().replaceAll(' ', '-')}'] = name;
-          }
-        }
-        return {
-          'attributes': attrs,
-          'regular_price': v['regularPrice']?.toString() ?? '0.00',
-          'sale_price': (v['salePrice']?.toString().isNotEmpty == true) ? v['salePrice'] : '',
-          'stock_quantity': int.tryParse(v['stock']?.toString() ?? '0') ?? 0,
-        };
-      }).toList();
-
-      metaData.add({
-        'key': '_pos_variations_payload_debug',
-        'value': variationsPayloadForMeta,
-      });
-
+    // ── SIMPLE PRODUCT ────────────────────────────────────────────
+    if (_selectedProductType?.toLowerCase() != 'variable') {
       return AddProductInventoryTaxEntity(
         id: 0,
         name: _nameController.text.trim(),
-        type: 'variable',
+        type: 'simple',
         sku: _skuController.text.trim().isNotEmpty
             ? _skuController.text.trim()
             : 'SKU${DateTime.now().millisecondsSinceEpoch}',
-        regularPrice: '',
-        salePrice: '',
+        regularPrice: _regularPriceController.text.trim(),
+        salePrice: _salePriceController.text.trim(),
         categories: categories,
         tags: tags,
         images: images,
         metaData: metaData,
-        attributes: productAttributes,
+        attributes: const [],
         manageStock: _manageStock,
-        stockQuantity: 0,
+        stockQuantity: int.tryParse(_qtyController.text.trim()) ?? 0,
         taxStatus: _selectedTax != null ? 'taxable' : 'none',
         taxClass: _selectedTax?.taxClass ?? 'standard',
       );
     }
 
-    // ────────────────────────────── SIMPLE PRODUCT ──────────────────────────────
+    // ── VARIABLE PRODUCT ──────────────────────────────────────────
+    if (_variants.isEmpty) return null;
+
+    // 1. Collect all possible attribute → values
+    final Map<String, Set<String>> attributeOptionsMap = {};
+
+    for (final variant in _variants) {
+      // Predefined attribute
+      if (variant['attribute'] != null && variant['attributeItem'] != null) {
+        final slug = (variant['attribute']['slug'] as String?)?.trim() ?? '';
+        final value = (variant['attributeItem']['slug'] as String?)?.trim() ??
+            (variant['attributeItem']['name'] as String?)?.trim() ??
+            '';
+
+        if (slug.isNotEmpty && value.isNotEmpty) {
+          attributeOptionsMap.putIfAbsent(slug, () => {}).add(value);
+        }
+      }
+
+      // Custom attributes (if you still use them)
+      if (variant['attributes'] is List) {
+        for (final attr in variant['attributes'] as List) {
+          final name = (attr['name'] as String?)?.trim() ?? '';
+          if (name.isEmpty) continue;
+          final slug = 'pa_${name.toLowerCase().replaceAll(' ', '-')}';
+          attributeOptionsMap.putIfAbsent(slug, () => {}).add(name);
+        }
+      }
+    }
+
+    // 2. Build WooCommerce product.attributes format
+    final List<Map<String, dynamic>> productAttributes = attributeOptionsMap.entries.map((entry) {
+      final slug = entry.key;
+      final cleanName = slug.replaceFirst('pa_', '').replaceAll('-', ' ');
+      final capitalized = cleanName.split(' ').map((w) => w.isNotEmpty ? w[0].toUpperCase() + w.substring(1) : '').join(' ');
+
+      return {
+        'id': 0,
+        'name': capitalized,
+        'slug': slug,
+        'visible': true,
+        'variation': true,
+        'options': entry.value.toList(),
+      };
+    }).toList();
+
+    // 3. Build variations payload (the most important part)
+    final List<Map<String, dynamic>> variationsPayload = [];
+
+    for (final variant in _variants) {
+      final Map<String, dynamic> attrs = {};
+
+      // Predefined attribute
+      if (variant['attribute'] != null && variant['attributeItem'] != null) {
+        final slug = variant['attribute']['slug']?.toString().trim() ?? '';
+        final value = variant['attributeItem']['slug']?.toString().trim() ??
+            variant['attributeItem']['name']?.toString().trim() ??
+            '';
+
+        if (slug.isNotEmpty && value.isNotEmpty) {
+          attrs[slug] = value;
+        }
+      }
+
+      // Custom attributes (if any)
+      if (variant['attributes'] is List) {
+        for (final attr in variant['attributes'] as List) {
+          final name = attr['name']?.toString().trim() ?? '';
+          if (name.isNotEmpty) {
+            final slug = 'pa_${name.toLowerCase().replaceAll(' ', '-')}';
+            attrs[slug] = name;
+          }
+        }
+      }
+
+      String? variantImageUrl;
+
+      if (variant['imageFile'] != null && variant['imageFile'] is File) {
+        try {
+          variantImageUrl = await _uploadImageForProduct(
+            variant['imageFile'] as File,
+            customFileName: 'variant-${DateTime.now().millisecondsSinceEpoch}.jpg',
+          );
+        } catch (e) {
+          print("Variant image upload failed: $e");
+        }
+      }
+
+      variationsPayload.add({
+        'attributes': attrs,
+        'regular_price': (variant['regularPrice']?.toString() ?? '0').trim(),
+        'sale_price': (variant['salePrice']?.toString() ?? '').trim(),
+        'stock_quantity': int.tryParse(variant['stock']?.toString() ?? '0') ?? 0,
+        if (variantImageUrl != null) 'image': {'src': variantImageUrl},
+      });
+
+      variationsPayload.add({
+        'attributes': attrs,
+        'regular_price': (variant['regularPrice']?.toString() ?? '0').trim(),
+        'sale_price': (variant['salePrice']?.toString() ?? '').trim(),
+        'stock_quantity': int.tryParse(variant['stock']?.toString() ?? '0') ?? 0,
+        if (variantImageUrl != null) 'image': {'src': variantImageUrl},
+      });
+    }
+
+    // 4. Add variations payload to meta (you can rename key if backend expects different name)
+    metaData.add({
+      'key': '_pos_variations_payload',
+      'value': variationsPayload,
+    });
+
+    // Optional: keep debug version too
+    metaData.add({
+      'key': '_pos_variations_payload_debug',
+      'value': variationsPayload,
+    });
+
     return AddProductInventoryTaxEntity(
       id: 0,
       name: _nameController.text.trim(),
-      type: 'simple',
+      type: 'variable',
       sku: _skuController.text.trim().isNotEmpty
           ? _skuController.text.trim()
           : 'SKU${DateTime.now().millisecondsSinceEpoch}',
-      regularPrice: _regularPriceController.text.trim(),
-      salePrice: _salePriceController.text.trim(),
+      regularPrice: '',
+      salePrice: '',
       categories: categories,
       tags: tags,
       images: images,
       metaData: metaData,
-      attributes: const [],
+      attributes: productAttributes,
       manageStock: _manageStock,
-      stockQuantity: int.tryParse(_qtyController.text.trim()) ?? 0,
+      stockQuantity: 0,
       taxStatus: _selectedTax != null ? 'taxable' : 'none',
       taxClass: _selectedTax?.taxClass ?? 'standard',
     );
   }
 
-
+  // ──────────────────────────────────────────────────────────────
+  // The rest of your code remains unchanged
+  // ( _printFormData, _saveProduct, _clearForm, build, _buildTabButton, etc.)
+  // ──────────────────────────────────────────────────────────────
 
   void _printFormData() {
     print('=== FORM DATA ===');
@@ -556,8 +483,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     print('Stock Quantity: ${_qtyController.text}');
 
     if (_selectedCategory != null) {
-      print(
-          'Category: ${_selectedCategory.name} (ID: ${_selectedCategory.id})');
+      print('Category: ${_selectedCategory.name} (ID: ${_selectedCategory.id})');
     }
 
     if (_selectedTax != null) {
@@ -566,14 +492,12 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
 
     if (_selectedTags.isNotEmpty) {
       print('Tags:');
-      final uniqueTags = <String, dynamic>{};
+      final unique = <String, dynamic>{};
       for (var tag in _selectedTags) {
         final slug = tag.slug ?? '';
-        if (!uniqueTags.containsKey(slug)) {
-          uniqueTags[slug] = tag;
-        }
+        if (!unique.containsKey(slug)) unique[slug] = tag;
       }
-      for (var tag in uniqueTags.values) {
+      for (var tag in unique.values) {
         print('  - ${tag.name} (slug: ${tag.slug})');
       }
     }
@@ -581,160 +505,75 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     if (_variants.isNotEmpty) {
       print('=== VARIANTS ===');
       for (int i = 0; i < _variants.length; i++) {
-        var variant = _variants[i];
-        print('Variant ${i + 1}: ${variant['name']}');
-        print('  Stock: ${variant['stock']}');
-        print('  Regular Price: ${variant['regularPrice']}');
-        print('  Sale Price: ${variant['salePrice']}');
+        var v = _variants[i];
+        print('Variant ${i + 1}: ${v['name'] ?? 'Unnamed'}');
+        print('  Stock: ${v['stock'] ?? '—'}');
+        print('  Regular Price: ${v['regularPrice'] ?? '—'}');
+        print('  Sale Price: ${v['salePrice'] ?? '—'}');
 
-        if (variant['attribute'] != null) {
-          print(
-              '  Attribute: ${variant['attribute']['name']} (Slug: ${variant['attribute']['slug']})');
+        if (v['attribute'] != null) {
+          print('  Attribute: ${v['attribute']['name']} (Slug: ${v['attribute']['slug']})');
         }
-
-        if (variant['attributeItem'] != null) {
-          print('  Attribute Item: ${variant['attributeItem']['name']}');
-        }
-
-        if (variant['attributes'] != null && variant['attributes'] is List) {
-          print('  Custom Attributes:');
-          for (var attr in variant['attributes']) {
-            print('    - ${attr['name']}');
-          }
+        if (v['attributeItem'] != null) {
+          final item = v['attributeItem'];
+          print('  Selected Item Slug: ${item['slug'] ?? item['name'] ?? '—'}');
         }
       }
     }
-
     print('=== END FORM DATA ===');
   }
 
   Future<void> _saveProduct() async {
     if (_isSaving || !mounted) return;
-
     _fieldErrors.clear();
-
-    setState(() {
-      _isSaving = true;
-    });
+    setState(() => _isSaving = true);
 
     try {
       print('╔═══════════════════════════════════════════════');
       print('║          STARTING PRODUCT SAVE PROCESS        ║');
       print('╚═══════════════════════════════════════════════');
 
-      // 1. Print form data for debugging
-      print('→ Printing current form data...');
       _printFormData();
 
-      // 2. Validate form
-      print('→ Validating form...');
       final validationError = _validateForm();
       if (validationError != null) {
-        print('✗ Validation failed: "$validationError"');
+        print('✗ Validation failed: $validationError');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Validation Error: $validationError'),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 4),
-            ),
+            SnackBar(content: Text(validationError), backgroundColor: Colors.orange),
           );
         }
         return;
       }
-      print('✓ Form validation passed');
 
-      // 3. Build product entity
-      print('→ Building product entity...');
       final product = await _buildProductEntity();
-
       if (product == null) {
-        print('✗ _buildProductEntity() returned null');
-        print('   → Check console logs above for exact reason (validation / image upload / exception)');
-
+        print('✗ Failed to build product entity');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to create product data. Check console for details.'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 5),
-            ),
+            const SnackBar(content: Text('Failed to prepare product data'), backgroundColor: Colors.red),
           );
         }
         return;
       }
 
-      print('✓ Product entity built successfully');
-      print('   → Product name: ${product.name}');
-      print('   → Type: ${product.type}');
-      print('   → SKU: ${product.sku}');
-      print('   → Attributes count: ${product.attributes?.length ?? 0}');
-      print('   → Categories: ${product.categories.length}');
-      print('   → Tags: ${product.tags.length}');
-      print('   → Images: ${product.images.length}');
-
-      // Optional: Detailed entity debug (uncomment when needed)
-      /*
-    debugPrint('=== FULL PRODUCT ENTITY DEBUG ===');
-    debugPrint('Name: ${product.name}');
-    debugPrint('Type: ${product.type}');
-    debugPrint('SKU: ${product.sku}');
-    debugPrint('Regular Price: ${product.regularPrice}');
-    debugPrint('Sale Price: ${product.salePrice}');
-    debugPrint('Stock: ${product.stockQuantity}');
-    debugPrint('Tax Status: ${product.taxStatus}');
-    debugPrint('MetaData count: ${product.metaData.length}');
-    if (product.attributes.isNotEmpty) {
-      debugPrint('Attributes:');
-      for (var attr in product.attributes) {
-        debugPrint('  - ${attr['name']} (${attr['slug']}) → ${attr['options']}');
-      }
-    }
-    debugPrint('=== END ENTITY DEBUG ===');
-    */
-
-      // 4. Submit to BLoC
-      print('→ Dispatching AddProductInventoryTaxSubmitEvent...');
+      print('✓ Entity ready → ${product.name} (${product.type})');
       _addProductBloc.add(AddProductInventoryTaxSubmitEvent(product: product));
 
-      print('✓ Save event dispatched successfully');
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Product save request sent!'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
+          const SnackBar(content: Text('Saving product...'), backgroundColor: Colors.green),
         );
       }
-
-    } catch (e, stackTrace) {
-      print('╔═══════════════════════════════════════════════');
-      print('║             SAVE PRODUCT FAILED               ║');
-      print('╚═══════════════════════════════════════════════');
-      print('✗ Exception occurred:');
-      print('  → Error: $e');
-      print('  → Stack trace:');
-      print(stackTrace);
-
+    } catch (e, st) {
+      print('Save failed: $e\n$st');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving product: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
-      print('→ Cleaning up... isSaving = false');
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
-      print('╚═══════════════════════ END ════════════════════════');
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -768,6 +607,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
       _currentAttributes = [{'id': '1', 'unit': 'units', 'name': ''}];
       _currentVariantAttribute = null;
       _currentVariantAttributeItem = null;
+      _selectedItemSlug = null;
       _currentVariantIndex = -1;
       _updateAttributeControllers();
     });
@@ -1555,13 +1395,251 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
 
           SizedBox(width: 16),
 
-          // Pricing & Tax Card
+          // Expanded(
+          //   flex: 3,
+          //   child: ConstrainedBox(
+          //     constraints: BoxConstraints(
+          //       minHeight: 480,
+          //     ),
+          //     child: Material(
+          //       color: isDark ? const Color(0xFF1E1E2D) : Colors.white,
+          //       elevation: 2,
+          //       borderRadius: BorderRadius.circular(12),
+          //       child: SingleChildScrollView(
+          //         child: Column(
+          //           crossAxisAlignment: CrossAxisAlignment.start,
+          //           children: [
+          //             Container(
+          //               width: double.infinity,
+          //               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          //               decoration: BoxDecoration(
+          //                 color: isDark ? const Color(0xFFDAC14A) : const Color(0xFFFFFBF0),
+          //                 borderRadius: const BorderRadius.only(
+          //                   topLeft: Radius.circular(12),
+          //                   topRight: Radius.circular(12),
+          //                 ),
+          //               ),
+          //               child: Text(
+          //                 'Pricing & Tax',
+          //                 style: TextStyle(
+          //                   fontSize: 19,
+          //                   fontWeight: FontWeight.w600,
+          //                   color: isDark ? Colors.white : Colors.black87,
+          //                 ),
+          //               ),
+          //             ),
+          //             Padding(
+          //               padding: const EdgeInsets.all(12),
+          //               child: Column(
+          //                 crossAxisAlignment: CrossAxisAlignment.start,
+          //                 children: [
+          //                   // Helper boolean to disable price/stock fields
+          //                   Builder(builder: (_) {
+          //                     final bool isPriceStockDisabled =
+          //                         _hasVariablePrice || _selectedProductType == 'variable';
+          //
+          //                     return Column(
+          //                       children: [
+          //                         Row(
+          //                           children: [
+          //                             // Regular Price
+          //                             Expanded(
+          //                               child: Column(
+          //                                 crossAxisAlignment: CrossAxisAlignment.start,
+          //                                 children: [
+          //                                   Text(
+          //                                     'Regular Price',
+          //                                     style: TextStyle(
+          //                                       fontSize: 15,
+          //                                       fontWeight: FontWeight.w500,
+          //                                       color: isDark ? Colors.white70 : Colors.black87,
+          //                                     ),
+          //                                   ),
+          //                                   const SizedBox(height: 2),
+          //                                   TextFormField(
+          //                                     controller: _regularPriceController,
+          //                                     enabled: !isPriceStockDisabled,
+          //                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          //                                     style: TextStyle(
+          //                                       color: isPriceStockDisabled
+          //                                           ? (isDark ? Colors.white38 : Colors.black38)
+          //                                           : (isDark ? Colors.white : Colors.black87),
+          //                                     ),
+          //                                     decoration: const InputDecoration(
+          //                                       prefixText: '\$  ',
+          //                                       hintText: '00.00',
+          //                                       border: OutlineInputBorder(),
+          //                                       contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          //                                     ),
+          //                                   ),
+          //                                 ],
+          //                               ),
+          //                             ),
+          //                             const SizedBox(width: 16),
+          //                             // Sale Price
+          //                             Expanded(
+          //                               child: Column(
+          //                                 crossAxisAlignment: CrossAxisAlignment.start,
+          //                                 children: [
+          //                                   Text(
+          //                                     'Sale Price',
+          //                                     style: TextStyle(
+          //                                       fontSize: 15,
+          //                                       fontWeight: FontWeight.w500,
+          //                                       color: isDark ? Colors.white70 : Colors.black87,
+          //                                     ),
+          //                                   ),
+          //                                   const SizedBox(height: 2),
+          //                                   TextFormField(
+          //                                     controller: _salePriceController,
+          //                                     enabled: !isPriceStockDisabled,
+          //                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          //                                     style: TextStyle(
+          //                                       color: isPriceStockDisabled
+          //                                           ? (isDark ? Colors.white38 : Colors.black38)
+          //                                           : (isDark ? Colors.white : Colors.black87),
+          //                                     ),
+          //                                     decoration: const InputDecoration(
+          //                                       prefixText: '\$  ',
+          //                                       hintText: '00.00',
+          //                                       border: OutlineInputBorder(),
+          //                                       contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          //                                     ),
+          //                                   ),
+          //                                 ],
+          //                               ),
+          //                             ),
+          //                           ],
+          //                         ),
+          //                         const SizedBox(height: 4),
+          //                         // Variable Price Checkbox
+          //                         VariablePriceCheckboxWidget(
+          //                           value: _hasVariablePrice,
+          //                           isDark: isDark,
+          //                           name: 'Variable Price',
+          //                           slug: 'variable-price',
+          //                           onChanged: (checked) {
+          //                             setState(() {
+          //                               _hasVariablePrice = checked;
+          //
+          //                               // Clear price/quantity fields if variable price enabled
+          //                               if (checked) {
+          //                                 _regularPriceController.clear();
+          //                                 _salePriceController.clear();
+          //                                 _qtyController.clear();
+          //                               }
+          //
+          //                               const variablePriceSlug = 'variable-price';
+          //
+          //                               if (checked) {
+          //                                 // Add tag only if not already present
+          //                                 if (!_selectedTags.any((t) => t.slug == variablePriceSlug)) {
+          //                                   _selectedTags.add(
+          //                                     const Inventory_Tag_Entity(
+          //                                       id: 0, // local-only tag
+          //                                       name: 'Variable Price',
+          //                                       slug: variablePriceSlug,
+          //                                       description: '',
+          //                                       count: 0,
+          //                                     ),
+          //                                   );
+          //                                 }
+          //                               } else {
+          //                                 // Remove tag when unchecked
+          //                                 _selectedTags.removeWhere((t) => t.slug == variablePriceSlug);
+          //                               }
+          //                             });
+          //
+          //                             debugPrint(
+          //                               'Variable Price Tag -> ${_selectedTags.map((e) => e.slug).toList()}',
+          //                             );
+          //                           },
+          //                         ),
+          //                         const SizedBox(height: 4),
+          //                         // Tax
+          //                         Text(
+          //                           'Tax',
+          //
+          //                           style: TextStyle(
+          //                             fontSize: 15,
+          //
+          //                             fontWeight: FontWeight.w500,
+          //                             color: isDark ? Colors.white70 : Colors.black87,
+          //                           ),
+          //                         ),
+          //                         const SizedBox(height: 4),
+          //                         InventoryTaxDropdownWidget(
+          //                           onTaxSelected: (tax) {
+          //                             setState(() {
+          //                               _selectedTax = tax;
+          //                             });
+          //                           },
+          //                         ),
+          //                         const SizedBox(height: 4),
+          //                         // Stock
+          //                         Text(
+          //                           'Stock',
+          //                           style: TextStyle(
+          //                             fontSize: 15,
+          //                             fontWeight: FontWeight.w500,
+          //                             color: isDark ? Colors.white70 : Colors.black87,
+          //                           ),
+          //                         ),
+          //                         const SizedBox(height: 4),
+          //                         TextFormField(
+          //                           controller: _qtyController,
+          //                           enabled: !isPriceStockDisabled,
+          //                           keyboardType: TextInputType.number,
+          //                           style: TextStyle(
+          //                             color: isPriceStockDisabled
+          //                                 ? (isDark ? Colors.white38 : Colors.black38)
+          //                                 : (isDark ? Colors.white : Colors.black87),
+          //                           ),
+          //                           decoration: const InputDecoration(
+          //                             hintText: 'Enter quantity',
+          //                             border: OutlineInputBorder(),
+          //                             contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          //                           ),
+          //                         ),
+          //                         const SizedBox(height: 4),
+          //                         // Tags
+          //                         Text(
+          //                           'Tags',
+          //                           style: TextStyle(
+          //                             fontSize: 15,
+          //                             fontWeight: FontWeight.w500,
+          //                             color: isDark ? Colors.white70 : Colors.black87,
+          //                           ),
+          //                         ),
+          //                         const SizedBox(height: 4),
+          //                         InventoryTagMultiSelectWidget(
+          //                           onTypeSelected: (tag) {
+          //                             if (tag != null) {
+          //                               setState(() {
+          //                                 _selectedTags.add(tag);
+          //                               });
+          //                             }
+          //                           },
+          //                         ),
+          //                       ],
+          //                     );
+          //                   }),
+          //                 ],
+          //               ),
+          //             ),
+          //           ],
+          //         ),
+          //       ),
+          //     ),
+          //   ),
+          // ),
+
+          ////
+
           Expanded(
             flex: 3,
             child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: 480,
-              ),
+              constraints: const BoxConstraints(minHeight: 480),
               child: Material(
                 color: isDark ? const Color(0xFF1E1E2D) : Colors.white,
                 elevation: 2,
@@ -1570,13 +1648,15 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // HEADER
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 8),
+                        padding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFFDAC14A) : const Color(
-                              0xFFFFFBF0),
+                          color: isDark
+                              ? const Color(0xFFDAC14A)
+                              : const Color(0xFFFFFBF0),
                           borderRadius: const BorderRadius.only(
                             topLeft: Radius.circular(12),
                             topRight: Radius.circular(12),
@@ -1591,282 +1671,280 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                           ),
                         ),
                       ),
+
                       Padding(
                         padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                        child: Builder(
+                          builder: (_) {
+                            final bool isProductTypeVariable =
+                                _selectedProductType == 'variable';
+                            final bool isPriceStockDisabled =
+                                _hasVariablePrice || isProductTypeVariable;
+
+                            final Color disabledFill = Colors.grey.shade200;
+                            final Color disabledText = Colors.grey.shade500;
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment
-                                        .start,
-                                    children: [
-                                      Text(
-                                        'Regular Price',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w500,
-                                          color: isDark
-                                              ? Colors.white70
-                                              : Colors.black87,
-                                        ),
+                                // PRICES
+                                Row(
+                                  children: [
+                                    // Regular Price
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Align(
+                                            alignment: Alignment.centerLeft,
+                                            child: Text(
+                                              'Regular Price',
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w500,
+                                                color: isPriceStockDisabled
+                                                    ? Colors.grey
+                                                    : (isDark
+                                                    ? Colors.white70
+                                                    : Colors.black87),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          TextFormField(
+                                            controller: _regularPriceController,
+                                            enabled: !isPriceStockDisabled,
+                                            keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                                decimal: true),
+                                            style: TextStyle(
+                                              color: isPriceStockDisabled
+                                                  ? disabledText
+                                                  : (isDark
+                                                  ? Colors.white
+                                                  : Colors.black87),
+                                            ),
+                                            decoration: InputDecoration(
+                                              prefixText: '\$  ',
+                                              hintText: '00.00',
+                                              filled: true,
+                                              fillColor: isPriceStockDisabled
+                                                  ? disabledFill
+                                                  : Colors.transparent,
+                                              border:
+                                              const OutlineInputBorder(),
+                                              contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 14,
+                                                  vertical: 14),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(height: 2),
-                                      TextFormField(
-                                        controller: _regularPriceController,
-                                        enabled: !_hasVariablePrice,
-                                        keyboardType: const TextInputType
-                                            .numberWithOptions(decimal: true),
-                                        style: TextStyle(
-                                          color: _hasVariablePrice
-                                              ? (isDark
-                                              ? Colors.white38
-                                              : Colors.black38)
-                                              : (isDark ? Colors.white : Colors
-                                              .black87),
-                                        ),
-                                        decoration: const InputDecoration(
-                                          prefixText: '\$  ',
-                                          hintText: '00.00',
-                                          border: OutlineInputBorder(),
-                                          contentPadding: EdgeInsets.symmetric(
-                                              horizontal: 14, vertical: 14),
-                                        ),
+                                    ),
+                                    const SizedBox(width: 16),
+
+                                    // Sale Price
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                        children: [
+                                          Align(
+                                            alignment: Alignment.centerLeft,
+                                            child: Text(
+                                              'Sale Price',
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w500,
+                                                color: isPriceStockDisabled
+                                                    ? Colors.grey
+                                                    : (isDark
+                                                    ? Colors.white70
+                                                    : Colors.black87),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          TextFormField(
+                                            controller: _salePriceController,
+                                            enabled: !isPriceStockDisabled,
+                                            keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                                decimal: true),
+                                            style: TextStyle(
+                                              color: isPriceStockDisabled
+                                                  ? disabledText
+                                                  : (isDark
+                                                  ? Colors.white
+                                                  : Colors.black87),
+                                            ),
+                                            decoration: InputDecoration(
+                                              prefixText: '\$  ',
+                                              hintText: '00.00',
+                                              filled: true,
+                                              fillColor: isPriceStockDisabled
+                                                  ? disabledFill
+                                                  : Colors.transparent,
+                                              border:
+                                              const OutlineInputBorder(),
+                                              contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 14,
+                                                  vertical: 14),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ],
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 6),
+
+                                // VARIABLE PRICE CHECKBOX (DISABLED ONLY FOR VARIABLE TYPE)
+                                IgnorePointer(
+                                  ignoring: isProductTypeVariable,
+                                  child: Opacity(
+                                    opacity: isProductTypeVariable ? 0.5 : 1,
+                                    child: VariablePriceCheckboxWidget(
+                                      value: _hasVariablePrice,
+                                      isDark: isDark,
+                                      name: 'Variable Price',
+                                      slug: 'variable-price',
+                                      onChanged: (checked) {
+                                        setState(() {
+                                          _hasVariablePrice = checked;
+
+                                          if (checked) {
+                                            _regularPriceController.clear();
+                                            _salePriceController.clear();
+                                            _qtyController.clear();
+                                          }
+
+                                          const slug = 'variable-price';
+                                          if (checked) {
+                                            if (!_selectedTags.any(
+                                                    (t) => t.slug == slug)) {
+                                              _selectedTags.add(
+                                                const Inventory_Tag_Entity(
+                                                  id: 0,
+                                                  name: 'Variable Price',
+                                                  slug: slug,
+                                                  description: '',
+                                                  count: 0,
+                                                ),
+                                              );
+                                            }
+                                          } else {
+                                            _selectedTags.removeWhere(
+                                                    (t) => t.slug == slug);
+                                          }
+                                        });
+                                      },
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment
-                                        .start,
-                                    children: [
-                                      Text(
-                                        'Sale Price',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w500,
-                                          color: isDark
-                                              ? Colors.white70
-                                              : Colors.black87,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      TextFormField(
-                                        controller: _salePriceController,
-                                        enabled: !_hasVariablePrice,
-                                        keyboardType: const TextInputType
-                                            .numberWithOptions(decimal: true),
-                                        style: TextStyle(
-                                          color: _hasVariablePrice
-                                              ? (isDark
-                                              ? Colors.white38
-                                              : Colors.black38)
-                                              : (isDark ? Colors.white : Colors
-                                              .black87),
-                                        ),
-                                        decoration: const InputDecoration(
-                                          prefixText: '\$  ',
-                                          hintText: '00.00',
-                                          border: OutlineInputBorder(),
-                                          contentPadding: EdgeInsets.symmetric(
-                                              horizontal: 14, vertical: 14),
-                                        ),
-                                      ),
-                                    ],
+
+                                const SizedBox(height: 8),
+
+                                // TAX (TEXT GRAY ONLY — DROPDOWN ENABLED)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    'Tax',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w500,
+                                      color: isProductTypeVariable
+                                          ? Colors.grey
+                                          : (isDark
+                                          ? Colors.white70
+                                          : Colors.black87),
+                                    ),
                                   ),
+                                ),
+                                const SizedBox(height: 4),
+                                InventoryTaxDropdownWidget(
+                                  onTaxSelected: (tax) {
+                                    setState(() => _selectedTax = tax);
+                                  },
+                                ),
+
+                                const SizedBox(height: 8),
+
+                                // STOCK
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    'Stock',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w500,
+                                      color: isPriceStockDisabled
+                                          ? Colors.grey
+                                          : (isDark
+                                          ? Colors.white70
+                                          : Colors.black87),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                TextFormField(
+                                  controller: _qtyController,
+                                  enabled: !isPriceStockDisabled,
+                                  keyboardType: TextInputType.number,
+                                  style: TextStyle(
+                                    color: isPriceStockDisabled
+                                        ? disabledText
+                                        : (isDark
+                                        ? Colors.white
+                                        : Colors.black87),
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText: 'Enter quantity',
+                                    filled: true,
+                                    fillColor: isPriceStockDisabled
+                                        ? disabledFill
+                                        : Colors.transparent,
+                                    border:
+                                    const OutlineInputBorder(),
+                                    contentPadding:
+                                    const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 14),
+                                  ),
+                                ),
+
+                                const SizedBox(height: 8),
+
+                                // TAGS (TEXT GRAY ONLY)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    'Tags',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w500,
+                                      color: isProductTypeVariable
+                                          ? Colors.grey
+                                          : (isDark
+                                          ? Colors.white70
+                                          : Colors.black87),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                InventoryTagMultiSelectWidget(
+                                  onTypeSelected: (tag) {
+                                    if (tag != null) {
+                                      setState(() => _selectedTags.add(tag));
+                                    }
+                                  },
                                 ),
                               ],
-                            ),
-                            const SizedBox(height: 4),
-                            // Row(
-                            //   children: [
-                            //     SizedBox(
-                            //       width: 22,
-                            //       height: 22,
-                            //       child: Checkbox(
-                            //         value: _hasVariablePrice,
-                            //         onChanged: (val) {
-                            //           setState(() {
-                            //             _hasVariablePrice = val ?? false;
-                            //             if (_hasVariablePrice) {
-                            //               _regularPriceController.clear();
-                            //               _salePriceController.clear();
-                            //               _qtyController.clear();
-                            //             }
-                            //           });
-                            //         },
-                            //         shape: RoundedRectangleBorder(
-                            //           borderRadius: BorderRadius.circular(4),
-                            //         ),
-                            //         side: BorderSide(
-                            //           color: isDark
-                            //               ? Colors.white38
-                            //               : const Color(0xFFBDBDBD),
-                            //           width: 2,
-                            //         ),
-                            //         checkColor: Colors.white,
-                            //         fillColor: MaterialStateProperty.all(
-                            //             const Color(0xFF2196F3)),
-                            //       ),
-                            //     ),
-                            //     const SizedBox(width: 4),
-                            //     RichText(
-                            //       text: TextSpan(
-                            //         text: 'If the product has ',
-                            //         style: TextStyle(
-                            //           fontSize: 14,
-                            //           color: isDark ? Colors.white70 : Colors
-                            //               .black87,
-                            //         ),
-                            //         children: const [
-                            //           TextSpan(
-                            //             text: 'Variable Price',
-                            //             style: TextStyle(
-                            //               color: Color(0xFF2196F3),
-                            //               fontWeight: FontWeight.w500,
-                            //             ),
-                            //           ),
-                            //         ],
-                            //       ),
-                            //     ),
-                            //   ],
-                            // ),
-
-                            // VariablePriceCheckboxWidget(
-                            //   value: _hasVariablePrice,
-                            //   isDark: isDark,
-                            //   name: 'Variable Price',
-                            //   slug: 'variable-price',
-                            //   onChanged: (checked) {
-                            //     setState(() {
-                            //       _hasVariablePrice = checked;
-                            //
-                            //       if (checked) {
-                            //         _regularPriceController.clear();
-                            //         _salePriceController.clear();
-                            //         _qtyController.clear();
-                            //       }
-                            //     });
-                            //
-                            //     debugPrint(
-                            //       'Callback -> name: Variable Price, slug: variable-price, value: $checked',
-                            //     );
-                            //   },
-                            // ),
-
-                            VariablePriceCheckboxWidget(
-                              value: _hasVariablePrice,
-                              isDark: isDark,
-                              name: 'Variable Price',
-                              slug: 'variable-price',
-                              onChanged: (checked) {
-                                setState(() {
-                                  _hasVariablePrice = checked;
-
-                                  // Clear price/quantity fields if variable price enabled
-                                  if (checked) {
-                                    _regularPriceController.clear();
-                                    _salePriceController.clear();
-                                    _qtyController.clear();
-                                  }
-
-                                  const variablePriceSlug = 'variable-price';
-
-                                  if (checked) {
-                                    // Add tag only if not already present
-                                    if (!_selectedTags.any((t) => t.slug == variablePriceSlug)) {
-                                      _selectedTags.add(
-                                        const Inventory_Tag_Entity(
-                                          id: 0, // local-only tag
-                                          name: 'Variable Price',
-                                          slug: variablePriceSlug,
-                                          description: '',
-                                          count: 0,
-                                        ),
-                                      );
-                                    }
-                                  } else {
-                                    // Remove tag when unchecked
-                                    _selectedTags.removeWhere(
-                                          (t) => t.slug == variablePriceSlug,
-                                    );
-                                  }
-                                });
-
-                                debugPrint(
-                                  'Variable Price Tag -> ${_selectedTags.map((e) => e.slug).toList()}',
-                                );
-                              },
-                            ),
-
-
-                            const SizedBox(height: 4),
-                            Text(
-                              'Tax',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
-                                color: isDark ? Colors.white70 : Colors.black87,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            InventoryTaxDropdownWidget(
-                              onTaxSelected: (tax) {
-                                setState(() {
-                                  _selectedTax = tax;
-                                });
-                              },
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Stock',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
-                                color: isDark ? Colors.white70 : Colors.black87,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            TextFormField(
-                              controller: _qtyController,
-                              // enabled: !_hasVariablePrice,
-                              keyboardType: TextInputType.number,
-                              style: TextStyle(
-                                color: _hasVariablePrice
-                                    ? (isDark ? Colors.white38 : Colors.black38)
-                                    : (isDark ? Colors.white : Colors.black87),
-                              ),
-                              decoration: const InputDecoration(
-                                hintText: 'Enter quantity',
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 14),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Tags',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
-                                color: isDark ? Colors.white70 : Colors.black87,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            InventoryTagMultiSelectWidget(
-                              onTypeSelected: (tag) {
-                                if (tag != null) {
-                                  setState(() {
-                                    _selectedTags.add(tag);
-                                  });
-                                }
-                              },
-                            ),
-                          ],
+                            );
+                          },
                         ),
                       ),
                     ],
@@ -2090,6 +2168,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     );
   }
 
+  ////impo -----
+
   // Widget _buildVariantContent(bool isDark) {
   //   final bool isVariantsEnabled = (_selectedProductType ?? '').toLowerCase() == 'variable';
   //
@@ -2219,7 +2299,6 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //                         child: Column(
   //                           crossAxisAlignment: CrossAxisAlignment.start,
   //                           children: [
-  //                             // Variant Name & Stock
   //                             Row(
   //                               children: [
   //                                 Expanded(
@@ -2251,7 +2330,6 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //                               ],
   //                             ),
   //                             SizedBox(height: 8),
-  //                             // Prices
   //                             Row(
   //                               children: [
   //                                 Expanded(
@@ -2298,7 +2376,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //                                       ),
   //                                     if (variant['attributeItem'] != null)
   //                                       Text(
-  //                                         'Item: ${variant['attributeItem']['name']}',
+  //                                         'Slug: ${variant['attributeItem']['slug'] ?? '—'}',
   //                                         style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black87),
   //                                       ),
   //                                   ],
@@ -2308,7 +2386,6 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //                         ),
   //                       ),
   //                       SizedBox(width: 12),
-  //                       // Edit/Delete buttons
   //                       Row(
   //                         children: [
   //                           InkWell(
@@ -2320,19 +2397,13 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //                                 _currentRegularPrice = variant['regularPrice'] ?? '';
   //                                 _currentSalePrice = variant['salePrice'] ?? '';
   //                                 _currentImageFile = variant['imageFile'];
-  //                                 _currentAttributes = List<Map<String, dynamic>>.from(
-  //                                   variant['attributes'] ?? [
-  //                                     {'id': '1', 'unit': 'units', 'name': ''}
-  //                                   ],
-  //                                 );
   //                                 _currentVariantAttribute = variant['attribute'];
   //                                 _currentVariantAttributeItem = variant['attributeItem'];
+  //                                 _selectedItemSlug = variant['attributeItem']?['slug'] ?? '';
   //                                 _variantNameController.text = _currentVariantName;
   //                                 _stockController.text = _currentStock;
   //                                 _regularPriceController.text = _currentRegularPrice;
   //                                 _salePriceController.text = _currentSalePrice;
-  //                                 _updateAttributeControllers();
-  //                                 _variants.removeAt(index);
   //                               });
   //                             },
   //                             child: Container(
@@ -2370,7 +2441,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //             ],
   //
   //             // ────────────────────────────────────────────────
-  //             // Main ADD/EDIT FORM CONTAINER - FIXED HEIGHT ~480px
+  //             // Main ADD/EDIT FORM
   //             // ────────────────────────────────────────────────
   //             Container(
   //               width: double.infinity,
@@ -2383,11 +2454,11 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //                   color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
   //                 ),
   //               ),
-  //               child: SingleChildScrollView(          // ← Scroll inside fixed height
+  //               child: SingleChildScrollView(
   //                 child: Column(
   //                   crossAxisAlignment: CrossAxisAlignment.start,
   //                   children: [
-  //                     // Image + Name/Stock/Price row
+  //                     // Image + Name/Stock/Price row (unchanged)
   //                     Row(
   //                       crossAxisAlignment: CrossAxisAlignment.start,
   //                       children: [
@@ -2543,25 +2614,36 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //                       ],
   //                     ),
   //
-  //                     SizedBox(height: 16),
+  //                     SizedBox(height: 24),
   //
-  //                     // Attributes section
+  //                     // Attribute selection + auto-filled slug field
+  //
   //                     Row(
   //                       crossAxisAlignment: CrossAxisAlignment.start,
   //                       children: [
+  //                         // Attribute Column
   //                         Expanded(
+  //                           flex: 2,
   //                           child: Column(
   //                             crossAxisAlignment: CrossAxisAlignment.start,
   //                             children: [
-  //                               Text('Attribute', style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
+  //                               Text(
+  //                                 'Attribute',
+  //                                 style: TextStyle(
+  //                                   fontSize: 12,
+  //                                   color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+  //                                 ),
+  //                               ),
   //                               SizedBox(height: 8),
   //                               Container(
-  //                                 height: 48,
-  //                                 decoration: BoxDecoration(
-  //                                   color: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-  //                                   borderRadius: BorderRadius.circular(6),
-  //                                   border: Border.all(color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0)),
-  //                                 ),
+  //                                 // height: 48,
+  //                                 // decoration: BoxDecoration(
+  //                                 //   color: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+  //                                 //   borderRadius: BorderRadius.circular(6),
+  //                                 //   border: Border.all(
+  //                                 //     color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
+  //                                 //   ),
+  //                                 // ),
   //                                 child: InventoryAttributesWithItemsWidget(
   //                                   onAttributeSelected: (attribute) {
   //                                     setState(() {
@@ -2570,15 +2652,14 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //                                         'name': attribute.name,
   //                                         'slug': attribute.slug,
   //                                       };
+  //                                       _currentVariantAttributeItem = null;
+  //                                       _selectedItemSlug = null;
   //                                     });
   //                                   },
-  //                                   onItemSelected: (attribute, itemId) {
+  //                                   onItemSlugSelected: (attribute, slug) {
   //                                     setState(() {
-  //                                       _currentVariantAttributeItem = {
-  //                                         'attribute_id': attribute.id,
-  //                                         'item_id': itemId,
-  //                                         'name': 'Item $itemId',
-  //                                       };
+  //                                       _currentVariantAttributeItem = {'slug': slug};
+  //                                       _selectedItemSlug = slug;
   //                                     });
   //                                   },
   //                                 ),
@@ -2586,51 +2667,36 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //                             ],
   //                           ),
   //                         ),
-  //                         SizedBox(width: 12),
+  //
+  //                         SizedBox(width: 6),
+  //
+  //                         // Selected Item Slug Column
   //                         Expanded(
+  //                           flex: 1,
   //                           child: Column(
   //                             crossAxisAlignment: CrossAxisAlignment.start,
   //                             children: [
-  //                               Text('Custom Attribute', style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
+  //                               Text(
+  //                                 'Selected Item Slug',
+  //                                 style: TextStyle(
+  //                                   fontSize: 12,
+  //                                   color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+  //                                 ),
+  //                               ),
   //                               SizedBox(height: 8),
-  //                               Row(
-  //                                 children: [
-  //                                   Expanded(
-  //                                     child: TextField(
-  //                                       controller: _attributeControllers.isNotEmpty ? _attributeControllers[0] : null,
-  //                                       onChanged: (value) {
-  //                                         if (_currentAttributes.isNotEmpty) _currentAttributes[0]['name'] = value;
-  //                                       },
-  //                                       decoration: InputDecoration(
-  //                                         hintText: 'Attribute Name',
-  //                                         filled: true,
-  //                                         fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-  //                                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-  //                                         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-  //                                       ),
-  //                                     ),
-  //                                   ),
-  //                                   SizedBox(width: 8),
-  //                                   InkWell(
-  //                                     onTap: () {
-  //                                       setState(() {
-  //                                         if (_currentAttributes.length == 1) {
-  //                                           _currentAttributes.add({'id': '2', 'unit': 'units', 'name': ''});
-  //                                           _updateAttributeControllers();
-  //                                         }
-  //                                       });
-  //                                     },
-  //                                     child: Container(
-  //                                       width: 36,
-  //                                       height: 48,
-  //                                       decoration: BoxDecoration(
-  //                                         color: Color(0xFF2196F3),
-  //                                         borderRadius: BorderRadius.circular(6),
-  //                                       ),
-  //                                       child: Icon(Icons.add, color: Colors.white),
-  //                                     ),
-  //                                   ),
-  //                                 ],
+  //                               TextField(
+  //                                 controller: TextEditingController(text: _selectedItemSlug ?? ''),
+  //                                 enabled: false,
+  //                                 decoration: InputDecoration(
+  //                                   hintText: 'Will show selected item slug automatically',
+  //                                   filled: true,
+  //                                   fillColor: isDark ? Color(0xFF1F1D2B) : Colors.grey.shade100,
+  //                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+  //                                   contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+  //                                 ),
+  //                                 style: TextStyle(
+  //                                   color: isDark ? Colors.white70 : Colors.black54,
+  //                                 ),
   //                               ),
   //                             ],
   //                           ),
@@ -2638,68 +2704,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //                       ],
   //                     ),
   //
-  //                     SizedBox(height: 12),
+  //                     SizedBox(height: 32),
   //
-  //                     // Additional custom attributes
-  //                     if (_currentAttributes.length > 1) ...[
-  //                       ..._currentAttributes.asMap().entries.skip(1).map((entry) {
-  //                         int idx = entry.key;
-  //                         return Padding(
-  //                           padding: EdgeInsets.only(bottom: 8),
-  //                           child: Row(
-  //                             children: [
-  //                               Expanded(
-  //                                 child: TextField(
-  //                                   controller: _attributeControllers[idx],
-  //                                   onChanged: (value) => _currentAttributes[idx]['name'] = value,
-  //                                   decoration: InputDecoration(
-  //                                     hintText: 'Attribute Name',
-  //                                     filled: true,
-  //                                     fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-  //                                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-  //                                     contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-  //                                   ),
-  //                                 ),
-  //                               ),
-  //                               SizedBox(width: 8),
-  //                               InkWell(
-  //                                 onTap: () {
-  //                                   setState(() {
-  //                                     if (idx == _currentAttributes.length - 1) {
-  //                                       _currentAttributes.add({
-  //                                         'id': (_currentAttributes.length + 1).toString(),
-  //                                         'unit': 'units',
-  //                                         'name': ''
-  //                                       });
-  //                                       _updateAttributeControllers();
-  //                                     } else {
-  //                                       _currentAttributes.removeAt(idx);
-  //                                       _updateAttributeControllers();
-  //                                     }
-  //                                   });
-  //                                 },
-  //                                 child: Container(
-  //                                   width: 36,
-  //                                   height: 48,
-  //                                   decoration: BoxDecoration(
-  //                                     color: idx == _currentAttributes.length - 1 ? Color(0xFF2196F3) : Color(0xFFEF5350),
-  //                                     borderRadius: BorderRadius.circular(6),
-  //                                   ),
-  //                                   child: Icon(
-  //                                     idx == _currentAttributes.length - 1 ? Icons.add : Icons.close,
-  //                                     color: Colors.white,
-  //                                   ),
-  //                                 ),
-  //                               ),
-  //                             ],
-  //                           ),
-  //                         );
-  //                       }),
-  //                     ],
-  //
-  //                     SizedBox(height: 16),
-  //
-  //                     // Add/Update button
+  //                     // Add / Update button
   //                     SizedBox(
   //                       width: double.infinity,
   //                       height: 44,
@@ -2707,37 +2714,38 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //                         onPressed: isVariantsEnabled
   //                             ? () {
   //                           if (_currentVariantName.trim().isEmpty) return;
+  //
   //                           setState(() {
   //                             Map<String, dynamic> newVariant = {
   //                               'name': _currentVariantName,
   //                               'stock': _currentStock.isNotEmpty ? _currentStock : '0',
   //                               'regularPrice': _currentRegularPrice.isNotEmpty ? _currentRegularPrice : '0.00',
   //                               'salePrice': _currentSalePrice.isNotEmpty ? _currentSalePrice : '',
-  //                               'attributes': List<Map<String, dynamic>>.from(_currentAttributes),
   //                               'imageFile': _currentImageFile,
   //                               'attribute': _currentVariantAttribute,
   //                               'attributeItem': _currentVariantAttributeItem,
   //                             };
+  //
   //                             if (_currentVariantIndex >= 0) {
   //                               _variants[_currentVariantIndex] = newVariant;
   //                             } else {
   //                               _variants.add(newVariant);
   //                             }
+  //
   //                             // Reset
   //                             _currentVariantName = '';
   //                             _currentStock = '';
   //                             _currentRegularPrice = '';
   //                             _currentSalePrice = '';
-  //                             _currentAttributes = [{'id': '1', 'unit': 'units', 'name': ''}];
   //                             _currentImageFile = null;
   //                             _currentVariantAttribute = null;
   //                             _currentVariantAttributeItem = null;
+  //                             _selectedItemSlug = null;
   //                             _currentVariantIndex = -1;
   //                             _variantNameController.clear();
   //                             _stockController.clear();
   //                             _regularPriceController.clear();
   //                             _salePriceController.clear();
-  //                             _updateAttributeControllers();
   //                           });
   //                         }
   //                             : null,
@@ -2765,6 +2773,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //     ),
   //   );
   // }
+
+  //////////----impo
 
 
   Widget _buildVariantContent(bool isDark) {
@@ -2896,7 +2906,6 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Variant Name & Stock
                               Row(
                                 children: [
                                   Expanded(
@@ -2928,7 +2937,6 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                 ],
                               ),
                               SizedBox(height: 8),
-                              // Prices
                               Row(
                                 children: [
                                   Expanded(
@@ -2960,24 +2968,20 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                   ),
                                 ],
                               ),
-                              // Attributes display
-                              if (variant['attribute'] != null || variant['attributeItem'] != null)
+                              // Attributes display - Show all selected attributes
+                              if (_getSelectedAttributesForDisplay(variant).isNotEmpty)
                                 Padding(
                                   padding: EdgeInsets.only(top: 8),
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text('Attributes:', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-                                      if (variant['attribute'] != null)
-                                        Text(
-                                          '${variant['attribute']['name']} (${variant['attribute']['slug']})',
+                                      ..._getSelectedAttributesForDisplay(variant).map((attrDisplay) {
+                                        return Text(
+                                          attrDisplay,
                                           style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black87),
-                                        ),
-                                      if (variant['attributeItem'] != null)
-                                        Text(
-                                          'Item: ${variant['attributeItem']['name']}',
-                                          style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black87),
-                                        ),
+                                        );
+                                      }).toList(),
                                     ],
                                   ),
                                 ),
@@ -2985,7 +2989,6 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                           ),
                         ),
                         SizedBox(width: 12),
-                        // Edit/Delete buttons
                         Row(
                           children: [
                             InkWell(
@@ -2997,19 +3000,29 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                   _currentRegularPrice = variant['regularPrice'] ?? '';
                                   _currentSalePrice = variant['salePrice'] ?? '';
                                   _currentImageFile = variant['imageFile'];
-                                  _currentAttributes = List<Map<String, dynamic>>.from(
-                                    variant['attributes'] ?? [
-                                      {'id': '1', 'unit': 'units', 'name': ''}
-                                    ],
-                                  );
-                                  _currentVariantAttribute = variant['attribute'];
-                                  _currentVariantAttributeItem = variant['attributeItem'];
+
+                                  // Load attributes for editing
+                                  if (variant['attributes'] != null && (variant['attributes'] as List).isNotEmpty) {
+                                    _variantAttributes = List<Map<String, dynamic>>.from(variant['attributes']);
+                                  } else if (variant['attribute'] != null) {
+                                    // Convert single attribute format to multiple for editing
+                                    _variantAttributes = [{
+                                      'attribute': variant['attribute'],
+                                      'attributeItem': variant['attributeItem'],
+                                      'selectedSlug': variant['attributeItem']?['slug'],
+                                    }];
+                                  } else {
+                                    _variantAttributes = [{
+                                      'attribute': null,
+                                      'attributeItem': null,
+                                      'selectedSlug': null,
+                                    }];
+                                  }
+
                                   _variantNameController.text = _currentVariantName;
                                   _stockController.text = _currentStock;
                                   _regularPriceController.text = _currentRegularPrice;
                                   _salePriceController.text = _currentSalePrice;
-                                  _updateAttributeControllers();
-                                  _variants.removeAt(index);
                                 });
                               },
                               child: Container(
@@ -3046,12 +3059,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                 SizedBox(height: 12),
               ],
 
-              // ────────────────────────────────────────────────
-              // Main ADD/EDIT FORM CONTAINER - FIXED HEIGHT ~480px
-              // ────────────────────────────────────────────────
+              // Main ADD/EDIT FORM
               Container(
                 width: double.infinity,
-                height: 480,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: isDark ? Color(0xFF1F1D2B) : Colors.white,
@@ -3060,7 +3070,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                     color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
                   ),
                 ),
-                child: SingleChildScrollView(          // ← Scroll inside fixed height
+                child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -3220,163 +3230,185 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                         ],
                       ),
 
-                      SizedBox(height: 16),
+                      SizedBox(height: 24),
 
-                      // Attributes section
-                      Row(
+                      // Multiple Attributes Section with Add/Remove buttons
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Attribute', style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
-                                SizedBox(height: 8),
-                                Container(
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0)),
-                                  ),
-                                  child: InventoryAttributesWithItemsWidget(
-                                    onAttributeSelected: (attribute) {
-                                      setState(() {
-                                        _currentVariantAttribute = {
-                                          'id': attribute.id,
-                                          'name': attribute.name,
-                                          'slug': attribute.slug,
-                                        };
-                                      });
-                                    },
-                                    onItemSelected: (attribute, itemId) {
-                                      setState(() {
-                                        _currentVariantAttributeItem = {
-                                          'attribute_id': attribute.id,
-                                          'item_id': itemId,
-                                          'name': 'Item $itemId',
-                                        };
-                                      });
-                                    },
-                                  ),
+                          // Header for attributes
+                          Row(
+                            children: [
+                              Text(
+                                'Attributes',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.white : Colors.black87,
                                 ),
-                              ],
-                            ),
-                          ),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Custom Attribute', style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
-                                SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextField(
-                                        controller: _attributeControllers.isNotEmpty ? _attributeControllers[0] : null,
-                                        onChanged: (value) {
-                                          if (_currentAttributes.isNotEmpty) _currentAttributes[0]['name'] = value;
-                                        },
-                                        decoration: InputDecoration(
-                                          hintText: 'Attribute Name',
-                                          filled: true,
-                                          fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(width: 8),
-                                    InkWell(
-                                      onTap: () {
-                                        setState(() {
-                                          if (_currentAttributes.length == 1) {
-                                            _currentAttributes.add({'id': '2', 'unit': 'units', 'name': ''});
-                                            _updateAttributeControllers();
-                                          }
-                                        });
-                                      },
-                                      child: Container(
-                                        width: 36,
-                                        height: 48,
-                                        decoration: BoxDecoration(
-                                          color: Color(0xFF2196F3),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Icon(Icons.add, color: Colors.white),
-                                      ),
-                                    ),
-                                  ],
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                '(Optional)',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade500,
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
+                          SizedBox(height: 12),
+
+                          // Dynamic Attribute Rows
+                          ..._variantAttributes.asMap().entries.map((entry) {
+                            int index = entry.key;
+                            var attrData = entry.value;
+
+                            return Padding(
+                              padding: EdgeInsets.only(bottom: 12),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Attribute Column
+                                  Expanded(
+                                    flex: 2,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Attribute ${index + 1}',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                          ),
+                                        ),
+                                        SizedBox(height: 8),
+                                        Container(
+                                          child: InventoryAttributesWithItemsWidget(
+                                            onAttributeSelected: (attribute) {
+                                              setState(() {
+                                                _variantAttributes[index]['attribute'] = {
+                                                  'id': attribute.id,
+                                                  'name': attribute.name,
+                                                  'slug': attribute.slug,
+                                                };
+                                                _variantAttributes[index]['attributeItem'] = null;
+                                                _variantAttributes[index]['selectedSlug'] = null;
+                                              });
+                                            },
+                                            onItemSlugSelected: (attribute, slug) {
+                                              setState(() {
+                                                _variantAttributes[index]['attributeItem'] = {'slug': slug};
+                                                _variantAttributes[index]['selectedSlug'] = slug;
+                                              });
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
+                                  SizedBox(width: 6),
+
+                                  // Selected Item Slug Column with Add/Remove buttons
+                                  Expanded(
+                                    flex: 1,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Selected Item Slug',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                          ),
+                                        ),
+                                        SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: TextField(
+                                                controller: TextEditingController(
+                                                    text: attrData['selectedSlug'] ?? ''
+                                                ),
+                                                enabled: false,
+                                                decoration: InputDecoration(
+                                                  hintText: 'Auto-filled slug',
+                                                  filled: true,
+                                                  fillColor: isDark ? Color(0xFF1F1D2B) : Colors.grey.shade100,
+                                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                                ),
+                                                style: TextStyle(
+                                                  color: isDark ? Colors.white70 : Colors.black54,
+                                                ),
+                                              ),
+                                            ),
+                                            SizedBox(width: 8),
+                                            // Add Button (only on last row)
+                                            if (index == _variantAttributes.length - 1)
+                                              InkWell(
+                                                onTap: () {
+                                                  setState(() {
+                                                    _variantAttributes.add({
+                                                      'attribute': null,
+                                                      'attributeItem': null,
+                                                      'selectedSlug': null,
+                                                    });
+                                                  });
+                                                },
+                                                child: Container(
+                                                  padding: EdgeInsets.all(8),
+                                                  decoration: BoxDecoration(
+                                                    color: Color(0xFF2196F3).withOpacity(0.1),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(color: Color(0xFF2196F3), width: 1),
+                                                  ),
+                                                  child: Icon(
+                                                    Icons.add,
+                                                    size: 18,
+                                                    color: Color(0xFF2196F3),
+                                                  ),
+                                                ),
+                                              ),
+                                            // Remove Button (only show if more than one attribute)
+                                            if (_variantAttributes.length > 1) ...[
+                                              SizedBox(width: 8),
+                                              InkWell(
+                                                onTap: () {
+                                                  setState(() {
+                                                    _variantAttributes.removeAt(index);
+                                                  });
+                                                },
+                                                child: Container(
+                                                  padding: EdgeInsets.all(8),
+                                                  decoration: BoxDecoration(
+                                                    color: Color(0xFFEF5350).withOpacity(0.1),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: Icon(
+                                                    Icons.delete_outline,
+                                                    size: 18,
+                                                    color: Color(0xFFEF5350),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
                         ],
                       ),
 
-                      SizedBox(height: 12),
+                      SizedBox(height: 32),
 
-                      // Additional custom attributes
-                      if (_currentAttributes.length > 1) ...[
-                        ..._currentAttributes.asMap().entries.skip(1).map((entry) {
-                          int idx = entry.key;
-                          return Padding(
-                            padding: EdgeInsets.only(bottom: 8),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: _attributeControllers[idx],
-                                    onChanged: (value) => _currentAttributes[idx]['name'] = value,
-                                    decoration: InputDecoration(
-                                      hintText: 'Attribute Name',
-                                      filled: true,
-                                      fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(width: 8),
-                                InkWell(
-                                  onTap: () {
-                                    setState(() {
-                                      if (idx == _currentAttributes.length - 1) {
-                                        _currentAttributes.add({
-                                          'id': (_currentAttributes.length + 1).toString(),
-                                          'unit': 'units',
-                                          'name': ''
-                                        });
-                                        _updateAttributeControllers();
-                                      } else {
-                                        _currentAttributes.removeAt(idx);
-                                        _updateAttributeControllers();
-                                      }
-                                    });
-                                  },
-                                  child: Container(
-                                    width: 36,
-                                    height: 48,
-                                    decoration: BoxDecoration(
-                                      color: idx == _currentAttributes.length - 1 ? Color(0xFF2196F3) : Color(0xFFEF5350),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Icon(
-                                      idx == _currentAttributes.length - 1 ? Icons.add : Icons.close,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                      ],
-
-                      SizedBox(height: 16),
-
-                      // Add/Update button
+                      // Add / Update button
                       SizedBox(
                         width: double.infinity,
                         height: 44,
@@ -3385,56 +3417,57 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                               ? () {
                             if (_currentVariantName.trim().isEmpty) return;
 
-                            // ────────────────────────────────
-                            // FIX: Ensure at least one attribute exists
-                            // for WooCommerce variation requirement
-                            // ────────────────────────────────
-                            if (_currentVariantAttribute == null &&
-                                (_currentAttributes.isEmpty ||
-                                    _currentAttributes.every((attr) =>
-                                    (attr['name']?.trim() ?? '').isEmpty))) {
-                              _currentAttributes = [
-                                {
-                                  'id': 'fallback',
-                                  'unit': 'units',
-                                  'name': 'Default Option',
-                                }
-                              ];
-                              _updateAttributeControllers();
-                            }
-                            // ────────────────────────────────
-
                             setState(() {
+                              // Convert multiple attributes to single attribute format for backend
+                              Map<String, dynamic>? singleAttribute;
+                              Map<String, dynamic>? singleAttributeItem;
+
+                              // Get the first valid attribute for backend compatibility
+                              for (var attr in _variantAttributes) {
+                                if (attr['attribute'] != null && attr['attributeItem'] != null) {
+                                  singleAttribute = attr['attribute'];
+                                  singleAttributeItem = attr['attributeItem'];
+                                  break;
+                                }
+                              }
+
                               Map<String, dynamic> newVariant = {
                                 'name': _currentVariantName,
                                 'stock': _currentStock.isNotEmpty ? _currentStock : '0',
                                 'regularPrice': _currentRegularPrice.isNotEmpty ? _currentRegularPrice : '0.00',
                                 'salePrice': _currentSalePrice.isNotEmpty ? _currentSalePrice : '',
-                                'attributes': List<Map<String, dynamic>>.from(_currentAttributes),
                                 'imageFile': _currentImageFile,
-                                'attribute': _currentVariantAttribute,
-                                'attributeItem': _currentVariantAttributeItem,
+                                // For backend compatibility - single attribute
+                                'attribute': singleAttribute,
+                                'attributeItem': singleAttributeItem,
+                                // For UI/display - multiple attributes
+                                'attributes': List<Map<String, dynamic>>.from(_variantAttributes),
                               };
+
                               if (_currentVariantIndex >= 0) {
                                 _variants[_currentVariantIndex] = newVariant;
                               } else {
                                 _variants.add(newVariant);
                               }
+
                               // Reset
                               _currentVariantName = '';
                               _currentStock = '';
                               _currentRegularPrice = '';
                               _currentSalePrice = '';
-                              _currentAttributes = [{'id': '1', 'unit': 'units', 'name': ''}];
                               _currentImageFile = null;
-                              _currentVariantAttribute = null;
-                              _currentVariantAttributeItem = null;
                               _currentVariantIndex = -1;
                               _variantNameController.clear();
                               _stockController.clear();
                               _regularPriceController.clear();
                               _salePriceController.clear();
-                              _updateAttributeControllers();
+
+                              // Reset attributes
+                              _variantAttributes = [{
+                                'attribute': null,
+                                'attributeItem': null,
+                                'selectedSlug': null,
+                              }];
                             });
                           }
                               : null,
@@ -3461,6 +3494,29 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         ),
       ),
     );
+  }
+
+// Helper method to get attributes for display
+  List<String> _getSelectedAttributesForDisplay(Map<String, dynamic> variant) {
+    List<String> displayList = [];
+
+    // First check for multiple attributes
+    if (variant['attributes'] != null && (variant['attributes'] as List).isNotEmpty) {
+      for (var attr in (variant['attributes'] as List)) {
+        if (attr['attribute'] != null && attr['selectedSlug'] != null) {
+          displayList.add('${attr['attribute']['name']}: ${attr['selectedSlug']}');
+        }
+      }
+    }
+    // Fallback to single attribute
+    else if (variant['attribute'] != null) {
+      displayList.add('${variant['attribute']['name']} (${variant['attribute']['slug']})');
+      if (variant['attributeItem'] != null && variant['attributeItem']['slug'] != null) {
+        displayList.add('Slug: ${variant['attributeItem']['slug']}');
+      }
+    }
+
+    return displayList;
   }
 
 
