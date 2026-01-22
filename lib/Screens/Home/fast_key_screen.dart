@@ -274,6 +274,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
   List<FastKey> fastKeyTabs = [];
   int? _selectedCategoryIndex;
   int? _editingCategoryIndex;
+  bool _isPaginating = false;
   int? userId;
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
   static bool _productMetaInitialized = false;
@@ -2738,6 +2739,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                               ? NestedGridWidget(
                             productBloc: productBloc,
                             orderHelper: orderHelper,
+                            isPaginating: _isPaginating,
                             isHorizontal: true,
                             isLoading: isTabsLoading || isItemsLoading,
                             showAddButton: showAddButton,

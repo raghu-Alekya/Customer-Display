@@ -795,6 +795,8 @@ class NestedGridWidget extends StatelessWidget {
   final ProductBloc? productBloc; //Build 1.1.36
   final OrderBloc? orderBloc;
   final OrderHelper? orderHelper;
+  final bool isPaginating;
+
 
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
   static bool _productMetaInitialized = false;
@@ -820,6 +822,7 @@ class NestedGridWidget extends StatelessWidget {
     this.productBloc,
     this.orderBloc,
     this.orderHelper,
+    required this.isPaginating,
   });
   Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
     if (_productMetaCache.isNotEmpty) {
@@ -978,26 +981,27 @@ class NestedGridWidget extends StatelessWidget {
 
     return Expanded(
       child: Container(
-        margin: EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 10),
-        height: MediaQuery.of(context).size.height / 2,
+        margin: const EdgeInsets.only(left: 10, right: 10, bottom: 10),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
           color: themeHelper.themeMode == ThemeMode.dark
               ? ThemeNotifier.primaryBackground
               : Colors.white,
         ),
-        child: isLoading
-            ? ShimmerEffect.rectangular(height: 200)
-            : Material(
-          color: Colors.transparent,
-          child: ReorderableGridView.builder(
-            padding: const EdgeInsets.all(8),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-              childAspectRatio: 2.2,
-            ),
+        child: Stack(
+            children: [
+            /// 🔹 GRID
+        isLoading
+        ? ShimmerEffect.rectangular(height: 900)
+              : ReorderableGridView.builder(
+      padding: const EdgeInsets.all(8),
+      gridDelegate:
+      const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: 2.2,
+      ),
             itemCount: totalCount,
             dragEnabled: Misc
                 .enableReordering, // Build #1.0.204: Disable Re-Order for grid & Added this line to control drag functionality
@@ -1030,6 +1034,8 @@ class NestedGridWidget extends StatelessWidget {
                 );
               }
 
+
+
               // Handle "Back to Categories" button if enabled
               if (showBackButton && index == (showAddButton ? 1 : 0)) {
                 return Container(
@@ -1051,6 +1057,7 @@ class NestedGridWidget extends StatelessWidget {
                   ),
                 );
               }
+
 
               // Adjust the index based on the presence of "Add" and "Back" buttons
               final itemIndex = index -
@@ -1757,6 +1764,40 @@ class NestedGridWidget extends StatelessWidget {
               );
             },
           ),
+              /// 🔥 PAGINATION LOADER (FLOATING – NO GAP)
+              if (isPaginating)
+                Positioned(
+                  bottom: 40,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(19),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: themeHelper.themeMode == ThemeMode.dark
+                            ? const Color(0xFF2C2C2E)
+                            : Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.15),
+                            blurRadius: 6,
+                          )
+                        ],
+                      ),
+                      child: const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFFE74C3C),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+            ],
         ),
       ),
     );

@@ -573,15 +573,16 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                 children: [
                   if (sidebarPosition == SidebarPosition.left)
                     custom_widgets.NavigationBar(
-                      //Build #1.0.4 : Updated class name LeftSidebar to NavigationBar
                       selectedSidebarIndex: _selectedSidebarIndex,
                       onSidebarItemSelected: (index) {
                         setState(() {
                           _selectedSidebarIndex = index;
                         });
                       },
-                      isVertical: true, // Vertical layout for left sidebar
+                      isVertical: true,
+                      isShiftScreen: true, // 🔥 THIS FIXES HEIGHT JUMP
                     ),
+
 
                   Expanded(
                       child: Padding(
@@ -1162,7 +1163,8 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                           _selectedSidebarIndex = index;
                         });
                       },
-                      isVertical: true, // Vertical layout for right sidebar
+                      isVertical: true,
+                      isShiftScreen: true,// Vertical layout for right sidebar
                     ),
                 ],
               ),
@@ -1177,7 +1179,8 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                     _selectedSidebarIndex = index;
                   });
                 },
-                isVertical: false, // Horizontal layout for bottom sidebar
+                isVertical: false,
+                isShiftScreen: true,// Horizontal layout for bottom sidebar
               ),
           ],
         ),

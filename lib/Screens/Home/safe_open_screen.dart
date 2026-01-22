@@ -306,6 +306,7 @@ class _SafeOpenScreenState extends State<SafeOpenScreen> with LayoutSelectionMix
                       });
                     },
                     isVertical: true, // Vertical layout for left sidebar
+                    isShiftScreen: true,
                   ),
                 Expanded(
                   child: Padding(
@@ -1534,6 +1535,7 @@ class _SafeOpenScreenState extends State<SafeOpenScreen> with LayoutSelectionMix
                       });
                     },
                     isVertical: true,
+                    isShiftScreen: true,
                   ),
               ],
             ),
@@ -1547,6 +1549,7 @@ class _SafeOpenScreenState extends State<SafeOpenScreen> with LayoutSelectionMix
                 });
               },
               isVertical: false,
+              isShiftScreen: true,
             ),
         ],
       ),

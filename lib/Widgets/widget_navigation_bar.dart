@@ -35,13 +35,16 @@ class NavigationBar extends StatelessWidget {
   final int selectedSidebarIndex;
   final Function(int) onSidebarItemSelected;
   final bool isVertical;
+  final bool isShiftScreen; // ✅ ADD THIS
 
   const NavigationBar({
     required this.selectedSidebarIndex,
     required this.onSidebarItemSelected,
     this.isVertical = true,
+    this.isShiftScreen = false, // default
     Key? key,
   }) : super(key: key);
+
 
   @override
   Widget build(BuildContext context) {
@@ -99,8 +102,10 @@ class NavigationBar extends StatelessWidget {
     // Build #1.0.161: Fixed Issue - navigation bar icons are not disabled before create shift
     bool isShiftInvalid = shiftId == null || shiftId == "null" || shiftId.isEmpty;
     // Build #1.0.221 : Fixed Issue -> Disable navigation bar menu icons while shift create,update,close
-    bool isShiftScreen = ModalRoute.of(context)?.settings.arguments == TextConstants.navLogout ||
-        ModalRoute.of(context)?.settings.arguments == TextConstants.navShiftHistory;
+    // bool isShiftScreen = ModalRoute.of(context)?.settings.arguments == TextConstants.navLogout ||
+    //     ModalRoute.of(context)?.settings.arguments == TextConstants.navShiftHistory;
+    bool isShiftScreen = this.isShiftScreen;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         if (kDebugMode) {
@@ -385,9 +390,11 @@ class NavigationBar extends StatelessWidget {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     // Build #1.0.161: Fixed Issue - navigation bar icons are not disabled before create shift
     bool isShiftInvalid = shiftId == null || shiftId == "null" || shiftId.isEmpty;
-    // Build #1.0.221 : Fixed Issue -> Disable navigation bar menu icons while shift create,update,close
-    bool isShiftScreen = ModalRoute.of(context)?.settings.arguments == TextConstants.navLogout ||
-        ModalRoute.of(context)?.settings.arguments == TextConstants.navShiftHistory;
+    // // Build #1.0.221 : Fixed Issue -> Disable navigation bar menu icons while shift create,update,close
+    // bool isShiftScreen = ModalRoute.of(context)?.settings.arguments == TextConstants.navLogout ||
+    //     ModalRoute.of(context)?.settings.arguments == TextConstants.navShiftHistory;
+    bool isShiftScreen = this.isShiftScreen;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         if (kDebugMode) {
