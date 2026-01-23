@@ -97,31 +97,36 @@ class CategoryRepository {
     final cached = await isar.isarCacheEntrys.where().keyEqualTo(cacheKey).findFirst();
 
     if (cached != null) {
-      if (kDebugMode) print("🔍 RAW DATA FROM ISAR [$cacheKey] → ${cached.json.length} chars");
+      if (kDebugMode) {
+        print("🔍 RAW DATA FROM ISAR [$cacheKey] → ${cached.json.length} chars");
+
+        //  Print full JSON data
+        print(" FULL DATA:\n${cached.json}");
+      }
 
       final List<dynamic> cachedList = json.decode(cached.json);
 
-      print("📦 Loaded cached products (category: $categoryId)");
+      print(" Loaded cached products (category: $categoryId)");
 
       _updateProductsFromApi(categoryId); // background refresh
 
       return CategoryProductListResponse.fromJson(cachedList);
     }
 
-    // 🚀 No cache → fetch directly
+    //  No cache → fetch directly
     return await _getProductsFromApi(categoryId);
   }
 
   Future<void> _updateProductsFromApi(int categoryId) async {
     try {
       await _getProductsFromApi(categoryId);
-      if (kDebugMode) print("✅ Products updated in background");
+      if (kDebugMode) print(" Products updated in background");
     } catch (e) {
-      if (kDebugMode) print("⚠️ Failed to refresh products: $e");
+      if (kDebugMode) print(" Failed to refresh products: $e");
     }
   }
 
-  /// 🔥 Fetch products + normalize + cache (tax + age + variants)
+  ///  Fetch products + normalize + cache (tax + age + variants)
   Future<CategoryProductListResponse> _getProductsFromApi(int categoryId) async {
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants
         .productByCategories}/$categoryId";
@@ -261,6 +266,7 @@ class CategoryRepository {
 
 
 // Continue existing flow
+
     final categoryResponse = CategoryProductListResponse.fromJson(productList);
     unawaited(_cacheProductsAndVariations(
         categoryId, productList, normalizedProducts));
@@ -347,4 +353,67 @@ class CategoryRepository {
     }
 
   }
+
+  /////
+
+  // Future<List<dynamic>> getAllCachedProducts() async {
+  //   final isar = await IsarService.instance;
+  //
+  //   final cachedEntries = await isar.isarCacheEntrys
+  //       .where()
+  //       .filter()
+  //       .keyStartsWith("products_")
+  //       .findAll();
+  //
+  //   final Map<int, dynamic> uniqueProducts = {};
+  //
+  //   for (final entry in cachedEntries) {
+  //     final List<dynamic> products = json.decode(entry.json);
+  //
+  //     for (final product in products) {
+  //       final int productId = product["fast_key_product_id"];
+  //       uniqueProducts[productId] = product; // de-duplicate
+  //     }
+  //   }
+  //
+  //   if (kDebugMode) {
+  //     print("🔍 Loaded ${uniqueProducts.length} unique products from cache");
+  //   }
+  //
+  //   return uniqueProducts.values.toList();
+  // }
+
+
+  Future<List<dynamic>> getAllCachedProducts() async {
+    final isar = await IsarService.instance;
+
+    final cachedEntries = await isar.isarCacheEntrys
+        .where()
+        .filter()
+        .keyStartsWith("products_")
+        .findAll();
+
+    final Map<int, dynamic> uniqueProducts = {};
+
+    for (final entry in cachedEntries) {
+      final List<dynamic> products = json.decode(entry.json);
+
+      for (final product in products) {
+        final int? productId = product["fast_key_product_id"];
+
+        if (productId == null) continue;
+
+        // 🔒 Deduplicate here
+        uniqueProducts.putIfAbsent(productId, () => product);
+      }
+    }
+
+    if (kDebugMode) {
+      print("✅ Global cache loaded: ${uniqueProducts.length} unique products");
+    }
+
+    return uniqueProducts.values.toList();
+  }
+
+
 }

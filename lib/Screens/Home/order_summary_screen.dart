@@ -4462,7 +4462,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         discount = 0.0;
         discountValue = 0.0;
         couponDiscount = 0.0;
-
+        NetTotal = grossTotal;
         computedNetPayable = restoredPayable;
         balanceAmount = restoredPayable - tenderAmount;
 
