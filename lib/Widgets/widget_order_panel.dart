@@ -17,6 +17,8 @@ import 'package:focus_detector/focus_detector.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import 'package:isar/isar.dart';
+import 'package:isar/isar.dart';
+import 'package:pinaka_pos/Database/discount_rule_isar.dart';
 import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 import 'package:pinaka_pos/Models/Search/product_search_model.dart';
@@ -62,6 +64,7 @@ import '../Utilities/svg_images_utility.dart';
 import '../services/CustomerDisplayService.dart';
 import 'ManualPriceDialog.dart';
 import 'OrderPopupHelper.dart';
+import 'discount_engine_constants.dart';
 import 'widget_logs_toast.dart';
 
 String logString = "";
@@ -1970,6 +1973,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   }
 
 
+
   //Build #1.0.67
   void _handleError(String message, {bool isPayout = false, bool isCoupon = false, bool isCustomItem = false}) async {
     if (!mounted) return; // Check if widget is still mounted
@@ -2719,6 +2723,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     return 0.0;
   }
 
+
+
 // Current Order UI
   Widget buildCurrentOrder() {
     final theme = Theme.of(context); // Build #1.0.6 - added theme for order panel
@@ -2966,6 +2972,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               'is_ebt_eligible': item['is_ebt_eligible'] == true,
               'auto_discount': itemDiscount,
               'original_total': price * qty,
+              'product_id': productId,
             };
           }),
 
@@ -4301,74 +4308,14 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             List wooLineItems = [];
 
                             // =======================================================
-                            // 🔹 SYNC OFFLINE ORDER → WOO
-                            // =======================================================
-                            if (orderHelper.activeOrderId != null) {
-                              final String orderId = orderHelper.activeOrderId.toString();
-                              final rawOrder = getOfflineOrder(orderId);
-
-                              if (rawOrder != null) {
-                                if (kDebugMode) {
-                                  print("🌀 Syncing offline order to server...");
-                                }
-
-                                final syncResult = await OrderRepository()
-                                    .syncSingleOfflineOrder(
-                                    Map<String, dynamic>.from(rawOrder));
-
-                                if (syncResult != null) {
-                                  serverOrderId = syncResult["order_id"];
-                                  wooLineItems = syncResult["line_items"] ?? [];
-
-                                  // -----------------------------
-                                  // ✅ FETCH VALUES FROM SERVER
-                                  // -----------------------------
-                                  orderTax = double.tryParse(
-                                      syncResult["tax"]?.toString() ?? "0") ??
-                                      0.0;
-
-                                  cashbackFee = double.tryParse(
-                                      syncResult["cashback_fee"]?.toString() ?? "0") ??
-                                      0.0;
-
-                                  final syncedEbt = double.tryParse(
-                                      syncResult["ebt_total"]?.toString() ?? "0") ??
-                                      0.0;
-
-                                  final syncedDiscountAmount = double.tryParse(
-                                      syncResult["discount_amount"]?.toString() ?? "0") ??
-                                      0.0;
-
-                                  // -----------------------------
-                                  // ✅ SAVE TO HIVE
-                                  // -----------------------------
-                                  final box = Hive.box('offlineOrders');
-                                  final localKey = orderHelper.activeOrderId.toString();
-                                  final wooKey = serverOrderId.toString();
-
-                                  final existing = box.get(localKey);
-                                  if (existing != null) {
-                                    final updated = Map<String, dynamic>.from(existing);
-                                    updated["wooOrderId"] = wooKey;
-                                    updated["tax"] = orderTax;
-                                    updated["cashback_fee"] = cashbackFee;
-                                    updated["ebt_total"] = syncedEbt;
-                                    updated["discount_amount"] = syncedDiscountAmount;
-
-                                    await box.put(localKey, updated);
-                                    await box.put(wooKey, updated);
-                                  }
-                                }
-                              }
-                            }
-
-                            // =======================================================
                             // 🔹 LOAD VALUES FOR SUMMARY
                             // =======================================================
                             final box = Hive.box('offlineOrders');
-                            final hiveKey =
-                                serverOrderId?.toString() ??
-                                    orderHelper.activeOrderId.toString();
+                            // final hiveKey =
+                            //     serverOrderId?.toString() ??
+                            //         orderHelper.activeOrderId.toString();
+                            final hiveKey = orderHelper.activeOrderId.toString();
+
 
                             final double ebtAmount =
                             (box.get(hiveKey)?["ebt_total"] ?? 0.0).toDouble();
@@ -4376,138 +4323,94 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             final double discountAmount =
                             (box.get(hiveKey)?["discount_amount"] ?? 0.0).toDouble();
 
-                            // =======================================================
-                            // ⭐ MAP AUTO / COMBO / MULTIPACK DISCOUNT FROM WOO → UI ITEMS
-                            // =======================================================
-                            for (final item in orderItems) {
-                              final int localPid =
+
+                            final List<Map<String, dynamic>> cartItems = orderItems.map((item) {
+                              final int qty = item['items_count'] ?? 1;
+
+                              final int productId =
                                   int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
 
-                              final String name =
-                                  item['item_name']?.toString().trim() ?? '';
+                              final double unitPrice =
+                                  double.tryParse(item['item_price']?.toString() ?? '0') ?? 0.0;
 
-                              final wooItem = wooLineItems.firstWhere(
-                                    (w) {
-                                  final int wooPid =
-                                      int.tryParse(w['product_id']?.toString() ?? '0') ?? 0;
+                              return {
+                                'product_id': productId,
+                                'price': unitPrice,
+                                'qty': qty,
+                              };
+                            }).toList();
 
-                                  return (localPid > 0 && wooPid == localPid) ||
-                                      w['name']?.toString().trim() == name;
-                                },
-                                orElse: () => null,
-                              );
+// 🔥 CALL ENGINE ONCE
+                            final engineDiscounts =
+                            await DiscountEngine.applyAll(AppDB.isar, cartItems);
 
-                              if (wooItem == null) continue;
+                            if (kDebugMode) {
+                              print("🔥 ENGINE RESULT MAP = $engineDiscounts");
+                            }
+                            if (kDebugMode) {
+                              print("🔥 ENGINE RESULT MAP");
+                              engineDiscounts.forEach((pid, res) {
+                                print(
+                                  "pid=$pid | amount=${res.amount} | "
+                                      "type=${res.ruleType} | rule=${res.ruleId}",
+                                );
+                              });
+                            }
 
-                              final List meta = wooItem['meta_data'] ?? [];
+// 🔥 APPLY RESULTS TO ITEMS
+                            for (final item in orderItems) {
+                              final int pid =
+                                  int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
 
-                              bool isCombo = false;
-                              bool isMultipack = false;
-                              bool hasAutoDiscount = false;
+                              final engineResult = engineDiscounts[pid];
+                              if (engineResult == null) continue;
 
-                              double comboDiscount = 0.0;
-                              double multipackDiscount = 0.0;
-                              double autoDiscount = 0.0;
-
-                              // =======================================================
-                              // 🔹 CHECK FOR AUTO DISCOUNT (From your WooCommerce response)
-                              // =======================================================
-                              // First, check for auto_discount_amount in meta_data
-                              for (final m in meta) {
-                                if (m['key'] == 'auto_discount_amount') {
-                                  autoDiscount = double.tryParse(m['value']?.toString() ?? '0') ?? 0.0;
-                                  hasAutoDiscount = autoDiscount > 0;
-
-                                  if (kDebugMode) {
-                                    print("✅ Found auto_discount_amount: $autoDiscount for ${item['item_name']}");
-                                  }
-                                }
-                              }
-
-                              // If no auto_discount_amount found, check difference between subtotal and total
-                              if (autoDiscount == 0.0) {
-                                final double subtotal = double.tryParse(wooItem['subtotal']?.toString() ?? '0') ?? 0.0;
-                                final double total = double.tryParse(wooItem['total']?.toString() ?? '0') ?? 0.0;
-
-                                if (subtotal > total) {
-                                  autoDiscount = subtotal - total;
-                                  hasAutoDiscount = autoDiscount > 0;
-
-                                  if (kDebugMode) {
-                                    print("📊 Calculated auto discount from subtotal ($subtotal) - total ($total) = $autoDiscount");
-                                  }
-                                }
-                              }
-
-                              // =======================================================
-                              // 🔹 CHECK FOR COMBO DISCOUNT (EXISTING CODE)
-                              // =======================================================
-                              for (final m in meta) {
-                                // ---------- COMBO ----------
-                                if (m['key'] == 'Discount Type' &&
-                                    m['value'] == 'Combo Discount') {
-                                  isCombo = true;
-                                }
-
-                                if (m['key'] == 'Discount Applied') {
-                                  comboDiscount =
-                                      double.tryParse(m['value']?.toString() ?? '0') ?? 0.0;
-                                }
-
-                                // ---------- MULTIPACK ----------
-                                if (m['key'] == '_pinaka_multipack_applied' &&
-                                    m['value'] == 'yes') {
-                                  isMultipack = true;
-                                }
-
-                                if (m['key'] == '_pinaka_multipack_product_discount') {
-                                  multipackDiscount =
-                                      double.tryParse(m['value']?.toString() ?? '0') ?? 0.0;
-                                }
-                              }
-
-                              // 🔹 STORE RAW META (NEW)
-                              item['combo_discount'] = comboDiscount;
-                              item['multipack_discount'] = multipackDiscount;
-                              item['auto_discount_raw'] = autoDiscount; // Store auto discount separately
-                              item['has_combo_discount'] = isCombo;
-                              item['has_multipack_discount'] = isMultipack;
-                              item['has_auto_discount'] = hasAutoDiscount;
-
-                              // =======================================================
-                              // 🔹 APPLY DISCOUNT PRIORITY (Updated to include auto discount)
-                              // =======================================================
-                              // Priority: Combo > Multipack > Auto Discount
-                              if (isCombo && comboDiscount > 0) {
-                                item['auto_discount'] = comboDiscount;
-                                item['discount_type'] = 'combo';
-                                item['discount_source'] = 'woo';
-                              } else if (isMultipack && multipackDiscount > 0) {
-                                item['auto_discount'] = multipackDiscount;
-                                item['discount_type'] = 'multipack';
-                                item['discount_source'] = 'woo';
-                              } else if (hasAutoDiscount && autoDiscount > 0) {
-                                // Apply auto discount if no combo or multipack
-                                item['auto_discount'] = autoDiscount;
-                                item['discount_type'] = 'auto';
-                                item['discount_source'] = 'woo';
-                              }
+                              item['auto_discount'] = engineResult.amount;
+                              item['discount_type'] = engineResult.ruleType; // auto | multipack | mixmatch
+                              item['discount_source'] = 'engine';
+                              item['rule_id'] = engineResult.ruleId;
 
                               if (kDebugMode) {
                                 print(
-                                    "🧾 ITEM DISCOUNT SNAPSHOT → "
-                                        "name=${item['item_name']} | "
-                                        "combo=$comboDiscount | "
-                                        "multipack=$multipackDiscount | "
-                                        "auto=$autoDiscount | "
-                                        "hasCombo=$isCombo | "
-                                        "hasMultipack=$isMultipack | "
-                                        "hasAuto=$hasAutoDiscount | "
-                                        "applied=${item['auto_discount']} | "
-                                        "type=${item['discount_type']}"
+                                  "🎯 ENGINE DISCOUNT APPLIED → "
+                                      "${item['item_name']} | "
+                                      "amount=${engineResult.amount} | "
+                                      "type=${engineResult.ruleType} | "
+                                      "rule=${engineResult.ruleId}",
                                 );
                               }
                             }
+                            for (final item in orderItems) {
+                              item['auto_discount'] =
+                                  double.tryParse(item['auto_discount']?.toString() ?? '0') ?? 0.0;
+
+                              item['discount_type'] =
+                                  item['discount_type']?.toString() ?? '';
+
+                              item['discount_source'] =
+                                  item['discount_source']?.toString() ?? '';
+
+                              item['rule_id'] =
+                                  item['rule_id']?.toString() ?? '';
+                            }
+
+                            if (kDebugMode) {
+                              print("🧾 NORMALIZED ORDER ITEMS");
+                              for (final item in orderItems) {
+                                print(
+                                  "item=${item['item_name']} | "
+                                      "pid=${item['product_id']} | "
+                                      "qty=${item['items_count']} | "
+                                      "price=${item['item_price']} | "
+                                      "autoDisc=${item['auto_discount']} | "
+                                      "type=${item['discount_type']} | "
+                                      "source=${item['discount_source']} | "
+                                      "rule=${item['rule_id']}",
+                                );
+                              }
+                            }
+
+
 
                             final localKey = orderHelper.activeOrderId.toString();
                             final serverKey = serverOrderId?.toString();
@@ -4541,90 +4444,22 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             double totalAutoDiscount = 0.0;
 
                             for (final item in orderItems) {
-                              final double d = double.tryParse(
-                                  item['auto_discount']?.toString() ?? '0') ?? 0.0;
+                              final double d =
+                                  double.tryParse(item['auto_discount']?.toString() ?? '0') ?? 0.0;
 
-                              // Include ALL auto discount types: combo, multipack, and auto
-                              if ((item['discount_type'] == 'combo' ||
-                                  item['discount_type'] == 'multipack' ||
-                                  item['discount_type'] == 'auto') &&
-                                  d > 0) {
+                              // ✅ ENGINE DISCOUNT MUST ALWAYS COUNT
+                              if (d > 0 &&
+                                  (item['discount_source'] == 'engine' ||
+                                      item['discount_type'] == 'combo' ||
+                                      item['discount_type'] == 'multipack' ||
+                                      item['discount_type'] == 'auto')) {
                                 totalAutoDiscount += d;
                               }
                             }
 
-                            // =======================================================
-                            // 🔹 ADDITIONAL CHECK: Calculate from WooCommerce directly if needed
-                            // =======================================================
-                            if (totalAutoDiscount == 0.0 && wooLineItems.isNotEmpty) {
-                              double wooTotalAutoDiscount = 0.0;
-                              for (final wooItem in wooLineItems) {
-                                final double subtotal = double.tryParse(wooItem['subtotal']?.toString() ?? '0') ?? 0.0;
-                                final double total = double.tryParse(wooItem['total']?.toString() ?? '0') ?? 0.0;
-
-                                if (subtotal > total) {
-                                  wooTotalAutoDiscount += (subtotal - total);
-                                }
-                              }
-
-                              if (wooTotalAutoDiscount > 0) {
-                                totalAutoDiscount = wooTotalAutoDiscount;
-                                if (kDebugMode) {
-                                  print("🔄 Using WooCommerce calculated auto discount: $totalAutoDiscount");
-                                }
-                              }
-                            }
-
-                            if (kDebugMode) {
-                              print("🧮 TOTAL AUTO DISCOUNT = $totalAutoDiscount");
-                            }
-
                             final double grossAfterDiscount =
-                                grossTotal.toDouble() - totalAutoDiscount;
+                                (grossTotal ?? 0).toDouble() - totalAutoDiscount;
 
-                            // =======================================================
-                            // 🧪 PRE-NAVIGATION FINAL CHECKPOINT
-                            // =======================================================
-                            if (kDebugMode) {
-                              print("\n========== 🧾 FINAL CHECKOUT SNAPSHOT ==========");
-                              print("📅 Date / Time        : $displayDate  $displayTime");
-
-                              print("\n🛒 ITEMS (${orderItems.length})");
-                              for (final item in orderItems) {
-                                print("• ${item['item_name']}"
-                                    " | qty=${item['quantity']}"
-                                    " | price=${item['price']}"
-                                    " | subtotal=${double.tryParse(item['price']?.toString() ?? '0') ?? 0.0 * (item['quantity'] ?? 1)}"
-                                    " | autoDisc=${item['auto_discount']}"
-                                    " | type=${item['discount_type']}"
-                                    " | source=${item['discount_source']}");
-                              }
-
-                              print("\n💰 TOTALS");
-                              print("Gross Total (raw)     : $grossTotal");
-                              print("Auto Discount Total  : $totalAutoDiscount");
-                              print("Gross After Discount : $grossAfterDiscount");
-
-                              print("\n🧾 EXTRA VALUES");
-                              print("Order Discount       : $orderDiscount");
-                              print("Merchant Discount   : $merchantDiscount");
-                              print("Tax                 : $orderTax");
-                              print("Cashback Fee        : $cashbackFee");
-                              print("EBT Amount          : $ebtAmount");
-                              print("Server Order ID     : $serverOrderId");
-                              print("Offline Order ID    : ${orderHelper.activeOrderId}");
-                              print("Is Offline Synced   : ${serverOrderId != null}");
-
-                              // Show WooCommerce line items for verification
-                              print("\n🔄 WOOCOMMERCE LINE ITEMS VERIFICATION");
-                              for (final wooItem in wooLineItems) {
-                                final double subtotal = double.tryParse(wooItem['subtotal']?.toString() ?? '0') ?? 0.0;
-                                final double total = double.tryParse(wooItem['total']?.toString() ?? '0') ?? 0.0;
-                                print("• ${wooItem['name']}: subtotal=$subtotal, total=$total, discount=${subtotal - total}");
-                              }
-
-                              print("===============================================\n");
-                            }
 
                             // =======================================================
                             // 🔹 NAVIGATE TO SUMMARY
@@ -4650,7 +4485,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 ),
                               ),
                             );
-
                             if (result == TextConstants.refresh) {
                               setState(() {
                                 OrderHelper.isOrderPanelLoaded = false;

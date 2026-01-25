@@ -4,10 +4,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/adapters.dart';
 import 'package:http/http.dart' as http;
+import 'package:isar/isar.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:pinaka_pos/services/CustomerDisplayService.dart';
 import 'package:provider/provider.dart';
 import 'Constants/misc_features.dart';
 import 'Database/db_helper.dart';
+import 'Database/discount_rule_isar.dart';
 import 'Database/isar_service.dart';
 import 'Database/user_db_helper.dart';
 import 'Helper/Extentions/theme_notifier.dart';
@@ -47,6 +50,8 @@ import 'Preferences/pinaka_preferences.dart';
 import 'Screens/Auth/splash_screen.dart';
 import 'package:flutter/services.dart';
 
+import 'Widgets/discount_engine_constants.dart';
+
 void main() async {
 
   WidgetsFlutterBinding.ensureInitialized(); // Ensure Flutter services are ready
@@ -62,6 +67,12 @@ void main() async {
   await Hive.openBox('orderExtras');
 
   await Hive.openBox('user');
+  AppDB.isar = await Isar.open(
+    [DiscountRuleIsarSchema],
+    directory: (await getApplicationDocumentsDirectory()).path,
+  );
+
+  await seedDiscountRules(AppDB.isar);
 
   // 1️⃣ First → initialize base URL
   await UrlHelper.initializeBaseUrl();

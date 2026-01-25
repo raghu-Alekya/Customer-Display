@@ -3047,9 +3047,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         : 0.0;
 
     final double comboDiscount =
-    discountType == 'combo'
+    (discountType == 'combo' || discountType == 'mixmatch')
         ? (orderItem['auto_discount'] ?? 0).toDouble()
         : 0.0;
+
 
     final double multipackDiscount =
     discountType == 'multipack'
