@@ -42,23 +42,28 @@ const DiscountRuleIsarSchema = CollectionSchema(
       name: r'productIds',
       type: IsarType.longList,
     ),
-    r'requiredQty': PropertySchema(
+    r'requiredProductIds': PropertySchema(
       id: 5,
+      name: r'requiredProductIds',
+      type: IsarType.long,
+    ),
+    r'requiredQty': PropertySchema(
+      id: 6,
       name: r'requiredQty',
       type: IsarType.long,
     ),
     r'ruleId': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'ruleId',
       type: IsarType.string,
     ),
     r'ruleType': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'ruleType',
       type: IsarType.string,
     ),
     r'startDate': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'startDate',
       type: IsarType.string,
     )
@@ -123,10 +128,11 @@ void _discountRuleIsarSerialize(
   writer.writeString(offsets[2], object.bundlePriceType);
   writer.writeString(offsets[3], object.endDate);
   writer.writeLongList(offsets[4], object.productIds);
-  writer.writeLong(offsets[5], object.requiredQty);
-  writer.writeString(offsets[6], object.ruleId);
-  writer.writeString(offsets[7], object.ruleType);
-  writer.writeString(offsets[8], object.startDate);
+  writer.writeLong(offsets[5], object.requiredProductIds);
+  writer.writeLong(offsets[6], object.requiredQty);
+  writer.writeString(offsets[7], object.ruleId);
+  writer.writeString(offsets[8], object.ruleType);
+  writer.writeString(offsets[9], object.startDate);
 }
 
 DiscountRuleIsar _discountRuleIsarDeserialize(
@@ -142,10 +148,11 @@ DiscountRuleIsar _discountRuleIsarDeserialize(
   object.endDate = reader.readStringOrNull(offsets[3]);
   object.id = id;
   object.productIds = reader.readLongList(offsets[4]) ?? [];
-  object.requiredQty = reader.readLong(offsets[5]);
-  object.ruleId = reader.readString(offsets[6]);
-  object.ruleType = reader.readStringOrNull(offsets[7]);
-  object.startDate = reader.readStringOrNull(offsets[8]);
+  object.requiredProductIds = reader.readLongOrNull(offsets[5]);
+  object.requiredQty = reader.readLong(offsets[6]);
+  object.ruleId = reader.readString(offsets[7]);
+  object.ruleType = reader.readStringOrNull(offsets[8]);
+  object.startDate = reader.readStringOrNull(offsets[9]);
   return object;
 }
 
@@ -167,12 +174,14 @@ P _discountRuleIsarDeserializeProp<P>(
     case 4:
       return (reader.readLongList(offset) ?? []) as P;
     case 5:
-      return (reader.readLong(offset)) as P;
+      return (reader.readLongOrNull(offset)) as P;
     case 6:
-      return (reader.readString(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 7:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 8:
+      return (reader.readStringOrNull(offset)) as P;
+    case 9:
       return (reader.readStringOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -859,6 +868,80 @@ extension DiscountRuleIsarQueryFilter
   }
 
   QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      requiredProductIdsIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'requiredProductIds',
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      requiredProductIdsIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'requiredProductIds',
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      requiredProductIdsEqualTo(int? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'requiredProductIds',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      requiredProductIdsGreaterThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'requiredProductIds',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      requiredProductIdsLessThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'requiredProductIds',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      requiredProductIdsBetween(
+    int? lower,
+    int? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'requiredProductIds',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
       requiredQtyEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
@@ -1424,6 +1507,20 @@ extension DiscountRuleIsarQuerySortBy
   }
 
   QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      sortByRequiredProductIds() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'requiredProductIds', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      sortByRequiredProductIdsDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'requiredProductIds', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
       sortByRequiredQty() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'requiredQty', Sort.asc);
@@ -1552,6 +1649,20 @@ extension DiscountRuleIsarQuerySortThenBy
   }
 
   QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      thenByRequiredProductIds() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'requiredProductIds', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      thenByRequiredProductIdsDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'requiredProductIds', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
       thenByRequiredQty() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'requiredQty', Sort.asc);
@@ -1647,6 +1758,13 @@ extension DiscountRuleIsarQueryWhereDistinct
   }
 
   QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QDistinct>
+      distinctByRequiredProductIds() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'requiredProductIds');
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QDistinct>
       distinctByRequiredQty() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'requiredQty');
@@ -1713,6 +1831,13 @@ extension DiscountRuleIsarQueryProperty
       productIdsProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'productIds');
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, int?, QQueryOperations>
+      requiredProductIdsProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'requiredProductIds');
     });
   }
 

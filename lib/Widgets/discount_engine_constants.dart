@@ -2,85 +2,58 @@
 import 'package:isar/isar.dart';
 import 'package:pinaka_pos/Database/discount_rule_isar.dart';
 
+import '../Repositories/Orders/order_repository.dart';
+
 class AppDB {
   static late Isar isar;
 }
-Future<void> seedDiscountRules(Isar isar) async {
-  await isar.writeTxn(() async {
+Future<void> syncDiscountRulesFromApi(
+    Isar isar,
+    OrderRepository repo,
+    ) async {
+  print("🔄 SYNC DISCOUNT RULES START");
 
-    // 🔥 CLEAR OLD RULES (IMPORTANT)
+  final apiRules = await repo.fetchDiscountRules();
+
+  print("📥 API RULE COUNT → ${apiRules.length}");
+
+  await isar.writeTxn(() async {
+    print("🧹 Clearing old discount rules from Isar");
     await isar.discountRuleIsars.clear();
 
-    // =================================================
-    // 🔹 AUTO DISCOUNT – single product
-    // Buy 3 of 9402 for $8
-    // =================================================
-    await isar.discountRuleIsars.put(
-      DiscountRuleIsar()
-        ..ruleId = 'AUTO_9402'
-        ..productIds = [8545]
-        ..requiredQty = 1
-        ..bundlePrice = 2.0
-        ..ruleType = 'auto'
-        ..active = true,
-    );
-    await isar.discountRuleIsars.put(
-      DiscountRuleIsar()
-        ..ruleId = 'AUTO_9404'
-        ..productIds = [29115]
-        ..requiredQty = 1
-        ..bundlePrice = 2.0
-        ..ruleType = 'auto'
-        ..active = true,
-    );
+    for (final r in apiRules) {
+      print("💾 Saving rule to Isar → ${r['ruleId']}");
 
-    // =================================================
-    // 🔹 MULTIPACK – single product
-    // Buy 2 of 9120 for $7.50
-    // =================================================
-    await isar.discountRuleIsars.put(
-      DiscountRuleIsar()
-        ..ruleId = 'MP_9120'
-        ..productIds = [8339]
-        ..requiredQty = 2
-        ..bundlePrice = 15.0
-        ..ruleType = 'multipack'
-        ..active = true,
-    );
-
-    await isar.discountRuleIsars.put(
-      DiscountRuleIsar()
-        ..ruleId = 'MP_9121'
-        ..productIds = [30438]
-        ..requiredQty = 2
-        ..bundlePrice = 15.0
-        ..ruleType = 'multipack'
-        ..active = true,
-    );
-
-    // =================================================
-    // 🔹 OPTIONAL: LARGE MIXMATCH (3 items)
-    // Any 3 of (9402, 9120, 9435) for $10
-    // =================================================
-    await isar.discountRuleIsars.put(
-      DiscountRuleIsar()
-        ..ruleId = 'MM_STATIC_01'
-        ..productIds = [9402, 9120, 9435]
-        ..requiredQty = 3
-        ..bundlePrice = 10.0
-        ..ruleType = 'mixmatch'
-        ..active = true,
-    );
-    await isar.discountRuleIsars.put(
-      DiscountRuleIsar()
-        ..ruleId = 'MM_STATIC_02'
-        ..productIds = [30081, 29729, 30087]
-        ..requiredQty = 3
-        ..bundlePrice = 10.0
-        ..ruleType = 'mixmatch'
-        ..active = true,
-    );
+      await isar.discountRuleIsars.put(
+        DiscountRuleIsar()
+          ..ruleId = r['ruleId']
+          ..productIds =
+          (r['productIds'] as List).map((e) => int.parse(e.toString())).toList()
+          ..requiredQty = int.parse(r['requiredQty'].toString())
+          ..bundlePrice = double.parse(r['bundlePrice'].toString())
+          ..bundlePriceType = r['bundlePriceType']
+          ..ruleType = r['ruleType']
+          ..startDate = r['startDate']
+          ..endDate = r['endDate']
+          ..active = r['active'] == true,
+      );
+    }
   });
+
+  final savedRules =
+  await isar.discountRuleIsars.where().findAll();
+
+  print("✅ ISAR SAVE COMPLETE → ${savedRules.length} rules stored");
+
+  for (final r in savedRules) {
+    print(
+      "📦 ISAR RULE → id=${r.ruleId} "
+          "| type=${r.ruleType} "
+          "| products=${r.productIds} "
+          "| qty=${r.requiredQty} "
+          "| bundle=${r.bundlePrice} ${r.bundlePriceType}",
+    );
+  }
 }
 
 
@@ -103,15 +76,11 @@ class _Unit {
 
   _Unit(this.pid, this.priceCents);
 }
-
 class DiscountEngine {
-
-
   static Future<Map<int, EngineDiscountResult>> applyAll(
       Isar isar,
       List<Map<String, dynamic>> cart,
       ) async {
-
     final List<_Unit> units = [];
 
     int _priority(String? type) {
@@ -127,7 +96,9 @@ class DiscountEngine {
       }
     }
 
-
+    // -----------------------------
+    // Build units
+    // -----------------------------
     for (final item in cart) {
       final pid = int.parse(item['product_id'].toString());
       final qty = int.parse(item['qty'].toString());
@@ -142,6 +113,9 @@ class DiscountEngine {
 
     units.sort((a, b) => b.priceCents.compareTo(a.priceCents));
 
+    // -----------------------------
+    // Load rules
+    // -----------------------------
     final rules = (await isar.discountRuleIsars
         .filter()
         .activeEqualTo(true)
@@ -151,63 +125,76 @@ class DiscountEngine {
 
     final Map<int, EngineDiscountResult> result = {};
 
+    // -----------------------------
+    // Apply rules
+    // -----------------------------
     for (final rule in rules) {
-      final String? ruleType = rule.ruleType;
+      final ruleType = rule.ruleType;
+      if (ruleType == null) continue;
 
       final eligible = units
           .where((u) => !u.used && rule.productIds.contains(u.pid))
           .toList();
 
-      if (eligible.length < rule.requiredQty) continue;
+      int effectiveQty = rule.requiredQty;
+
+      if (effectiveQty == 0) {
+        if (ruleType == 'auto') {
+          effectiveQty = eligible.length;
+        } else if (ruleType == 'mixmatch') {
+          effectiveQty = rule.productIds.length;
+        }
+      }
+
+      if (effectiveQty <= 0) continue;
+      if (eligible.length < effectiveQty) continue;
 
       List<_Unit> bundle;
 
-      // AUTO & MULTIPACK → same product only
       if (ruleType != 'mixmatch') {
         final samePid =
         eligible.where((u) => u.pid == eligible.first.pid).toList();
 
-        if (samePid.length < rule.requiredQty) continue;
-        bundle = samePid.take(rule.requiredQty).toList();
+        if (samePid.length < effectiveQty) continue;
+        bundle = samePid.take(effectiveQty).toList();
       } else {
-        // MIXMATCH
-        bundle = eligible.take(rule.requiredQty).toList();
+        bundle = eligible.take(effectiveQty).toList();
       }
 
       final subtotal =
       bundle.fold(0, (s, u) => s + u.priceCents);
-      final discount =
-          subtotal - toCents(rule.bundlePrice);
 
-      if (discount <= 0) continue;
+      int discountCents;
+
+      if (rule.bundlePriceType == 'percentage') {
+        discountCents =
+            (subtotal * rule.bundlePrice / 100).round();
+      } else {
+        discountCents = toCents(rule.bundlePrice);
+      }
+
+      discountCents = discountCents.clamp(0, subtotal);
+
+      if (discountCents <= 0) continue;
 
       for (final u in bundle) {
         u.used = true;
       }
 
-      final pid = bundle.first.pid;
-
-      if (ruleType == null) {
-        print("⚠️ SKIPPING RULE WITH NULL TYPE → ${rule.ruleId}");
-        continue;
-      }
-
-      result[pid] = EngineDiscountResult(
-        fromCents(discount),
-        ruleType, // ✅ now String
+      result[bundle.first.pid] = EngineDiscountResult(
+        fromCents(discountCents),
+        ruleType,
         rule.ruleId,
       );
 
-
       print(
         "🎯 ENGINE APPLY → rule=${rule.ruleId} | "
-            "type=$ruleType | discount=${fromCents(discount)}",
+            "type=$ruleType | discount=${fromCents(discountCents)}",
       );
     }
 
+    // ✅ REQUIRED RETURN
     return result;
   }
-
-
-
 }
+

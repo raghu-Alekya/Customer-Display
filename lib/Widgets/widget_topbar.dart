@@ -6,9 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hive/hive.dart';
 import 'package:isar/isar.dart';
+import 'package:pinaka_pos/Widgets/widget_variants_dialog.dart';
 import 'package:provider/provider.dart';
 
 import '../Blocs/Orders/order_bloc.dart';
+import '../Blocs/Search/product_search_bloc.dart';
 import '../Constants/text.dart';
 import '../Database/db_helper.dart';
 import '../Database/isar_cache_entry.dart';
@@ -16,12 +18,14 @@ import '../Database/isar_service.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
+import '../Helper/api_response.dart';
 import '../Models/Orders/orders_model.dart';
 import '../Models/Search/product_search_model.dart';
 import '../Models/Search/product_variation_model.dart';
 import '../Providers/Age/age_verification_provider.dart';
 import '../Repositories/Category/category_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
+import '../Repositories/Search/product_search_repository.dart';
 import '../Utilities/printer_settings.dart';
 import '../Utilities/responsive_layout.dart';
 import '../Utilities/svg_images_utility.dart';
@@ -126,7 +130,7 @@ class _TopBarState extends State<TopBar> {
 
   List<dynamic> _cachedProducts = [];
   bool _cacheLoaded = false;
-
+  final ProductBloc productBloc = ProductBloc(ProductRepository());
 
 
   @override
@@ -424,6 +428,65 @@ class _TopBarState extends State<TopBar> {
       },
     );
   }
+  Future<List<Map<String, dynamic>>> _getVariantsFromCache(int productId) async {
+    final isar = await IsarService.instance;
+    final entries = await isar.isarCacheEntrys
+        .where()
+        .filter()
+        .keyStartsWith("products_")
+        .findAll();
+
+    for (final entry in entries) {
+      final List<dynamic> products = jsonDecode(entry.json);
+
+      final match = products.firstWhere(
+            (p) => p["fast_key_product_id"]?.toString() == productId.toString(),
+        orElse: () => null,
+      );
+
+      if (match == null) continue;
+
+      final rawVariations = match["variations"];
+      if (rawVariations is! List || rawVariations.isEmpty) continue;
+
+      final List<Map<String, dynamic>> variants = [];
+
+      for (final v in rawVariations) {
+
+        // 🟢 CASE 1: Variant is FULL MAP
+        if (v is Map<String, dynamic>) {
+          variants.add({
+            "id": v["id"],
+            "name": v["name"]
+                ?? (v["attributes"] as List?)
+                    ?.map((a) => a["option"])
+                    .join(" - "),
+            "price": v["regular_price"] ?? v["price"] ?? "0",
+            "image": v["image"]?["src"],
+            "sku": v["sku"],
+          });
+        }
+
+        // 🟡 CASE 2: Variant is ONLY ID (int)
+        else if (v is int) {
+          variants.add({
+            "id": v,
+            "name": "Variant",
+            "price": match["price"] ?? "0",
+            "image": match["image"],
+            "sku": match["sku"],
+          });
+        }
+      }
+
+      if (variants.isNotEmpty) {
+        return variants;
+      }
+    }
+
+    return [];
+  }
+
 
   // ──────────────────────────────────────────────────────────────
   // COMPLETE original product tap / add logic — nothing removed
@@ -523,242 +586,147 @@ class _TopBarState extends State<TopBar> {
       }
 
       // ─── Variable / variants logic ───────────────────────────────
-      final bool hasVariants = product.variations != null && product.variations!.isNotEmpty;
+
+// Base price
       final double productPrice = (product.price is num)
           ? (product.price as num).toDouble()
           : double.tryParse(product.price?.toString() ?? "") ?? 0.0;
 
       double finalPrice = productPrice;
 
+// Detect variable-price tag
       final bool hasVariablePriceTag = tags.any((t) =>
       t.slug?.toLowerCase() == "variable-product" ||
           t.slug?.toLowerCase() == "variable" ||
           t.name?.toLowerCase() == "variable product" ||
           t.name?.toLowerCase() == "variable");
 
+// Prepare existing products list
       List<Map<String, dynamic>> products = (rawOrder["products"] ?? [])
           .map<Map<String, dynamic>>((i) => Map<String, dynamic>.from(i))
           .toList();
 
+// Variable price memory keys
       final String variableKey = "variable_price_added_${product.id}";
       final String savedPriceKey = "selected_price_${product.id}";
 
+// ─────────────────────────────────────────────────────────────
+// 1️⃣ HANDLE VARIABLE PRICE (NON-VARIANT ONLY)
+// ─────────────────────────────────────────────────────────────
       final bool popupAlreadyShown = rawOrder[variableKey] == true;
 
       if (popupAlreadyShown) {
-        print("🟢 Popup already shown earlier → Skipping popup everywhere");
-
         final savedPrice = rawOrder[savedPriceKey] ?? productPrice;
-        final double manualPrice = double.tryParse(savedPrice.toString()) ?? productPrice;
-
-        finalPrice = manualPrice;
-
-        int existIndex = products.indexWhere((p) =>
-        p["product_id"].toString() == product.id.toString() &&
-            (p["variation_id"]?.toString() ?? "-1") == "-1");
-
-        if (existIndex != -1) {
-          print("🟢 Exists in order → incrementing quantity");
-
-          var existing = products[existIndex];
-          int oldQty = int.tryParse(existing["quantity"].toString()) ?? 1;
-
-          existing["quantity"] = oldQty + 1;
-          existing["price"] = manualPrice;
-          existing["unit_price"] = manualPrice;
-          existing["sales_price"] = manualPrice;
-          existing["regular_price"] = manualPrice;
-          existing["timestamp"] = DateTime.now().millisecondsSinceEpoch;
-
-          products[existIndex] = existing;
-
-          rawOrder["products"] = products;
-          rawOrder["line_items"] = products;
-          await offlineBox.put(activeOrderId, rawOrder);
-
-          await orderHelper.loadData();
-          _removeOverlay();
-          _clearSearch();
-          setState(() => isAddingItemLoading = false);
-
-          widget.onProductSelected?.call(product);
-          return;
-        }
-
-        print("🆕 Product not found but popup shown → adding WITHOUT popup");
-        finalPrice = manualPrice;
+        finalPrice = double.tryParse(savedPrice.toString()) ?? productPrice;
       }
 
-      int existIndex = products.indexWhere((p) =>
-      p["product_id"].toString() == product.id.toString() &&
-          (p["variation_id"]?.toString() ?? "-1") == "-1");
+// ─────────────────────────────────────────────────────────────
+// 2️⃣ HANDLE VARIANTS (API FIRST — SAME AS WORKING CODE)
+// ─────────────────────────────────────────────────────────────
+      bool hasVariants = false;
 
-      if (existIndex != -1) {
-        print("🟢 First add was normal but exists now → Skip popup & increase qty");
+// 1️⃣ Try cache (fast + offline)
+      final cachedVariants = await _getVariantsFromCache(product.id!);
+      hasVariants = cachedVariants.isNotEmpty;
 
-        var existing = products[existIndex];
+// 2️⃣ Optional: If cache empty, still try API
+      if (!hasVariants) {
+        productBloc.fetchProductVariations(product.id!);
+        final response = await productBloc.variationStream
+            .firstWhere((r) => r.status == Status.COMPLETED);
 
-        double existingPrice = double.tryParse(existing["unit_price"]?.toString() ??
-            existing["price"]?.toString() ??
-            "0") ??
-            0;
+        hasVariants = response.data != null && response.data!.isNotEmpty;
+      }
 
-        int oldQty = int.tryParse(existing["quantity"].toString()) ?? 1;
-        int newQty = oldQty + 1;
 
-        existing["quantity"] = newQty;
-        existing["price"] = existingPrice;
-        existing["unit_price"] = existingPrice;
-        existing["sales_price"] = existingPrice;
-        existing["regular_price"] = existingPrice;
-        existing["timestamp"] = DateTime.now().millisecondsSinceEpoch;
+      if (hasVariants) {
+        // Prefer API data if available
+        productBloc.fetchProductVariations(product.id!);
 
-        products[existIndex] = existing;
+        final response = await productBloc.variationStream
+            .firstWhere((r) => r.status == Status.COMPLETED);
 
-        rawOrder["products"] = products;
-        rawOrder["line_items"] = products;
-        await offlineBox.put(activeOrderId, rawOrder);
+        List<Map<String, dynamic>> variants = [];
 
-        await orderHelper.loadData();
+        if (response.data != null && response.data!.isNotEmpty) {
+          variants = response.data!.map((v) => {
+            "id": v.id,
+            "name": v.name ?? "Variant",
+            "price": v.price ?? "0",
+            "image": v.image?.src ?? "",
+            "sku": v.sku ?? "",
+          }).toList();
+        } else {
+          variants = cachedVariants; // fallback
+        }
+
+        if (variants.isEmpty) return;
+
+        await showDialog(
+          context: _context,
+          barrierDismissible: false,
+          builder: (_) => VariantsDialog(
+            title: product.name ?? "Select Variant",
+            variations: variants,
+            onAddVariant: (selected, qty) async {
+              final price =
+                  double.tryParse(selected["price"].toString()) ?? 0;
+
+              await orderHelper.addItemToOrder(
+                selected["id"],
+                selected["name"],
+                selected["image"],
+                price,
+                qty,
+                selected["sku"],
+                int.parse(activeOrderId),
+                type: 'variant',
+                productId: product.id,
+                variationId: selected["id"],
+                isEbtEligible: isEbtEligible,
+                onItemAdded: () {
+                  _removeOverlay();
+                  _clearSearch();
+
+                  if (mounted) {
+                    setState(() => isAddingItemLoading = false);
+                  }
+
+                  widget.onProductSelected?.call(product);
+                },
+              );
+              Navigator.of(context, rootNavigator: true).pop();
+            },
+          ),
+        );
+
         _removeOverlay();
         _clearSearch();
         setState(() => isAddingItemLoading = false);
-        widget.onProductSelected?.call(product);
         return;
       }
 
-      if (hasVariablePriceTag && !hasVariants) {
-        print("💰 Variable product → showing manual price popup for FIRST TIME");
-
-        final String productImage = _getProductImage(product);
-
+// ─────────────────────────────────────────────────────────────
+// 3️⃣ VARIABLE PRICE POPUP (ONLY IF NO VARIANTS)
+// ─────────────────────────────────────────────────────────────
+      if (hasVariablePriceTag && !popupAlreadyShown) {
         final enteredPrice = await ManualPriceDialog.show(
           _context,
           productName: product.name ?? "Product",
-          productImage: productImage,
+          productImage: _getProductImage(product),
           minPrice: productPrice,
         );
 
-        if (enteredPrice == null) {
-          print("❌ Cancelled → Not adding product");
-          return;
-        }
+        if (enteredPrice == null) return;
 
         finalPrice = enteredPrice;
-
         rawOrder[variableKey] = true;
         rawOrder[savedPriceKey] = finalPrice;
-
         await offlineBox.put(activeOrderId, rawOrder);
-
-        print("💾 Saved $variableKey = true");
-        print("💾 Saved $savedPriceKey = $finalPrice");
       }
 
-      if (hasVariants) {
-        // If variations were mapped → show dialog
-        // If not → show message (you can replace with local variants if stored)
-        ScaffoldMessenger.of(_context).showSnackBar(
-          const SnackBar(
-            content: Text("Variants not fully supported in local-only mode yet.\nPlease sync for full variant support."),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
 
-      // if (hasVariants) {
-      //   // ─── Show variants dialog using cached data ───────────────────────
-      //   _clearSearch();
-      //
-      //   // Optional: show loading if you want to fetch more details
-      //   // But since we already enriched → we can show immediately
-      //
-      //   await showDialog(
-      //     context: _context,
-      //     barrierDismissible: false,
-      //     builder: (context) {
-      //       final variations = product.variations ?? [];
-      //
-      //       if (variations.isEmpty) {
-      //         return AlertDialog(
-      //           title: const Text("No variations found"),
-      //           content: const Text("This product is marked as variable but no variations were cached."),
-      //           actions: [
-      //             TextButton(
-      //               onPressed: () => Navigator.pop(context),
-      //               child: const Text("OK"),
-      //             ),
-      //           ],
-      //         );
-      //       }
-      //
-      //       return VariantsDialog(   // ← your existing dialog widget
-      //         title: product.name ?? 'Select Variant',
-      //         variations: variations.map((v) => {
-      //           "id": v.id.toString(),
-      //           "name": v.name ?? "Variant",
-      //           "price": v.regularPrice ?? product.price ?? "0.0",
-      //           "image": v.image?.src ?? _getProductImage(product),
-      //           "sku": v.sku ?? product.sku ?? '',
-      //         }).toList(),
-      //         onAddVariant: (variantMap, quantity) async {
-      //           Navigator.pop(context);
-      //           setState(() => isAddingItemLoading = true);
-      //
-      //           try {
-      //             final variantId = int.tryParse(variantMap["id"].toString()) ?? 0;
-      //             final variantPrice = double.tryParse(variantMap["price"].toString()) ?? 0.0;
-      //             final variantName = variantMap["name"]?.toString() ?? "Variant";
-      //             final variantImage = variantMap["image"]?.toString() ?? "";
-      //             final variantSku = variantMap["sku"]?.toString() ?? "";
-      //
-      //             final orderId = int.tryParse(activeOrderId) ?? 0;
-      //
-      //             // Reuse your existing add logic (very important!)
-      //             await orderHelper.addItemToOrder(
-      //               product.id!,                    // parent product id
-      //               variantName,
-      //               variantImage,
-      //               variantPrice,
-      //               quantity,
-      //               variantSku,
-      //               orderId,
-      //               type: 'variant',
-      //               productId: product.id,
-      //               variationId: variantId,
-      //               variationName: variantName,
-      //               unitPrice: variantPrice,
-      //               salesPrice: variantPrice,
-      //               regularPrice: variantPrice,
-      //               isEbtEligible: isEbtEligible,
-      //               onItemAdded: () {
-      //                 _removeOverlay();
-      //                 _clearSearch();
-      //                 setState(() => isAddingItemLoading = false);
-      //                 widget.onProductSelected?.call(product); // or pass variant product
-      //                 ScaffoldMessenger.of(_context).showSnackBar(
-      //                   SnackBar(content: Text("$variantName × $quantity added")),
-      //                 );
-      //               },
-      //             );
-      //           } catch (e) {
-      //             debugPrint("Variant add failed: $e");
-      //             ScaffoldMessenger.of(_context).showSnackBar(
-      //               SnackBar(content: Text("Error adding variant"), backgroundColor: Colors.red),
-      //             );
-      //           } finally {
-      //             setState(() => isAddingItemLoading = false);
-      //           }
-      //         },
-      //       );
-      //     },
-      //   );
-      //
-      //   return; // important — prevent falling through to simple product add
-      // }
 
-      // ─── Simple product add ──────────────────────────────────────
       setState(() => isAddingItemLoading = true);
 
       try {

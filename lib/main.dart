@@ -17,6 +17,7 @@ import 'Helper/Extentions/theme_notifier.dart';
 import 'Helper/cashbackhelper.dart';
 import 'Helper/customerdisplayhelper.dart';
 import 'Helper/url_helper.dart';
+import '../Repositories/Orders/order_repository.dart';
 
 import 'Inventory_screen/Inventory_Tags/inventory_tag_bloc/inventory_tag_bloc.dart';
 import 'Inventory_screen/Inventory_Tags/inventory_tag_get_tags_usecase.dart';
@@ -49,6 +50,7 @@ import 'Inventory_screen/inventory_get_product_types/inventory_get_product_types
 import 'Preferences/pinaka_preferences.dart';
 import 'Screens/Auth/splash_screen.dart';
 import 'package:flutter/services.dart';
+import '../../Helper/api_helper.dart';
 
 import 'Widgets/discount_engine_constants.dart';
 import 'Widgets/offline_order_sync_service.dart';
@@ -73,7 +75,6 @@ void main() async {
     directory: (await getApplicationDocumentsDirectory()).path,
   );
 
-  await seedDiscountRules(AppDB.isar);
 
   // 1️⃣ First → initialize base URL
   await UrlHelper.initializeBaseUrl();
@@ -218,7 +219,6 @@ void main() async {
   );
 
 }
-
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 

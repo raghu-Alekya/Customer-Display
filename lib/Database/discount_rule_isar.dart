@@ -8,13 +8,16 @@ class DiscountRuleIsar {
 
   late String ruleId;
   late List<int> productIds;
+
+  int? requiredProductIds; // for mixmatch dependency
   late int requiredQty;
+
   late double bundlePrice;
-  String? ruleType;
-  String? bundlePriceType;
-  String? startDate;
+  String? bundlePriceType; // price | percentage
+  String? ruleType;        // auto | multipack | mixmatch
+
+  String? startDate; // yyyy-MM-dd
   String? endDate;
 
   bool active = true;
 }
-

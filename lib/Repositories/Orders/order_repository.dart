@@ -1201,6 +1201,31 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
     return response;
   }
+  Future<List<Map<String, dynamic>>> fetchDiscountRules() async {
+    final String url = UrlMethodConstants.discountRules;
+
+    print("🌐 DISCOUNT API REQUEST");
+    print("➡️ Relative URL: $url");
+
+    final response = await _helper.get(url, true);
+
+    print("🌐 DISCOUNT API RAW RESPONSE ↓↓↓");
+    print(response);
+
+    if (response is String) {
+      final decoded = jsonDecode(response);
+
+      if (decoded is List) {
+        return decoded.cast<Map<String, dynamic>>();
+      }
+    }
+
+    if (response is List) {
+      return response.cast<Map<String, dynamic>>();
+    }
+
+    return [];
+  }
 
   // 3. Apply Coupon to Order
   Future<OrderModel> applyCouponToOrder({required int orderId, required ApplyCouponRequestModel request,}) async {

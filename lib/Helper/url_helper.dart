@@ -112,27 +112,29 @@ class UrlHelper {
 
 }
 
-class UrlMethodConstants { // Build #1.0.13
-  static const String token          = "token";
-  static const String products       = "products";
-  static const String fastKeys       = "fastkeys";  // Build #1.0.15
-  static const String categories           = "categories";
-  static const String productByCategories  = "products-by-category"; // Build #1.0.21
-  static const String payments             = "payments";
-  static const String orders               = "orders";
-  static const String variations           = "products"; // Used for variations endpoint
-  static const String assets               = "assets"; //Build #1.0.40
-  static const String shifts               = "shifts"; // Build #1.0.70
-  static const String safes                = "safes";
-  static const String vendorPayments       = "vendor_payments";
-  static const String totalOrders          = "total-orders"; // Build #1.0.118
+class UrlMethodConstants {
+  // Build #1.0.13
+  static const String token = "token";
+  static const String products = "products";
+  static const String fastKeys = "fastkeys"; // Build #1.0.15
+  static const String categories = "categories";
+  static const String productByCategories = "products-by-category"; // Build #1.0.21
+  static const String payments = "payments";
+  static const String orders = "orders";
+  static const String variations = "products"; // Used for variations endpoint
+  static const String assets = "assets"; //Build #1.0.40
+  static const String shifts = "shifts"; // Build #1.0.70
+  static const String safes = "safes";
+  static const String vendorPayments = "vendor_payments";
+  static const String totalOrders = "total-orders"; // Build #1.0.118
   static const String loyaltyCreateCustomer = "loyalty/create-customer";
   static const String loyaltyRedeem = "loyalty/add-loyalty-points";
   static const fastkeyimages = "pinaka-pos/v1/fastkeys/get-all-fastkeys-images";
-  static const taxes="pinaka-pos/v1/assets/all-taxes";
+  static const taxes = "pinaka-pos/v1/assets/all-taxes";
   static const String loyaltyRemove = "loyalty/remove-loyalty-points";
   static const String deleteofflineorders = "orders/sync-offline-orders";
-  static const String cashbackservices="assets/cash-back-service";
+  static const String cashbackservices = "assets/cash-back-service";
+  static const String discountRules = "pinaka-pos/v1/assets/discount-rules";
 }
 
 class UrlParameterConstants { // Build #1.0.13

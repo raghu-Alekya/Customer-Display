@@ -2270,44 +2270,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
   }
 
-  double getProductDiscountFromHive(int productId, int qty) {
-    try {
-      final box = Hive.box('productCache');
-
-      for (var key in box.keys) {
-        if (!key.toString().startsWith("products_")) continue;
-
-        final cached = box.get(key);
-        if (cached == null) continue;
-
-        final List products = json.decode(cached['data']);
-
-        final product = products.firstWhere(
-              (p) => p['fast_key_product_id'] == productId ||
-              p['id'] == productId,
-          orElse: () => null,
-        );
-
-        if (product == null) continue;
-
-        final bool enabled = product['auto_discount_enabled'] == true;
-        final double discount =
-            double.tryParse(product['discount_amount']?.toString() ?? '0') ?? 0.0;
-
-        if (!enabled || discount <= 0) return 0.0;
-
-        final totalDiscount = discount * qty;
-
-        print("💸 PRODUCT DISCOUNT → ID:$productId | ₹$discount × $qty = ₹$totalDiscount");
-
-        return totalDiscount;
-      }
-    } catch (e) {
-      print("❌ Discount error → $e");
-    }
-
-    return 0.0;
-  }
 
 
   int totalItems = 0;
@@ -2522,47 +2484,53 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   }
 
 
-  double getCustomItemTax({
-    required String taxClass,
-    required double price,
-    required int qty,
-    required List<Tax> taxes,
-    double? taxRate, // ✅ optional direct rate
-  }) {
-    try {
-      double rate = 0.0;
+double getCustomItemTax({
+  required String taxClass,
+  required double unitPrice, // 👈 make this explicit
+  required int qty,
+  required List<Tax> taxes,
+  double? taxRate,
+}) {
+  try {
+    double rate = 0.0;
 
-      // 🟣 1️⃣ Custom item with direct rate
-      if (taxRate != null && taxRate > 0) {
-        rate = taxRate;
-      }
-      // 🔵 2️⃣ Resolve from tax class
-      else {
-        final selected = taxes.firstWhere(
-              (t) => t.slug == taxClass,
-          orElse: () => Tax(slug: "", name: ""),
-        );
-
-        if (selected.slug.isEmpty) {
-          print("⚠ No tax class match → tax = 0.0");
-          return 0.0;
-        }
-
-        final rateString =
-        selected.slug.replaceAll(RegExp(r'[^0-9.]'), '');
-        rate = double.tryParse(rateString) ?? 0.0;
-      }
-
-      final taxAmount = ((price * rate) / 100) * qty;
-
-      print("🔥 Custom Item Tax → price:$price qty:$qty rate:$rate tax:$taxAmount");
-
-      return taxAmount;
-    } catch (e) {
-      print("❌ ERROR in getCustomItemTax → $e");
-      return 0.0;
+    // 🟣 1️⃣ Direct rate
+    if (taxRate != null && taxRate > 0) {
+      rate = taxRate;
     }
+    // 🔵 2️⃣ Resolve from tax class
+    else {
+      final selected = taxes.firstWhere(
+            (t) => t.slug == taxClass,
+        orElse: () => Tax(slug: "", name: ""),
+      );
+
+      if (selected.slug.isEmpty) {
+        debugPrint("⚠ No tax class match → tax = 0.0");
+        return 0.0;
+      }
+
+      final rateString =
+      selected.slug.replaceAll(RegExp(r'[^0-9.]'), '');
+      rate = double.tryParse(rateString) ?? 0.0;
+    }
+
+    // ✅ EXACTLY like product tax
+    final double taxableBase = unitPrice * qty;
+    final double taxAmount = (taxableBase * rate) / 100;
+
+    debugPrint(
+      "🔥 Custom Item Tax → unit:$unitPrice qty:$qty "
+          "taxableBase:$taxableBase rate:$rate tax:$taxAmount",
+    );
+
+    return taxAmount;
+  } catch (e) {
+    debugPrint("❌ ERROR in getCustomItemTax → $e");
+    return 0.0;
   }
+}
+
 
   //
   // double getProductTaxFromHive(
@@ -2623,33 +2591,19 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   // }
   double getProductTaxFromHive(
       int productId,
-      double price,
+      double discountedUnitPrice,
       int qty,
       ) {
     try {
-      debugPrint("🧾 TAX START → productId:$productId price:$price qty:$qty");
+      debugPrint(
+          "🧾 TAX START → productId:$productId unit:$discountedUnitPrice qty:$qty");
 
-      // 🔹 auto discount FIRST
-      final double autoDiscount =
-      getProductDiscountFromHive(productId, qty);
-
-      debugPrint("🔻 Auto discount → $autoDiscount");
-
-      final double originalTotal = price * qty;
-      debugPrint("💰 Original total → $originalTotal");
-
-      final double taxableBase =
-      (originalTotal - autoDiscount).clamp(0.0, double.infinity);
-
-      debugPrint("📐 Taxable base (after discount) → $taxableBase");
+      // ✅ TAX BASE = DISCOUNTED TOTAL
+      final double taxableBase = discountedUnitPrice * qty;
+      debugPrint("💰 Taxable base (after discount) → $taxableBase");
 
       final isar = IsarService.sync;
-      if (isar == null) {
-        debugPrint("⚠️ Isar NOT initialized → returning 0 tax");
-        return 0.0;
-      }
-
-      debugPrint("📦 Isar initialized → searching cached products");
+      if (isar == null) return 0.0;
 
       final cachedEntries = isar.isarCacheEntrys
           .where()
@@ -2657,13 +2611,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           .keyStartsWith("products_")
           .findAllSync();
 
-      debugPrint("📂 Found ${cachedEntries.length} product cache entries");
-
       for (final entry in cachedEntries) {
-        debugPrint("🔍 Checking cache key → ${entry.key}");
-
         final List products = json.decode(entry.json);
-        debugPrint("📋 Products in this cache → ${products.length}");
 
         final product = products.firstWhere(
               (p) =>
@@ -2672,56 +2621,34 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           orElse: () => null,
         );
 
-        if (product == null) {
-          debugPrint("⏭️ Product NOT found in this cache");
-          continue;
-        }
-
-        debugPrint("✅ Product FOUND → ID:$productId");
-        debugPrint("🏷️ Tax status → ${product["tax_status"]}");
+        if (product == null) continue;
 
         if (product["tax_status"] == "none") {
-          debugPrint("🚫 Product is non-taxable → tax = 0");
           return 0.0;
         }
 
         final taxRates = product["tax"]?["tax_rates"];
-
         if (taxRates is List && taxRates.isNotEmpty) {
-          debugPrint("🧮 Tax rates found → ${taxRates.length}");
-
           double taxTotal = 0.0;
 
           for (final tax in taxRates) {
             final rate =
                 double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
 
-            final taxAmount = (taxableBase * rate) / 100;
-
-            debugPrint(
-                "➕ Applying tax → rate:$rate% amount:$taxAmount");
-
-            taxTotal += taxAmount;
+            taxTotal += (taxableBase * rate) / 100;
           }
 
-          final roundedTax =
-          double.parse(taxTotal.toStringAsFixed(2));
-
-          debugPrint("✅ TOTAL TAX (rounded) → $roundedTax");
-          return roundedTax;
-        } else {
-          debugPrint("⚠️ No tax rates found for product");
+          return taxTotal;
         }
       }
-
-      debugPrint("❌ Product not found in ANY cache → tax = 0");
     } catch (e, st) {
-      debugPrint("❌ Tax error (Isar sync) → $e");
+      debugPrint("❌ Tax error → $e");
       debugPrint(st.toString());
     }
 
     return 0.0;
   }
+
   bool engineExecuted = false;
 
 
@@ -2947,7 +2874,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 int.tryParse(productIdStr) ?? 0;
 
             itemTax = getProductTaxFromHive(productId, price, qty);
-            itemDiscount = getProductDiscountFromHive(productId, qty);
 
             item['auto_discount_per_unit'] =
             qty > 0 ? itemDiscount / qty : 0.0;
@@ -3043,7 +2969,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             final int productId =
                 int.tryParse(productIdStr) ?? 0;
 
-            itemDiscount = getProductDiscountFromHive(productId, qty);
           }
 
           productTotal += (price * qty) - itemDiscount;
@@ -4337,6 +4262,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             // =======================================================
                             // 🔥 CALL DISCOUNT ENGINE
                             // =======================================================
+                            final repo = OrderRepository();
+                            await syncDiscountRulesFromApi(AppDB.isar, repo);
                             final engineDiscounts =
                             await DiscountEngine.applyAll(AppDB.isar, cartItems);
 
@@ -4390,6 +4317,74 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 );
                               }
                             }
+                            double totalTaxAfterDiscount = 0.0;
+
+                            debugPrint("🧮 ===== TAX CALCULATION START =====");
+
+                            for (final item in orderItems) {
+                              final int productId = int.parse(item['product_id'].toString());
+
+                              final double price =
+                                  (item['item_price'] as num?)?.toDouble() ?? 0.0;
+
+                              final int qty =
+                                  (item['items_count'] as num?)?.toInt() ?? 1;
+
+                              final double autoDiscount =
+                                  (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
+
+                              // ✅ PER-UNIT DISCOUNTED PRICE
+                              final double discountedUnitPrice =
+                                  (price * qty - autoDiscount) / qty;
+
+                              final double taxableBase = discountedUnitPrice * qty;
+
+                              final double productTax = getProductTaxFromHive(
+                                productId,
+                                discountedUnitPrice,
+                                qty,
+                              );
+
+                              totalTaxAfterDiscount += productTax;
+
+                              // 🔒 Store tax on item
+                              item['tax_after_discount'] = productTax;
+
+                              // 🧾 FULL TRACE
+                              debugPrint("""
+🧾 ITEM TAX BREAKDOWN
+  name              : ${item['item_name']}
+  productId         : $productId
+  unitPrice         : $price
+  qty               : $qty
+  autoDiscount      : $autoDiscount
+  discountedUnit    : ${discountedUnitPrice.toStringAsFixed(4)}
+  taxableBase       : ${taxableBase.toStringAsFixed(4)}
+  productTax        : ${productTax.toStringAsFixed(2)}
+""");
+                            }
+
+                            debugPrint("🧮 TOTAL TAX AFTER DISCOUNT → ${totalTaxAfterDiscount.toStringAsFixed(2)}");
+                            debugPrint("🧮 ===== TAX CALCULATION END =====");
+
+
+                            double grossAfterDiscount = 0.0;
+
+                            for (final item in orderItems) {
+                              final double price =
+                                  (item['item_price'] as num?)?.toDouble() ?? 0.0;
+                              final int qty = item['items_count'] ?? 1;
+                              final double autoDiscount =
+                                  (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
+
+                              final double lineTotal = (price * qty) - autoDiscount;
+
+                              grossAfterDiscount += lineTotal;
+                            }
+
+                            grossAfterDiscount =
+                                double.parse(grossAfterDiscount.toStringAsFixed(2));
+
 
                             // =======================================================
                             // 🔒 FREEZE ENGINE SNAPSHOT (🔥 THIS IS THE FIX 🔥)
@@ -4436,9 +4431,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
                             }
 
-                            final double grossAfterDiscount =
-                                (grossTotal ?? 0).toDouble() - totalAutoDiscount;
-
                             // =======================================================
                             // 🔹 NAVIGATE TO SUMMARY (USING SNAPSHOT)
                             // =======================================================
@@ -4448,12 +4440,14 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 builder: (_) => OrderSummaryScreen(
                                   formattedDate: displayDate,
                                   formattedTime: displayTime,
-                                  orderItems: summaryItems, // 🔒 IMMUTABLE SNAPSHOT
+                                  orderItems: summaryItems,
                                   grossTotal: grossAfterDiscount,
                                   orderDiscount: orderDiscount,
                                   merchantDiscount: merchantDiscount,
-                                  orderTax: orderTax,
-                                  netPayable: netPayable.toDouble(),
+                                  orderTax: totalTaxAfterDiscount,
+                                  netPayable:
+                                  (grossAfterDiscount + totalTaxAfterDiscount).toDouble(),
+
                                   orderId: serverOrderId ?? orderHelper.activeOrderId,
                                   isOfflineSynced: serverOrderId != null,
                                   offlineOrderId: orderHelper.activeOrderId,

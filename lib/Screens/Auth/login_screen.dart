@@ -20,7 +20,9 @@ import '../../Models/Auth/logout_model.dart';
 import '../../Repositories/Assets/asset_repository.dart';
 import '../../Repositories/Auth/login_repository.dart';
 import '../../Repositories/Auth/logout_repository.dart';
+import '../../Repositories/Orders/order_repository.dart';
 import '../../Widgets/SafeStorageHelper.dart';
+import '../../Widgets/discount_engine_constants.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_loading.dart';
 import '../../screens/Home/shift_open_close_balance.dart';
@@ -59,6 +61,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     }
   }
+  bool _discountSyncDone = false;
 
   void _updatePassword(String value) {
     for (int i = 0; i < _password.length; i++) {
@@ -275,6 +278,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                         await SafeStorageHelper.saveSafeEnableDrop(
                                           loginResponse.safeEnableDrop == "1",
                                         );
+                                        if (!_discountSyncDone) {
+                                          _discountSyncDone = true;
+                                          try {
+                                            final repo = OrderRepository();
+                                            await syncDiscountRulesFromApi(AppDB.isar, repo);
+                                            debugPrint("✅ Discount rules synced after login");
+                                          } catch (e) {
+                                            debugPrint("❌ Discount rule sync failed: $e");
+                                          }
+                                        }
 
 // ✅ DEBUG
                                         if (kDebugMode) {
