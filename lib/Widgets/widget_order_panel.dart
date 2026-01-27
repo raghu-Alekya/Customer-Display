@@ -2722,6 +2722,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
     return 0.0;
   }
+  bool engineExecuted = false;
 
 
 
@@ -4305,17 +4306,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                           try {
                             int? serverOrderId;
-                            List wooLineItems = [];
 
                             // =======================================================
                             // 🔹 LOAD VALUES FOR SUMMARY
                             // =======================================================
                             final box = Hive.box('offlineOrders');
-                            // final hiveKey =
-                            //     serverOrderId?.toString() ??
-                            //         orderHelper.activeOrderId.toString();
                             final hiveKey = orderHelper.activeOrderId.toString();
-
 
                             final double ebtAmount =
                             (box.get(hiveKey)?["ebt_total"] ?? 0.0).toDouble();
@@ -4323,76 +4319,61 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             final double discountAmount =
                             (box.get(hiveKey)?["discount_amount"] ?? 0.0).toDouble();
 
-
-                            final List<Map<String, dynamic>> cartItems = orderItems.map((item) {
-                              final int qty = item['items_count'] ?? 1;
-
-                              final int productId =
-                                  int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
-
-                              final double unitPrice =
-                                  double.tryParse(item['item_price']?.toString() ?? '0') ?? 0.0;
-
+                            // =======================================================
+                            // 🔹 PREPARE CART FOR ENGINE
+                            // =======================================================
+                            final List<Map<String, dynamic>> cartItems =
+                            orderItems.map((item) {
                               return {
-                                'product_id': productId,
-                                'price': unitPrice,
-                                'qty': qty,
+                                'product_id':
+                                int.tryParse(item['product_id']?.toString() ?? '0') ?? 0,
+                                'price':
+                                double.tryParse(item['item_price']?.toString() ?? '0') ??
+                                    0.0,
+                                'qty': item['items_count'] ?? 1,
                               };
                             }).toList();
 
-// 🔥 CALL ENGINE ONCE
+                            // =======================================================
+                            // 🔥 CALL DISCOUNT ENGINE
+                            // =======================================================
                             final engineDiscounts =
                             await DiscountEngine.applyAll(AppDB.isar, cartItems);
 
                             if (kDebugMode) {
                               print("🔥 ENGINE RESULT MAP = $engineDiscounts");
                             }
-                            if (kDebugMode) {
-                              print("🔥 ENGINE RESULT MAP");
-                              engineDiscounts.forEach((pid, res) {
-                                print(
-                                  "pid=$pid | amount=${res.amount} | "
-                                      "type=${res.ruleType} | rule=${res.ruleId}",
-                                );
-                              });
-                            }
 
-// 🔥 APPLY RESULTS TO ITEMS
-                            for (final item in orderItems) {
-                              final int pid =
-                                  int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
+                            // if (engineDiscounts.isEmpty) {
+                            //   ScaffoldMessenger.of(context).showSnackBar(
+                            //     const SnackBar(
+                            //       content:
+                            //       Text("Discount engine failed. Please retry checkout."),
+                            //       backgroundColor: Colors.red,
+                            //     ),
+                            //   );
+                            //   return;
+                            // }
 
-                              final engineResult = engineDiscounts[pid];
-                              if (engineResult == null) continue;
+                            // =======================================================
+                            // 🔥 APPLY + NORMALIZE ENGINE RESULTS (ONCE)
+                            // =======================================================
+                            setState(() {
+                              orderItems = orderItems.map((item) {
+                                final int pid =
+                                    int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
 
-                              item['auto_discount'] = engineResult.amount;
-                              item['discount_type'] = engineResult.ruleType; // auto | multipack | mixmatch
-                              item['discount_source'] = 'engine';
-                              item['rule_id'] = engineResult.ruleId;
+                                final engineResult = engineDiscounts[pid];
 
-                              if (kDebugMode) {
-                                print(
-                                  "🎯 ENGINE DISCOUNT APPLIED → "
-                                      "${item['item_name']} | "
-                                      "amount=${engineResult.amount} | "
-                                      "type=${engineResult.ruleType} | "
-                                      "rule=${engineResult.ruleId}",
-                                );
-                              }
-                            }
-                            for (final item in orderItems) {
-                              item['auto_discount'] =
-                                  double.tryParse(item['auto_discount']?.toString() ?? '0') ?? 0.0;
-
-                              item['discount_type'] =
-                                  item['discount_type']?.toString() ?? '';
-
-                              item['discount_source'] =
-                                  item['discount_source']?.toString() ?? '';
-
-                              item['rule_id'] =
-                                  item['rule_id']?.toString() ?? '';
-                            }
+                                return {
+                                  ...item,
+                                  'auto_discount': engineResult?.amount ?? 0.0,
+                                  'discount_type': engineResult?.ruleType ?? '',
+                                  'discount_source': engineResult != null ? 'engine' : '',
+                                  'rule_id': engineResult?.ruleId ?? '',
+                                };
+                              }).toList();
+                            });
 
                             if (kDebugMode) {
                               print("🧾 NORMALIZED ORDER ITEMS");
@@ -4410,59 +4391,56 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               }
                             }
 
+                            // =======================================================
+                            // 🔒 FREEZE ENGINE SNAPSHOT (🔥 THIS IS THE FIX 🔥)
+                            // =======================================================
+                            final List<Map<String, dynamic>> summaryItems =
+                            orderItems.map((e) => Map<String, dynamic>.from(e)).toList();
 
+                            if (kDebugMode) {
+                              print("🧊 [ENGINE SNAPSHOT – FROZEN]");
+                              for (final item in summaryItems) {
+                                print(
+                                  "name=${item['item_name']} | "
+                                      "disc=${item['auto_discount']} | "
+                                      "type=${item['discount_type']}",
+                                );
+                              }
+                            }
 
+                            // =======================================================
+                            // 🔹 SAVE ORDER TO HIVE (CAN MUTATE orderItems SAFELY)
+                            // =======================================================
                             final localKey = orderHelper.activeOrderId.toString();
-                            final serverKey = serverOrderId?.toString();
-
-                            // Save to local order
                             final existingLocal = box.get(localKey);
+
                             if (existingLocal != null) {
                               final updated = Map<String, dynamic>.from(existingLocal);
                               updated['items'] = orderItems;
                               await box.put(localKey, updated);
                             }
 
-                            // Save to server order (if exists)
-                            if (serverKey != null) {
-                              final existingServer = box.get(serverKey);
-                              if (existingServer != null) {
-                                final updated = Map<String, dynamic>.from(existingServer);
-                                updated['items'] = orderItems;
-                                await box.put(serverKey, updated);
-                              }
-                            }
-
-                            // 🔥 Call customer display AFTER saving
+                            // =======================================================
+                            // 🔥 UPDATE CUSTOMER DISPLAY (MAY REBUILD OFFLINE DATA)
+                            // =======================================================
                             await CustomerDisplayHelper.updateCustomerDisplay(
                               orderHelper.activeOrderId!,
                             );
 
                             // =======================================================
-                            // ⭐ CALCULATE TOTAL AUTO DISCOUNT (COMBO + MULTIPACK + AUTO)
+                            // ⭐ CALCULATE TOTAL ENGINE DISCOUNT
                             // =======================================================
                             double totalAutoDiscount = 0.0;
-
                             for (final item in orderItems) {
-                              final double d =
-                                  double.tryParse(item['auto_discount']?.toString() ?? '0') ?? 0.0;
-
-                              // ✅ ENGINE DISCOUNT MUST ALWAYS COUNT
-                              if (d > 0 &&
-                                  (item['discount_source'] == 'engine' ||
-                                      item['discount_type'] == 'combo' ||
-                                      item['discount_type'] == 'multipack' ||
-                                      item['discount_type'] == 'auto')) {
-                                totalAutoDiscount += d;
-                              }
+                              totalAutoDiscount +=
+                                  (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
                             }
 
                             final double grossAfterDiscount =
                                 (grossTotal ?? 0).toDouble() - totalAutoDiscount;
 
-
                             // =======================================================
-                            // 🔹 NAVIGATE TO SUMMARY
+                            // 🔹 NAVIGATE TO SUMMARY (USING SNAPSHOT)
                             // =======================================================
                             final result = await Navigator.push(
                               context,
@@ -4470,8 +4448,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 builder: (_) => OrderSummaryScreen(
                                   formattedDate: displayDate,
                                   formattedTime: displayTime,
-                                  orderItems: orderItems,
-                                  grossTotal: grossAfterDiscount, // ✅ negative allowed
+                                  orderItems: summaryItems, // 🔒 IMMUTABLE SNAPSHOT
+                                  grossTotal: grossAfterDiscount,
                                   orderDiscount: orderDiscount,
                                   merchantDiscount: merchantDiscount,
                                   orderTax: orderTax,
@@ -4485,6 +4463,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 ),
                               ),
                             );
+
                             if (result == TextConstants.refresh) {
                               setState(() {
                                 OrderHelper.isOrderPanelLoaded = false;
@@ -4495,10 +4474,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             print("❌ Error syncing order: $e");
                             print(s);
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text("Failed to sync order")),
+                              const SnackBar(content: Text("Failed to sync order")),
                             );
                           } finally {
-                            setState(() => _isPayBtnLoading = false);
+                            if (mounted) {
+                              setState(() => _isPayBtnLoading = false);
+                            }
                           }
                         }
                             : null,
@@ -4518,6 +4499,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                         ),
                       ),
+
+
                     ),
                 ],
               ),

@@ -57,10 +57,12 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:thermal_printer/thermal_printer.dart';
 
 import 'fast_key_screen.dart';
+import 'isar_payments/local_payments_db_helper.dart';
+import 'isar_payments/local_payments_model.dart';
 class LastPaymentInfo {
   final String method;
   final double amount;
-  final String? paymentId;
+  late final String? paymentId;
 
   // ⭐ SUNMI FIELDS
   final String? sunmiTxnId;
@@ -206,6 +208,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   double payByEbt = 0.0;   // ADD THIS
   TextEditingController ebtAmountController = TextEditingController();
 
+  static const bool offline_PAYMENT_SUCCESS = true;  // ← toggle this
 
 
   double NetTotal = 0.0;
@@ -249,6 +252,336 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isCouponAppliedFromApi = false;
   double couponValue= 0;
   double couponDiscount = 0.0;
+
+
+  // ✅ Save payment locally
+  Future<void> _savePaymentLocally(double amount) async {
+    if (kDebugMode) {
+      print("\n" + "🟦" * 30);
+      print("💾 STARTING LOCAL PAYMENT SAVE");
+      print("🟦" * 30);
+      print("Amount: \$${amount.toStringAsFixed(2)}");
+      print("Method: $selectedPaymentMethod");
+      print("Order ID: $orderId");
+      print("Balance Before: \$${balanceAmount.toStringAsFixed(2)}");
+    }
+
+    final String datetime = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
+    final localPayment = LocalPayment(
+      orderId: orderId ?? 0,
+      title: selectedPaymentMethod!,
+      amount: amount,
+      paymentMethod: selectedPaymentMethod!,
+      shiftId: shiftId,
+      vendorId: vendorId,
+      userId: userId ?? 0,
+      serviceType: serviceType,
+      datetime: datetime,
+      notes: '',
+      isSynced: false,
+      createdAt: DateTime.now(),
+    );
+
+    try {
+      // Save to Isar
+      final savedPayment = await LocalPaymentDBHelper.instance.savePayment(localPayment);
+
+      if (kDebugMode) {
+        print("\n✅ PAYMENT SAVED SUCCESSFULLY!");
+        print("Local Payment ID: ${savedPayment.id}");
+      }
+
+      // Update state
+      _updateLocalPaymentState(amount, savedPayment);
+
+      // Print all payments for this order
+      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId ?? 0);
+
+      // Print all unsynced payments
+      await LocalPaymentDBHelper.instance.getUnsyncedPayments();
+
+      // Show success popup
+      _showPaymentSuccessPopup(amount, savedPayment);
+
+      // Schedule sync
+      _schedulePaymentSync(savedPayment);
+
+      if (kDebugMode) {
+        print("🟦" * 30 + "\n");
+      }
+
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print("\n❌ ERROR SAVING PAYMENT");
+        print("Error: $e");
+        print("Stack: $stackTrace");
+        print("🟦" * 30 + "\n");
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Failed to save payment: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+// ✅ Update local state
+  void _updateLocalPaymentState(double amount, LocalPayment payment) {
+    if (kDebugMode) {
+      print("\n📊 UPDATING LOCAL STATE");
+      print("-" * 40);
+    }
+
+    setState(() {
+      isPaymentStarted = true;
+      paidAmount = amount;
+      paymentId = "local_${payment.id}";
+
+      _lastPayment = LastPaymentInfo(
+        method: selectedPaymentMethod!,
+        amount: amount,
+        paymentId: paymentId,
+        sunmiTxnId: null,
+      );
+
+      tenderAmount += amount;
+
+      if (amount >= balanceAmount) {
+        changeAmount = amount - balanceAmount;
+        balanceAmount = 0.0;
+      } else {
+        balanceAmount = balanceAmount - amount;
+        changeAmount = 0.0;
+      }
+
+      balanceAmount = double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
+    });
+
+    _updateHivePaymentData(payment);
+
+    if (kDebugMode) {
+      print("   Payment ID: $paymentId");
+      print("   Tender: \$${tenderAmount.toStringAsFixed(2)}");
+      print("   Balance: \$${balanceAmount.toStringAsFixed(2)}");
+      print("   Change: \$${changeAmount.toStringAsFixed(2)}");
+      print("   Complete: ${balanceAmount <= 0}");
+      print("-" * 40 + "\n");
+    }
+  }
+
+// ✅ Show success popup
+  void _showPaymentSuccessPopup(double amount, LocalPayment payment) {
+    final bool isPaymentComplete = balanceAmount <= 0;
+
+    if (kDebugMode) {
+      print("\n🎉 PAYMENT STATUS");
+      print("   Balance: \$${balanceAmount.toStringAsFixed(2)}");
+      print("   Complete: $isPaymentComplete");
+      print("   Popup Shown: $_successPopupShown\n");
+    }
+
+    if (isPaymentComplete && !_successPopupShown) {
+      _successPopupShown = true;
+
+      final box = Hive.box('offlineOrders');
+      final key = (orderId ?? 0).toString();
+      final couponResponse = (box.get(key)?["coupon_response"] as Map?)
+          ?.cast<String, dynamic>() ?? {};
+
+      _showPaymentDialog(
+        context,
+        tenderAmount,
+        changeAmount: changeAmount,
+        showChange: changeAmount != null && changeAmount! > 0,
+        couponResponse: couponResponse,
+      );
+    } else if (balanceAmount > 0) {
+      _showPartialPaymentDialog(context, amount);
+    }
+  }
+
+// ✅ Schedule sync
+  Future<void> _schedulePaymentSync(LocalPayment payment) async {
+    if (kDebugMode) {
+      print("\n⏰ SCHEDULING SYNC");
+      print("   Payment ID: ${payment.id}");
+      print("   Delay: 500ms\n");
+    }
+
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _syncPaymentToServer(payment);
+    });
+  }
+
+// ✅ Sync to server
+  Future<void> _syncPaymentToServer(LocalPayment payment) async {
+    if (kDebugMode) {
+      print("\n" + "🔄" * 30);
+      print("SYNCING PAYMENT TO SERVER");
+      print("🔄" * 30);
+      print("Local ID: ${payment.id}");
+      print("Order ID: ${payment.orderId}");
+      print("Amount: \$${payment.amount.toStringAsFixed(2)}");
+      print("Method: ${payment.paymentMethod}");
+    }
+
+    final paymentRequest = PaymentRequestModel(
+      title: payment.title,
+      orderId: payment.orderId,
+      amount: payment.amount,
+      paymentMethod: payment.paymentMethod,
+      shiftId: payment.shiftId,
+      vendorId: payment.vendorId,
+      userId: payment.userId,
+      serviceType: payment.serviceType,
+      datetime: payment.datetime,
+      notes: payment.notes,
+    );
+
+    paymentBloc.createPayment(paymentRequest);
+
+    StreamSubscription? subscription;
+    subscription = paymentBloc.createPaymentStream.listen(
+          (paymentResponse) async {
+        if (paymentResponse.status == Status.COMPLETED &&
+            paymentResponse.data != null) {
+
+          final serverPaymentId = paymentResponse.data!.paymentId;
+
+          if (kDebugMode) {
+            print("\n✅ SYNC SUCCESS!");
+            print("   Local ID: ${payment.id}");
+            print("   Server ID: $serverPaymentId");
+          }
+
+          await LocalPaymentDBHelper.instance.markAsSynced(
+            payment.id,
+            serverPaymentId ?? 0,
+          );
+
+          if (mounted) {
+            setState(() {
+              paymentId = serverPaymentId.toString();
+            });
+          }
+
+          _lastPayment = LastPaymentInfo(
+            method: payment.paymentMethod,
+            amount: payment.amount,
+            paymentId: serverPaymentId.toString(),
+            sunmiTxnId: null,
+          );
+
+          final box = Hive.box('offlineOrders');
+          final key = (orderId ?? 0).toString();
+          final existing = box.containsKey(key)
+              ? Map<String, dynamic>.from(box.get(key))
+              : <String, dynamic>{};
+
+          existing["lastPayment"] = _lastPayment!.toJson();
+          existing["serverPaymentId"] = serverPaymentId;
+          existing["localPaymentSynced"] = true;
+          box.put(key, existing);
+
+          // Print updated payment
+          await LocalPaymentDBHelper.instance.getLastPaymentForOrder(payment.orderId);
+
+          if (kDebugMode) {
+            print("🔄" * 30 + "\n");
+          }
+
+        } else if (paymentResponse.status == Status.ERROR) {
+          if (kDebugMode) {
+            print("\n❌ SYNC FAILED");
+            print("   Error: ${paymentResponse.message}");
+          }
+
+          await LocalPaymentDBHelper.instance.updateSyncError(
+            payment.id,
+            paymentResponse.message ?? 'Unknown error',
+          );
+
+          await LocalPaymentDBHelper.instance.getUnsyncedPayments();
+
+          if (kDebugMode) {
+            print("🔄" * 30 + "\n");
+          }
+
+          if (mounted && Misc.showDebugSnackBar) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Payment saved locally. Will sync when online."),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
+
+        subscription?.cancel();
+      },
+    );
+  }
+
+// ✅ Update Hive
+  void _updateHivePaymentData(LocalPayment payment) {
+    try {
+      final offlineBox = Hive.box('offlineOrders');
+      final key = (orderId ?? 0).toString();
+
+      final existing = offlineBox.containsKey(key)
+          ? Map<String, dynamic>.from(offlineBox.get(key))
+          : <String, dynamic>{};
+
+      existing["balanceAmount"] = balanceAmount;
+      existing["paidAmount"] = tenderAmount;
+      existing["tenderAmount"] = tenderAmount;
+      existing["ebtTotal"] = ebtTotal;
+      existing["lastPayment"] = _lastPayment!.toJson();
+      existing["localPaymentId"] = payment.id;
+      existing["localPaymentSynced"] = false;
+
+      offlineBox.put(key, existing);
+
+      if (kDebugMode) {
+        print("✔ Hive updated");
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("⚠ Hive error: $e");
+      }
+    }
+  }
+
+// ✅ Retry unsynced
+  Future<void> retrySyncUnsyncedPayments() async {
+    final unsyncedPayments = await LocalPaymentDBHelper.instance.getUnsyncedPayments();
+
+    if (unsyncedPayments.isEmpty) {
+      if (kDebugMode) {
+        print("✅ No unsynced payments\n");
+      }
+      return;
+    }
+
+    if (kDebugMode) {
+      print("\n🔁 RETRYING ${unsyncedPayments.length} PAYMENTS");
+    }
+
+    for (final payment in unsyncedPayments) {
+      if ((payment.syncAttempts ?? 0) > 5) {
+        if (kDebugMode) {
+          print("⏭ Skipping ID ${payment.id} (too many attempts)");
+        }
+        continue;
+      }
+
+      await _syncPaymentToServer(payment);
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+  }
 
   Future<void> _fetchShiftId() async {
     final data = await UserDbHelper().getUserData();
@@ -302,6 +635,63 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       _isAmountEntered = _rawAmount > 0;
     });
   }
+
+  // void _handlePay() {
+  //   final cleanAmount = amountController.text
+  //       .replaceAll(TextConstants.currencySymbol, '')
+  //       .trim();
+  //
+  //   final double amount = double.tryParse(cleanAmount) ?? 0.0;
+  //
+  //   // Convert to cents to avoid floating point issues
+  //   final int enteredCents = (amount * 100).round();
+  //   final int ebtCents = (ebtTotal * 100).round();
+  //
+  //   // ❌ Basic validation
+  //   if (enteredCents <= 0 && computedNetPayable > 0) {
+  //     setState(() {
+  //       _amountErrorText = TextConstants.amountValidation;
+  //     });
+  //     return;
+  //   }
+  //
+  //   _amountErrorText = null;
+  //
+  //   // ⭐ EBT validation
+  //   if (selectedPaymentMethod == TextConstants.ebtText) {
+  //     // ❌ No EBT balance
+  //     if (ebtCents <= 0) {
+  //       setState(() {
+  //         _amountErrorText = "No EBT balance available";
+  //       });
+  //       return;
+  //     }
+  //
+  //     // ❌ Amount exceeds EBT balance (even by 1 cent)
+  //     if (enteredCents > ebtCents) {
+  //       setState(() {
+  //         _amountErrorText =
+  //         "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
+  //       });
+  //       return;
+  //     }
+  //   }
+  //
+  //   // ⭐ CARD → Sunmi ONLY
+  //   if (selectedPaymentMethod == TextConstants.card) {
+  //     _showPaymentProgressDialog(context);
+  //     _openSunmiSaleScreen(
+  //       amount: amount,
+  //       orderId: (widget.orderId ?? widget.offlineOrderId).toString(),
+  //     );
+  //     _resetAmountAfterPay();
+  //     return;
+  //   }
+  //
+  //   // ⭐ Wallet / Cash / EBT → API
+  //   _callCreatePaymentAPI(); // uses validated amount
+  //   _resetAmountAfterPay();
+  // }
   void _handlePay() {
     final cleanAmount = amountController.text
         .replaceAll(TextConstants.currencySymbol, '')
@@ -325,7 +715,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     // ⭐ EBT validation
     if (selectedPaymentMethod == TextConstants.ebtText) {
-      // ❌ No EBT balance
       if (ebtCents <= 0) {
         setState(() {
           _amountErrorText = "No EBT balance available";
@@ -333,7 +722,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         return;
       }
 
-      // ❌ Amount exceeds EBT balance (even by 1 cent)
       if (enteredCents > ebtCents) {
         setState(() {
           _amountErrorText =
@@ -354,8 +742,37 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       return;
     }
 
-    // ⭐ Wallet / Cash / EBT → API
-    _callCreatePaymentAPI(); // uses validated amount
+    // ⭐⭐⭐ NEW: Calculate if payment will complete the order
+    final double newTenderAmount = tenderAmount + amount;
+    final bool willCompletePayment = newTenderAmount >= computedNetPayable;
+    final double calculatedChange = willCompletePayment
+        ? newTenderAmount - computedNetPayable
+        : 0.0;
+
+    // ⭐⭐⭐ Show popup IMMEDIATELY before API call
+    if (willCompletePayment) {
+      _successPopupShown = true;
+
+      // Get coupon data for popup
+      final box = Hive.box('offlineOrders');
+      final key = (orderId ?? 0).toString();
+      final couponResponse = (box.get(key)?["coupon_response"] as Map?)
+          ?.cast<String, dynamic>() ?? {};
+
+      _showPaymentDialog(
+        context,
+        newTenderAmount,
+        changeAmount: calculatedChange,
+        showChange: calculatedChange > 0,
+        couponResponse: couponResponse,
+      );
+    } else {
+      // Partial payment popup
+      _showPartialPaymentDialog(context, amount);
+    }
+
+    // ⭐⭐⭐ Call API in background (won't show loading popup)
+    _callCreatePaymentAPI(skipPopup: true);
     _resetAmountAfterPay();
   }
 
@@ -370,6 +787,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   void initState() {
     super.initState();
     ScannerGuard.isCouponPopupOpen = true;
+    Future.delayed(Duration.zero, () async {
+      if (kDebugMode) {
+        print("\n🚀 ORDER SUMMARY INITIALIZED");
+        print("Order ID: $orderId");
+      }
+
+      await LocalPaymentDBHelper.instance.printAllPayments();
+      await retrySyncUnsyncedPayments();
+    });
 
     amountController.addListener(() {
       if (balanceAmount < 0 && amountController.text != '${TextConstants.currencySymbol}0.00') {
@@ -387,7 +813,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
 
     // Load order values
-    orderItems = widget.orderItems;
+    orderItems = widget.orderItems
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
     grossTotal = widget.grossTotal;
     discount = widget.orderDiscount;
     merchantDiscount = widget.merchantDiscount;
@@ -1168,14 +1596,455 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       orderItems.removeWhere((item) => item[AppDBConst.itemId] == itemId);
     });
   }
-  void _callCreatePaymentAPI() {
+
+//   void _callCreatePaymentAPI() {
+//     if (kDebugMode) {
+//       print("###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount");
+//     }
+//
+//     // ------------------------------------------------------
+//     // ⭐ RULE 0: Ensure user selected a payment method
+//     // ------------------------------------------------------
+//     if (selectedPaymentMethod == null || selectedPaymentMethod!.isEmpty) {
+//       print("❌ ERROR: No payment method selected");
+//       return;
+//     }
+//
+//     final bool isCard = selectedPaymentMethod == TextConstants.card;
+//
+//     // ------------------------------------------------------
+//     // ⭐ RULE 1: If method is NOT card, amount is required
+//     // ------------------------------------------------------
+//     if (!isCard && balanceAmount > 0 && amountController.text.isEmpty) {
+//       print("❌ ERROR: Amount required for Cash / Wallet / EBT");
+//       return;
+//     }
+//
+//     // Clean amount
+//     String cleanAmount = amountController.text
+//         .replaceAll(TextConstants.currencySymbol, '')
+//         .trim();
+//
+//     double amount = double.tryParse(cleanAmount) ?? 0.0;
+//
+//     // ------------------------------------------------------
+//     // ⭐ RULE 2: CARD amount handled by Sunmi, ignore validation
+//     // ------------------------------------------------------
+//     if (isCard) {
+//       print("💳 CARD PAYMENT → Skipping amount validation, Sunmi handles it.");
+//       amount = amount > 0 ? amount : 0.0;
+//     } else {
+//       // ------------------------------------------------------
+//       // ⭐ RULE 3: No negative amount
+//       // ------------------------------------------------------
+//       if (amount < 0) {
+//         print("❌ ERROR: Negative amount");
+//         return;
+//       }
+//
+//       // ------------------------------------------------------
+//       // ⭐ RULE 4: Amount cannot be zero IF balance > 0
+//       // ------------------------------------------------------
+//       if (amount == 0 && computedNetPayable > 0) {
+//         setState(() => _amountErrorText = TextConstants.amountValidation);
+//         return;
+//       }
+//     }
+//
+//     _amountErrorText = null;
+//     double remainingBalance = balanceAmount;
+//
+//     setState(() {
+//       _processingPaymentMethod = selectedPaymentMethod;
+//       isLoading = true;
+//     });
+//     _showPaymentProgressDialog(context);
+//
+//     final String datetime =
+//     DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+//
+//     // ⭐ Important fix: Dynamic paymentMethod
+//     final paymentRequest = PaymentRequestModel(
+//       title: selectedPaymentMethod!,
+//       orderId: orderId ?? 0,
+//       amount: amount,
+//       paymentMethod: selectedPaymentMethod!, // <-- correct method passed
+//       shiftId: shiftId,
+//       vendorId: vendorId,
+//       userId: userId ?? 0,
+//       serviceType: serviceType,
+//       datetime: datetime,
+//       notes: '',
+//     );
+//
+//     if (kDebugMode) print("Creating payment with request: $paymentRequest");
+//
+//     paymentBloc.createPayment(paymentRequest);
+//
+//     StreamSubscription? subscription;
+//     subscription = paymentBloc.createPaymentStream.listen(
+//           (paymentResponse) async {
+//
+//
+//         if (kDebugMode) {
+//           print("Payment stream response: $paymentResponse");
+//         }
+//
+//         if (paymentResponse.status == Status.ERROR) {
+//           _hidePaymentProgressDialog();
+//
+//           setState(() {
+//             _processingPaymentMethod = null;
+//             isLoading = false;
+//           });
+//           subscription?.cancel();
+//           return;
+//         }
+//
+//         if (paymentResponse.status == Status.COMPLETED &&
+//             paymentResponse.data != null &&
+//             paymentResponse.data!.message == "Payment Created Successfully") {
+//           setState(() {
+//             isPaymentStarted = true;
+//             _processingPaymentMethod = null;
+//             isLoading = false;
+//           });
+//
+//           final paymentData = paymentResponse.data!;
+//           paidAmount = amount;
+//           paymentId = paymentData.paymentId.toString();
+//           orderStatus =
+//               paymentData.orderStatus ?? TextConstants.processing;
+//
+//           try {
+//             final box = Hive.box('offlineOrders');
+//             final key = (orderId ?? 0).toString();
+//
+//             final existing = box.containsKey(key)
+//                 ? Map<String, dynamic>.from(box.get(key))
+//                 : <String, dynamic>{};
+//
+//             existing["coupon_response"] = {
+//               "available_coupons": paymentData.availableCoupons,
+//               "coupons": paymentData.coupons
+//                   ?.map((c) => c.toJson())
+//                   .toList(),
+//             };
+//
+//             box.put(key, existing);
+//
+//             if (kDebugMode) {
+//               print("🎁 FULL COUPON RESPONSE SAVED");
+//               print(existing["coupon_response"]);
+//             }
+//           } catch (e) {
+//             print("⚠ Coupon save failed: $e");
+//           }
+//
+//           // ------------------------------------------
+//           // OFFLINE DELETE (unchanged)
+//           // ------------------------------------------
+//           if (widget.isOfflineSynced && widget.offlineOrderId != null) {
+//             try {
+//               final offlineId = widget.offlineOrderId!;
+//               final box = Hive.box('offlineOrders');
+//
+//               if (box.containsKey(offlineId.toString())) {
+//                 await box.delete(offlineId.toString());
+//               }
+//
+//               await orderHelper.deleteOrder(offlineId);
+//             } catch (e) {
+//               print("⚠ Failed deleting offline order: $e");
+//             }
+//           }
+//
+//           // =====================================================
+// // ⭐ STORE LAST PAYMENT INFO (FOR VOID)
+// // =====================================================
+//           _lastPayment = LastPaymentInfo(
+//             method: selectedPaymentMethod!,
+//             amount: amount,
+//             paymentId: paymentId,
+//             sunmiTxnId: null, // ❗ only card has this
+//           );
+//
+// // Save to Hive
+//           try {
+//             final box = Hive.box('offlineOrders');
+//             final key = (orderId ?? 0).toString();
+//
+//             final existing = box.containsKey(key)
+//                 ? Map<String, dynamic>.from(box.get(key))
+//                 : <String, dynamic>{};
+//
+//             existing["lastPayment"] = _lastPayment!.toJson();
+//             box.put(key, existing);
+//
+//             if (kDebugMode) {
+//               print("💾 LAST PAYMENT SAVED (NON-CARD)");
+//               print("   → method = ${_lastPayment!.method}");
+//               print("   → amount = ${_lastPayment!.amount}");
+//               print("   → paymentId = ${_lastPayment!.paymentId}");
+//             }
+//           } catch (e) {
+//             print("⚠ Failed saving last payment to Hive: $e");
+//           }
+//
+//
+//           // ------------------------------------------
+//           // BALANCE CALCULATION (unchanged)
+//           // ------------------------------------------
+//           final bool isExactPayment = (amount == remainingBalance);
+//           final bool isOverPayment = (amount > remainingBalance);
+//           final bool isPartialPayment = (amount < remainingBalance);
+//
+//           tenderAmount += amount;
+//
+//           if (isOverPayment) {
+//             changeAmount = amount - remainingBalance;
+//             balanceAmount = 0.0;
+//           } else if (isExactPayment) {
+//             changeAmount = 0.0;
+//             balanceAmount = 0.0;
+//           } else if (isPartialPayment) {
+//             balanceAmount = remainingBalance - amount;
+//             changeAmount = 0.0;
+//           }
+//
+//           balanceAmount =
+//               double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
+//           if (changeAmount != null && changeAmount! > 0) {
+//             final repo = PaymentRepository();
+//             await repo.updatePaymentMeta(
+//               paymentId: int.parse(paymentId!),
+//               key: "_payment_remaining_change",
+//               value: changeAmount!.toStringAsFixed(2),
+//             );
+//           }
+//
+//           _order["balanceAmount"] = balanceAmount;
+//           _order["paidAmount"] = tenderAmount;
+//           _order["tenderAmount"] = tenderAmount;
+//
+//           // ------------------------------------------------------
+//           // ⭐ SAVE BALANCE + TENDER AMOUNT TO ORDER + HIVE
+//           // ------------------------------------------------------
+//           try {
+//             final offlineBox = Hive.box('offlineOrders');
+//             final key = (orderId ?? 0).toString();
+//
+//             if (offlineBox.containsKey(key)) {
+//               final updated = Map<String, dynamic>.from(offlineBox.get(key));
+//
+//               updated["balanceAmount"] = balanceAmount;
+//               updated["paidAmount"] = tenderAmount;
+//               updated["tenderAmount"] = tenderAmount;
+//
+//               // ⭐ Add this line to store EBT
+//               updated["ebtTotal"] = ebtTotal;
+//
+//               offlineBox.put(key, updated);
+//
+//               print("✔ Hive updated → balance=$balanceAmount paid=$tenderAmount ebt=$ebtTotal");
+//             } else {
+//               // If order not in Hive yet, create it
+//               offlineBox.put(key, {
+//                 "balanceAmount": balanceAmount,
+//                 "paidAmount": tenderAmount,
+//                 "tenderAmount": tenderAmount,
+//                 "payByCash": payByCash,
+//                 "payByOther": payByOther,
+//                 "ebtTotal": ebtTotal,   // ⭐ Add here too
+//               });
+//               print("✔ Hive created → balance=$balanceAmount paid=$tenderAmount ebt=$ebtTotal");
+//             }
+//           } catch (e) {
+//             print("⚠ Hive update error: $e");
+//           }
+//           amountController.clear();
+//
+//           if (mounted) setState(() {});
+//
+//           // ------------------------------------------
+//           // SHOW POPUPS (unchanged)
+//           // ------------------------------------------
+//           // if (isPartialPayment && balanceAmount > 0) {
+//           //   _showPartialPaymentDialog(context, amount);
+//           // } else {
+//           //   _fetchPaymentsByOrderId();
+//           //   // _showPaymentDialog(
+//           //   //   context,
+//           //   //   amount,
+//           //   //   changeAmount: changeAmount,
+//           //   //   showChange: changeAmount > 0,
+//           //   // );
+//           // }
+//
+//           // ------------------------------------------------------
+// // ⭐ FINAL POPUP CONTROL (CREATE PAYMENT METHOD ONLY)
+// // ------------------------------------------------------
+//
+//           _fetchPaymentsByOrderId(); // keep for UI refresh
+//
+//           final bool isPaymentComplete = balanceAmount <= 0;
+//
+//           if (isPaymentComplete && !_successPopupShown) {
+//             _successPopupShown = true;
+//             _hidePaymentProgressDialog();
+//
+//             final box = Hive.box('offlineOrders');
+//             final key = (orderId ?? 0).toString();
+//
+//             final couponResponse =
+//                 (box.get(key)?["coupon_response"] as Map?)
+//                     ?.cast<String, dynamic>() ??
+//                     {};
+//
+//             _showPaymentDialog(
+//               context,
+//               tenderAmount,
+//               changeAmount: changeAmount,
+//               showChange: changeAmount != null && changeAmount! > 0,
+//               couponResponse: couponResponse,
+//             );
+//           } else if (balanceAmount > 0) {
+//             _hidePaymentProgressDialog();
+//             _showPartialPaymentDialog(context, amount);
+//           }
+//
+//
+//           subscription?.cancel();
+//         }
+//       },
+//     );
+//   }
+
+  Future<void> _callCreatePaymentAPI({bool skipPopup = false}) async {
+
+
     if (kDebugMode) {
-      print("###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount");
+      print("###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount, skipPopup: $skipPopup");
     }
 
-    // ------------------------------------------------------
-    // ⭐ RULE 0: Ensure user selected a payment method
-    // ------------------------------------------------------
+    if (kDebugMode) {
+      print("###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount, skipPopup: $skipPopup");
+    }
+
+    // ────────────────────────────────────────────────
+    //  Fake success mode (for testing / demo)
+    // ────────────────────────────────────────────────
+
+    if (offline_PAYMENT_SUCCESS) {
+      print("⚡ FAKE PAYMENT SUCCESS MODE ACTIVE ⚡");
+
+      final now = DateTime.now();
+      final String fakeDateTime = DateFormat('yyyy-MM-dd HH:mm:ss').format(now);
+
+      final double amount = double.tryParse(
+        amountController.text.replaceAll(TextConstants.currencySymbol, '').trim(),
+      ) ??
+          0.0;
+
+      // ─── STEP 1: Calculate new totals FIRST ───
+      final double newTender = tenderAmount + amount;
+
+      double newBalance = computedNetPayable - newTender;
+      double newChange = 0.0;
+
+      if (newTender >= computedNetPayable) {
+        newChange = newTender - computedNetPayable;
+        newBalance = 0.0;
+      } else {
+        newChange = 0.0;
+        // newBalance already = computedNetPayable - newTender (positive)
+      }
+
+      // Round to 2 decimals safely
+      newBalance = double.parse(newBalance.toStringAsFixed(2));
+      newChange = double.parse(newChange.toStringAsFixed(2));
+
+      // ─── STEP 2: Prepare last payment (for void support) ───
+      final fakePaymentId = "fake_${now.millisecondsSinceEpoch}";
+
+      _lastPayment = LastPaymentInfo(
+        method: selectedPaymentMethod ?? "Cash",
+        amount: amount,
+        paymentId: fakePaymentId,
+        sunmiTxnId: null,
+      );
+
+      // ─── STEP 3: Show popup with CORRECT values BEFORE saving ───
+      final bool willComplete = newTender >= computedNetPayable;
+
+      if (willComplete && !_successPopupShown) {
+        _successPopupShown = true;
+
+        final box = Hive.box('offlineOrders');
+        final key = (orderId ?? 0).toString();
+        final couponResponse = (box.get(key)?["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
+
+        // ← Use newChange and showChange = true when there's change
+        _showPaymentDialog(
+          context,
+          amount,                    // this payment
+          changeAmount: newChange,   // ← correct change!
+          showChange: newChange > 0, // ← now correctly true when overpaid
+          couponResponse: couponResponse,
+        );
+      } else {
+        _showPartialPaymentDialog(context, amount);
+      }
+
+      // ─── STEP 4: Now update state (UI will refresh after popup) ───
+      setState(() {
+        isPaymentStarted = true;
+        _processingPaymentMethod = null;
+        isLoading = false;
+        paidAmount = amount;
+        paymentId = fakePaymentId;
+        orderStatus = TextConstants.processing;
+
+        tenderAmount = newTender;
+        balanceAmount = newBalance;
+        changeAmount = newChange;
+      });
+
+      // ─── STEP 5: Save to Isar ───
+      final localPayment = LocalPayment(
+        orderId: orderId ?? 0,
+        title: selectedPaymentMethod ?? "Cash",
+        amount: amount,
+        paymentMethod: selectedPaymentMethod ?? "Cash",
+        shiftId: shiftId,
+        vendorId: vendorId,
+        userId: userId ?? 0,
+        serviceType: serviceType,
+        datetime: fakeDateTime,
+        notes: "FAKE payment - ${now.toIso8601String()}",
+        isSynced: false,
+        createdAt: now,
+      );
+
+      try {
+        final saved = await LocalPaymentDBHelper.instance.savePayment(localPayment);
+        print("✓ Fake payment saved to Isar → local ID: ${saved.id}");
+
+        // Update _lastPayment with real local ID
+        _lastPayment?.paymentId = "local_${saved.id}";
+
+        _updateHivePaymentData(localPayment);
+      } catch (e) {
+        print("✗ Failed to save fake payment: $e");
+      }
+
+      amountController.clear();
+      if (mounted) setState(() {}); // final UI refresh
+
+      return; // skip real API
+    }
+
+    // Validation checks remain the same
     if (selectedPaymentMethod == null || selectedPaymentMethod!.isEmpty) {
       print("❌ ERROR: No payment method selected");
       return;
@@ -1183,39 +2052,26 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     final bool isCard = selectedPaymentMethod == TextConstants.card;
 
-    // ------------------------------------------------------
-    // ⭐ RULE 1: If method is NOT card, amount is required
-    // ------------------------------------------------------
     if (!isCard && balanceAmount > 0 && amountController.text.isEmpty) {
       print("❌ ERROR: Amount required for Cash / Wallet / EBT");
       return;
     }
 
-    // Clean amount
     String cleanAmount = amountController.text
         .replaceAll(TextConstants.currencySymbol, '')
         .trim();
 
     double amount = double.tryParse(cleanAmount) ?? 0.0;
 
-    // ------------------------------------------------------
-    // ⭐ RULE 2: CARD amount handled by Sunmi, ignore validation
-    // ------------------------------------------------------
     if (isCard) {
       print("💳 CARD PAYMENT → Skipping amount validation, Sunmi handles it.");
       amount = amount > 0 ? amount : 0.0;
     } else {
-      // ------------------------------------------------------
-      // ⭐ RULE 3: No negative amount
-      // ------------------------------------------------------
       if (amount < 0) {
         print("❌ ERROR: Negative amount");
         return;
       }
 
-      // ------------------------------------------------------
-      // ⭐ RULE 4: Amount cannot be zero IF balance > 0
-      // ------------------------------------------------------
       if (amount == 0 && computedNetPayable > 0) {
         setState(() => _amountErrorText = TextConstants.amountValidation);
         return;
@@ -1229,17 +2085,19 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       _processingPaymentMethod = selectedPaymentMethod;
       isLoading = true;
     });
-    _showPaymentProgressDialog(context);
 
-    final String datetime =
-    DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    // ⭐⭐⭐ Only show progress dialog if skipPopup is false
+    if (!skipPopup) {
+      _showPaymentProgressDialog(context);
+    }
 
-    // ⭐ Important fix: Dynamic paymentMethod
+    final String datetime = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
     final paymentRequest = PaymentRequestModel(
       title: selectedPaymentMethod!,
       orderId: orderId ?? 0,
       amount: amount,
-      paymentMethod: selectedPaymentMethod!, // <-- correct method passed
+      paymentMethod: selectedPaymentMethod!,
       shiftId: shiftId,
       vendorId: vendorId,
       userId: userId ?? 0,
@@ -1255,18 +2113,33 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     StreamSubscription? subscription;
     subscription = paymentBloc.createPaymentStream.listen(
           (paymentResponse) async {
-
-
         if (kDebugMode) {
           print("Payment stream response: $paymentResponse");
         }
 
         if (paymentResponse.status == Status.ERROR) {
-          _hidePaymentProgressDialog();
+          // ⭐⭐⭐ Dismiss any open dialog on error
+          if (!skipPopup) {
+            _hidePaymentProgressDialog();
+          } else {
+            // If popup was already shown, dismiss it
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            }
+          }
+
+          // Show error message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Payment failed: ${paymentResponse.message}"),
+              backgroundColor: Colors.red,
+            ),
+          );
 
           setState(() {
             _processingPaymentMethod = null;
             isLoading = false;
+            _successPopupShown = false; // Reset flag on error
           });
           subscription?.cancel();
           return;
@@ -1275,6 +2148,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         if (paymentResponse.status == Status.COMPLETED &&
             paymentResponse.data != null &&
             paymentResponse.data!.message == "Payment Created Successfully") {
+
           setState(() {
             isPaymentStarted = true;
             _processingPaymentMethod = null;
@@ -1284,9 +2158,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           final paymentData = paymentResponse.data!;
           paidAmount = amount;
           paymentId = paymentData.paymentId.toString();
-          orderStatus =
-              paymentData.orderStatus ?? TextConstants.processing;
+          orderStatus = paymentData.orderStatus ?? TextConstants.processing;
 
+          // Save coupon response to Hive
           try {
             final box = Hive.box('offlineOrders');
             final key = (orderId ?? 0).toString();
@@ -1297,9 +2171,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
             existing["coupon_response"] = {
               "available_coupons": paymentData.availableCoupons,
-              "coupons": paymentData.coupons
-                  ?.map((c) => c.toJson())
-                  .toList(),
+              "coupons": paymentData.coupons?.map((c) => c.toJson()).toList(),
             };
 
             box.put(key, existing);
@@ -1312,9 +2184,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             print("⚠ Coupon save failed: $e");
           }
 
-          // ------------------------------------------
-          // OFFLINE DELETE (unchanged)
-          // ------------------------------------------
+          // Delete offline order if synced
           if (widget.isOfflineSynced && widget.offlineOrderId != null) {
             try {
               final offlineId = widget.offlineOrderId!;
@@ -1330,17 +2200,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             }
           }
 
-          // =====================================================
-// ⭐ STORE LAST PAYMENT INFO (FOR VOID)
-// =====================================================
+          // Store last payment info
           _lastPayment = LastPaymentInfo(
             method: selectedPaymentMethod!,
             amount: amount,
             paymentId: paymentId,
-            sunmiTxnId: null, // ❗ only card has this
+            sunmiTxnId: null,
           );
 
-// Save to Hive
+          // Save to Hive
           try {
             final box = Hive.box('offlineOrders');
             final key = (orderId ?? 0).toString();
@@ -1362,10 +2230,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             print("⚠ Failed saving last payment to Hive: $e");
           }
 
-
-          // ------------------------------------------
-          // BALANCE CALCULATION (unchanged)
-          // ------------------------------------------
+          // Calculate balance
           final bool isExactPayment = (amount == remainingBalance);
           final bool isOverPayment = (amount > remainingBalance);
           final bool isPartialPayment = (amount < remainingBalance);
@@ -1383,8 +2248,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             changeAmount = 0.0;
           }
 
-          balanceAmount =
-              double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
+          balanceAmount = double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
+
           if (changeAmount != null && changeAmount! > 0) {
             final repo = PaymentRepository();
             await repo.updatePaymentMeta(
@@ -1398,9 +2263,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           _order["paidAmount"] = tenderAmount;
           _order["tenderAmount"] = tenderAmount;
 
-          // ------------------------------------------------------
-          // ⭐ SAVE BALANCE + TENDER AMOUNT TO ORDER + HIVE
-          // ------------------------------------------------------
+          // Save to Hive
           try {
             final offlineBox = Hive.box('offlineOrders');
             final key = (orderId ?? 0).toString();
@@ -1411,79 +2274,34 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               updated["balanceAmount"] = balanceAmount;
               updated["paidAmount"] = tenderAmount;
               updated["tenderAmount"] = tenderAmount;
-
-              // ⭐ Add this line to store EBT
               updated["ebtTotal"] = ebtTotal;
 
               offlineBox.put(key, updated);
 
               print("✔ Hive updated → balance=$balanceAmount paid=$tenderAmount ebt=$ebtTotal");
             } else {
-              // If order not in Hive yet, create it
               offlineBox.put(key, {
                 "balanceAmount": balanceAmount,
                 "paidAmount": tenderAmount,
                 "tenderAmount": tenderAmount,
                 "payByCash": payByCash,
                 "payByOther": payByOther,
-                "ebtTotal": ebtTotal,   // ⭐ Add here too
+                "ebtTotal": ebtTotal,
               });
               print("✔ Hive created → balance=$balanceAmount paid=$tenderAmount ebt=$ebtTotal");
             }
           } catch (e) {
             print("⚠ Hive update error: $e");
           }
+
           amountController.clear();
 
           if (mounted) setState(() {});
 
-          // ------------------------------------------
-          // SHOW POPUPS (unchanged)
-          // ------------------------------------------
-          // if (isPartialPayment && balanceAmount > 0) {
-          //   _showPartialPaymentDialog(context, amount);
-          // } else {
-          //   _fetchPaymentsByOrderId();
-          //   // _showPaymentDialog(
-          //   //   context,
-          //   //   amount,
-          //   //   changeAmount: changeAmount,
-          //   //   showChange: changeAmount > 0,
-          //   // );
-          // }
+          // Refresh payment list
+          _fetchPaymentsByOrderId();
 
-          // ------------------------------------------------------
-// ⭐ FINAL POPUP CONTROL (CREATE PAYMENT METHOD ONLY)
-// ------------------------------------------------------
-
-          _fetchPaymentsByOrderId(); // keep for UI refresh
-
-          final bool isPaymentComplete = balanceAmount <= 0;
-
-          if (isPaymentComplete && !_successPopupShown) {
-            _successPopupShown = true;
-            _hidePaymentProgressDialog();
-
-            final box = Hive.box('offlineOrders');
-            final key = (orderId ?? 0).toString();
-
-            final couponResponse =
-                (box.get(key)?["coupon_response"] as Map?)
-                    ?.cast<String, dynamic>() ??
-                    {};
-
-            _showPaymentDialog(
-              context,
-              tenderAmount,
-              changeAmount: changeAmount,
-              showChange: changeAmount != null && changeAmount! > 0,
-              couponResponse: couponResponse,
-            );
-          } else if (balanceAmount > 0) {
-            _hidePaymentProgressDialog();
-            _showPartialPaymentDialog(context, amount);
-          }
-
+          // ⭐⭐⭐ NO popup logic here - already shown before API call
 
           subscription?.cancel();
         }
@@ -1664,7 +2482,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 // ❌ FORCE DISABLE
                                 isLoading: false,
                                 isDisabled: true,
-                                 onTap: () {
+                                onTap: () {
                                   _selectPaymentMethod(
                                     TextConstants.wallet,
                                     //autoFillAmount: true,
@@ -2598,25 +3416,25 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               Expanded(
                 flex: 6,
                 child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius:
-                    BorderRadius.circular(ResponsiveLayout.getRadius(10)),
-                    color: themeHelper.themeMode == ThemeMode.dark
-                        ? ThemeNotifier.secondaryBackground
-                        : Colors.white,
-                    border: Border.all(
-                        color: themeHelper.themeMode == ThemeMode.dark
-                            ? ThemeNotifier.borderColor
-                            : Colors.grey.shade200),
-                  ),
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    padding: EdgeInsets.zero,
-                    itemCount: orderItems.length,
-                    itemBuilder: (context, index) {
-                      return _buildOrderItem(index);
-                    },
-                  )
+                    decoration: BoxDecoration(
+                      borderRadius:
+                      BorderRadius.circular(ResponsiveLayout.getRadius(10)),
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.secondaryBackground
+                          : Colors.white,
+                      border: Border.all(
+                          color: themeHelper.themeMode == ThemeMode.dark
+                              ? ThemeNotifier.borderColor
+                              : Colors.grey.shade200),
+                    ),
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      padding: EdgeInsets.zero,
+                      itemCount: orderItems.length,
+                      itemBuilder: (context, index) {
+                        return _buildOrderItem(index);
+                      },
+                    )
 
                 ),
               ),
@@ -3037,25 +3855,24 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     // --------------------------------------------------
     // ✅ DISCOUNT EXTRACTION
-    // --------------------------------------------------
     final String discountType =
         orderItem['discount_type']?.toString() ?? '';
 
     final double autoDiscount =
-    discountType.isEmpty || discountType == 'auto'
+    discountType == 'auto'
         ? (orderItem['auto_discount'] ?? 0).toDouble()
         : 0.0;
 
     final double comboDiscount =
-    (discountType == 'combo' || discountType == 'mixmatch')
+    (discountType == 'mixmatch' || discountType == 'combo')
         ? (orderItem['auto_discount'] ?? 0).toDouble()
         : 0.0;
-
 
     final double multipackDiscount =
     discountType == 'multipack'
         ? (orderItem['auto_discount'] ?? 0).toDouble()
         : 0.0;
+
 
     final bool isComboDiscount = comboDiscount > 0;
     final bool isMultipackDiscount = multipackDiscount > 0;
@@ -3071,6 +3888,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final bool isCoupon = itemType.contains(TextConstants.couponText);
     final bool isCashback = itemType.contains("cashback");
     final bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+
+    print(
+        "🧱 [UI BUILD] "
+            "index=$index | "
+            "name=${orderItem['item_name']} | "
+            "discType=${orderItem['discount_type']} | "
+            "autoDisc=${orderItem['auto_discount']}"
+    );
 
     return Column(
       children: [

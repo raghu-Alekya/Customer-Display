@@ -27,24 +27,39 @@ const DiscountRuleIsarSchema = CollectionSchema(
       name: r'bundlePrice',
       type: IsarType.double,
     ),
-    r'productIds': PropertySchema(
+    r'bundlePriceType': PropertySchema(
       id: 2,
+      name: r'bundlePriceType',
+      type: IsarType.string,
+    ),
+    r'endDate': PropertySchema(
+      id: 3,
+      name: r'endDate',
+      type: IsarType.string,
+    ),
+    r'productIds': PropertySchema(
+      id: 4,
       name: r'productIds',
       type: IsarType.longList,
     ),
     r'requiredQty': PropertySchema(
-      id: 3,
+      id: 5,
       name: r'requiredQty',
       type: IsarType.long,
     ),
     r'ruleId': PropertySchema(
-      id: 4,
+      id: 6,
       name: r'ruleId',
       type: IsarType.string,
     ),
     r'ruleType': PropertySchema(
-      id: 5,
+      id: 7,
       name: r'ruleType',
+      type: IsarType.string,
+    ),
+    r'startDate': PropertySchema(
+      id: 8,
+      name: r'startDate',
       type: IsarType.string,
     )
   },
@@ -68,10 +83,28 @@ int _discountRuleIsarEstimateSize(
   Map<Type, List<int>> allOffsets,
 ) {
   var bytesCount = offsets.last;
+  {
+    final value = object.bundlePriceType;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.endDate;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.productIds.length * 8;
   bytesCount += 3 + object.ruleId.length * 3;
   {
     final value = object.ruleType;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.startDate;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
     }
@@ -87,10 +120,13 @@ void _discountRuleIsarSerialize(
 ) {
   writer.writeBool(offsets[0], object.active);
   writer.writeDouble(offsets[1], object.bundlePrice);
-  writer.writeLongList(offsets[2], object.productIds);
-  writer.writeLong(offsets[3], object.requiredQty);
-  writer.writeString(offsets[4], object.ruleId);
-  writer.writeString(offsets[5], object.ruleType);
+  writer.writeString(offsets[2], object.bundlePriceType);
+  writer.writeString(offsets[3], object.endDate);
+  writer.writeLongList(offsets[4], object.productIds);
+  writer.writeLong(offsets[5], object.requiredQty);
+  writer.writeString(offsets[6], object.ruleId);
+  writer.writeString(offsets[7], object.ruleType);
+  writer.writeString(offsets[8], object.startDate);
 }
 
 DiscountRuleIsar _discountRuleIsarDeserialize(
@@ -102,11 +138,14 @@ DiscountRuleIsar _discountRuleIsarDeserialize(
   final object = DiscountRuleIsar();
   object.active = reader.readBool(offsets[0]);
   object.bundlePrice = reader.readDouble(offsets[1]);
+  object.bundlePriceType = reader.readStringOrNull(offsets[2]);
+  object.endDate = reader.readStringOrNull(offsets[3]);
   object.id = id;
-  object.productIds = reader.readLongList(offsets[2]) ?? [];
-  object.requiredQty = reader.readLong(offsets[3]);
-  object.ruleId = reader.readString(offsets[4]);
-  object.ruleType = reader.readStringOrNull(offsets[5]);
+  object.productIds = reader.readLongList(offsets[4]) ?? [];
+  object.requiredQty = reader.readLong(offsets[5]);
+  object.ruleId = reader.readString(offsets[6]);
+  object.ruleType = reader.readStringOrNull(offsets[7]);
+  object.startDate = reader.readStringOrNull(offsets[8]);
   return object;
 }
 
@@ -122,12 +161,18 @@ P _discountRuleIsarDeserializeProp<P>(
     case 1:
       return (reader.readDouble(offset)) as P;
     case 2:
-      return (reader.readLongList(offset) ?? []) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 3:
-      return (reader.readLong(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 4:
-      return (reader.readString(offset)) as P;
+      return (reader.readLongList(offset) ?? []) as P;
     case 5:
+      return (reader.readLong(offset)) as P;
+    case 6:
+      return (reader.readString(offset)) as P;
+    case 7:
+      return (reader.readStringOrNull(offset)) as P;
+    case 8:
       return (reader.readStringOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -300,6 +345,314 @@ extension DiscountRuleIsarQueryFilter
         upper: upper,
         includeUpper: includeUpper,
         epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      bundlePriceTypeIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'bundlePriceType',
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      bundlePriceTypeIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'bundlePriceType',
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      bundlePriceTypeEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'bundlePriceType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      bundlePriceTypeGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'bundlePriceType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      bundlePriceTypeLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'bundlePriceType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      bundlePriceTypeBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'bundlePriceType',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      bundlePriceTypeStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'bundlePriceType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      bundlePriceTypeEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'bundlePriceType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      bundlePriceTypeContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'bundlePriceType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      bundlePriceTypeMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'bundlePriceType',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      bundlePriceTypeIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'bundlePriceType',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      bundlePriceTypeIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'bundlePriceType',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      endDateIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'endDate',
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      endDateIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'endDate',
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      endDateEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'endDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      endDateGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'endDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      endDateLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'endDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      endDateBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'endDate',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      endDateStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'endDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      endDateEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'endDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      endDateContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'endDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      endDateMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'endDate',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      endDateIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'endDate',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      endDateIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'endDate',
+        value: '',
       ));
     });
   }
@@ -850,6 +1203,160 @@ extension DiscountRuleIsarQueryFilter
       ));
     });
   }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      startDateIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'startDate',
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      startDateIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'startDate',
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      startDateEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'startDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      startDateGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'startDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      startDateLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'startDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      startDateBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'startDate',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      startDateStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'startDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      startDateEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'startDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      startDateContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'startDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      startDateMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'startDate',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      startDateIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'startDate',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterFilterCondition>
+      startDateIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'startDate',
+        value: '',
+      ));
+    });
+  }
 }
 
 extension DiscountRuleIsarQueryObject
@@ -885,6 +1392,34 @@ extension DiscountRuleIsarQuerySortBy
       sortByBundlePriceDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'bundlePrice', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      sortByBundlePriceType() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'bundlePriceType', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      sortByBundlePriceTypeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'bundlePriceType', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      sortByEndDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'endDate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      sortByEndDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'endDate', Sort.desc);
     });
   }
 
@@ -929,6 +1464,20 @@ extension DiscountRuleIsarQuerySortBy
       return query.addSortBy(r'ruleType', Sort.desc);
     });
   }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      sortByStartDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'startDate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      sortByStartDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'startDate', Sort.desc);
+    });
+  }
 }
 
 extension DiscountRuleIsarQuerySortThenBy
@@ -958,6 +1507,34 @@ extension DiscountRuleIsarQuerySortThenBy
       thenByBundlePriceDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'bundlePrice', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      thenByBundlePriceType() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'bundlePriceType', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      thenByBundlePriceTypeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'bundlePriceType', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      thenByEndDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'endDate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      thenByEndDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'endDate', Sort.desc);
     });
   }
 
@@ -1015,6 +1592,20 @@ extension DiscountRuleIsarQuerySortThenBy
       return query.addSortBy(r'ruleType', Sort.desc);
     });
   }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      thenByStartDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'startDate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QAfterSortBy>
+      thenByStartDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'startDate', Sort.desc);
+    });
+  }
 }
 
 extension DiscountRuleIsarQueryWhereDistinct
@@ -1030,6 +1621,21 @@ extension DiscountRuleIsarQueryWhereDistinct
       distinctByBundlePrice() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'bundlePrice');
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QDistinct>
+      distinctByBundlePriceType({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'bundlePriceType',
+          caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QDistinct> distinctByEndDate(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'endDate', caseSensitive: caseSensitive);
     });
   }
 
@@ -1060,6 +1666,13 @@ extension DiscountRuleIsarQueryWhereDistinct
       return query.addDistinctBy(r'ruleType', caseSensitive: caseSensitive);
     });
   }
+
+  QueryBuilder<DiscountRuleIsar, DiscountRuleIsar, QDistinct>
+      distinctByStartDate({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'startDate', caseSensitive: caseSensitive);
+    });
+  }
 }
 
 extension DiscountRuleIsarQueryProperty
@@ -1080,6 +1693,19 @@ extension DiscountRuleIsarQueryProperty
       bundlePriceProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'bundlePrice');
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, String?, QQueryOperations>
+      bundlePriceTypeProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'bundlePriceType');
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, String?, QQueryOperations> endDateProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'endDate');
     });
   }
 
@@ -1105,6 +1731,13 @@ extension DiscountRuleIsarQueryProperty
   QueryBuilder<DiscountRuleIsar, String?, QQueryOperations> ruleTypeProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'ruleType');
+    });
+  }
+
+  QueryBuilder<DiscountRuleIsar, String?, QQueryOperations>
+      startDateProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'startDate');
     });
   }
 }

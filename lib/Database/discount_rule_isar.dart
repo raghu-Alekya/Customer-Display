@@ -11,6 +11,10 @@ class DiscountRuleIsar {
   late int requiredQty;
   late double bundlePrice;
   String? ruleType;
+  String? bundlePriceType;
+  String? startDate;
+  String? endDate;
 
   bool active = true;
 }
+

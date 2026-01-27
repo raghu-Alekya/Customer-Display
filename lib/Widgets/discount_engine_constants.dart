@@ -24,6 +24,15 @@ Future<void> seedDiscountRules(Isar isar) async {
         ..ruleType = 'auto'
         ..active = true,
     );
+    await isar.discountRuleIsars.put(
+      DiscountRuleIsar()
+        ..ruleId = 'AUTO_9404'
+        ..productIds = [29115]
+        ..requiredQty = 1
+        ..bundlePrice = 2.0
+        ..ruleType = 'auto'
+        ..active = true,
+    );
 
     // =================================================
     // 🔹 MULTIPACK – single product
@@ -39,6 +48,16 @@ Future<void> seedDiscountRules(Isar isar) async {
         ..active = true,
     );
 
+    await isar.discountRuleIsars.put(
+      DiscountRuleIsar()
+        ..ruleId = 'MP_9121'
+        ..productIds = [30438]
+        ..requiredQty = 2
+        ..bundlePrice = 15.0
+        ..ruleType = 'multipack'
+        ..active = true,
+    );
+
     // =================================================
     // 🔹 OPTIONAL: LARGE MIXMATCH (3 items)
     // Any 3 of (9402, 9120, 9435) for $10
@@ -47,6 +66,15 @@ Future<void> seedDiscountRules(Isar isar) async {
       DiscountRuleIsar()
         ..ruleId = 'MM_STATIC_01'
         ..productIds = [9402, 9120, 9435]
+        ..requiredQty = 3
+        ..bundlePrice = 10.0
+        ..ruleType = 'mixmatch'
+        ..active = true,
+    );
+    await isar.discountRuleIsars.put(
+      DiscountRuleIsar()
+        ..ruleId = 'MM_STATIC_02'
+        ..productIds = [30081, 29729, 30087]
         ..requiredQty = 3
         ..bundlePrice = 10.0
         ..ruleType = 'mixmatch'

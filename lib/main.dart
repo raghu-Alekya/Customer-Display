@@ -51,6 +51,7 @@ import 'Screens/Auth/splash_screen.dart';
 import 'package:flutter/services.dart';
 
 import 'Widgets/discount_engine_constants.dart';
+import 'Widgets/offline_order_sync_service.dart';
 
 void main() async {
 
@@ -65,7 +66,7 @@ void main() async {
   await Hive.openBox('deletedOrders');
   await Hive.openBox('cashbackConfig');
   await Hive.openBox('orderExtras');
-
+  OfflineOrderSyncService.start();
   await Hive.openBox('user');
   AppDB.isar = await Isar.open(
     [DiscountRuleIsarSchema],
