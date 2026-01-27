@@ -2,43 +2,60 @@ import 'package:isar/isar.dart';
 
 part 'local_payments_model.g.dart';
 
+enum PaymentDbStatus {
+  successful,
+  partial,
+  receipt,
+  voided,
+}
 
 @collection
 class LocalPayment {
-  Id id = DateTime.now().microsecondsSinceEpoch;
+  /// Auto-increment primary key
+  Id id = Isar.autoIncrement;
 
-  // Id id = Isar.autoIncrement;
-
-  @Index()
+  /// Order info
   late int orderId;
-
   late String title;
   late double amount;
   late String paymentMethod;
+
+  /// Shift / user info
   late int shiftId;
   late int vendorId;
   late int userId;
+
+  /// Service info
   late String serviceType;
   late String datetime;
   late String notes;
 
-  // Sync status
+  /// Payment tracking
+  late double remainingBalance;
   late bool isSynced;
+
+  /// ✅ Enum stored by Isar
+  @enumerated
+  late PaymentDbStatus status;
+
+  /// Server / sync fields
   int? serverPaymentId;
   String? syncError;
   int? syncAttempts;
 
-  // Sunmi card payment fields
+  /// Sunmi fields
   String? sunmiTxnId;
   String? sunmiOrderId;
   String? sunmiDeviceId;
 
+  /// Timestamps
   late DateTime createdAt;
- DateTime? syncedAt;
+  DateTime? syncedAt;
 
+  /// Constructor
   LocalPayment({
-    required this.title,
     required this.orderId,
+    required this.title,
     required this.amount,
     required this.paymentMethod,
     required this.shiftId,
@@ -47,19 +64,20 @@ class LocalPayment {
     required this.serviceType,
     required this.datetime,
     required this.notes,
-    this.isSynced = false,
+    required this.remainingBalance,
+    required this.isSynced,
+    required this.status,
     this.serverPaymentId,
     this.syncError,
-    this.syncAttempts = 0,
+    this.syncAttempts,
     this.sunmiTxnId,
     this.sunmiOrderId,
     this.sunmiDeviceId,
-    DateTime? createdAt,
+    required this.createdAt,
     this.syncedAt,
-  }) : createdAt = createdAt ?? DateTime.now()
-   ;
+  });
 
-  // For console logging
+  /// Debug helper
   @override
   String toString() {
     return '''
@@ -75,13 +93,15 @@ LocalPayment {
   serviceType: "$serviceType",
   datetime: "$datetime",
   notes: "$notes",
+  remainingBalance: \$${remainingBalance.toStringAsFixed(2)},
   isSynced: $isSynced,
+  status: ${status.name},
   serverPaymentId: $serverPaymentId,
-  syncError: ${syncError != null ? '"$syncError"' : 'null'},
+  syncError: $syncError,
   syncAttempts: $syncAttempts,
-  sunmiTxnId: ${sunmiTxnId != null ? '"$sunmiTxnId"' : 'null'},
-  sunmiOrderId: ${sunmiOrderId != null ? '"$sunmiOrderId"' : 'null'},
-  sunmiDeviceId: ${sunmiDeviceId != null ? '"$sunmiDeviceId"' : 'null'},
+  sunmiTxnId: $sunmiTxnId,
+  sunmiOrderId: $sunmiOrderId,
+  sunmiDeviceId: $sunmiDeviceId,
   createdAt: $createdAt,
   syncedAt: $syncedAt
 }''';

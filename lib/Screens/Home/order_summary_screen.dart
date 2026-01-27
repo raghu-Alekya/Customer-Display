@@ -33,6 +33,7 @@ import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/api_response.dart';
 import '../../Helper/customerdisplayhelper.dart';
+
 import '../../Models/Orders/orders_model.dart';
 import '../../Models/Payment/payment_model.dart';
 import '../../Models/Payment/void_payment_model.dart';
@@ -260,36 +261,84 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       print("\n" + "🟦" * 30);
       print("💾 STARTING LOCAL PAYMENT SAVE");
       print("🟦" * 30);
-      print("Amount: \$${amount.toStringAsFixed(2)}");
+      print("Amount Paid: \$${amount.toStringAsFixed(2)}");
       print("Method: $selectedPaymentMethod");
       print("Order ID: $orderId");
       print("Balance Before: \$${balanceAmount.toStringAsFixed(2)}");
+      print("Net Payable: \$${computedNetPayable.toStringAsFixed(2)}");
     }
 
     final String datetime = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
-    final localPayment = LocalPayment(
-      orderId: orderId ?? 0,
-      title: selectedPaymentMethod!,
-      amount: amount,
-      paymentMethod: selectedPaymentMethod!,
-      shiftId: shiftId,
-      vendorId: vendorId,
-      userId: userId ?? 0,
-      serviceType: serviceType,
-      datetime: datetime,
-      notes: '',
-      isSynced: false,
-      createdAt: DateTime.now(),
-    );
+    // ⭐ Calculate new balance BEFORE saving
+    double newBalance = balanceAmount - amount;
+    if (newBalance < 0) newBalance = 0;
+
+    // ⭐⭐ Determine payment status based on remaining balance
+    PaymentDbStatus paymentStatus;
+    if (newBalance <= 0) {
+      paymentStatus = PaymentDbStatus.successful;  // Full payment
+      if (kDebugMode) print("✅ Payment COMPLETED - Full amount paid");
+    } else {
+      paymentStatus = PaymentDbStatus.partial;    // Partial payment
+      if (kDebugMode) print("⏳ Payment PENDING - Partial payment");
+    }
 
     try {
-      // Save to Isar
-      final savedPayment = await LocalPaymentDBHelper.instance.savePayment(localPayment);
+      // ⭐⭐⭐ CHECK IF PAYMENT ALREADY EXISTS FOR THIS ORDER
+      final existingPayment = await LocalPaymentDBHelper.instance.getPaymentByOrderId(orderId ?? 0);
+
+      LocalPayment savedPayment;
+
+      if (existingPayment != null) {
+        // ✅ UPDATE EXISTING PAYMENT
+        if (kDebugMode) {
+          print("\n🔄 UPDATING EXISTING PAYMENT");
+          print("   Existing ID: ${existingPayment.id}");
+          print("   Old Amount: \$${existingPayment.amount.toStringAsFixed(2)}");
+          print("   New Amount: \$${(existingPayment.amount + amount).toStringAsFixed(2)}");
+        }
+
+        existingPayment.amount += amount;  // Add to existing amount
+        existingPayment.remainingBalance = newBalance;
+        existingPayment.status = paymentStatus;
+        existingPayment.paymentMethod = selectedPaymentMethod!;  // Update to latest method
+        existingPayment.datetime = datetime;  // Update timestamp
+
+        savedPayment = await LocalPaymentDBHelper.instance.updatePayment(existingPayment);
+
+      } else {
+        // ✅ CREATE NEW PAYMENT
+        if (kDebugMode) {
+          print("\n➕ CREATING NEW PAYMENT");
+        }
+
+        final localPayment = LocalPayment(
+          orderId: orderId ?? 0,
+          title: selectedPaymentMethod!,
+          amount: amount,
+          paymentMethod: selectedPaymentMethod!,
+          shiftId: shiftId,
+          vendorId: vendorId,
+          userId: userId ?? 0,
+          serviceType: serviceType,
+          datetime: datetime,
+          notes: '',
+          remainingBalance: newBalance,
+          isSynced: false,
+          createdAt: DateTime.now(),
+          status: paymentStatus,
+        );
+
+        savedPayment = await LocalPaymentDBHelper.instance.savePayment(localPayment);
+      }
 
       if (kDebugMode) {
-        print("\n✅ PAYMENT SAVED SUCCESSFULLY!");
+        print("\n✅ PAYMENT SAVED/UPDATED SUCCESSFULLY!");
         print("Local Payment ID: ${savedPayment.id}");
+        print("Payment Status: ${savedPayment.status?.name}");
+        print("Total Amount: \$${savedPayment.amount.toStringAsFixed(2)}");
+        print("Remaining Balance: \$${savedPayment.remainingBalance.toStringAsFixed(2)}");
       }
 
       // Update state
@@ -297,9 +346,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
       // Print all payments for this order
       await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId ?? 0);
-
-      // Print all unsynced payments
-      await LocalPaymentDBHelper.instance.getUnsyncedPayments();
 
       // Show success popup
       _showPaymentSuccessPopup(amount, savedPayment);
@@ -325,6 +371,137 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           backgroundColor: Colors.red,
         ),
       );
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Called when screen is shown again (e.g. after popping dialog)
+    _restoreBalanceFromIsar().then((_) {
+      // Optional: also get fresh real value
+      _getRealRemainingBalanceFromIsar().then((real) {
+        if (mounted) {
+          setState(() {
+            balanceAmount = real;
+          });
+        }
+      });
+    });
+  }
+
+  Future<double> _getRealRemainingBalanceFromIsar() async {
+    if (orderId == null || orderId == 0) {
+      return computedNetPayable; // fallback if no orderId
+    }
+
+    try {
+      final payments = await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
+
+      if (payments.isEmpty) {
+        // No payments yet → full amount is due
+        if (kDebugMode) print("No payments in Isar → returning full computedNetPayable");
+        return computedNetPayable;
+      }
+
+      // Sort by createdAt descending → newest first
+      payments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      final latest = payments.first;
+      final realRemaining = latest.remainingBalance ?? 0.0;
+
+      if (kDebugMode) {
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        print("📊 Isar REAL remaining balance = \$${realRemaining.toStringAsFixed(2)}");
+        print("   • Latest payment: \$${latest.amount.toStringAsFixed(2)}");
+        print("   • Method: ${latest.paymentMethod}");
+        print("   • Created: ${latest.createdAt}");
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      }
+
+      return realRemaining.clamp(0.0, double.infinity);
+    } catch (e) {
+      if (kDebugMode) print("❌ Error reading Isar remaining balance: $e");
+      // Fallback — better safe than wrong
+      return balanceAmount > 0 ? balanceAmount : computedNetPayable;
+    }
+  }
+
+
+  Future<void> _restoreBalanceFromIsar() async {
+    if (orderId == null || orderId == 0) {
+      if (kDebugMode) print("⚠️ No order ID, skipping restore");
+      return;
+    }
+
+    try {
+      if (kDebugMode) {
+        print("\n" + "📊" * 30);
+        print("RESTORING BALANCE FROM ISAR");
+        print("Order ID: $orderId");
+        print("📊" * 30);
+      }
+
+      // Get all payments for this order
+      final payments = await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
+
+      if (payments.isEmpty) {
+        // No payments yet, use computed net payable
+        setState(() {
+          balanceAmount = computedNetPayable;
+          tenderAmount = 0.0;
+          orderStatus = TextConstants.processing;  // ⭐ Set initial status
+        });
+
+        if (kDebugMode) {
+          print("📊 No previous payments found");
+          print("   Balance Amount: \$${balanceAmount.toStringAsFixed(2)}");
+          print("   Order Status: $orderStatus");
+          print("📊" * 30 + "\n");
+        }
+        return;
+      }
+
+      // Get the last payment (most recent)
+      payments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final lastPayment = payments.first;
+
+      // Calculate total paid
+      final totalPaid = payments.fold(0.0, (sum, p) => sum + p.amount);
+
+      // ⭐⭐ Determine order status based on last payment status
+      String newOrderStatus;
+      if (lastPayment.status == PaymentDbStatus.successful) {
+        newOrderStatus = TextConstants.processing;  // Or "completed" if you prefer
+      } else if (lastPayment.status == PaymentDbStatus.partial) {
+        newOrderStatus = TextConstants.pending;
+      } else {
+        newOrderStatus = TextConstants.processing;
+      }
+
+      setState(() {
+        balanceAmount = lastPayment.remainingBalance;
+        tenderAmount = totalPaid;
+        isPaymentStarted = totalPaid > 0;
+        orderStatus = newOrderStatus;  // ⭐ Update order status
+      });
+
+      if (kDebugMode) {
+        print("\n📊 RESTORED PAYMENT STATE FROM ISAR");
+        print("   Total Payments: ${payments.length}");
+        print("   Total Paid: \$${totalPaid.toStringAsFixed(2)}");
+        print("   Remaining Balance: \$${balanceAmount.toStringAsFixed(2)}");
+        print("   Last Payment: \$${lastPayment.amount.toStringAsFixed(2)} (${lastPayment.paymentMethod})");
+        print("   Last Payment Status: ${lastPayment.status.name}");
+        print("   Order Status: $orderStatus");
+        print("📊" * 30 + "\n");
+      }
+
+    } catch (e) {
+      if (kDebugMode) {
+        print("❌ Error restoring balance from Isar: $e");
+      }
     }
   }
 
@@ -592,24 +769,48 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     }
   }
 
-  void _selectPaymentMethod(
+  Future<void> _selectPaymentMethod(
       String method, {
         bool autoFillAmount = false,
         double? maxAllowedAmount,
-      }) {
+      }) async {
+
+    if (kDebugMode) {
+      print("\n" + "🔵" * 30);
+      print("💳 PAYMENT METHOD SELECTED: $method");
+      print("🔵" * 30);
+    }
+
     setState(() {
       selectedPaymentMethod = method;
-
-      if (autoFillAmount && maxAllowedAmount != null) {
-        _rawAmount = (maxAllowedAmount * 100).toInt();
-        amountController.text =
-        '${TextConstants.currencySymbol}${maxAllowedAmount.toStringAsFixed(2)}';
-        _isAmountEntered = true;
-        _amountErrorText = null;
-      }
     });
-  }
 
+    // ⭐⭐ ALWAYS get fresh remaining balance from Isar when payment method is chosen
+    final realBalance = await _getRealRemainingBalanceFromIsar();
+
+    setState(() {
+      balanceAmount = realBalance;
+    });
+
+    if (kDebugMode) {
+      print("→ Selected method: $method");
+      print("→ Real Isar balance: \$${realBalance.toStringAsFixed(2)}");
+      print("→ Computed Net Payable: \$${computedNetPayable.toStringAsFixed(2)}");
+      print("🔵" * 30 + "\n");
+    }
+
+    // Auto-fill logic – respect real remaining balance
+    if (autoFillAmount && maxAllowedAmount != null) {
+      final safeMax = min(maxAllowedAmount, realBalance);
+      _rawAmount = (safeMax * 100).toInt();
+      amountController.text = '${TextConstants.currencySymbol}${safeMax.toStringAsFixed(2)}';
+      _isAmountEntered = _rawAmount > 0;
+
+      if (kDebugMode) {
+        print("✅ Auto-filled amount: \$${safeMax.toStringAsFixed(2)}");
+      }
+    }
+  }
 
   void _onQuickAmountSelected(double amount) {
     setState(() {
@@ -692,19 +893,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   //   _callCreatePaymentAPI(); // uses validated amount
   //   _resetAmountAfterPay();
   // }
+
   void _handlePay() {
     final cleanAmount = amountController.text
         .replaceAll(TextConstants.currencySymbol, '')
         .trim();
 
-    final double amount = double.tryParse(cleanAmount) ?? 0.0;
+    final double enteredAmount = double.tryParse(cleanAmount) ?? 0.0;
 
-    // Convert to cents to avoid floating point issues
-    final int enteredCents = (amount * 100).round();
-    final int ebtCents = (ebtTotal * 100).round();
-
-    // ❌ Basic validation
-    if (enteredCents <= 0 && computedNetPayable > 0) {
+    // Basic validation
+    if (enteredAmount <= 0 && computedNetPayable > 0) {
       setState(() {
         _amountErrorText = TextConstants.amountValidation;
       });
@@ -713,65 +911,68 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     _amountErrorText = null;
 
-    // ⭐ EBT validation
+    // EBT validation
     if (selectedPaymentMethod == TextConstants.ebtText) {
-      if (ebtCents <= 0) {
-        setState(() {
-          _amountErrorText = "No EBT balance available";
-        });
+      if (ebtTotal <= 0) {
+        setState(() => _amountErrorText = "No EBT balance available");
         return;
       }
-
-      if (enteredCents > ebtCents) {
+      if (enteredAmount > ebtTotal) {
         setState(() {
-          _amountErrorText =
-          "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
+          _amountErrorText = "Amount cannot exceed EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
         });
         return;
       }
     }
 
-    // ⭐ CARD → Sunmi ONLY
+    // CARD payment
     if (selectedPaymentMethod == TextConstants.card) {
       _showPaymentProgressDialog(context);
       _openSunmiSaleScreen(
-        amount: amount,
+        amount: enteredAmount,
         orderId: (widget.orderId ?? widget.offlineOrderId).toString(),
       );
       _resetAmountAfterPay();
       return;
     }
 
-    // ⭐⭐⭐ NEW: Calculate if payment will complete the order
-    final double newTenderAmount = tenderAmount + amount;
-    final bool willCompletePayment = newTenderAmount >= computedNetPayable;
-    final double calculatedChange = willCompletePayment
-        ? newTenderAmount - computedNetPayable
-        : 0.0;
+    // Calculate after this payment
+    final double projectedTender =  enteredAmount;
+    final double projectedBalance = computedNetPayable - projectedTender;
+    final bool willComplete = projectedBalance <= 0.01; // small tolerance for floating point
+    final double projectedChange = willComplete ? (projectedTender - computedNetPayable).clamp(0.0, double.infinity) : 0.0;
 
-    // ⭐⭐⭐ Show popup IMMEDIATELY before API call
-    if (willCompletePayment) {
+    // Debug print
+    print("PAYMENT DEBUG:");
+    print("  • Net Payable:    \$${computedNetPayable.toStringAsFixed(2)}");
+    print("  • Current Tender: \$${tenderAmount.toStringAsFixed(2)}");
+    print("  • Entered Amount: \$${enteredAmount.toStringAsFixed(2)}");
+    print("  • Projected Tender: \$${projectedTender.toStringAsFixed(2)}");
+    print("  • Projected Balance: \$${projectedBalance.toStringAsFixed(2)}");
+    print("  • Will Complete? $willComplete");
+
+    // Show correct dialog
+    if (willComplete && !_successPopupShown) {
       _successPopupShown = true;
 
-      // Get coupon data for popup
       final box = Hive.box('offlineOrders');
       final key = (orderId ?? 0).toString();
-      final couponResponse = (box.get(key)?["coupon_response"] as Map?)
-          ?.cast<String, dynamic>() ?? {};
+      final couponResponse = (box.get(key)?["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
 
+      // Success dialog: show TOTAL paid + change
       _showPaymentDialog(
         context,
-        newTenderAmount,
-        changeAmount: calculatedChange,
-        showChange: calculatedChange > 0,
+        projectedTender,           // TOTAL paid
+        changeAmount: projectedChange,
+        showChange: projectedChange > 0.01,
         couponResponse: couponResponse,
       );
     } else {
-      // Partial payment popup
-      _showPartialPaymentDialog(context, amount);
+      // Partial payment dialog: show only current payment amount
+      _showPartialPaymentDialog(context, enteredAmount);
     }
 
-    // ⭐⭐⭐ Call API in background (won't show loading popup)
+    // Process payment in background
     _callCreatePaymentAPI(skipPopup: true);
     _resetAmountAfterPay();
   }
@@ -787,6 +988,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   void initState() {
     super.initState();
     ScannerGuard.isCouponPopupOpen = true;
+    @override
+    void dispose() {
+      WidgetsBinding.instance.removeObserver(this as WidgetsBindingObserver);
+      super.dispose();
+    }
+
+    @override
+    void didChangeAppLifecycleState(AppLifecycleState state) {
+      if (state == AppLifecycleState.resumed) {
+        // App came back to foreground → refresh balance
+        _restoreBalanceFromIsar();
+      }
+    }
+
     Future.delayed(Duration.zero, () async {
       if (kDebugMode) {
         print("\n🚀 ORDER SUMMARY INITIALIZED");
@@ -794,6 +1009,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       }
 
       await LocalPaymentDBHelper.instance.printAllPayments();
+
+      // ⭐ RESTORE BALANCE FROM ISAR FIRST
+      await _restoreBalanceFromIsar();
+
       await retrySyncUnsyncedPayments();
     });
 
@@ -812,10 +1031,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final bool isNegativeOrder = widget.grossTotal < 0;
 
 
+    // orderItems = widget.orderItems;
+
     // Load order values
     orderItems = widget.orderItems
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
+
     grossTotal = widget.grossTotal;
     discount = widget.orderDiscount;
     merchantDiscount = widget.merchantDiscount;
@@ -1987,7 +2209,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         // ← Use newChange and showChange = true when there's change
         _showPaymentDialog(
           context,
-          amount,                    // this payment
+          tenderAmount,                  // this payment
           changeAmount: newChange,   // ← correct change!
           showChange: newChange > 0, // ← now correctly true when overpaid
           couponResponse: couponResponse,
@@ -2024,6 +2246,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         notes: "FAKE payment - ${now.toIso8601String()}",
         isSynced: false,
         createdAt: now,
+        remainingBalance: newBalance,
+        status: PaymentDbStatus.partial, // ⭐ SAVE THE REMAINING BALANCE
       );
 
       try {
@@ -2430,9 +2654,27 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                                 iconColor: Color(0xFF9CCD7B),
                                 isLoading: _processingPaymentMethod == TextConstants.cash && isLoading,
                                 isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.cash,
-                                onTap: () {
+                                // onTap: () {
+                                //   _selectPaymentMethod(TextConstants.cash);
+                                //   _handlePay();
+                                // },
+                                onTap: () async {
+                                  // Get latest from Isar
+                                  final realBalance = await _getRealRemainingBalanceFromIsar();
+
+                                  setState(() {
+                                    balanceAmount = realBalance;
+
+                                    // Suggest paying the full remaining balance
+                                    if (realBalance > 0) {
+                                      _rawAmount = (realBalance * 100).round();
+                                      amountController.text = '${TextConstants.currencySymbol}${realBalance.toStringAsFixed(2)}';
+                                      _isAmountEntered = true;
+                                    }
+                                  });
+
                                   _selectPaymentMethod(TextConstants.cash);
-                                  _handlePay();
+                                  _handlePay();   // ← or just let user enter amount
                                 },
                               ),
 
@@ -3828,6 +4070,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       });
     }
   }
+
   Widget _buildOrderItem(int index) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final orderItem = orderItems[index];
@@ -6085,11 +6328,33 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 
   // --------------------
+  // void _showPartialPaymentDialog(BuildContext context, double amount) {
+  //   if (kDebugMode) {
+  //     print(
+  //         "Showing Partial Payment Dialog with amount: $amount, Remaining Balance: $balanceAmount");
+  //   }
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (context) => PaymentDialog(
+  //       status: PaymentStatus.partial,
+  //       mode: PaymentMode.cash,
+  //       amount: amount,
+  //       onVoid: () => showVoidExitConfirmation(context, true),
+  //       /// pass true to change order status to pending, as this is partial payment , voided by user
+  //       onNextPayment: () {
+  //         if (kDebugMode) {
+  //           print("Proceeding to next payment");
+  //         }
+  //         // Build #1.0.175: Call fetch payment details by order id API call
+  //         _fetchPaymentsByOrderId(); // Refresh payments after successful payment
+  //         Navigator.of(context).pop();
+  //       },
+  //     ),
+  //   );
+  // }
+
   void _showPartialPaymentDialog(BuildContext context, double amount) {
-    if (kDebugMode) {
-      print(
-          "Showing Partial Payment Dialog with amount: $amount, Remaining Balance: $balanceAmount");
-    }
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -6098,14 +6363,26 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         mode: PaymentMode.cash,
         amount: amount,
         onVoid: () => showVoidExitConfirmation(context, true),
-        /// pass true to change order status to pending, as this is partial payment , voided by user
-        onNextPayment: () {
+        onNextPayment: () async {
           if (kDebugMode) {
-            print("Proceeding to next payment");
+            print("Proceeding to next payment → refreshing balance from Isar");
           }
-          // Build #1.0.175: Call fetch payment details by order id API call
-          _fetchPaymentsByOrderId(); // Refresh payments after successful payment
-          Navigator.of(context).pop();
+
+          // Important: Refresh balance right after partial payment
+          await _restoreBalanceFromIsar();
+
+          // Also refresh real remaining (optional but good practice)
+          final freshBalance = await _getRealRemainingBalanceFromIsar();
+          setState(() {
+            balanceAmount = freshBalance;
+          });
+
+          // Reset amount field to suggest full remaining
+          _rawAmount = (freshBalance * 100).round();
+          amountController.text = '${TextConstants.currencySymbol}${freshBalance.toStringAsFixed(2)}';
+          _isAmountEntered = freshBalance > 0;
+
+          Navigator.of(context).pop(); // close dialog
         },
       ),
     );
@@ -6218,6 +6495,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       ),
     );
   }
+
   Future<Map<String, dynamic>?> loadPrinterData() async {
     var printerDB = await PrinterDBHelper().getPrinterFromDB();
     if (printerDB.isEmpty) {

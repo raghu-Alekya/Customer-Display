@@ -52,63 +52,74 @@ const LocalPaymentSchema = CollectionSchema(
       name: r'paymentMethod',
       type: IsarType.string,
     ),
-    r'serverPaymentId': PropertySchema(
+    r'remainingBalance': PropertySchema(
       id: 7,
+      name: r'remainingBalance',
+      type: IsarType.double,
+    ),
+    r'serverPaymentId': PropertySchema(
+      id: 8,
       name: r'serverPaymentId',
       type: IsarType.long,
     ),
     r'serviceType': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'serviceType',
       type: IsarType.string,
     ),
     r'shiftId': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'shiftId',
       type: IsarType.long,
     ),
+    r'status': PropertySchema(
+      id: 11,
+      name: r'status',
+      type: IsarType.byte,
+      enumMap: _LocalPaymentstatusEnumValueMap,
+    ),
     r'sunmiDeviceId': PropertySchema(
-      id: 10,
+      id: 12,
       name: r'sunmiDeviceId',
       type: IsarType.string,
     ),
     r'sunmiOrderId': PropertySchema(
-      id: 11,
+      id: 13,
       name: r'sunmiOrderId',
       type: IsarType.string,
     ),
     r'sunmiTxnId': PropertySchema(
-      id: 12,
+      id: 14,
       name: r'sunmiTxnId',
       type: IsarType.string,
     ),
     r'syncAttempts': PropertySchema(
-      id: 13,
+      id: 15,
       name: r'syncAttempts',
       type: IsarType.long,
     ),
     r'syncError': PropertySchema(
-      id: 14,
+      id: 16,
       name: r'syncError',
       type: IsarType.string,
     ),
     r'syncedAt': PropertySchema(
-      id: 15,
+      id: 17,
       name: r'syncedAt',
       type: IsarType.dateTime,
     ),
     r'title': PropertySchema(
-      id: 16,
+      id: 18,
       name: r'title',
       type: IsarType.string,
     ),
     r'userId': PropertySchema(
-      id: 17,
+      id: 19,
       name: r'userId',
       type: IsarType.long,
     ),
     r'vendorId': PropertySchema(
-      id: 18,
+      id: 20,
       name: r'vendorId',
       type: IsarType.long,
     )
@@ -118,21 +129,7 @@ const LocalPaymentSchema = CollectionSchema(
   deserialize: _localPaymentDeserialize,
   deserializeProp: _localPaymentDeserializeProp,
   idName: r'id',
-  indexes: {
-    r'orderId': IndexSchema(
-      id: -6176610178429382285,
-      name: r'orderId',
-      unique: false,
-      replace: false,
-      properties: [
-        IndexPropertySchema(
-          name: r'orderId',
-          type: IndexType.value,
-          caseSensitive: false,
-        )
-      ],
-    )
-  },
+  indexes: {},
   links: {},
   embeddedSchemas: {},
   getId: _localPaymentGetId,
@@ -192,18 +189,20 @@ void _localPaymentSerialize(
   writer.writeString(offsets[4], object.notes);
   writer.writeLong(offsets[5], object.orderId);
   writer.writeString(offsets[6], object.paymentMethod);
-  writer.writeLong(offsets[7], object.serverPaymentId);
-  writer.writeString(offsets[8], object.serviceType);
-  writer.writeLong(offsets[9], object.shiftId);
-  writer.writeString(offsets[10], object.sunmiDeviceId);
-  writer.writeString(offsets[11], object.sunmiOrderId);
-  writer.writeString(offsets[12], object.sunmiTxnId);
-  writer.writeLong(offsets[13], object.syncAttempts);
-  writer.writeString(offsets[14], object.syncError);
-  writer.writeDateTime(offsets[15], object.syncedAt);
-  writer.writeString(offsets[16], object.title);
-  writer.writeLong(offsets[17], object.userId);
-  writer.writeLong(offsets[18], object.vendorId);
+  writer.writeDouble(offsets[7], object.remainingBalance);
+  writer.writeLong(offsets[8], object.serverPaymentId);
+  writer.writeString(offsets[9], object.serviceType);
+  writer.writeLong(offsets[10], object.shiftId);
+  writer.writeByte(offsets[11], object.status.index);
+  writer.writeString(offsets[12], object.sunmiDeviceId);
+  writer.writeString(offsets[13], object.sunmiOrderId);
+  writer.writeString(offsets[14], object.sunmiTxnId);
+  writer.writeLong(offsets[15], object.syncAttempts);
+  writer.writeString(offsets[16], object.syncError);
+  writer.writeDateTime(offsets[17], object.syncedAt);
+  writer.writeString(offsets[18], object.title);
+  writer.writeLong(offsets[19], object.userId);
+  writer.writeLong(offsets[20], object.vendorId);
 }
 
 LocalPayment _localPaymentDeserialize(
@@ -214,25 +213,29 @@ LocalPayment _localPaymentDeserialize(
 ) {
   final object = LocalPayment(
     amount: reader.readDouble(offsets[0]),
+    createdAt: reader.readDateTime(offsets[1]),
     datetime: reader.readString(offsets[2]),
-    isSynced: reader.readBoolOrNull(offsets[3]) ?? false,
+    isSynced: reader.readBool(offsets[3]),
     notes: reader.readString(offsets[4]),
     orderId: reader.readLong(offsets[5]),
     paymentMethod: reader.readString(offsets[6]),
-    serverPaymentId: reader.readLongOrNull(offsets[7]),
-    serviceType: reader.readString(offsets[8]),
-    shiftId: reader.readLong(offsets[9]),
-    sunmiDeviceId: reader.readStringOrNull(offsets[10]),
-    sunmiOrderId: reader.readStringOrNull(offsets[11]),
-    sunmiTxnId: reader.readStringOrNull(offsets[12]),
-    syncAttempts: reader.readLongOrNull(offsets[13]),
-    syncError: reader.readStringOrNull(offsets[14]),
-    syncedAt: reader.readDateTimeOrNull(offsets[15]),
-    title: reader.readString(offsets[16]),
-    userId: reader.readLong(offsets[17]),
-    vendorId: reader.readLong(offsets[18]),
+    remainingBalance: reader.readDouble(offsets[7]),
+    serverPaymentId: reader.readLongOrNull(offsets[8]),
+    serviceType: reader.readString(offsets[9]),
+    shiftId: reader.readLong(offsets[10]),
+    status:
+        _LocalPaymentstatusValueEnumMap[reader.readByteOrNull(offsets[11])] ??
+            PaymentDbStatus.successful,
+    sunmiDeviceId: reader.readStringOrNull(offsets[12]),
+    sunmiOrderId: reader.readStringOrNull(offsets[13]),
+    sunmiTxnId: reader.readStringOrNull(offsets[14]),
+    syncAttempts: reader.readLongOrNull(offsets[15]),
+    syncError: reader.readStringOrNull(offsets[16]),
+    syncedAt: reader.readDateTimeOrNull(offsets[17]),
+    title: reader.readString(offsets[18]),
+    userId: reader.readLong(offsets[19]),
+    vendorId: reader.readLong(offsets[20]),
   );
-  object.createdAt = reader.readDateTime(offsets[1]);
   object.id = id;
   return object;
 }
@@ -251,7 +254,7 @@ P _localPaymentDeserializeProp<P>(
     case 2:
       return (reader.readString(offset)) as P;
     case 3:
-      return (reader.readBoolOrNull(offset) ?? false) as P;
+      return (reader.readBool(offset)) as P;
     case 4:
       return (reader.readString(offset)) as P;
     case 5:
@@ -259,33 +262,51 @@ P _localPaymentDeserializeProp<P>(
     case 6:
       return (reader.readString(offset)) as P;
     case 7:
-      return (reader.readLongOrNull(offset)) as P;
+      return (reader.readDouble(offset)) as P;
     case 8:
-      return (reader.readString(offset)) as P;
+      return (reader.readLongOrNull(offset)) as P;
     case 9:
-      return (reader.readLong(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 10:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 11:
-      return (reader.readStringOrNull(offset)) as P;
+      return (_LocalPaymentstatusValueEnumMap[reader.readByteOrNull(offset)] ??
+          PaymentDbStatus.successful) as P;
     case 12:
       return (reader.readStringOrNull(offset)) as P;
     case 13:
-      return (reader.readLongOrNull(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 14:
       return (reader.readStringOrNull(offset)) as P;
     case 15:
-      return (reader.readDateTimeOrNull(offset)) as P;
+      return (reader.readLongOrNull(offset)) as P;
     case 16:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 17:
-      return (reader.readLong(offset)) as P;
+      return (reader.readDateTimeOrNull(offset)) as P;
     case 18:
+      return (reader.readString(offset)) as P;
+    case 19:
+      return (reader.readLong(offset)) as P;
+    case 20:
       return (reader.readLong(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
   }
 }
+
+const _LocalPaymentstatusEnumValueMap = {
+  'successful': 0,
+  'partial': 1,
+  'receipt': 2,
+  'voided': 3,
+};
+const _LocalPaymentstatusValueEnumMap = {
+  0: PaymentDbStatus.successful,
+  1: PaymentDbStatus.partial,
+  2: PaymentDbStatus.receipt,
+  3: PaymentDbStatus.voided,
+};
 
 Id _localPaymentGetId(LocalPayment object) {
   return object.id;
@@ -305,14 +326,6 @@ extension LocalPaymentQueryWhereSort
   QueryBuilder<LocalPayment, LocalPayment, QAfterWhere> anyId() {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(const IdWhereClause.any());
-    });
-  }
-
-  QueryBuilder<LocalPayment, LocalPayment, QAfterWhere> anyOrderId() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(
-        const IndexWhereClause.any(indexName: r'orderId'),
-      );
     });
   }
 }
@@ -381,97 +394,6 @@ extension LocalPaymentQueryWhere
         lower: lowerId,
         includeLower: includeLower,
         upper: upperId,
-        includeUpper: includeUpper,
-      ));
-    });
-  }
-
-  QueryBuilder<LocalPayment, LocalPayment, QAfterWhereClause> orderIdEqualTo(
-      int orderId) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'orderId',
-        value: [orderId],
-      ));
-    });
-  }
-
-  QueryBuilder<LocalPayment, LocalPayment, QAfterWhereClause> orderIdNotEqualTo(
-      int orderId) {
-    return QueryBuilder.apply(this, (query) {
-      if (query.whereSort == Sort.asc) {
-        return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'orderId',
-              lower: [],
-              upper: [orderId],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'orderId',
-              lower: [orderId],
-              includeLower: false,
-              upper: [],
-            ));
-      } else {
-        return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'orderId',
-              lower: [orderId],
-              includeLower: false,
-              upper: [],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'orderId',
-              lower: [],
-              upper: [orderId],
-              includeUpper: false,
-            ));
-      }
-    });
-  }
-
-  QueryBuilder<LocalPayment, LocalPayment, QAfterWhereClause>
-      orderIdGreaterThan(
-    int orderId, {
-    bool include = false,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'orderId',
-        lower: [orderId],
-        includeLower: include,
-        upper: [],
-      ));
-    });
-  }
-
-  QueryBuilder<LocalPayment, LocalPayment, QAfterWhereClause> orderIdLessThan(
-    int orderId, {
-    bool include = false,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'orderId',
-        lower: [],
-        upper: [orderId],
-        includeUpper: include,
-      ));
-    });
-  }
-
-  QueryBuilder<LocalPayment, LocalPayment, QAfterWhereClause> orderIdBetween(
-    int lowerOrderId,
-    int upperOrderId, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'orderId',
-        lower: [lowerOrderId],
-        includeLower: includeLower,
-        upper: [upperOrderId],
         includeUpper: includeUpper,
       ));
     });
@@ -1126,6 +1048,72 @@ extension LocalPaymentQueryFilter
   }
 
   QueryBuilder<LocalPayment, LocalPayment, QAfterFilterCondition>
+      remainingBalanceEqualTo(
+    double value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'remainingBalance',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterFilterCondition>
+      remainingBalanceGreaterThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'remainingBalance',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterFilterCondition>
+      remainingBalanceLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'remainingBalance',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterFilterCondition>
+      remainingBalanceBetween(
+    double lower,
+    double upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'remainingBalance',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterFilterCondition>
       serverPaymentIdIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(const FilterCondition.isNull(
@@ -1383,6 +1371,61 @@ extension LocalPaymentQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.between(
         property: r'shiftId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterFilterCondition> statusEqualTo(
+      PaymentDbStatus value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'status',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterFilterCondition>
+      statusGreaterThan(
+    PaymentDbStatus value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'status',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterFilterCondition>
+      statusLessThan(
+    PaymentDbStatus value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'status',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterFilterCondition> statusBetween(
+    PaymentDbStatus lower,
+    PaymentDbStatus upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'status',
         lower: lower,
         includeLower: includeLower,
         upper: upper,
@@ -2495,6 +2538,20 @@ extension LocalPaymentQuerySortBy
   }
 
   QueryBuilder<LocalPayment, LocalPayment, QAfterSortBy>
+      sortByRemainingBalance() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'remainingBalance', Sort.asc);
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterSortBy>
+      sortByRemainingBalanceDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'remainingBalance', Sort.desc);
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterSortBy>
       sortByServerPaymentId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'serverPaymentId', Sort.asc);
@@ -2530,6 +2587,18 @@ extension LocalPaymentQuerySortBy
   QueryBuilder<LocalPayment, LocalPayment, QAfterSortBy> sortByShiftIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'shiftId', Sort.desc);
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterSortBy> sortByStatus() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'status', Sort.asc);
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterSortBy> sortByStatusDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'status', Sort.desc);
     });
   }
 
@@ -2746,6 +2815,20 @@ extension LocalPaymentQuerySortThenBy
   }
 
   QueryBuilder<LocalPayment, LocalPayment, QAfterSortBy>
+      thenByRemainingBalance() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'remainingBalance', Sort.asc);
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterSortBy>
+      thenByRemainingBalanceDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'remainingBalance', Sort.desc);
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterSortBy>
       thenByServerPaymentId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'serverPaymentId', Sort.asc);
@@ -2781,6 +2864,18 @@ extension LocalPaymentQuerySortThenBy
   QueryBuilder<LocalPayment, LocalPayment, QAfterSortBy> thenByShiftIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'shiftId', Sort.desc);
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterSortBy> thenByStatus() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'status', Sort.asc);
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QAfterSortBy> thenByStatusDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'status', Sort.desc);
     });
   }
 
@@ -2946,6 +3041,13 @@ extension LocalPaymentQueryWhereDistinct
   }
 
   QueryBuilder<LocalPayment, LocalPayment, QDistinct>
+      distinctByRemainingBalance() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'remainingBalance');
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QDistinct>
       distinctByServerPaymentId() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'serverPaymentId');
@@ -2962,6 +3064,12 @@ extension LocalPaymentQueryWhereDistinct
   QueryBuilder<LocalPayment, LocalPayment, QDistinct> distinctByShiftId() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'shiftId');
+    });
+  }
+
+  QueryBuilder<LocalPayment, LocalPayment, QDistinct> distinctByStatus() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'status');
     });
   }
 
@@ -3076,6 +3184,13 @@ extension LocalPaymentQueryProperty
     });
   }
 
+  QueryBuilder<LocalPayment, double, QQueryOperations>
+      remainingBalanceProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'remainingBalance');
+    });
+  }
+
   QueryBuilder<LocalPayment, int?, QQueryOperations> serverPaymentIdProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'serverPaymentId');
@@ -3091,6 +3206,13 @@ extension LocalPaymentQueryProperty
   QueryBuilder<LocalPayment, int, QQueryOperations> shiftIdProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'shiftId');
+    });
+  }
+
+  QueryBuilder<LocalPayment, PaymentDbStatus, QQueryOperations>
+      statusProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'status');
     });
   }
 
