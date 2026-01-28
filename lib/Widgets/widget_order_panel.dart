@@ -42,6 +42,7 @@ import '../Blocs/Search/product_search_bloc.dart';
 import '../Constants/layout_values.dart';
 import '../Constants/misc_features.dart';
 import '../Constants/text.dart';
+import '../Database/assets_db_helper.dart';
 import '../Database/db_helper.dart';
 import '../Database/isar_service.dart';
 import '../Database/order_panel_db_helper.dart';
@@ -2651,6 +2652,8 @@ double getCustomItemTax({
 
   bool engineExecuted = false;
 
+  final AssetDBHelper _assetDBHelper = AssetDBHelper.instance;
+
 
 
 // Current Order UI
@@ -2820,9 +2823,14 @@ double getCustomItemTax({
                 'item_sum_price': price * qty,
                 'item_image': item['image'] ?? "",
                 'item_type': 'custom',
-                'item_tax': itemTax,
+
+                // 🔥 REQUIRED FOR TAX-AFTER-DISCOUNT FLOW
+                'auto_discount': 0.0,        // 👈 MUST exist
                 'tax_class': taxClass,
+                'tax_rate': taxRate,         // 👈 MUST exist
+                'item_tax': itemTax,
               };
+
             }
 
 
@@ -4248,22 +4256,22 @@ double getCustomItemTax({
                             // 🔹 PREPARE CART FOR ENGINE
                             // =======================================================
                             final List<Map<String, dynamic>> cartItems =
-                            orderItems.map((item) {
+                            orderItems
+                                .where((item) =>
+                            item['product_id'] != null &&
+                                (item['product_id'] as int) > 0)
+                                .map((item) {
                               return {
-                                'product_id':
-                                int.tryParse(item['product_id']?.toString() ?? '0') ?? 0,
-                                'price':
-                                double.tryParse(item['item_price']?.toString() ?? '0') ??
-                                    0.0,
-                                'qty': item['items_count'] ?? 1,
+                                'product_id': item['product_id'],
+                                'price': item['item_price'],
+                                'qty': item['items_count'],
                               };
                             }).toList();
+
 
                             // =======================================================
                             // 🔥 CALL DISCOUNT ENGINE
                             // =======================================================
-                            final repo = OrderRepository();
-                            await syncDiscountRulesFromApi(AppDB.isar, repo);
                             final engineDiscounts =
                             await DiscountEngine.applyAll(AppDB.isar, cartItems);
 
@@ -4287,10 +4295,15 @@ double getCustomItemTax({
                             // =======================================================
                             setState(() {
                               orderItems = orderItems.map((item) {
-                                final int pid =
-                                    int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
+                                final dynamic rawPid = item['product_id'];
 
-                                final engineResult = engineDiscounts[pid];
+                                final int? pid =
+                                rawPid != null ? int.tryParse(rawPid.toString()) : null;
+
+// ✅ Engine applies ONLY when pid is NOT null
+                                final engineResult =
+                                pid != null ? engineDiscounts[pid] : null;
+
 
                                 return {
                                   ...item,
@@ -4321,8 +4334,12 @@ double getCustomItemTax({
 
                             debugPrint("🧮 ===== TAX CALCULATION START =====");
 
+                            final List<Tax> taxList = await _assetDBHelper.getTaxList();
+
+
                             for (final item in orderItems) {
-                              final int productId = int.parse(item['product_id'].toString());
+                              final int productId =
+                                  int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
 
                               final double price =
                                   (item['item_price'] as num?)?.toDouble() ?? 0.0;
@@ -4333,38 +4350,52 @@ double getCustomItemTax({
                               final double autoDiscount =
                                   (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
 
-                              // ✅ PER-UNIT DISCOUNTED PRICE
+                              // ✅ DISCOUNT FIRST (COMMON FOR ALL)
                               final double discountedUnitPrice =
                                   (price * qty - autoDiscount) / qty;
 
-                              final double taxableBase = discountedUnitPrice * qty;
+                              double itemTax = 0.0;
 
-                              final double productTax = getProductTaxFromHive(
-                                productId,
-                                discountedUnitPrice,
-                                qty,
-                              );
+                              if (productId > 0) {
+                                // 🟢 REAL PRODUCT TAX
+                                itemTax = getProductTaxFromHive(
+                                  productId,
+                                  discountedUnitPrice,
+                                  qty,
+                                );
+                              } else if (item['item_type'] == 'custom') {
+                                // 🟣 CUSTOM ITEM TAX
+                                itemTax = getCustomItemTax(
+                                  taxClass: item['tax_class'] ?? '',
+                                  unitPrice: discountedUnitPrice,
+                                  qty: qty,
+                                  taxes: taxList,
+                                  taxRate: item['tax_rate'],
+                                );
+                              }
 
-                              totalTaxAfterDiscount += productTax;
+                              // ✅ ADD BOTH TO TOTAL
+                              totalTaxAfterDiscount += itemTax;
 
-                              // 🔒 Store tax on item
-                              item['tax_after_discount'] = productTax;
+                              // 🔒 STORE FOR SUMMARY
+                              item['tax_after_discount'] = itemTax;
 
-                              // 🧾 FULL TRACE
                               debugPrint("""
 🧾 ITEM TAX BREAKDOWN
   name              : ${item['item_name']}
+  type              : ${item['item_type']}
   productId         : $productId
   unitPrice         : $price
   qty               : $qty
   autoDiscount      : $autoDiscount
   discountedUnit    : ${discountedUnitPrice.toStringAsFixed(4)}
-  taxableBase       : ${taxableBase.toStringAsFixed(4)}
-  productTax        : ${productTax.toStringAsFixed(2)}
+  itemTax           : ${itemTax.toStringAsFixed(2)}
 """);
                             }
 
-                            debugPrint("🧮 TOTAL TAX AFTER DISCOUNT → ${totalTaxAfterDiscount.toStringAsFixed(2)}");
+                            debugPrint(
+                              "🧮 TOTAL TAX AFTER DISCOUNT → ${totalTaxAfterDiscount.toStringAsFixed(2)}",
+                            );
                             debugPrint("🧮 ===== TAX CALCULATION END =====");
 
 
@@ -4411,7 +4442,20 @@ double getCustomItemTax({
 
                             if (existingLocal != null) {
                               final updated = Map<String, dynamic>.from(existingLocal);
-                              updated['items'] = orderItems;
+                              updated['items'] = orderItems.map((item) {
+                                return {
+                                  ...item,
+
+                                  // 🔒 DISCOUNT META (FROZEN)
+                                  "discount_meta": {
+                                    "amount": (item['auto_discount'] as num?)?.toDouble() ?? 0.0,
+                                    "type": item['discount_type'] ?? "",
+                                    "source": item['discount_source'] ?? "",
+                                    "rule_id": item['rule_id'] ?? "",
+                                  },
+                                };
+                              }).toList();
+
                               await box.put(localKey, updated);
                             }
 

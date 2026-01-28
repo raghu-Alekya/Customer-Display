@@ -46,6 +46,7 @@ class PaymentDialog extends StatefulWidget {
   final Function(String)? onEmail; // Callback for sending receipt via email
   final Function(String)? onSMS; // Callback for sending receipt via SMS
   final Map<String, dynamic>? couponResponse;
+  final double? remainingBalance; // Add this
 
 
   const PaymentDialog({
@@ -64,6 +65,7 @@ class PaymentDialog extends StatefulWidget {
     this.onEmail,
     this.onSMS,
     this.couponResponse,
+    this.remainingBalance, // Add this
   }) : super(key: key);
 
   @override

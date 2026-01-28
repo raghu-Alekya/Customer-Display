@@ -16,6 +16,19 @@ class LocalPaymentDBHelper {
     return _instance!;
   }
 
+
+  // ✅ Get all payments in database
+  Future<List<LocalPayment>> getAllPayments() async {
+    final db = await isar;
+    final allPayments = await db.collection<LocalPayment>().where().findAll();
+
+    if (kDebugMode) {
+      print("\n📊 ALL PAYMENTS FETCHED: ${allPayments.length}");
+    }
+
+    return allPayments;
+  }
+
   Future<Isar> get isar async {
     if (_isar != null) return _isar!;
 
@@ -27,7 +40,7 @@ class LocalPaymentDBHelper {
     );
 
     if (kDebugMode) {
-      print("✅ Isar initialized at: ${dir.path}");
+      print(" Isar initialized at: ${dir.path}");
     }
 
     return _isar!;

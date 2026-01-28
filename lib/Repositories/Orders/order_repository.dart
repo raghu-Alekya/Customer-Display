@@ -301,8 +301,44 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       final String url = isUpdate
           ? "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$existingWooOrderId"
           : "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
+// ---------------------------------------------------------
+      // ⭐ BUILD PAYMENTS ARRAY
+      // ---------------------------------------------------------
+      final List paymentsRaw = offlineOrder['payments'] as List? ?? [];
 
-      final productsRaw = (offlineOrder['products'] ?? []) as List;
+      final List<Map<String, dynamic>> paymentsPayload = paymentsRaw.map((p) {
+        final double remaining =
+            double.tryParse(p['remainingBalance']?.toString() ?? '0') ?? 0.0;
+
+        return {
+          "local_id": p['local_id'] ?? p['id'],
+          "method": p['paymentMethod'],
+          "amount": double.tryParse(p['amount'].toString()) ?? 0.0,
+          "remaining": remaining < 0 ? 0.0 : remaining,
+          "status": p['status'] ?? 'pending',
+          "created_at": p['createdAt'],
+        };
+      }).toList();
+
+      // ✅ PRINT PAYMENTS CLEARLY
+      debugPrint("\n💰 PAYMENTS ATTACHED (${paymentsPayload.length}):");
+      for (final p in paymentsPayload) {
+        debugPrint(
+          " → LocalID:${p['local_id']} | "
+              "Method:${p['method']} | "
+              "Amount:\$${p['amount']} | "
+              "Remaining:\$${p['remaining']} | "
+              "Status:${p['status']}",
+        );
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ HANDLE PRODUCTS
+      // ---------------------------------------------------------
+      final productsRaw =
+      (offlineOrder['items'] ??
+          offlineOrder['products'] ??
+          []) as List;
 
       final List<Map<String, dynamic>> lineItems = [];
       final List<Map<String, dynamic>> feeLines = [];
@@ -312,12 +348,46 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       // ---------------------------------------------------------
       for (var raw in productsRaw) {
         final item = Map<String, dynamic>.from(raw);
+        final discountMeta =
+        Map<String, dynamic>.from(item['discount_meta'] ?? {});
+
+        final double autoDiscount =
+            double.tryParse(discountMeta['amount']?.toString() ?? '0') ?? 0.0;
+
+        final String discountType = discountMeta['type']?.toString() ?? '';
+        final String discountSource = discountMeta['source']?.toString() ?? '';
+        final String ruleId = discountMeta['rule_id']?.toString() ?? '';
+
+        // final double price =
+        //     double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+        // final double qty =
+        //     double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
+        // final double lineTotal = price * qty;
+
+        // ✅ NORMALIZE ITEM FIELDS (POS + API)
+        final String name =
+            item['item_name'] ??
+                item['name'] ??
+                "Product";
 
         final double price =
-            double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-        final double qty =
-            double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
-        final double lineTotal = price * qty;
+            double.tryParse(
+              item['item_price']?.toString() ??
+                  item['price']?.toString() ??
+                  '0',
+            ) ?? 0.0;
+
+        final int qty =
+            int.tryParse(
+              item['items_count']?.toString() ??
+                  item['quantity']?.toString() ??
+                  '1',
+            ) ?? 1;
+
+        final double subtotal = price * qty;
+        final double total = subtotal - autoDiscount;
+
+
 
         final dynamic pidRaw =
             item['product_id'] ??
@@ -403,11 +473,34 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         // ---------------------------------------------------------
         lineItems.add({
           "product_id": pid,
-          "name": item['name'] ?? "",
+          //"name": item['name'] ?? "",
           "quantity": qty,
-          "subtotal": lineTotal.toStringAsFixed(2),
-          "total": lineTotal.toStringAsFixed(2),
+          "subtotal": subtotal.toStringAsFixed(2),
+          "total": total.toStringAsFixed(2),
+
+          // Optional (Woo may override name, but fine to send)
+          "name": name,
+
+          "meta_data": [
+            {
+              "key": "_pos_auto_discount",
+              "value": autoDiscount.toStringAsFixed(2),
+            },
+            {
+              "key": "_pos_discount_type",
+              "value": discountType,
+            },
+            {
+              "key": "_pos_discount_source",
+              "value": discountSource,
+            },
+            {
+              "key": "_pos_discount_rule_id",
+              "value": ruleId,
+            },
+          ],
         });
+
       }
 
       // ---------------------------------------------------------
@@ -534,7 +627,13 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         {"key": "shift_id", "value": "$shiftId"},
         {"key": "pos_cash_paid", "value": totalAmount.toStringAsFixed(2)},
       ];
-
+// ✅ ATTACH PAYMENTS AS META
+      if (paymentsPayload.isNotEmpty) {
+        metaData.add({
+          "key": "_pos_payments",
+          "value": jsonEncode(paymentsPayload),
+        });
+      }
       if (isUpdate) {
         metaData.add({"key": "pos_order_tag", "value": "updated_from_pos"});
       }
@@ -566,7 +665,38 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         "🟦 [SYNC] Woo Response → ${jsonEncode(decoded)}",
         wrapWidth: 1024,
       );
+      if (decoded is Map<String, dynamic> && decoded['id'] != null) {
+        final int serverOrderId =
+            int.tryParse(decoded['id'].toString()) ?? 0;
 
+        // ---------------------------------------------------------
+        // ⭐ ADD PAYMENT NOTES (VISIBLE IN WOO)
+        // ---------------------------------------------------------
+        for (final p in paymentsPayload) {
+          await _helper.post(
+            "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$serverOrderId/notes",
+            {
+              "note":
+              "POS Payment | ${p['method']} | \$${p['amount']} | Status: ${p['status']}",
+              "customer_note": false,
+            },
+            true,
+          );
+        }
+
+        // ---------------------------------------------------------
+        // ⭐ RETURN RESULT
+        // ---------------------------------------------------------
+        return {
+          "order_id": serverOrderId,
+          "payments": paymentsPayload
+              .map((p) => {
+            "local_id": p["local_id"],
+            "server_id": serverOrderId,
+          })
+              .toList(),
+        };
+      }
       // ---------------------------------------------------------
       // ⭐ Extract Cashback Fee (if backend adds it)
       // ---------------------------------------------------------

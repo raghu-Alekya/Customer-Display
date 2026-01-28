@@ -120,46 +120,91 @@ class DiscountEngine {
         .filter()
         .activeEqualTo(true)
         .findAll())
-      ..sort((a, b) => _priority(a.ruleType)
-          .compareTo(_priority(b.ruleType)));
+      ..sort((a, b) =>
+          _priority(a.ruleType).compareTo(_priority(b.ruleType)));
 
     final Map<int, EngineDiscountResult> result = {};
 
-    // -----------------------------
-    // Apply rules
-    // -----------------------------
-    for (final rule in rules) {
-      final ruleType = rule.ruleType;
-      if (ruleType == null) continue;
+    // =====================================================
+    // 1️⃣ AUTO — per item, price based, NO requiredQty
+    // =====================================================
+    for (final rule in rules.where((r) => r.ruleType == 'auto')) {
+      for (final u in units.where(
+              (u) => !u.used && rule.productIds.contains(u.pid))) {
+        int discountCents;
 
+        if (rule.bundlePriceType == 'percentage') {
+          discountCents =
+              (u.priceCents * rule.bundlePrice / 100).round();
+        } else {
+          discountCents = toCents(rule.bundlePrice);
+        }
+
+        discountCents = discountCents.clamp(0, u.priceCents);
+        if (discountCents <= 0) continue;
+
+        u.used = true;
+
+        result[u.pid] = EngineDiscountResult(
+          (result[u.pid]?.amount ?? 0) + fromCents(discountCents),
+          'auto',
+          rule.ruleId,
+        );
+
+        print(
+          "🎯 AUTO → pid=${u.pid} discount=${fromCents(discountCents)}",
+        );
+      }
+    }
+
+    // =====================================================
+    // 2️⃣ MIXMATCH — per item across products, NO requiredQty
+    // =====================================================
+    for (final rule in rules.where((r) => r.ruleType == 'mixmatch')) {
+      for (final u in units.where(
+              (u) => !u.used && rule.productIds.contains(u.pid))) {
+        int discountCents;
+
+        if (rule.bundlePriceType == 'percentage') {
+          discountCents =
+              (u.priceCents * rule.bundlePrice / 100).round();
+        } else {
+          discountCents = toCents(rule.bundlePrice);
+        }
+
+        discountCents = discountCents.clamp(0, u.priceCents);
+        if (discountCents <= 0) continue;
+
+        u.used = true;
+
+        result[u.pid] = EngineDiscountResult(
+          (result[u.pid]?.amount ?? 0) + fromCents(discountCents),
+          'mixmatch',
+          rule.ruleId,
+        );
+
+        print(
+          "🎯 MIXMATCH → pid=${u.pid} discount=${fromCents(discountCents)}",
+        );
+      }
+    }
+
+    // =====================================================
+    // 3️⃣ MULTIPACK — bundle logic USING requiredQty
+    // =====================================================
+    for (final rule in rules.where((r) => r.ruleType == 'multipack')) {
       final eligible = units
           .where((u) => !u.used && rule.productIds.contains(u.pid))
           .toList();
 
-      int effectiveQty = rule.requiredQty;
+      if (eligible.length < rule.requiredQty) continue;
 
-      if (effectiveQty == 0) {
-        if (ruleType == 'auto') {
-          effectiveQty = eligible.length;
-        } else if (ruleType == 'mixmatch') {
-          effectiveQty = rule.productIds.length;
-        }
-      }
+      final samePid =
+      eligible.where((u) => u.pid == eligible.first.pid).toList();
 
-      if (effectiveQty <= 0) continue;
-      if (eligible.length < effectiveQty) continue;
+      if (samePid.length < rule.requiredQty) continue;
 
-      List<_Unit> bundle;
-
-      if (ruleType != 'mixmatch') {
-        final samePid =
-        eligible.where((u) => u.pid == eligible.first.pid).toList();
-
-        if (samePid.length < effectiveQty) continue;
-        bundle = samePid.take(effectiveQty).toList();
-      } else {
-        bundle = eligible.take(effectiveQty).toList();
-      }
+      final bundle = samePid.take(rule.requiredQty).toList();
 
       final subtotal =
       bundle.fold(0, (s, u) => s + u.priceCents);
@@ -174,7 +219,6 @@ class DiscountEngine {
       }
 
       discountCents = discountCents.clamp(0, subtotal);
-
       if (discountCents <= 0) continue;
 
       for (final u in bundle) {
@@ -183,17 +227,17 @@ class DiscountEngine {
 
       result[bundle.first.pid] = EngineDiscountResult(
         fromCents(discountCents),
-        ruleType,
+        'multipack',
         rule.ruleId,
       );
 
       print(
-        "🎯 ENGINE APPLY → rule=${rule.ruleId} | "
-            "type=$ruleType | discount=${fromCents(discountCents)}",
+        "🎯 MULTIPACK → pid=${bundle.first.pid} "
+            "discount=${fromCents(discountCents)}",
       );
     }
 
-    // ✅ REQUIRED RETURN
+    // ✅ FINAL RESULT
     return result;
   }
 }
