@@ -573,9 +573,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       }
 
       // ---------------------------------------------------------
-// ⭐ HANDLE MERCHANT DISCOUNT (AS LINE ITEM)
-// ---------------------------------------------------------
-      // ---------------------------------------------------------
 // ⭐ HANDLE MERCHANT DISCOUNT (AS LINE ITEM USING PRODUCT ID)
 // ---------------------------------------------------------
       final dynamic discountRaw = offlineOrder['merchantDiscount'];

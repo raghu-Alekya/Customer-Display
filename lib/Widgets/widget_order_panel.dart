@@ -4493,7 +4493,9 @@ double getCustomItemTax({
                                   (grossAfterDiscount + totalTaxAfterDiscount).toDouble(),
 
                                   orderId: serverOrderId ?? orderHelper.activeOrderId,
+
                                   isOfflineSynced: serverOrderId != null,
+
                                   offlineOrderId: orderHelper.activeOrderId,
                                   cashbackFee: cashbackFee,
                                   ebtAmount: ebtAmount,

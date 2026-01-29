@@ -132,6 +132,8 @@ class _TopBarState extends State<TopBar> {
   bool _cacheLoaded = false;
   final ProductBloc productBloc = ProductBloc(ProductRepository());
 
+  bool _dialogOpen = false;
+
 
   @override
   void initState() {
@@ -189,34 +191,11 @@ class _TopBarState extends State<TopBar> {
     }
   }
 
-  // void _onSearchChanged() {
-  //   if (_debounce?.isActive ?? false) _debounce?.cancel();
-  //
-  //   _debounce = Timer(const Duration(milliseconds: 350), () {
-  //     final query = _searchController.text.trim().toLowerCase();
-  //
-  //     if (query.isEmpty) {
-  //       _removeOverlay();
-  //       setState(() {});
-  //       return;
-  //     }
-  //
-  //     if (_overlayEntry == null) {
-  //       _showSearchResultsOverlay();
-  //     } else {
-  //       _overlayEntry?.markNeedsBuild();
-  //     }
-  //
-  //     setState(() {});
-  //   });
-  // }
-
   void _onSearchChanged() {
     if (_debounce?.isActive ?? false) _debounce?.cancel();
 
     _debounce = Timer(const Duration(milliseconds: 350), () {
-      // Keep spaces — this is the important change
-      final query = _searchController.text.toLowerCase();     // ← no .trim() here
+      final query = _searchController.text.toLowerCase();
 
       print('Search query: "$query"');
 
@@ -244,7 +223,7 @@ class _TopBarState extends State<TopBar> {
   }
 
   void _showSearchResultsOverlay() {
-    if (_overlayEntry != null) return;
+    if (_overlayEntry != null || _dialogOpen) return; // 🔥 ADD THIS
 
     final box = _searchFieldKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
@@ -255,7 +234,6 @@ class _TopBarState extends State<TopBar> {
     _overlayEntry = OverlayEntry(
       builder: (context) {
         final theme = Provider.of<ThemeNotifier>(context);
-
         return Stack(
           children: [
             Positioned.fill(
@@ -276,8 +254,13 @@ class _TopBarState extends State<TopBar> {
                 child: Container(
                   constraints: const BoxConstraints(maxHeight: 360),
                   decoration: BoxDecoration(
-                    color: theme.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.white,
-                    borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(8), bottomRight: Radius.circular(8)),
+                    color: theme.themeMode == ThemeMode.dark
+                        ? ThemeNotifier.secondaryBackground
+                        : Colors.white,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(8),
+                      bottomRight: Radius.circular(8),
+                    ),
                   ),
                   child: _buildLocalResultsList(),
                 ),
@@ -292,7 +275,7 @@ class _TopBarState extends State<TopBar> {
   }
 
   Widget _buildLocalResultsList() {
-    final query = _searchController.text.toLowerCase();       // ← no .trim() !
+    final query = _searchController.text.toLowerCase();
 
     if (!_cacheLoaded) return const Center(child: CircularProgressIndicator());
     if (_cachedProducts.isEmpty) return const Center(child: Text("No products in cache"));
@@ -325,7 +308,6 @@ class _TopBarState extends State<TopBar> {
         final name = p["fast_key_item_name"]?.toString() ?? "Unknown";
         final price = p["fast_key_item_price"]?.toString() ?? "0.00";
 
-        // ─── Improved image handling ────────────────────────────────
         String? imageUrl;
         final imagesRaw = p["images"];
         if (imagesRaw != null) {
@@ -337,7 +319,6 @@ class _TopBarState extends State<TopBar> {
             else if (first is Map && first["src"] != null) imageUrl = first["src"].toString();
           }
         }
-        // fallback to fast_key field
         imageUrl ??= p["fast_key_item_image"]?.toString();
 
         return ListTile(
@@ -358,11 +339,7 @@ class _TopBarState extends State<TopBar> {
           ),
           title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
           subtitle: Text("\$${price}"),
-          // trailing: p["is_ebt_eligible"] == true
-          //     ? const Chip(label: Text("EBT"), backgroundColor: Colors.green, labelStyle: TextStyle(color: Colors.white))
-          //     : null,
           onTap: () async {
-            // ─── Load full product data from cache using fast_key_product_id ─────
             ProductResponse fullProduct = ProductResponse(
               id: int.tryParse(p["fast_key_product_id"]?.toString() ?? "0") ?? 0,
               name: name,
@@ -371,7 +348,6 @@ class _TopBarState extends State<TopBar> {
               images: imageUrl != null ? [imageUrl] : [],
             );
 
-            // Try to enrich with tags and variations from the same cache entry
             try {
               final isar = await IsarService.instance;
               final entries = await isar.isarCacheEntrys
@@ -388,7 +364,6 @@ class _TopBarState extends State<TopBar> {
                 );
 
                 if (match != null) {
-                  // Map tags
                   final rawTags = match["tags"];
                   if (rawTags is List) {
                     fullProduct.tags = rawTags.map((t) {
@@ -399,22 +374,6 @@ class _TopBarState extends State<TopBar> {
                       );
                     }).toList();
                   }
-
-                  // Map variations (if exist)
-                  // final rawVariations = match["variations"];
-                  // if (rawVariations is List && rawVariations.isNotEmpty) {
-                  //   fullProduct.variations = rawVariations.map((v) {
-                  //     return ProductVariation(
-                  //       id: v["id"],
-                  //       name: v["name"] ?? v["attributes"]?.map((a) => a["option"]).join(" - "),
-                  //       regularPrice: v["regular_price"]?.toString(),
-                  //       image: ProductImage(src: v["image"]?["src"] ?? ""),
-                  //       sku: v["sku"],
-                  //     );
-                  //   }).toList();
-                  // }
-
-                  // You can map more fields if needed (attributes, meta_data, etc.)
                   break;
                 }
               }
@@ -428,6 +387,7 @@ class _TopBarState extends State<TopBar> {
       },
     );
   }
+
   Future<List<Map<String, dynamic>>> _getVariantsFromCache(int productId) async {
     final isar = await IsarService.instance;
     final entries = await isar.isarCacheEntrys
@@ -452,23 +412,15 @@ class _TopBarState extends State<TopBar> {
       final List<Map<String, dynamic>> variants = [];
 
       for (final v in rawVariations) {
-
-        // 🟢 CASE 1: Variant is FULL MAP
         if (v is Map<String, dynamic>) {
           variants.add({
             "id": v["id"],
-            "name": v["name"]
-                ?? (v["attributes"] as List?)
-                    ?.map((a) => a["option"])
-                    .join(" - "),
+            "name": v["name"] ?? (v["attributes"] as List?)?.map((a) => a["option"]).join(" - "),
             "price": v["regular_price"] ?? v["price"] ?? "0",
             "image": v["image"]?["src"],
             "sku": v["sku"],
           });
-        }
-
-        // 🟡 CASE 2: Variant is ONLY ID (int)
-        else if (v is int) {
+        } else if (v is int) {
           variants.add({
             "id": v,
             "name": "Variant",
@@ -479,17 +431,14 @@ class _TopBarState extends State<TopBar> {
         }
       }
 
-      if (variants.isNotEmpty) {
-        return variants;
-      }
+      if (variants.isNotEmpty) return variants;
     }
 
     return [];
   }
 
-
   // ──────────────────────────────────────────────────────────────
-  // COMPLETE original product tap / add logic — nothing removed
+  // FIXED VERSION – removes overlay before EVERY popup
   // ──────────────────────────────────────────────────────────────
   Future<void> _handleProductTap(ProductResponse product) async {
     try {
@@ -521,23 +470,40 @@ class _TopBarState extends State<TopBar> {
 
       // ─── Age verification ────────────────────────────────────────
       final tags = product.tags ?? [];
-      final bool hasAgeRestriction = tags.any((t) => t.name == TextConstants.age_restricted);
+      final bool hasAgeRestriction =
+      tags.any((t) => t.name == TextConstants.age_restricted);
 
       SKU.Tags? ageRestrictedTag;
       if (hasAgeRestriction) {
-        ageRestrictedTag = tags.firstWhere((t) => t.name == TextConstants.age_restricted);
+        ageRestrictedTag =
+            tags.firstWhere((t) => t.name == TextConstants.age_restricted);
       }
 
       final dynamic hiveAge = rawOrder["age_verified"];
-      final bool alreadyVerified = hiveAge == true || hiveAge == 1 || hiveAge?.toString().toLowerCase() == "true";
+      final bool alreadyVerified =
+          hiveAge == true ||
+              hiveAge == 1 ||
+              hiveAge?.toString().toLowerCase() == "true";
 
       if (hasAgeRestriction && !alreadyVerified) {
-        final int minAge = int.tryParse(ageRestrictedTag?.slug?.toString() ?? "0") ?? 0;
+        final int minAge =
+            int.tryParse(ageRestrictedTag?.slug?.toString() ?? "0") ?? 0;
 
         print("🔞 Showing Age Verification Popup (SEARCH)");
 
+        _dialogOpen = true; // 🔥 LOCK SEARCH OVERLAY
+
+        _searchFocusNode.unfocus();
+        _removeOverlay();
+        await WidgetsBinding.instance.endOfFrame;
+
         final prov = AgeVerificationProvider();
-        final ok = await prov.verifyAge(context, minAge: minAge);
+        final ok = await prov.verifyAge(
+          context,
+          minAge: minAge,
+        );
+
+        _dialogOpen = false; // 🔓 UNLOCK SEARCH OVERLAY
 
         if (!ok) {
           print("❌ Age verification failed → Block product");
@@ -549,6 +515,7 @@ class _TopBarState extends State<TopBar> {
 
         print("💾 Saved age_verified = true for search flow");
       }
+
 
       // ─── EBT eligibility ─────────────────────────────────────────
       bool isEbtEligible = false;
@@ -587,32 +554,25 @@ class _TopBarState extends State<TopBar> {
 
       // ─── Variable / variants logic ───────────────────────────────
 
-// Base price
       final double productPrice = (product.price is num)
           ? (product.price as num).toDouble()
           : double.tryParse(product.price?.toString() ?? "") ?? 0.0;
 
       double finalPrice = productPrice;
 
-// Detect variable-price tag
       final bool hasVariablePriceTag = tags.any((t) =>
       t.slug?.toLowerCase() == "variable-product" ||
           t.slug?.toLowerCase() == "variable" ||
           t.name?.toLowerCase() == "variable product" ||
           t.name?.toLowerCase() == "variable");
 
-// Prepare existing products list
       List<Map<String, dynamic>> products = (rawOrder["products"] ?? [])
           .map<Map<String, dynamic>>((i) => Map<String, dynamic>.from(i))
           .toList();
 
-// Variable price memory keys
       final String variableKey = "variable_price_added_${product.id}";
       final String savedPriceKey = "selected_price_${product.id}";
 
-// ─────────────────────────────────────────────────────────────
-// 1️⃣ HANDLE VARIABLE PRICE (NON-VARIANT ONLY)
-// ─────────────────────────────────────────────────────────────
       final bool popupAlreadyShown = rawOrder[variableKey] == true;
 
       if (popupAlreadyShown) {
@@ -620,16 +580,11 @@ class _TopBarState extends State<TopBar> {
         finalPrice = double.tryParse(savedPrice.toString()) ?? productPrice;
       }
 
-// ─────────────────────────────────────────────────────────────
-// 2️⃣ HANDLE VARIANTS (API FIRST — SAME AS WORKING CODE)
-// ─────────────────────────────────────────────────────────────
       bool hasVariants = false;
 
-// 1️⃣ Try cache (fast + offline)
       final cachedVariants = await _getVariantsFromCache(product.id!);
       hasVariants = cachedVariants.isNotEmpty;
 
-// 2️⃣ Optional: If cache empty, still try API
       if (!hasVariants) {
         productBloc.fetchProductVariations(product.id!);
         final response = await productBloc.variationStream
@@ -638,9 +593,7 @@ class _TopBarState extends State<TopBar> {
         hasVariants = response.data != null && response.data!.isNotEmpty;
       }
 
-
       if (hasVariants) {
-        // Prefer API data if available
         productBloc.fetchProductVariations(product.id!);
 
         final response = await productBloc.variationStream
@@ -657,10 +610,15 @@ class _TopBarState extends State<TopBar> {
             "sku": v.sku ?? "",
           }).toList();
         } else {
-          variants = cachedVariants; // fallback
+          variants = cachedVariants;
         }
 
         if (variants.isEmpty) return;
+
+        // ─── FIX: Aggressive overlay removal before variants popup ───
+        _removeOverlay();
+        await Future.delayed(const Duration(milliseconds: 40));
+        _removeOverlay();
 
         await showDialog(
           context: _context,
@@ -669,8 +627,7 @@ class _TopBarState extends State<TopBar> {
             title: product.name ?? "Select Variant",
             variations: variants,
             onAddVariant: (selected, qty) async {
-              final price =
-                  double.tryParse(selected["price"].toString()) ?? 0;
+              final price = double.tryParse(selected["price"].toString()) ?? 0;
 
               await orderHelper.addItemToOrder(
                 selected["id"],
@@ -706,10 +663,12 @@ class _TopBarState extends State<TopBar> {
         return;
       }
 
-// ─────────────────────────────────────────────────────────────
-// 3️⃣ VARIABLE PRICE POPUP (ONLY IF NO VARIANTS)
-// ─────────────────────────────────────────────────────────────
       if (hasVariablePriceTag && !popupAlreadyShown) {
+        // ─── FIX: Aggressive overlay removal before manual price popup ───
+        _removeOverlay();
+        await Future.delayed(const Duration(milliseconds: 40));
+        _removeOverlay();
+
         final enteredPrice = await ManualPriceDialog.show(
           _context,
           productName: product.name ?? "Product",
@@ -724,8 +683,6 @@ class _TopBarState extends State<TopBar> {
         rawOrder[savedPriceKey] = finalPrice;
         await offlineBox.put(activeOrderId, rawOrder);
       }
-
-
 
       setState(() => isAddingItemLoading = true);
 
@@ -772,7 +729,7 @@ class _TopBarState extends State<TopBar> {
   }
 
   void _removeOverlay() {
-    if (kDebugMode) print("TopBar - _removeOverlay");
+    if (kDebugMode) print("TopBar - _removeOverlay | exists: ${_overlayEntry != null}");
     _overlayEntry?.remove();
     _overlayEntry = null;
   }
@@ -855,8 +812,6 @@ class _TopBarState extends State<TopBar> {
                                   return;
                                 }
                                 setState(() => isError = false);
-                                // Here you should call your real validation
-                                // For demo we accept any 6 digit PIN
                                 Navigator.pop(ctx, true);
                               },
                               child: const Text("Confirm", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
@@ -872,8 +827,7 @@ class _TopBarState extends State<TopBar> {
           },
         );
       },
-    ) ??
-        false;
+    ) ?? false;
   }
 
   @override
@@ -927,12 +881,10 @@ class _TopBarState extends State<TopBar> {
             ),
           ),
           const SizedBox(width: 200),
-          // Cash drawer button
           GestureDetector(
             onTap: () async {
               final isAuthorized = await _showCashDrawerPinPopup(context);
               if (!isAuthorized) return;
-              // Your drawer open logic here...
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cash drawer opening...")));
             },
             child: Container(
@@ -946,7 +898,6 @@ class _TopBarState extends State<TopBar> {
             ),
           ),
           const SizedBox(width: 16),
-          // Mode change
           GestureDetector(
             onTap: widget.onModeChanged,
             child: Container(
@@ -960,7 +911,6 @@ class _TopBarState extends State<TopBar> {
             ),
           ),
           const SizedBox(width: 16),
-          // Theme toggle
           GestureDetector(
             onTap: () {
               themeHelper.setThemeMode(themeHelper.themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark);
@@ -976,7 +926,6 @@ class _TopBarState extends State<TopBar> {
             ),
           ),
           const SizedBox(width: 16),
-          // Notifications
           Container(
             decoration: BoxDecoration(
               color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.white,
@@ -987,7 +936,6 @@ class _TopBarState extends State<TopBar> {
             child: Icon(Icons.notifications, size: 24, color: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black54),
           ),
           const SizedBox(width: 16),
-          // User profile
           Container(
             height: 45,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),

@@ -1,4 +1,3 @@
-
 import 'package:isar/isar.dart';
 import 'package:pinaka_pos/Database/discount_rule_isar.dart';
 
@@ -29,6 +28,9 @@ Future<void> syncDiscountRulesFromApi(
           ..ruleId = r['ruleId']
           ..productIds =
           (r['productIds'] as List).map((e) => int.parse(e.toString())).toList()
+          ..requiredProductIds = r['requiredProductIds'] != null
+              ? int.tryParse(r['requiredProductIds'].toString())
+              : null
           ..requiredQty = int.parse(r['requiredQty'].toString())
           ..bundlePrice = double.parse(r['bundlePrice'].toString())
           ..bundlePriceType = r['bundlePriceType']
@@ -37,6 +39,7 @@ Future<void> syncDiscountRulesFromApi(
           ..endDate = r['endDate']
           ..active = r['active'] == true,
       );
+
     }
   });
 
@@ -161,8 +164,25 @@ class DiscountEngine {
     // 2️⃣ MIXMATCH — per item across products, NO requiredQty
     // =====================================================
     for (final rule in rules.where((r) => r.ruleType == 'mixmatch')) {
+
+      // 🔒 REQUIRED PRODUCT MUST EXIST IN CART
+      if (rule.requiredProductIds != null) {
+        final hasRequired = units.any(
+              (u) => u.pid == rule.requiredProductIds,
+        );
+
+        if (!hasRequired) {
+          print(
+            "⛔ MIXMATCH skipped → required product ${rule.requiredProductIds} missing",
+          );
+          continue;
+        }
+      }
+
+      // 🎯 APPLY DISCOUNT ONLY TO TARGET PRODUCTS
       for (final u in units.where(
               (u) => !u.used && rule.productIds.contains(u.pid))) {
+
         int discountCents;
 
         if (rule.bundlePriceType == 'percentage') {
@@ -190,7 +210,7 @@ class DiscountEngine {
     }
 
     // =====================================================
-    // 3️⃣ MULTIPACK — bundle logic USING requiredQty
+    //  MULTIPACK — bundle logic USING requiredQty
     // =====================================================
     for (final rule in rules.where((r) => r.ruleType == 'multipack')) {
       final eligible = units
@@ -232,13 +252,12 @@ class DiscountEngine {
       );
 
       print(
-        "🎯 MULTIPACK → pid=${bundle.first.pid} "
+        " MULTIPACK → pid=${bundle.first.pid} "
             "discount=${fromCents(discountCents)}",
       );
     }
 
-    // ✅ FINAL RESULT
+    //  FINAL RESULT
     return result;
   }
 }
-
