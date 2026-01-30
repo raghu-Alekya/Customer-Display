@@ -284,6 +284,19 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       return 0.0;
     }
   }
+  void printFullJson(String label, Object json) {
+    final encoded = jsonEncode(json);
+    const chunkSize = 800;
+
+    for (int i = 0; i < encoded.length; i += chunkSize) {
+      debugPrint(
+        "🟢 [$label] ${encoded.substring(
+          i,
+          i + chunkSize > encoded.length ? encoded.length : i + chunkSize,
+        )}",
+      );
+    }
+  }
 
 
 
@@ -332,6 +345,13 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         );
       }
 
+      final String clientOrderId =
+          offlineOrder['id']?.toString() ??
+              offlineOrder['order_id']?.toString() ??
+              offlineOrder['local_order_id']?.toString() ??
+              "";
+
+
       // ---------------------------------------------------------
       // ⭐ HANDLE PRODUCTS
       // ---------------------------------------------------------
@@ -369,6 +389,23 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             item['item_name'] ??
                 item['name'] ??
                 "Product";
+
+        // 🔒 HARD BLOCK payout & cashback from products loop
+        final String lowerName =
+        (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
+
+        final String itemType =
+            item['type']?.toString().toLowerCase() ?? '';
+
+        if (lowerName == 'payout' ||
+            lowerName == 'cashback' ||
+            itemType == 'payout' ||
+            itemType == 'cashback' ||
+            item['is_payout'] == true ||
+            item['is_cashback'] == true) {
+          debugPrint("⏭ Skipping special item from products loop → $lowerName / $itemType");
+          continue;
+        }
 
         final double price =
             double.tryParse(
@@ -428,7 +465,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           );
 
           lineItems.add({
-            "name": item['name'] ?? "Custom Item",
+            "name": name,
             "quantity": qtyInt,
             "sku": item["sku"] ?? item["generated_sku"] ?? "",
             "price": price.toStringAsFixed(2),
@@ -618,17 +655,18 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       final userData = await UserDbHelper().getUserData();
       final userId = userData?[AppDBConst.userId] ?? "admin";
 
-      final metaData = [
+      final List<Map<String, dynamic>> metaData = [
         {"key": "pos_device_id", "value": "b31b723b92047f4b"},
         {"key": "pos_placed_by", "value": "$userId"},
         {"key": "shift_id", "value": "$shiftId"},
         {"key": "pos_cash_paid", "value": totalAmount.toStringAsFixed(2)},
+        {"key": "_pos_client_order_id", "value": clientOrderId},
       ];
-// ✅ ATTACH PAYMENTS AS META
+
       if (paymentsPayload.isNotEmpty) {
         metaData.add({
           "key": "_pos_payments",
-          "value": jsonEncode(paymentsPayload),
+          "value": paymentsPayload,
         });
       }
       if (isUpdate) {
@@ -649,7 +687,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         "tax_lines": [],
       };
 
-      debugPrint("🟢 [SYNC] Woo Payload → ${jsonEncode(payload)}");
+      printFullJson("SYNC Woo Payload", payload);
+
 
       final response = isUpdate
           ? await _helper.put(url, payload, true)
@@ -657,6 +696,14 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
       final decoded =
       (response is String) ? jsonDecode(response) : response;
+
+      final String wooStatus =
+      decoded is Map<String, dynamic>
+          ? decoded['status']?.toString() ?? 'processing'
+          : 'processing';
+
+      debugPrint("🟣 Woo Status from sync response → $wooStatus");
+
 
       debugPrint(
         "🟦 [SYNC] Woo Response → ${jsonEncode(decoded)}",
@@ -726,6 +773,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         offlineOrder['wooOrderId'] = serverOrderId;
         offlineOrder['wooTax'] = wooTax;
         offlineOrder['wooTotal'] = wooTotal;
+        offlineOrder['wooStatus'] = wooStatus;
 
         await box.put(localOrderId, offlineOrder);
         await box.put(serverOrderId.toString(), {"map_to_local": localOrderId});
@@ -764,6 +812,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           "tax": wooTax,
           "total": wooTotal,
           "cashback_fee": cashbackFee,
+
           "ebt_total": ebtTotal,       // ✅ ADD THIS
           "discount_amount": discountAmount,
           "line_items": decoded["line_items"],

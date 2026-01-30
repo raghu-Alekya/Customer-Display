@@ -225,7 +225,7 @@ LocalPayment _localPaymentDeserialize(
     shiftId: reader.readLong(offsets[10]),
     status:
         _LocalPaymentstatusValueEnumMap[reader.readByteOrNull(offsets[11])] ??
-            PaymentDbStatus.successful,
+            PaymentDbStatus.completed,
     sunmiDeviceId: reader.readStringOrNull(offsets[12]),
     sunmiOrderId: reader.readStringOrNull(offsets[13]),
     sunmiTxnId: reader.readStringOrNull(offsets[14]),
@@ -271,7 +271,7 @@ P _localPaymentDeserializeProp<P>(
       return (reader.readLong(offset)) as P;
     case 11:
       return (_LocalPaymentstatusValueEnumMap[reader.readByteOrNull(offset)] ??
-          PaymentDbStatus.successful) as P;
+          PaymentDbStatus.completed) as P;
     case 12:
       return (reader.readStringOrNull(offset)) as P;
     case 13:
@@ -302,8 +302,8 @@ const _LocalPaymentstatusEnumValueMap = {
   'voided': 3,
 };
 const _LocalPaymentstatusValueEnumMap = {
-  0: PaymentDbStatus.successful,
-  1: PaymentDbStatus.partial,
+  0: PaymentDbStatus.completed,
+  1: PaymentDbStatus.pending,
   2: PaymentDbStatus.receipt,
   3: PaymentDbStatus.voided,
 };

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:core';
 import 'dart:io';
-
 import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dotted_line/dotted_line.dart';
@@ -53,6 +52,7 @@ import '../Helper/customerdisplayhelper.dart';
 import '../Models/Assets/asset_model.dart';
 import '../Preferences/pinaka_preferences.dart';
 import '../Screens/Auth/login_screen.dart';
+import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import '../Utilities/global_utility.dart';
 import '../Models/Orders/orders_model.dart';
 import '../Providers/Age/age_verification_provider.dart';
@@ -215,104 +215,93 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   }
 
   // Build #1.0.10: Fetches the list of order tabs from OrderHelper
-  Future<void> _getOrderTabs() async { // Build  #1.0.177: add await to loadTabs to fix delay in loading
+  Future<void> _getOrderTabs() async {
     if (kDebugMode) {
-      print("##### DEBUG: _getOrderTabs - Loading order tabs, loadOrderItems 1");
-    }
-    await orderHelper.loadProcessingData(); // Load order data from DB
-
-    if (kDebugMode) {
-      print("#### Order Panel loadData: activeOrderId = ${orderHelper.activeOrderId}");
-      print("#### Order Panel loadData: orderIds = ${orderHelper.orderIds}");
-    }
-    if (mounted) {
-      setState(() {
-        // Convert order IDs into tab format
-        tabs = orderHelper.orders
-            .asMap()
-            .entries
-            .map((entry) => {
-          "title": "#${entry.value[AppDBConst.orderServerId] ?? entry.value[AppDBConst.orderId]}",
-          "subtitle": "Tab ${entry.key + 1}",
-          "orderId": entry.value[AppDBConst.orderServerId] as Object, // Use db orderId, not serverId
-        }).toList();
-        if (kDebugMode) {
-          print("##### DEBUG: _getOrderTabs - Loaded ${tabs.length} tabs: $tabs");
-        }
-      });
-    }
-    if (kDebugMode) {
-      print("##### DEBUG: _getOrderTabs - orderHelper.activeOrderId ${orderHelper.activeOrderId} tab: $tabs, index: ${orderHelper.orderIds.indexOf(orderHelper.activeOrderId ?? 0)}"); // Build #1.0.104: unwrap issue fixed
+      print("##### DEBUG: _getOrderTabs - Loading order tabs");
     }
 
-    if (!mounted) return; // Prevent controller initialization if unmounted
-    _initializeTabController(); // Initialize tab controller
-    if (kDebugMode) {
-      print("##### _getOrderTabs saveLastActiveOrderId tabs.isNotEmpty ${tabs.isNotEmpty}");
-    }
-    if (tabs.isNotEmpty) {
-      int index = -1;
-      index = 0; // safe default
+    await orderHelper.loadProcessingData();
 
-      if (orderHelper.activeOrderId != null) {
-        final idx = orderHelper.orderIds.indexOf(orderHelper.activeOrderId!);
-        if (idx != -1) {
-          index = idx;
-        }
-      }
-      else {
-        if (kDebugMode) {
-          print("##### DEBUG: _getOrderTabs - No active order, setting to last tab");
-        }
-        index = tabs.length - 1;
-        await orderHelper.setActiveOrder(tabs[index]["orderId"] as int);
-        if (kDebugMode) {
-          print("saveLastActiveOrderId _getOrderTabs no active tab, orderHelper.activeOrderId: ${orderHelper.activeOrderId}, orderID: ${tabs[index]["orderId"]}");
-        }
-        await orderHelper.saveLastActiveOrderId(tabs[index]["orderId"] as int); // Build #1.0.161
-      }
-      if (mounted && _tabController != null) {
-        _tabController?.index = index;
-        if (kDebugMode) {
-          print("##### DEBUG: _getOrderTabs - Set tab index to $index, orderID: ${tabs[index]["orderId"]} activeOrderId: ${orderHelper.activeOrderId}");
-        }
-      }
+    if (!mounted) return;
 
-      //Build #1.0.78: FIX: Scroll to ensure active tab is visible
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients && _tabController != null) {
-          final tabWidth = 180.0; // Adjust this based on your actual tab width
-          final screenWidth = MediaQuery.of(context).size.width * 0.58; // Panel width
-          final activeIndex = _tabController!.index;
-          final offset = (activeIndex * tabWidth) - (screenWidth / 2) + (tabWidth / 2);
+    // --------------------------------------------------
+    // 1️⃣ ASYNC WORK (NO setState here)
+    // --------------------------------------------------
+    final List<Map<String, dynamic>> visibleOrders = [];
 
-          _scrollController.animateTo(
-            offset.clamp(0.0, _scrollController.position.maxScrollExtent),
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-          );
-        }
-      });
+    for (final order in orderHelper.orders) {
+      final int orderId = order[AppDBConst.orderServerId];
 
-      await fetchOrderItems(); // Load items for active order
-      if(mounted) {
-        setState(() => _isLoading = false); // Build #1.0.104: Hide loader
-      }
-    } else {
+      final payments =
+      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+
+      final bool hasAnyPayment = payments.isNotEmpty;
+
       if (kDebugMode) {
-        print("##### DEBUG: _getOrderTabs - No tabs available");
+        print(
+          "🧾 Order $orderId → payments=${payments.length}, hide=$hasAnyPayment",
+        );
       }
-      if (mounted) {
-        setState(() {
-          orderItems = [];// Build #1.0.104: Clear items if no tabs
-        });
-      }
-      _initializeTabController(); // Build #1.0.189: required here
+
+      // ❌ Hide order once payment starts
+      if (hasAnyPayment) continue;
+
+      visibleOrders.add(order);
     }
+
+    // --------------------------------------------------
+    // 2️⃣ UI UPDATE (SYNC ONLY)
+    // --------------------------------------------------
+    if (!mounted) return;
+
+    setState(() {
+      tabs = visibleOrders
+          .asMap()
+          .entries
+          .map((entry) => {
+        "title":
+        "#${entry.value[AppDBConst.orderServerId] ?? entry.value[AppDBConst.orderId]}",
+        "subtitle": "Tab ${entry.key + 1}",
+        "orderId": entry.value[AppDBConst.orderServerId] as Object,
+      })
+          .toList();
+
+      if (kDebugMode) {
+        print("##### DEBUG: Loaded ${tabs.length} tabs: $tabs");
+      }
+    });
+
+    // --------------------------------------------------
+    // 3️⃣ ACTIVE TAB SAFETY
+    // --------------------------------------------------
+    if (tabs.isNotEmpty) {
+      final visibleIds = tabs.map((t) => t['orderId'] as int).toList();
+
+      if (!visibleIds.contains(orderHelper.activeOrderId)) {
+        final newActiveId = visibleIds.first;
+
+        await orderHelper.setActiveOrder(newActiveId);
+        await orderHelper.saveLastActiveOrderId(newActiveId);
+
+        if (kDebugMode) {
+          print("🔁 Active order hidden → switched to $newActiveId");
+        }
+      }
+    }
+
+    // --------------------------------------------------
+    // 4️⃣ CONTROLLER + ITEMS
+    // --------------------------------------------------
+    if (!mounted) return;
+
+    _initializeTabController();
+    await fetchOrderItems();
+
     if (mounted) {
-      setState(() => _isLoading = false); // Hide loader
+      setState(() => _isLoading = false);
     }
   }
+
 
   void _fetchOrders() { //Build #1.0.40: fetch orders items from API sync & updating to UI
     // updated above

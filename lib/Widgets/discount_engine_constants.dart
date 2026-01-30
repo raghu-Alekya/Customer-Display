@@ -159,55 +159,66 @@ class DiscountEngine {
         );
       }
     }
-
-    // =====================================================
-    // 2️⃣ MIXMATCH — per item across products, NO requiredQty
-    // =====================================================
+// =====================================================
+// 2️⃣ MIXMATCH — pair-based (min(parent, child))
+// =====================================================
     for (final rule in rules.where((r) => r.ruleType == 'mixmatch')) {
 
-      // 🔒 REQUIRED PRODUCT MUST EXIST IN CART
-      if (rule.requiredProductIds != null) {
-        final hasRequired = units.any(
-              (u) => u.pid == rule.requiredProductIds,
-        );
+      if (rule.requiredProductIds == null) continue;
 
-        if (!hasRequired) {
-          print(
-            "⛔ MIXMATCH skipped → required product ${rule.requiredProductIds} missing",
-          );
-          continue;
-        }
+      // 🔢 Collect unused parent & child units
+      final parentUnits = units.where(
+            (u) => !u.used && u.pid == rule.requiredProductIds,
+      ).toList();
+
+      final childUnits = units.where(
+            (u) => !u.used && rule.productIds.contains(u.pid),
+      ).toList();
+
+      final int pairCount =
+      parentUnits.length < childUnits.length
+          ? parentUnits.length
+          : childUnits.length;
+
+      if (pairCount == 0) {
+        print("⛔ MIXMATCH skipped → no valid pairs");
+        continue;
       }
 
-      // 🎯 APPLY DISCOUNT ONLY TO TARGET PRODUCTS
-      for (final u in units.where(
-              (u) => !u.used && rule.productIds.contains(u.pid))) {
+      for (int i = 0; i < pairCount; i++) {
+        final parent = parentUnits[i];
+        final child = childUnits[i];
 
         int discountCents;
 
         if (rule.bundlePriceType == 'percentage') {
           discountCents =
-              (u.priceCents * rule.bundlePrice / 100).round();
+              (child.priceCents * rule.bundlePrice / 100).round();
         } else {
           discountCents = toCents(rule.bundlePrice);
         }
 
-        discountCents = discountCents.clamp(0, u.priceCents);
+        discountCents = discountCents.clamp(0, child.priceCents);
         if (discountCents <= 0) continue;
 
-        u.used = true;
+        // 🔒 Lock one parent + one child
+        parent.used = true;
+        child.used = true;
 
-        result[u.pid] = EngineDiscountResult(
-          (result[u.pid]?.amount ?? 0) + fromCents(discountCents),
+        result[child.pid] = EngineDiscountResult(
+          (result[child.pid]?.amount ?? 0) + fromCents(discountCents),
           'mixmatch',
           rule.ruleId,
         );
 
         print(
-          "🎯 MIXMATCH → pid=${u.pid} discount=${fromCents(discountCents)}",
+          "🎯 MIXMATCH → pair=${i + 1} "
+              "parent=${parent.pid} child=${child.pid} "
+              "discount=${fromCents(discountCents)}",
         );
       }
     }
+
 
     // =====================================================
     //  MULTIPACK — bundle logic USING requiredQty

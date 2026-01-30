@@ -173,25 +173,26 @@ class OfflineOrderSyncService {
 
         final int? wooOrderId =
         int.tryParse(order['wooOrderId']?.toString() ?? '');
-
-
         final bool isSynced = order['synced'] == true;
-        final String orderStatus =
-            order['status']?.toString().toLowerCase() ?? '';
-
+        final String wooStatus =
+            order['wooStatus']?.toString().toLowerCase() ?? '';
         if (wooOrderId != null &&
             wooOrderId > 0 &&
-            isSynced &&orderStatus == 'completed'
-        ) {
+            isSynced &&
+            wooStatus == 'completed') {
 
           await box.delete(key);
 
           if (kDebugMode) {
-            print("🗑️ Completed order removed from Hive → local:$key woo:$wooOrderId");
+            print(
+              "🗑️ Completed Woo order removed → "
+                  "local:$key woo:$wooOrderId status:$wooStatus",
+            );
           }
 
           continue;
         }
+
 
         if (kDebugMode) {
           print("📤 Syncing offline order → $key");

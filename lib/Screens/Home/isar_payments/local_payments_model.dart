@@ -3,8 +3,8 @@ import 'package:isar/isar.dart';
 part 'local_payments_model.g.dart';
 
 enum PaymentDbStatus {
-  successful,
-  partial,
+  completed,
+  pending,
   receipt,
   voided,
 }
