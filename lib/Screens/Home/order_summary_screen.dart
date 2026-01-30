@@ -397,7 +397,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         p.paymentMethod.toLowerCase() != TextConstants.cash.toLowerCase() &&
             p.paymentMethod.toLowerCase() != TextConstants.card.toLowerCase() &&
             p.paymentMethod.toLowerCase() != TextConstants.ebtText.toLowerCase())
-            .fold(0.0, (sum, p) => sum + p.amount);
+            .fold(0.0, (sum, p) => sum);
 
         isPaymentStarted = totalPaid > 0;
       });
@@ -5712,7 +5712,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
     } else if (label == TextConstants.payByCash) {
       amount =
-      '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'; //Build #1.0.99: updated from api
+      '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'; //Build #1.0.99: updated from api
     } else if (label == TextConstants.payByOther) {
       amount =
       '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
