@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -29,6 +30,7 @@ import 'add_product_toinventory/add_product_inventory_repository_impl.dart';
 import 'image_upload_repository.dart';
 import 'inventory_Tax/inventory_tax_screen.dart';
 
+import 'inventory_attributes/inventory_attributes_entity.dart';
 import 'inventory_attributes/inventory_attributes_widgets.dart';
 import 'inventory_categories/inventory_categories_widgets.dart';
 import 'inventory_get_product_types/inventory_get_product_types_widget.dart';
@@ -43,6 +45,7 @@ class InventoryScreen extends StatefulWidget {
 
 class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionMixin {
   final _formKey = GlobalKey<FormState>();
+  InventoryAttributesEntity? _lastSelectedAttribute;
 
   // Basic Information Controllers
   final TextEditingController _skuController = TextEditingController();
@@ -94,6 +97,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   String _currentSalePrice = '';
   File? _currentImageFile;
   String? _selectedItemName;
+
   // Current variant index for editing
   int _currentVariantIndex = -1;
 
@@ -162,17 +166,22 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
 
   void _initializeAddProductBloc() {
     final remoteDataSource = AddProductInventoryTaxRemoteDataSource();
-    final repository = AddProductInventoryTaxRepositoryImpl(remoteDataSource: remoteDataSource);
+    final repository = AddProductInventoryTaxRepositoryImpl(
+        remoteDataSource: remoteDataSource);
     final useCase = AddProductInventoryTaxGetUseCase(repository: repository);
     _addProductBloc = AddProductInventoryTaxBloc(addProductUseCase: useCase);
   }
 
   Future<void> _pickImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery, imageQuality: 85);
     if (image == null) return;
 
     final bytes = await image.readAsBytes();
-    final extension = image.path.split('.').last.toLowerCase();
+    final extension = image.path
+        .split('.')
+        .last
+        .toLowerCase();
 
     img.Image? decoded = img.decodeImage(bytes);
     if (decoded == null) return;
@@ -217,7 +226,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //   }
   // }
 
-  Future<String?> _uploadImageForProduct(File imageFile, {String? customFileName}) async {
+  Future<String?> _uploadImageForProduct(File imageFile,
+      {String? customFileName}) async {
     final url = await _imageUploadRepo.uploadImage(
       imageFile: imageFile,
       fileName: customFileName,
@@ -229,41 +239,489 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   String? _validateForm() {
     _fieldErrors.clear();
 
-    if (_nameController.text.trim().isEmpty) {
+    if (_nameController.text
+        .trim()
+        .isEmpty) {
       _fieldErrors['name'] = 'Product name is required';
     }
-    if (_selectedCategory == null) {
-      _fieldErrors['category'] = 'Category is required';
-    }
+    // if (_selectedCategory == null) {
+    //   _fieldErrors['category'] = 'Category is required';
+    // }
     if (_selectedProductType == null || _selectedProductType!.isEmpty) {
       _fieldErrors['productType'] = 'Product type is required';
     }
 
     if (_selectedProductType?.toLowerCase() == 'variable') {
       if (_variants.isEmpty) {
-        _fieldErrors['variants'] = 'At least one variant is required for variable products';
+        _fieldErrors['variants'] =
+        'At least one variant is required for variable products';
       }
     } else {
-      if (_regularPriceController.text.trim().isEmpty) {
-        _fieldErrors['regularPrice'] = 'Regular price is required';
-      }
+      // if (_regularPriceController.text.trim().isEmpty) {
+      //   _fieldErrors['regularPrice'] = 'Regular price is required';
+      // }
     }
 
     return _fieldErrors.isNotEmpty ? _fieldErrors.values.first : null;
   }
+
+  // Future<AddProductInventoryTaxEntity?> _buildProductEntity() async {
+  //   final validationError = _validateForm();
+  //   if (validationError != null) return null;
+  //
+  //   // ── Main product image ────────────────────────────────────────
+  //   String mainImageUrl = 'https://merchantretail.alektasolutions.com/wp-content/uploads/2025/12/biryani-removebg-preview-1.png';
+  //
+  //   if (_imageFile != null) {
+  //     final uploadedUrl = await _uploadImageForProduct(
+  //       _imageFile!,
+  //       customFileName: 'product-${DateTime
+  //           .now()
+  //           .millisecondsSinceEpoch}.jpg',
+  //
+  //     );
+  //     if (uploadedUrl != null) {
+  //       mainImageUrl = uploadedUrl;
+  //       print('╔═══════════════════════════════════════════════');
+  //       print('║               UPLOAD SUCCESS                  ║');
+  //       print('╚═══════════════════════════════════════════════');
+  //       print('URL: $mainImageUrl');
+  //     } else {
+  //       // Optional: show snackbar or log
+  //       print('Main image upload failed → using fallback');
+  //     }
+  //   }
+  //
+  //   // ── Categories & Tags ─────────────────────────────────────────
+  //   final List<Map<String, dynamic>> categories = _selectedCategory != null
+  //       ? [{'id': _selectedCategory.id ?? 0}]
+  //       : [];
+  //
+  //   final List<Map<String, dynamic>> tags = [];
+  //   final Set<String> seenSlugs = {};
+  //   for (final tag in _selectedTags) {
+  //     final slug = (tag.slug ?? '').trim();
+  //     if (slug.isEmpty || seenSlugs.contains(slug)) continue;
+  //     seenSlugs.add(slug);
+  //     tags.add({
+  //       'id': tag.id ?? 0,
+  //       'name': tag.name?.trim() ?? slug,
+  //       'slug': slug,
+  //     });
+  //   }
+  //
+  //   // ── Images ────────────────────────────────────────────────────
+  //   final List<Map<String, dynamic>> images = [{'src': mainImageUrl}];
+  //
+  //   // ── Common meta ───────────────────────────────────────────────
+  //   final List<Map<String, dynamic>> metaData = [
+  //     {'key': 'custom_product', 'value': 'yes'},
+  //     {'key': 'product_created_by', 'value': '1'},
+  //     {'key': 'has_variable_price', 'value': _hasVariablePrice ? 'yes' : 'no'},
+  //   ];
+  //
+  //   // ── SIMPLE PRODUCT ────────────────────────────────────────────
+  //   if (_selectedProductType?.toLowerCase() != 'variable') {
+  //     return AddProductInventoryTaxEntity(
+  //       id: 0,
+  //       name: _nameController.text.trim(),
+  //       type: 'simple',
+  //       sku: _skuController.text
+  //           .trim()
+  //           .isNotEmpty
+  //           ? _skuController.text.trim()
+  //           : 'SKU${DateTime
+  //           .now()
+  //           .millisecondsSinceEpoch}',
+  //       regularPrice: _regularPriceController.text.trim(),
+  //       salePrice: _salePriceController.text.trim(),
+  //       categories: categories,
+  //       tags: tags,
+  //       images: images,
+  //       metaData: metaData,
+  //       attributes: const [],
+  //       manageStock: _manageStock,
+  //       stockQuantity: int.tryParse(_qtyController.text.trim()) ?? 0,
+  //       taxStatus: _selectedTax != null ? 'taxable' : 'none',
+  //       taxClass: _selectedTax?.taxClass ?? 'standard',
+  //     );
+  //   }
+  //
+  //   // ── VARIABLE PRODUCT ──────────────────────────────────────────
+  //   if (_variants.isEmpty) return null;
+  //
+  //   // 1. Collect all possible attribute → values
+  //   final Map<String, Set<String>> attributeOptionsMap = {};
+  //
+  //   for (final variant in _variants) {
+  //     // Predefined attribute
+  //     if (variant['attribute'] != null && variant['attributeItem'] != null) {
+  //       final slug = (variant['attribute']['slug'] as String?)?.trim() ?? '';
+  //       final value = (variant['attributeItem']['slug'] as String?)?.trim() ??
+  //           (variant['attributeItem']['name'] as String?)?.trim() ??
+  //           '';
+  //
+  //       if (slug.isNotEmpty && value.isNotEmpty) {
+  //         attributeOptionsMap.putIfAbsent(slug, () => {}).add(value);
+  //       }
+  //     }
+  //
+  //     // Custom attributes (if you still use them)
+  //     if (variant['attributes'] is List) {
+  //       for (final attr in variant['attributes'] as List) {
+  //         final name = (attr['name'] as String?)?.trim() ?? '';
+  //         if (name.isEmpty) continue;
+  //         final slug = 'pa_${name.toLowerCase().replaceAll(' ', '-')}';
+  //         attributeOptionsMap.putIfAbsent(slug, () => {}).add(name);
+  //       }
+  //     }
+  //   }
+  //
+  //   // 2. Build WooCommerce product.attributes format
+  //   final List<Map<String, dynamic>> productAttributes = attributeOptionsMap
+  //       .entries.map((entry) {
+  //     final slug = entry.key;
+  //     final cleanName = slug.replaceFirst('pa_', '').replaceAll('-', ' ');
+  //     final capitalized = cleanName.split(' ').map((w) =>
+  //     w.isNotEmpty ? w[0].toUpperCase() + w.substring(1) : '').join(' ');
+  //
+  //     return {
+  //       'id': 0,
+  //       'name': capitalized,
+  //       'slug': slug,
+  //       'visible': true,
+  //       'variation': true,
+  //       'options': entry.value.toList(),
+  //     };
+  //   }).toList();
+  //
+  //   // 3. Build variations payload (the most important part)
+  //   final List<Map<String, dynamic>> variationsPayload = [];
+  //
+  //   for (final variant in _variants) {
+  //     final Map<String, dynamic> attrs = {};
+  //
+  //     // Predefined attribute
+  //     if (variant['attribute'] != null && variant['attributeItem'] != null) {
+  //       final slug = variant['attribute']['slug']?.toString().trim() ?? '';
+  //       final value = variant['attributeItem']['slug']?.toString().trim() ??
+  //           variant['attributeItem']['name']?.toString().trim() ??
+  //           '';
+  //
+  //       if (slug.isNotEmpty && value.isNotEmpty) {
+  //         attrs[slug] = value;
+  //       }
+  //     }
+  //
+  //     // Custom attributes (if any)
+  //     if (variant['attributes'] is List) {
+  //       for (final attr in variant['attributes'] as List) {
+  //         final name = attr['name']?.toString().trim() ?? '';
+  //         if (name.isNotEmpty) {
+  //           final slug = 'pa_${name.toLowerCase().replaceAll(' ', '-')}';
+  //           attrs[slug] = name;
+  //         }
+  //       }
+  //     }
+  //
+  //     String? variantImageUrl;
+  //
+  //     if (variant['imageFile'] != null && variant['imageFile'] is File) {
+  //       try {
+  //         variantImageUrl = await _uploadImageForProduct(
+  //           variant['imageFile'] as File,
+  //           customFileName: 'variant-${DateTime
+  //               .now()
+  //               .millisecondsSinceEpoch}.jpg',
+  //         );
+  //       } catch (e) {
+  //         print("Variant image upload failed: $e");
+  //       }
+  //     }
+  //
+  //     variationsPayload.add({
+  //       'attributes': attrs,
+  //       'regular_price': (variant['regularPrice']?.toString() ?? '0').trim(),
+  //       'sale_price': (variant['salePrice']?.toString() ?? '').trim(),
+  //     //   'stock_quantity': int.tryParse(variant['stock']?.toString() ?? '0') ??
+  //     //       0,
+  //     //   if (variantImageUrl != null) 'image': {'src': variantImageUrl},
+  //     // });
+  //       'manage_stock': true,
+  //       'stock_quantity':
+  //       int.tryParse(variant['stock']?.toString() ?? '0') ?? 0,
+  //       if (variantImageUrl != null) 'image': {'src': variantImageUrl},
+  //     });
+  //
+  //     // variationsPayload.add({
+  //     //   'attributes': attrs,
+  //     //   'regular_price': (variant['regularPrice']?.toString() ?? '0').trim(),
+  //     //   'sale_price': (variant['salePrice']?.toString() ?? '').trim(),
+  //     // //   'stock_quantity': int.tryParse(variant['stock']?.toString() ?? '0') ??
+  //     // //       0,
+  //     // //   if (variantImageUrl != null) 'image': {'src': variantImageUrl},
+  //     // // });
+  //     //   'manage_stock': true,
+  //     //   'stock_quantity':
+  //     //   int.tryParse(variant['stock']?.toString() ?? '0') ?? 0,
+  //     //   if (variantImageUrl != null) 'image': {'src': variantImageUrl},
+  //     // });
+  //   }
+  //
+  //   // 4. Add variations payload to meta (you can rename key if backend expects different name)
+  //   metaData.add({
+  //     'key': '_pos_variations_payload',
+  //     'value': variationsPayload,
+  //   });
+  //
+  //   // Optional: keep debug version too
+  //   metaData.add({
+  //     'key': '_pos_variations_payload_debug',
+  //     'value': variationsPayload,
+  //   });
+  //
+  //   return AddProductInventoryTaxEntity(
+  //     id: 0,
+  //     name: _nameController.text.trim(),
+  //     type: 'variable',
+  //     sku: _skuController.text
+  //         .trim()
+  //         .isNotEmpty
+  //         ? _skuController.text.trim()
+  //         : 'SKU${DateTime
+  //         .now()
+  //         .millisecondsSinceEpoch}',
+  //     regularPrice: '',
+  //     salePrice: '',
+  //     categories: categories,
+  //     tags: tags,
+  //     images: images,
+  //     metaData: metaData,
+  //     attributes: productAttributes,
+  //     manageStock: false, // 🔥 FIX
+  //     stockQuantity: 0,
+  //     taxStatus: _selectedTax != null ? 'taxable' : 'none',
+  //     taxClass: _selectedTax?.taxClass ?? 'standard',
+  //   );
+  // }
+
+  // ──────────────────────────────────────────────────────────────
+  // The rest of your code remains unchanged
+  // ( _printFormData, _saveProduct, _clearForm, build, _buildTabButton, etc.)
+  // ──────────────────────────────────────────────────────────────
+
+  // Future<AddProductInventoryTaxEntity?> _buildProductEntity() async {
+  //   final validationError = _validateForm();
+  //   if (validationError != null) return null;
+  //
+  //   // ── Main product image ────────────────────────────────────────
+  //   String mainImageUrl = 'https://merchantretail.alektasolutions.com/wp-content/uploads/2025/12/biryani-removebg-preview-1.png';
+  //
+  //   if (_imageFile != null) {
+  //     final uploadedUrl = await _uploadImageForProduct(
+  //       _imageFile!,
+  //       customFileName: 'product-${DateTime.now().millisecondsSinceEpoch}.jpg',
+  //     );
+  //     if (uploadedUrl != null) {
+  //       mainImageUrl = uploadedUrl;
+  //     }
+  //   }
+  //
+  //   // ── Categories & Tags ─────────────────────────────────────────
+  //   final List<Map<String, dynamic>> categories = _selectedCategory != null
+  //       ? [{'id': _selectedCategory.id ?? 0}]
+  //       : [];
+  //
+  //   final List<Map<String, dynamic>> tags = [];
+  //   final Set<String> seenSlugs = {};
+  //   for (final tag in _selectedTags) {
+  //     final slug = (tag.slug ?? '').trim();
+  //     if (slug.isEmpty || seenSlugs.contains(slug)) continue;
+  //     seenSlugs.add(slug);
+  //     tags.add({
+  //       'id': tag.id ?? 0,
+  //       'name': tag.name?.trim() ?? slug,
+  //       'slug': slug,
+  //     });
+  //   }
+  //
+  //   // ── Images ────────────────────────────────────────────────────
+  //   final List<Map<String, dynamic>> images = [{'src': mainImageUrl}];
+  //
+  //   // ── Common meta ───────────────────────────────────────────────
+  //   final List<Map<String, dynamic>> metaData = [
+  //     {'key': 'custom_product', 'value': 'yes'},
+  //     {'key': 'product_created_by', 'value': '1'},
+  //     {'key': 'has_variable_price', 'value': _hasVariablePrice ? 'yes' : 'no'},
+  //   ];
+  //
+  //   // ── SIMPLE PRODUCT ────────────────────────────────────────────
+  //   if (_selectedProductType?.toLowerCase() != 'variable') {
+  //     return AddProductInventoryTaxEntity(
+  //       id: 0,
+  //       name: _nameController.text.trim(),
+  //       type: 'simple',
+  //       sku: _skuController.text.trim().isNotEmpty
+  //           ? _skuController.text.trim()
+  //           : 'SKU${DateTime.now().millisecondsSinceEpoch}',
+  //       regularPrice: _regularPriceController.text.trim(),
+  //       salePrice: _salePriceController.text.trim(),
+  //       categories: categories,
+  //       tags: tags,
+  //       images: images,
+  //       metaData: metaData,
+  //       attributes: const [],
+  //       manageStock: _manageStock,
+  //       stockQuantity: int.tryParse(_qtyController.text.trim()) ?? 0,
+  //       taxStatus: _selectedTax != null ? 'taxable' : 'none',
+  //       taxClass: _selectedTax?.taxClass ?? 'standard',
+  //     );
+  //   }
+  //
+  //   // ── VARIABLE PRODUCT ──────────────────────────────────────────
+  //   if (_variants.isEmpty) return null;
+  //
+  //   // 1. Collect all possible attribute → values
+  //   final Map<String, Set<String>> attributeOptionsMap = {};
+  //
+  //   for (final variant in _variants) {
+  //     // Predefined attribute
+  //     if (variant['attribute'] != null && variant['attributeItem'] != null) {
+  //       final slug = (variant['attribute']['slug'] as String?)?.trim() ?? '';
+  //       final value = (variant['attributeItem']['slug'] as String?)?.trim() ??
+  //           (variant['attributeItem']['name'] as String?)?.trim() ?? '';
+  //
+  //       if (slug.isNotEmpty && value.isNotEmpty) {
+  //         attributeOptionsMap.putIfAbsent(slug, () => {}).add(value);
+  //       }
+  //     }
+  //   }
+  //
+  //   // 2. Build WooCommerce product.attributes format
+  //   final List<Map<String, dynamic>> productAttributes = attributeOptionsMap
+  //       .entries.map((entry) {
+  //     final slug = entry.key;
+  //     final cleanName = slug.replaceFirst('pa_', '').replaceAll('-', ' ');
+  //     final capitalized = cleanName.split(' ').map((w) =>
+  //     w.isNotEmpty ? w[0].toUpperCase() + w.substring(1) : '').join(' ');
+  //
+  //     return {
+  //       'id': 0,
+  //       'name': capitalized,
+  //       'slug': slug,
+  //       'position': 0,
+  //       'visible': true,
+  //       'variation': true,
+  //       'options': entry.value.toList(),
+  //     };
+  //   }).toList();
+  //
+  //   // 3. Build variations payload for meta data
+  //   final List<Map<String, dynamic>> variationsPayload = [];
+  //
+  //   for (final variant in _variants) {
+  //     final Map<String, dynamic> attrs = {};
+  //
+  //     // Predefined attribute
+  //     if (variant['attribute'] != null && variant['attributeItem'] != null) {
+  //       final slug = variant['attribute']['slug']?.toString().trim() ?? '';
+  //       final value = variant['attributeItem']['slug']?.toString().trim() ??
+  //           variant['attributeItem']['name']?.toString().trim() ?? '';
+  //
+  //       if (slug.isNotEmpty && value.isNotEmpty) {
+  //         attrs[slug] = value;
+  //       }
+  //     }
+  //
+  //     // Clean up price values
+  //     String cleanRegularPrice = (variant['regularPrice']?.toString() ?? '0')
+  //         .replaceAll(RegExp(r'[^0-9.]'), '');
+  //     String cleanSalePrice = (variant['salePrice']?.toString() ?? '')
+  //         .replaceAll(RegExp(r'[^0-9.]'), '');
+  //
+  //     double regularPrice = double.tryParse(cleanRegularPrice) ?? 0.0;
+  //     double? salePrice = double.tryParse(cleanSalePrice);
+  //
+  //     String? variantImageUrl;
+  //     if (variant['imageFile'] != null && variant['imageFile'] is File) {
+  //       try {
+  //         variantImageUrl = await _uploadImageForProduct(
+  //           variant['imageFile'] as File,
+  //           customFileName: 'variant-${DateTime.now().millisecondsSinceEpoch}.jpg',
+  //         );
+  //       } catch (e) {
+  //         print("Variant image upload failed: $e");
+  //       }
+  //     }
+  //
+  //     // Build variation object for meta data
+  //     Map<String, dynamic> variation = {
+  //       'attributes': attrs,
+  //       'regular_price': regularPrice.toStringAsFixed(2),
+  //       'manage_stock': true,
+  //       'stock_quantity': int.tryParse(variant['stock']?.toString() ?? '0') ?? 0,
+  //     };
+  //
+  //     // Add sale price if it exists and is valid
+  //     if (salePrice != null && salePrice > 0) {
+  //       variation['sale_price'] = salePrice.toStringAsFixed(2);
+  //     }
+  //
+  //     // Add image if uploaded
+  //     if (variantImageUrl != null && variantImageUrl.isNotEmpty) {
+  //       variation['image'] = {'src': variantImageUrl};
+  //     }
+  //
+  //     variationsPayload.add(variation);
+  //   }
+  //
+  //   // 4. Add variations payload to meta data
+  //   metaData.add({
+  //     'key': '_pos_variations_payload',
+  //     'value': variationsPayload,
+  //   });
+  //
+  //   // Debug version
+  //   metaData.add({
+  //     'key': '_pos_variations_payload_debug',
+  //     'value': variationsPayload,
+  //   });
+  //
+  //   // 5. Create the variable product entity
+  //   return AddProductInventoryTaxEntity(
+  //     id: 0,
+  //     name: _nameController.text.trim(),
+  //     type: 'variable',
+  //     sku: _skuController.text.trim().isNotEmpty
+  //         ? _skuController.text.trim()
+  //         : 'SKU${DateTime.now().millisecondsSinceEpoch}',
+  //     regularPrice: '', // Empty for variable products
+  //     salePrice: '', // Empty for variable products
+  //     categories: categories,
+  //     tags: tags,
+  //     images: images,
+  //     metaData: metaData,
+  //     attributes: productAttributes,
+  //     manageStock: false, // Stock managed at variation level
+  //     stockQuantity: 0, // Stock managed at variation level
+  //     taxStatus: _selectedTax != null ? 'taxable' : 'none',
+  //     taxClass: _selectedTax?.taxClass ?? 'standard',
+  //   );
+  // }
+
 
   Future<AddProductInventoryTaxEntity?> _buildProductEntity() async {
     final validationError = _validateForm();
     if (validationError != null) return null;
 
     // ── Main product image ────────────────────────────────────────
-    String mainImageUrl = 'https://merchantretail.alektasolutions.com/wp-content/uploads/2025/12/biryani-removebg-preview-1.png';
+    String mainImageUrl =
+        'https://merchantretail.alektasolutions.com/wp-content/uploads/2025/12/biryani-removebg-preview-1.png';
 
     if (_imageFile != null) {
       final uploadedUrl = await _uploadImageForProduct(
         _imageFile!,
         customFileName: 'product-${DateTime.now().millisecondsSinceEpoch}.jpg',
-
       );
       if (uploadedUrl != null) {
         mainImageUrl = uploadedUrl;
@@ -271,16 +729,16 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         print('║               UPLOAD SUCCESS                  ║');
         print('╚═══════════════════════════════════════════════');
         print('URL: $mainImageUrl');
-
       } else {
-        // Optional: show snackbar or log
         print('Main image upload failed → using fallback');
       }
     }
 
     // ── Categories & Tags ─────────────────────────────────────────
     final List<Map<String, dynamic>> categories = _selectedCategory != null
-        ? [{'id': _selectedCategory.id ?? 0}]
+        ? [
+      {'id': _selectedCategory.id ?? 0}
+    ]
         : [];
 
     final List<Map<String, dynamic>> tags = [];
@@ -297,7 +755,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     }
 
     // ── Images ────────────────────────────────────────────────────
-    final List<Map<String, dynamic>> images = [{'src': mainImageUrl}];
+    final List<Map<String, dynamic>> images = [
+      {'src': mainImageUrl}
+    ];
 
     // ── Common meta ───────────────────────────────────────────────
     final List<Map<String, dynamic>> metaData = [
@@ -308,6 +768,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
 
     // ── SIMPLE PRODUCT ────────────────────────────────────────────
     if (_selectedProductType?.toLowerCase() != 'variable') {
+      // Clean stock value
+      final stockQty = int.tryParse(_qtyController.text.trim()) ?? 0;
+
       return AddProductInventoryTaxEntity(
         id: 0,
         name: _nameController.text.trim(),
@@ -322,8 +785,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         images: images,
         metaData: metaData,
         attributes: const [],
-        manageStock: _manageStock,
-        stockQuantity: int.tryParse(_qtyController.text.trim()) ?? 0,
+        manageStock: true, // Important for simple products
+        stockQuantity: stockQty, // Stock from main field
         taxStatus: _selectedTax != null ? 'taxable' : 'none',
         taxClass: _selectedTax?.taxClass ?? 'standard',
       );
@@ -332,7 +795,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     // ── VARIABLE PRODUCT ──────────────────────────────────────────
     if (_variants.isEmpty) return null;
 
-    // 1. Collect all possible attribute → values
+    // 1. Collect all possible attribute → values (for product.attributes)
     final Map<String, Set<String>> attributeOptionsMap = {};
 
     for (final variant in _variants) {
@@ -348,22 +811,29 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         }
       }
 
-      // Custom attributes (if you still use them)
+      // Multiple attributes (new format)
       if (variant['attributes'] is List) {
         for (final attr in variant['attributes'] as List) {
-          final name = (attr['name'] as String?)?.trim() ?? '';
-          if (name.isEmpty) continue;
-          final slug = 'pa_${name.toLowerCase().replaceAll(' ', '-')}';
-          attributeOptionsMap.putIfAbsent(slug, () => {}).add(name);
+          final name = (attr['attribute']?['name'] as String?)?.trim() ?? '';
+          final slugValue = (attr['selectedSlug'] as String?)?.trim() ?? '';
+          if (name.isNotEmpty && slugValue.isNotEmpty) {
+            final slug = 'pa_${name.toLowerCase().replaceAll(' ', '-')}';
+            attributeOptionsMap.putIfAbsent(slug, () => {}).add(slugValue);
+          }
         }
       }
     }
 
     // 2. Build WooCommerce product.attributes format
-    final List<Map<String, dynamic>> productAttributes = attributeOptionsMap.entries.map((entry) {
+    final List<Map<String, dynamic>> productAttributes =
+    attributeOptionsMap.entries.map((entry) {
       final slug = entry.key;
-      final cleanName = slug.replaceFirst('pa_', '').replaceAll('-', ' ');
-      final capitalized = cleanName.split(' ').map((w) => w.isNotEmpty ? w[0].toUpperCase() + w.substring(1) : '').join(' ');
+      final cleanName =
+      slug.replaceFirst('pa_', '').replaceAll('-', ' ');
+      final capitalized = cleanName
+          .split(' ')
+          .map((w) => w.isNotEmpty ? w[0].toUpperCase() + w.substring(1) : '')
+          .join(' ');
 
       return {
         'id': 0,
@@ -375,77 +845,89 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
       };
     }).toList();
 
-    // 3. Build variations payload (the most important part)
+    // 3. Build variations payload (each with its own stock)
     final List<Map<String, dynamic>> variationsPayload = [];
 
     for (final variant in _variants) {
       final Map<String, dynamic> attrs = {};
 
-      // Predefined attribute
-      if (variant['attribute'] != null && variant['attributeItem'] != null) {
+      // Handle multiple attributes
+      if (variant['attributes'] is List) {
+        for (final attr in variant['attributes'] as List) {
+          final attrSlug = (attr['attribute']?['slug'] as String?)?.trim() ?? '';
+          final valueSlug = (attr['selectedSlug'] as String?)?.trim() ?? '';
+          if (attrSlug.isNotEmpty && valueSlug.isNotEmpty) {
+            attrs[attrSlug] = valueSlug;
+          }
+        }
+      }
+      // Fallback for old single attribute format
+      else if (variant['attribute'] != null && variant['attributeItem'] != null) {
         final slug = variant['attribute']['slug']?.toString().trim() ?? '';
         final value = variant['attributeItem']['slug']?.toString().trim() ??
             variant['attributeItem']['name']?.toString().trim() ??
             '';
-
         if (slug.isNotEmpty && value.isNotEmpty) {
           attrs[slug] = value;
         }
       }
 
-      // Custom attributes (if any)
-      if (variant['attributes'] is List) {
-        for (final attr in variant['attributes'] as List) {
-          final name = attr['name']?.toString().trim() ?? '';
-          if (name.isNotEmpty) {
-            final slug = 'pa_${name.toLowerCase().replaceAll(' ', '-')}';
-            attrs[slug] = name;
-          }
-        }
+      // Clean prices
+      String cleanRegular = (variant['regularPrice']?.toString() ?? '0')
+          .replaceAll(RegExp(r'[^0-9.]'), '');
+      String cleanSale = (variant['salePrice']?.toString() ?? '')
+          .replaceAll(RegExp(r'[^0-9.]'), '');
+
+      double regPrice = double.tryParse(cleanRegular) ?? 0.0;
+      double? salePrice = double.tryParse(cleanSale);
+
+      // Stock – must be integer
+      int stockQty = int.tryParse(variant['stock']?.toString() ?? '0') ?? 0;
+
+      // Variation payload
+      Map<String, dynamic> variation = {
+        'attributes': attrs,
+        'regular_price': regPrice.toStringAsFixed(2),
+        'manage_stock': true,
+        'stock_quantity': stockQty, // Per variant stock!
+      };
+
+      if (salePrice != null && salePrice > 0) {
+        variation['sale_price'] = salePrice.toStringAsFixed(2);
       }
 
+      // Add image if exists
       String? variantImageUrl;
-
       if (variant['imageFile'] != null && variant['imageFile'] is File) {
         try {
           variantImageUrl = await _uploadImageForProduct(
             variant['imageFile'] as File,
             customFileName: 'variant-${DateTime.now().millisecondsSinceEpoch}.jpg',
           );
+          if (variantImageUrl != null) {
+            variation['image'] = {'src': variantImageUrl};
+          }
         } catch (e) {
           print("Variant image upload failed: $e");
         }
       }
 
-      variationsPayload.add({
-        'attributes': attrs,
-        'regular_price': (variant['regularPrice']?.toString() ?? '0').trim(),
-        'sale_price': (variant['salePrice']?.toString() ?? '').trim(),
-        'stock_quantity': int.tryParse(variant['stock']?.toString() ?? '0') ?? 0,
-        if (variantImageUrl != null) 'image': {'src': variantImageUrl},
-      });
-
-      variationsPayload.add({
-        'attributes': attrs,
-        'regular_price': (variant['regularPrice']?.toString() ?? '0').trim(),
-        'sale_price': (variant['salePrice']?.toString() ?? '').trim(),
-        'stock_quantity': int.tryParse(variant['stock']?.toString() ?? '0') ?? 0,
-        if (variantImageUrl != null) 'image': {'src': variantImageUrl},
-      });
+      variationsPayload.add(variation);
     }
 
-    // 4. Add variations payload to meta (you can rename key if backend expects different name)
+    // 4. Add variations to meta
     metaData.add({
       'key': '_pos_variations_payload',
       'value': variationsPayload,
     });
 
-    // Optional: keep debug version too
+    // Optional debug copy
     metaData.add({
       'key': '_pos_variations_payload_debug',
       'value': variationsPayload,
     });
 
+    // 5. Return variable product entity
     return AddProductInventoryTaxEntity(
       id: 0,
       name: _nameController.text.trim(),
@@ -453,24 +935,19 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
       sku: _skuController.text.trim().isNotEmpty
           ? _skuController.text.trim()
           : 'SKU${DateTime.now().millisecondsSinceEpoch}',
-      regularPrice: '',
-      salePrice: '',
+      regularPrice: '', // empty for variable
+      salePrice: '', // empty for variable
       categories: categories,
       tags: tags,
       images: images,
       metaData: metaData,
       attributes: productAttributes,
-      manageStock: _manageStock,
-      stockQuantity: 0,
+      manageStock: false, // Stock managed per variation
+      stockQuantity: 0, // Stock managed per variation
       taxStatus: _selectedTax != null ? 'taxable' : 'none',
       taxClass: _selectedTax?.taxClass ?? 'standard',
     );
   }
-
-  // ──────────────────────────────────────────────────────────────
-  // The rest of your code remains unchanged
-  // ( _printFormData, _saveProduct, _clearForm, build, _buildTabButton, etc.)
-  // ──────────────────────────────────────────────────────────────
 
   void _printFormData() {
     print('=== FORM DATA ===');
@@ -483,7 +960,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     print('Stock Quantity: ${_qtyController.text}');
 
     if (_selectedCategory != null) {
-      print('Category: ${_selectedCategory.name} (ID: ${_selectedCategory.id})');
+      print(
+          'Category: ${_selectedCategory.name} (ID: ${_selectedCategory.id})');
     }
 
     if (_selectedTax != null) {
@@ -512,7 +990,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         print('  Sale Price: ${v['salePrice'] ?? '—'}');
 
         if (v['attribute'] != null) {
-          print('  Attribute: ${v['attribute']['name']} (Slug: ${v['attribute']['slug']})');
+          print(
+              '  Attribute: ${v['attribute']['name']} (Slug: ${v['attribute']['slug']})');
         }
         if (v['attributeItem'] != null) {
           final item = v['attributeItem'];
@@ -528,6 +1007,19 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     _fieldErrors.clear();
     setState(() => _isSaving = true);
 
+    final product = await _buildProductEntity();
+    if (product == null) {
+      print('✗ Failed to build product entity');
+      return;
+    }
+
+    // DEBUG: Print the full JSON being sent
+    print('=== FULL PRODUCT JSON ===');
+    print(jsonEncode(product.toJson()));
+    print('=== END FULL PRODUCT JSON ===');
+
+    //_addProductBloc.add(AddProductInventoryTaxSubmitEvent(product: product));
+
     try {
       print('╔═══════════════════════════════════════════════');
       print('║          STARTING PRODUCT SAVE PROCESS        ║');
@@ -540,7 +1032,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         print('✗ Validation failed: $validationError');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(validationError), backgroundColor: Colors.orange),
+            SnackBar(
+                content: Text(validationError), backgroundColor: Colors.orange),
           );
         }
         return;
@@ -551,7 +1044,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         print('✗ Failed to build product entity');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to prepare product data'), backgroundColor: Colors.red),
+            const SnackBar(content: Text('Failed to prepare product data'),
+                backgroundColor: Colors.red),
           );
         }
         return;
@@ -562,7 +1056,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Saving product...'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Saving product...'),
+              backgroundColor: Colors.green),
         );
       }
     } catch (e, st) {
@@ -588,29 +1083,38 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     _variantNameController.clear();
     _stockController.clear();
 
-    _fieldErrors.clear();
-
     setState(() {
       _imageFile = null;
       _imageBytes = null;
+
       _selectedProductType = null;
       _selectedCategory = null;
       _selectedTax = null;
       _selectedTags.clear();
+
       _hasVariablePrice = false;
+      _manageStock = true;
+      _priceType = 'Fixed Price';
+
       _variants.clear();
+      _variantAttributes = [
+        {'attribute': null, 'attributeItem': null, 'selectedSlug': null}
+      ];
+
       _currentVariantName = '';
       _currentStock = '';
       _currentRegularPrice = '';
       _currentSalePrice = '';
       _currentImageFile = null;
-      _currentAttributes = [{'id': '1', 'unit': 'units', 'name': ''}];
+      _currentVariantIndex = -1;
       _currentVariantAttribute = null;
       _currentVariantAttributeItem = null;
       _selectedItemSlug = null;
-      _currentVariantIndex = -1;
-      _updateAttributeControllers();
+
+      _fieldErrors.clear();
     });
+
+    _updateAttributeControllers();
   }
 
   Widget _buildTabButton(String text, int index, ThemeNotifier themeHelper) {
@@ -1047,7 +1551,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         TextFormField(
           controller: _qtyController,
           keyboardType: TextInputType.number,
-          enabled: !_hasVariablePrice,
+          // enabled: !_hasVariablePrice,
           decoration: InputDecoration(
             hintText: 'Enter quantity',
             border: OutlineInputBorder(
@@ -1060,6 +1564,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
           ),
           style: TextStyle(color: isDark ? Colors.white : Colors.black87),
         ),
+
         SizedBox(height: 16),
         SizedBox(height: 8),
         InventoryTagMultiSelectWidget(
@@ -1078,23 +1583,22 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   }
 
   Widget _buildDesktopLayout(bool isDark) {
+    final screenHeight = MediaQuery
+        .of(context)
+        .size
+        .height;
+    final cardHeight = screenHeight * 0.80; // Adjust this value as needed
+
     return ConstrainedBox(
-      constraints: BoxConstraints(
-        minHeight: MediaQuery
-            .of(context)
-            .size
-            .height * 0.7,
-      ),
+      constraints: BoxConstraints(minHeight: cardHeight),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Basic Information Card
           Expanded(
             flex: 3,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: 470,
-              ),
+            child: Container(
+              height: cardHeight,
               child: Card(
                 color: Theme
                     .of(context)
@@ -1104,33 +1608,32 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                   borderRadius: BorderRadius.circular(12),
                 ),
                 margin: EdgeInsets.zero,
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF89B1EE) : const Color(
-                              0xFFF5F7FA),
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(12),
-                            topRight: Radius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          'Basic Information',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF89B1EE) : const Color(
+                            0xFFF5F7FA),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(12),
+                          topRight: Radius.circular(12),
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.all(12),
+                      child: Text(
+                        'Basic Information',
+                        style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 20, right: 20),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1143,59 +1646,87 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                 color: isDark ? Colors.white70 : Colors.black87,
                               ),
                             ),
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 4),
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 GestureDetector(
                                   onTap: _pickImage,
-                                  child: Container(
-                                    width: 90,
-                                    height: 90,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: isDark
-                                            ? const Color(0xFF3B4259)
-                                            : const Color(0xFFE0E0E0),
-                                        width: 2,
-                                      ),
-                                      color: isDark
-                                          ? const Color(0xFF252837)
-                                          : Colors.white,
-                                      image: _imageFile != null
-                                          ? DecorationImage(
-                                        image: FileImage(_imageFile!),
-                                        fit: BoxFit.cover,
-                                      )
-                                          : null,
-                                    ),
-                                    child: _imageFile == null
-                                        ? Column(
-                                      mainAxisAlignment: MainAxisAlignment
-                                          .center,
-                                      children: [
-                                        const Icon(
-                                          Icons.image_outlined,
-                                          size: 36,
-                                          color: Color(0xFF2196F3),
+                                  child: Stack(
+                                    children: [
+                                      Container(
+                                        width: 90,
+                                        height: 90,
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                              8),
+                                          border: Border.all(
+                                            color: isDark ? const Color(
+                                                0xFF3B4259) : const Color(
+                                                0xFFE0E0E0),
+                                            width: 2,
+                                          ),
+                                          color: isDark ? const Color(
+                                              0xFF252837) : Colors.white,
+                                          image: _imageFile != null
+                                              ? DecorationImage(
+                                            image: FileImage(_imageFile!),
+                                            fit: BoxFit.cover,
+                                          )
+                                              : null,
                                         ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          'Upload Image',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: isDark
-                                                ? Colors.white70
-                                                : Colors.black54,
+                                        child: _imageFile == null
+                                            ? Column(
+                                          mainAxisAlignment: MainAxisAlignment
+                                              .center,
+                                          children: [
+                                            const Icon(
+                                              Icons.image_outlined,
+                                              size: 36,
+                                              color: Color(0xFF2196F3),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'Upload Image',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: isDark
+                                                    ? Colors.white70
+                                                    : Colors.black54,
+                                              ),
+                                            ),
+                                          ],
+                                        )
+                                            : null,
+                                      ),
+                                      if (_imageFile != null)
+                                        Positioned(
+                                          top: 4,
+                                          right: 4,
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              setState(() {
+                                                _imageFile = null;
+                                              });
+                                            },
+                                            child: Container(
+                                              decoration: const BoxDecoration(
+                                                color: Colors.black54,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              padding: const EdgeInsets.all(4),
+                                              child: const Icon(
+                                                Icons.close,
+                                                size: 14,
+                                                color: Colors.white,
+                                              ),
+                                            ),
                                           ),
                                         ),
-                                      ],
-                                    )
-                                        : null,
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(width: 16),
+                                const SizedBox(width: 6),
                                 Expanded(
                                   child: Padding(
                                     padding: const EdgeInsets.all(16.0),
@@ -1298,8 +1829,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     child: InkWell(
                                       onTap: () {
                                         setState(() {
-                                          _skuController.text =
-                                          'SKU${DateTime
+                                          _skuController.text = 'SKU${DateTime
                                               .now()
                                               .millisecondsSinceEpoch}';
                                         });
@@ -1358,6 +1888,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                             ),
                             const SizedBox(height: 4),
                             InventoryCategoriesDropdown(
+                              // key: ValueKey('category_${_selectedCategory?.id ?? 'none'}'),
                               onCategorySelected: (category) {
                                 setState(() {
                                   _selectedCategory = category;
@@ -1383,11 +1914,12 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                 });
                               },
                             ),
+                            const SizedBox(height: 20),
                           ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1395,305 +1927,62 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
 
           SizedBox(width: 16),
 
-          // Expanded(
-          //   flex: 3,
-          //   child: ConstrainedBox(
-          //     constraints: BoxConstraints(
-          //       minHeight: 480,
-          //     ),
-          //     child: Material(
-          //       color: isDark ? const Color(0xFF1E1E2D) : Colors.white,
-          //       elevation: 2,
-          //       borderRadius: BorderRadius.circular(12),
-          //       child: SingleChildScrollView(
-          //         child: Column(
-          //           crossAxisAlignment: CrossAxisAlignment.start,
-          //           children: [
-          //             Container(
-          //               width: double.infinity,
-          //               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          //               decoration: BoxDecoration(
-          //                 color: isDark ? const Color(0xFFDAC14A) : const Color(0xFFFFFBF0),
-          //                 borderRadius: const BorderRadius.only(
-          //                   topLeft: Radius.circular(12),
-          //                   topRight: Radius.circular(12),
-          //                 ),
-          //               ),
-          //               child: Text(
-          //                 'Pricing & Tax',
-          //                 style: TextStyle(
-          //                   fontSize: 19,
-          //                   fontWeight: FontWeight.w600,
-          //                   color: isDark ? Colors.white : Colors.black87,
-          //                 ),
-          //               ),
-          //             ),
-          //             Padding(
-          //               padding: const EdgeInsets.all(12),
-          //               child: Column(
-          //                 crossAxisAlignment: CrossAxisAlignment.start,
-          //                 children: [
-          //                   // Helper boolean to disable price/stock fields
-          //                   Builder(builder: (_) {
-          //                     final bool isPriceStockDisabled =
-          //                         _hasVariablePrice || _selectedProductType == 'variable';
-          //
-          //                     return Column(
-          //                       children: [
-          //                         Row(
-          //                           children: [
-          //                             // Regular Price
-          //                             Expanded(
-          //                               child: Column(
-          //                                 crossAxisAlignment: CrossAxisAlignment.start,
-          //                                 children: [
-          //                                   Text(
-          //                                     'Regular Price',
-          //                                     style: TextStyle(
-          //                                       fontSize: 15,
-          //                                       fontWeight: FontWeight.w500,
-          //                                       color: isDark ? Colors.white70 : Colors.black87,
-          //                                     ),
-          //                                   ),
-          //                                   const SizedBox(height: 2),
-          //                                   TextFormField(
-          //                                     controller: _regularPriceController,
-          //                                     enabled: !isPriceStockDisabled,
-          //                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          //                                     style: TextStyle(
-          //                                       color: isPriceStockDisabled
-          //                                           ? (isDark ? Colors.white38 : Colors.black38)
-          //                                           : (isDark ? Colors.white : Colors.black87),
-          //                                     ),
-          //                                     decoration: const InputDecoration(
-          //                                       prefixText: '\$  ',
-          //                                       hintText: '00.00',
-          //                                       border: OutlineInputBorder(),
-          //                                       contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          //                                     ),
-          //                                   ),
-          //                                 ],
-          //                               ),
-          //                             ),
-          //                             const SizedBox(width: 16),
-          //                             // Sale Price
-          //                             Expanded(
-          //                               child: Column(
-          //                                 crossAxisAlignment: CrossAxisAlignment.start,
-          //                                 children: [
-          //                                   Text(
-          //                                     'Sale Price',
-          //                                     style: TextStyle(
-          //                                       fontSize: 15,
-          //                                       fontWeight: FontWeight.w500,
-          //                                       color: isDark ? Colors.white70 : Colors.black87,
-          //                                     ),
-          //                                   ),
-          //                                   const SizedBox(height: 2),
-          //                                   TextFormField(
-          //                                     controller: _salePriceController,
-          //                                     enabled: !isPriceStockDisabled,
-          //                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          //                                     style: TextStyle(
-          //                                       color: isPriceStockDisabled
-          //                                           ? (isDark ? Colors.white38 : Colors.black38)
-          //                                           : (isDark ? Colors.white : Colors.black87),
-          //                                     ),
-          //                                     decoration: const InputDecoration(
-          //                                       prefixText: '\$  ',
-          //                                       hintText: '00.00',
-          //                                       border: OutlineInputBorder(),
-          //                                       contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          //                                     ),
-          //                                   ),
-          //                                 ],
-          //                               ),
-          //                             ),
-          //                           ],
-          //                         ),
-          //                         const SizedBox(height: 4),
-          //                         // Variable Price Checkbox
-          //                         VariablePriceCheckboxWidget(
-          //                           value: _hasVariablePrice,
-          //                           isDark: isDark,
-          //                           name: 'Variable Price',
-          //                           slug: 'variable-price',
-          //                           onChanged: (checked) {
-          //                             setState(() {
-          //                               _hasVariablePrice = checked;
-          //
-          //                               // Clear price/quantity fields if variable price enabled
-          //                               if (checked) {
-          //                                 _regularPriceController.clear();
-          //                                 _salePriceController.clear();
-          //                                 _qtyController.clear();
-          //                               }
-          //
-          //                               const variablePriceSlug = 'variable-price';
-          //
-          //                               if (checked) {
-          //                                 // Add tag only if not already present
-          //                                 if (!_selectedTags.any((t) => t.slug == variablePriceSlug)) {
-          //                                   _selectedTags.add(
-          //                                     const Inventory_Tag_Entity(
-          //                                       id: 0, // local-only tag
-          //                                       name: 'Variable Price',
-          //                                       slug: variablePriceSlug,
-          //                                       description: '',
-          //                                       count: 0,
-          //                                     ),
-          //                                   );
-          //                                 }
-          //                               } else {
-          //                                 // Remove tag when unchecked
-          //                                 _selectedTags.removeWhere((t) => t.slug == variablePriceSlug);
-          //                               }
-          //                             });
-          //
-          //                             debugPrint(
-          //                               'Variable Price Tag -> ${_selectedTags.map((e) => e.slug).toList()}',
-          //                             );
-          //                           },
-          //                         ),
-          //                         const SizedBox(height: 4),
-          //                         // Tax
-          //                         Text(
-          //                           'Tax',
-          //
-          //                           style: TextStyle(
-          //                             fontSize: 15,
-          //
-          //                             fontWeight: FontWeight.w500,
-          //                             color: isDark ? Colors.white70 : Colors.black87,
-          //                           ),
-          //                         ),
-          //                         const SizedBox(height: 4),
-          //                         InventoryTaxDropdownWidget(
-          //                           onTaxSelected: (tax) {
-          //                             setState(() {
-          //                               _selectedTax = tax;
-          //                             });
-          //                           },
-          //                         ),
-          //                         const SizedBox(height: 4),
-          //                         // Stock
-          //                         Text(
-          //                           'Stock',
-          //                           style: TextStyle(
-          //                             fontSize: 15,
-          //                             fontWeight: FontWeight.w500,
-          //                             color: isDark ? Colors.white70 : Colors.black87,
-          //                           ),
-          //                         ),
-          //                         const SizedBox(height: 4),
-          //                         TextFormField(
-          //                           controller: _qtyController,
-          //                           enabled: !isPriceStockDisabled,
-          //                           keyboardType: TextInputType.number,
-          //                           style: TextStyle(
-          //                             color: isPriceStockDisabled
-          //                                 ? (isDark ? Colors.white38 : Colors.black38)
-          //                                 : (isDark ? Colors.white : Colors.black87),
-          //                           ),
-          //                           decoration: const InputDecoration(
-          //                             hintText: 'Enter quantity',
-          //                             border: OutlineInputBorder(),
-          //                             contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          //                           ),
-          //                         ),
-          //                         const SizedBox(height: 4),
-          //                         // Tags
-          //                         Text(
-          //                           'Tags',
-          //                           style: TextStyle(
-          //                             fontSize: 15,
-          //                             fontWeight: FontWeight.w500,
-          //                             color: isDark ? Colors.white70 : Colors.black87,
-          //                           ),
-          //                         ),
-          //                         const SizedBox(height: 4),
-          //                         InventoryTagMultiSelectWidget(
-          //                           onTypeSelected: (tag) {
-          //                             if (tag != null) {
-          //                               setState(() {
-          //                                 _selectedTags.add(tag);
-          //                               });
-          //                             }
-          //                           },
-          //                         ),
-          //                       ],
-          //                     );
-          //                   }),
-          //                 ],
-          //               ),
-          //             ),
-          //           ],
-          //         ),
-          //       ),
-          //     ),
-          //   ),
-          // ),
-
-          ////
-
+          // Pricing & Tax Card
           Expanded(
             flex: 3,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 480),
+            child: Container(
+              height: cardHeight,
               child: Material(
                 color: isDark ? const Color(0xFF1E1E2D) : Colors.white,
                 elevation: 2,
                 borderRadius: BorderRadius.circular(12),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // HEADER
-                      Container(
-                        width: double.infinity,
-                        padding:
-                        const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? const Color(0xFFDAC14A)
-                              : const Color(0xFFFFFBF0),
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(12),
-                            topRight: Radius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          'Pricing & Tax',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFFDAC14A) : const Color(
+                            0xFFFFFBF0),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(12),
+                          topRight: Radius.circular(12),
                         ),
                       ),
-
-                      Padding(
+                      child: Text(
+                        'Pricing & Tax',
+                        style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Padding(
                         padding: const EdgeInsets.all(12),
                         child: Builder(
                           builder: (_) {
-                            final bool isProductTypeVariable =
-                                _selectedProductType == 'variable';
-                            final bool isPriceStockDisabled =
-                                _hasVariablePrice || isProductTypeVariable;
-
-                            final Color disabledFill = Colors.grey.shade200;
-                            final Color disabledText = Colors.grey.shade500;
+                            final bool isProductTypeVariable = _selectedProductType ==
+                                'variable';
+                            final bool isPriceStockDisabled = _hasVariablePrice ||
+                                isProductTypeVariable;
+                            final bool isPriceStockDisabledStock = isProductTypeVariable;
+                            final Color disabledFill = isDark ? const Color(
+                                0xFF2A2D3E) : Colors.grey.shade200;
+                            final Color disabledText = isDark ? Colors.grey
+                                .shade500 : Colors.grey.shade500;
 
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // PRICES
                                 Row(
                                   children: [
-                                    // Regular Price
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment
+                                            .start,
                                         children: [
                                           Align(
                                             alignment: Alignment.centerLeft,
@@ -1714,9 +2003,30 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                           TextFormField(
                                             controller: _regularPriceController,
                                             enabled: !isPriceStockDisabled,
-                                            keyboardType:
-                                            const TextInputType.numberWithOptions(
-                                                decimal: true),
+                                            keyboardType: TextInputType.number,
+                                            textAlign: TextAlign.right,
+                                            inputFormatters: [
+                                              TextInputFormatter.withFunction((
+                                                  oldValue, newValue) {
+                                                final text = newValue.text
+                                                    .replaceAll(
+                                                    RegExp(r'[^0-9]'), '');
+                                                if (text.isEmpty) {
+                                                  return const TextEditingValue(
+                                                      text: '');
+                                                }
+                                                final value = int.parse(text) /
+                                                    100;
+                                                final newText = value
+                                                    .toStringAsFixed(2);
+                                                return TextEditingValue(
+                                                  text: newText,
+                                                  selection: TextSelection
+                                                      .collapsed(
+                                                      offset: newText.length),
+                                                );
+                                              }),
+                                            ],
                                             style: TextStyle(
                                               color: isPriceStockDisabled
                                                   ? disabledText
@@ -1726,29 +2036,27 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                             ),
                                             decoration: InputDecoration(
                                               prefixText: '\$  ',
-                                              hintText: '00.00',
+                                              hintText: '0.00',
                                               filled: true,
                                               fillColor: isPriceStockDisabled
                                                   ? disabledFill
                                                   : Colors.transparent,
-                                              border:
-                                              const OutlineInputBorder(),
-                                              contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 14,
-                                                  vertical: 14),
+                                              border: const OutlineInputBorder(),
+                                              contentPadding: const EdgeInsets
+                                                  .symmetric(
+                                                horizontal: 6,
+                                                vertical: 6,
+                                              ),
                                             ),
                                           ),
                                         ],
                                       ),
                                     ),
                                     const SizedBox(width: 16),
-
-                                    // Sale Price
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment
+                                            .start,
                                         children: [
                                           Align(
                                             alignment: Alignment.centerLeft,
@@ -1769,9 +2077,30 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                           TextFormField(
                                             controller: _salePriceController,
                                             enabled: !isPriceStockDisabled,
-                                            keyboardType:
-                                            const TextInputType.numberWithOptions(
-                                                decimal: true),
+                                            keyboardType: TextInputType.number,
+                                            textAlign: TextAlign.right,
+                                            inputFormatters: [
+                                              TextInputFormatter.withFunction((
+                                                  oldValue, newValue) {
+                                                final text = newValue.text
+                                                    .replaceAll(
+                                                    RegExp(r'[^0-9]'), '');
+                                                if (text.isEmpty) {
+                                                  return const TextEditingValue(
+                                                      text: '');
+                                                }
+                                                final value = int.parse(text) /
+                                                    100;
+                                                final newText = value
+                                                    .toStringAsFixed(2);
+                                                return TextEditingValue(
+                                                  text: newText,
+                                                  selection: TextSelection
+                                                      .collapsed(
+                                                      offset: newText.length),
+                                                );
+                                              }),
+                                            ],
                                             style: TextStyle(
                                               color: isPriceStockDisabled
                                                   ? disabledText
@@ -1781,17 +2110,17 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                             ),
                                             decoration: InputDecoration(
                                               prefixText: '\$  ',
-                                              hintText: '00.00',
+                                              hintText: '0.00',
                                               filled: true,
                                               fillColor: isPriceStockDisabled
                                                   ? disabledFill
                                                   : Colors.transparent,
-                                              border:
-                                              const OutlineInputBorder(),
-                                              contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 14,
-                                                  vertical: 14),
+                                              border: const OutlineInputBorder(),
+                                              contentPadding: const EdgeInsets
+                                                  .symmetric(
+                                                horizontal: 6,
+                                                vertical: 6,
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -1799,10 +2128,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     ),
                                   ],
                                 ),
-
                                 const SizedBox(height: 6),
-
-                                // VARIABLE PRICE CHECKBOX (DISABLED ONLY FOR VARIABLE TYPE)
                                 IgnorePointer(
                                   ignoring: isProductTypeVariable,
                                   child: Opacity(
@@ -1810,26 +2136,24 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     child: VariablePriceCheckboxWidget(
                                       value: _hasVariablePrice,
                                       isDark: isDark,
-                                      name: 'Variable Price',
-                                      slug: 'variable-price',
+                                      name: 'Variable Product',
+                                      slug: 'variable-product',
                                       onChanged: (checked) {
                                         setState(() {
                                           _hasVariablePrice = checked;
-
                                           if (checked) {
                                             _regularPriceController.clear();
                                             _salePriceController.clear();
                                             _qtyController.clear();
                                           }
-
-                                          const slug = 'variable-price';
+                                          const slug = 'variable-product';
                                           if (checked) {
-                                            if (!_selectedTags.any(
-                                                    (t) => t.slug == slug)) {
+                                            if (!_selectedTags.any((t) =>
+                                            t.slug == slug)) {
                                               _selectedTags.add(
                                                 const Inventory_Tag_Entity(
                                                   id: 0,
-                                                  name: 'Variable Price',
+                                                  name: 'Variable Product',
                                                   slug: slug,
                                                   description: '',
                                                   count: 0,
@@ -1837,18 +2161,15 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                               );
                                             }
                                           } else {
-                                            _selectedTags.removeWhere(
-                                                    (t) => t.slug == slug);
+                                            _selectedTags.removeWhere((t) =>
+                                            t.slug == slug);
                                           }
                                         });
                                       },
                                     ),
                                   ),
                                 ),
-
-                                const SizedBox(height: 8),
-
-                                // TAX (TEXT GRAY ONLY — DROPDOWN ENABLED)
+                                const SizedBox(height: 4),
                                 Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
@@ -1857,10 +2178,11 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                       fontSize: 15,
                                       fontWeight: FontWeight.w500,
                                       color: isProductTypeVariable
-                                          ? Colors.grey
-                                          : (isDark
-                                          ? Colors.white70
-                                          : Colors.black87),
+                                          ? (isDark
+                                          ? Colors.grey.shade300
+                                          : Colors.black87)
+                                          : (isDark ? Colors.white70 : Colors
+                                          .black87),
                                     ),
                                   ),
                                 ),
@@ -1870,10 +2192,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     setState(() => _selectedTax = tax);
                                   },
                                 ),
-
-                                const SizedBox(height: 8),
-
-                                // STOCK
+                                const SizedBox(height: 4),
                                 Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
@@ -1881,44 +2200,41 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     style: TextStyle(
                                       fontSize: 15,
                                       fontWeight: FontWeight.w500,
-                                      color: isPriceStockDisabled
-                                          ? Colors.grey
-                                          : (isDark
-                                          ? Colors.white70
-                                          : Colors.black87),
+                                      color: isPriceStockDisabledStock
+                                          ? (isDark
+                                          ? Colors.grey.shade500
+                                          : Colors.grey)
+                                          : (isDark ? Colors.white70 : Colors
+                                          .black87),
                                     ),
                                   ),
                                 ),
                                 const SizedBox(height: 4),
                                 TextFormField(
                                   controller: _qtyController,
-                                  enabled: !isPriceStockDisabled,
+                                  enabled: !isPriceStockDisabledStock,
                                   keyboardType: TextInputType.number,
                                   style: TextStyle(
-                                    color: isPriceStockDisabled
+                                    color: isPriceStockDisabledStock
                                         ? disabledText
-                                        : (isDark
-                                        ? Colors.white
-                                        : Colors.black87),
+                                        : (isDark ? Colors.white : Colors
+                                        .black87),
                                   ),
                                   decoration: InputDecoration(
                                     hintText: 'Enter quantity',
                                     filled: true,
-                                    fillColor: isPriceStockDisabled
+                                    fillColor: isPriceStockDisabledStock
                                         ? disabledFill
-                                        : Colors.transparent,
-                                    border:
-                                    const OutlineInputBorder(),
+                                        : (isDark
+                                        ? const Color(0xFF1E1E2D)
+                                        : Colors.white),
+                                    border: const OutlineInputBorder(),
                                     contentPadding:
                                     const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 14),
+                                        horizontal: 14, vertical: 14),
                                   ),
                                 ),
-
                                 const SizedBox(height: 8),
-
-                                // TAGS (TEXT GRAY ONLY)
                                 Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
@@ -1928,9 +2244,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                       fontWeight: FontWeight.w500,
                                       color: isProductTypeVariable
                                           ? Colors.grey
-                                          : (isDark
-                                          ? Colors.white70
-                                          : Colors.black87),
+                                          : (isDark ? Colors.white70 : Colors
+                                          .black87),
                                     ),
                                   ),
                                 ),
@@ -1942,13 +2257,14 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     }
                                   },
                                 ),
+                                const SizedBox(height: 5),
                               ],
                             );
                           },
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1958,23 +2274,56 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
 
           // Variants Card
           Expanded(
-            flex: 4,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: 600,
-              ),
+            flex: 5,
+            child: Container(
+              height: cardHeight,
               child: Container(
                 decoration: BoxDecoration(
                   color: isDark ? Color(0xFF1E3A5F) : Color(0xFFF0F7FF),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: isDark ? Color(0xFF2196F3) : Color(0xFFBBDEFB),
-                      width: 1),
                 ),
-                child: _buildVariantContent(isDark),
+                child: Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isDark ? Color(0xFF4180DD) : Color(0xFFF5F7FA),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(12),
+                          topRight: Radius.circular(12),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(
+                            "Variant's ",
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                          Text(
+                            '(${_variants.length} added)',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: isDark ? Colors.white70 : Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: _buildVariantContent(isDark),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
+
         ],
       ),
     );
@@ -2083,6 +2432,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
       ],
     );
   }
+
 
   Widget _buildPriceSection(bool isDark) {
     return Column(
@@ -2777,8 +3127,850 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //////////----impo
 
 
+//   Widget _buildVariantContent(bool isDark) {
+//     final bool isVariantsEnabled = (_selectedProductType ?? '').toLowerCase() == 'variable';
+//
+//     return SingleChildScrollView(
+//       child: Opacity(
+//         opacity: isVariantsEnabled ? 1.0 : 0.5,
+//         child: IgnorePointer(
+//           ignoring: !isVariantsEnabled,
+//           child: Column(
+//             crossAxisAlignment: CrossAxisAlignment.start,
+//             children: [
+//               // Header
+//               Padding(
+//                 padding: const EdgeInsets.only(left: 10, top: 10),
+//                 child: Row(
+//                   children: [
+//                     Text(
+//                       "Variant's ",
+//                       style: TextStyle(
+//                         fontSize: 16,
+//                         fontWeight: FontWeight.w600,
+//                         color: isDark ? Colors.white : Colors.black87,
+//                       ),
+//                     ),
+//                     Text(
+//                       isVariantsEnabled ? '(Optional)' : '(Only for Variable products)',
+//                       style: TextStyle(
+//                         fontSize: 12,
+//                         color: isVariantsEnabled ? Colors.grey.shade400 : Colors.grey.shade600,
+//                       ),
+//                     ),
+//                   ],
+//                 ),
+//               ),
+//               const SizedBox(height: 12),
+//
+//               // Warning when not variable
+//               if (!isVariantsEnabled) ...[
+//                 Container(
+//                   padding: const EdgeInsets.all(12),
+//                   decoration: BoxDecoration(
+//                     color: isDark ? Colors.red.withOpacity(0.12) : Colors.red.withOpacity(0.07),
+//                     borderRadius: BorderRadius.circular(8),
+//                     border: Border.all(color: Colors.red.withOpacity(0.3)),
+//                   ),
+//                   child: Row(
+//                     children: [
+//                       Icon(Icons.info_outline, color: Colors.red.shade400, size: 20),
+//                       const SizedBox(width: 12),
+//                       Expanded(
+//                         child: Text(
+//                           'Variants are only available when Product Type is "Variable"',
+//                           style: TextStyle(
+//                             color: isDark ? Colors.red.shade300 : Colors.red.shade700,
+//                             fontSize: 13,
+//                           ),
+//                         ),
+//                       ),
+//                     ],
+//                   ),
+//                 ),
+//                 const SizedBox(height: 16),
+//               ],
+//
+//               // Existing variants list
+//               if (_variants.isNotEmpty) ...[
+//                 ..._variants.asMap().entries.map((entry) {
+//                   int index = entry.key;
+//                   var variant = entry.value;
+//                   return Container(
+//                     margin: EdgeInsets.only(bottom: 12),
+//                     padding: EdgeInsets.all(12),
+//                     decoration: BoxDecoration(
+//                       color: isDark ? Color(0xFF1F1D2B) : Colors.white,
+//                       borderRadius: BorderRadius.circular(8),
+//                       border: Border.all(
+//                         color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
+//                       ),
+//                     ),
+//                     child: Row(
+//                       children: [
+//                         Container(
+//                           width: 32,
+//                           height: 32,
+//                           decoration: BoxDecoration(
+//                             color: Color(0xFF2196F3).withOpacity(0.1),
+//                             borderRadius: BorderRadius.circular(6),
+//                           ),
+//                           child: Center(
+//                             child: Text(
+//                               '${index + 1}',
+//                               style: TextStyle(
+//                                 fontSize: 14,
+//                                 fontWeight: FontWeight.w600,
+//                                 color: Color(0xFF2196F3),
+//                               ),
+//                             ),
+//                           ),
+//                         ),
+//                         SizedBox(width: 12),
+//                         Container(
+//                           width: 60,
+//                           height: 60,
+//                           decoration: BoxDecoration(
+//                             borderRadius: BorderRadius.circular(8),
+//                             color: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+//                             border: Border.all(
+//                               color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
+//                             ),
+//                           ),
+//                           child: variant['imageFile'] != null
+//                               ? ClipRRect(
+//                             borderRadius: BorderRadius.circular(8),
+//                             child: Image.file(
+//                               variant['imageFile'],
+//                               fit: BoxFit.cover,
+//                             ),
+//                           )
+//                               : Icon(
+//                             Icons.image_outlined,
+//                             size: 24,
+//                             color: Color(0xFF2196F3),
+//                           ),
+//                         ),
+//                         SizedBox(width: 16),
+//                         Expanded(
+//                           child: Column(
+//                             crossAxisAlignment: CrossAxisAlignment.start,
+//                             children: [
+//                               Row(
+//                                 children: [
+//                                   Expanded(
+//                                     child: Column(
+//                                       crossAxisAlignment: CrossAxisAlignment.start,
+//                                       children: [
+//                                         Text('Variant Name', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+//                                         SizedBox(height: 2),
+//                                         Text(
+//                                           variant['name'] ?? 'Unnamed',
+//                                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? Colors.white : Colors.black87),
+//                                           overflow: TextOverflow.ellipsis,
+//                                         ),
+//                                       ],
+//                                     ),
+//                                   ),
+//                                   SizedBox(width: 16),
+//                                   Column(
+//                                     crossAxisAlignment: CrossAxisAlignment.start,
+//                                     children: [
+//                                       Text('Stock', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+//                                       SizedBox(height: 2),
+//                                       Text(
+//                                         variant['stock'] ?? '0',
+//                                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? Colors.white : Colors.black87),
+//                                       ),
+//                                     ],
+//                                   ),
+//                                 ],
+//                               ),
+//                               SizedBox(height: 8),
+//                               Row(
+//                                 children: [
+//                                   Expanded(
+//                                     child: Column(
+//                                       crossAxisAlignment: CrossAxisAlignment.start,
+//                                       children: [
+//                                         Text('Regular Price', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+//                                         SizedBox(height: 2),
+//                                         // Text(
+//                                         //   '\$ ${variant['regularPrice'] ?? '0.00'}',
+//                                         //   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? Colors.white : Colors.black87),
+//
+//                                         Text(
+//                                           '\$ ${(() {
+//                                             final raw = variant['regularPrice'];
+//
+//                                             if (raw == null) return '0.00';
+//
+//                                             final digits = raw.toString().replaceAll(RegExp(r'[^0-9]'), '');
+//
+//                                             if (digits.isEmpty) return '0.00';
+//
+//                                             return (int.parse(digits) / 100).toStringAsFixed(2);
+//                                           })()}',
+//                                           style: TextStyle(
+//                                             fontSize: 13,
+//                                             fontWeight: FontWeight.w500,
+//                                             color: isDark ? Colors.white : Colors.black87,
+//                                           ),
+//                                         ),
+//
+//
+//
+//                                       ],
+//                                     ),
+//                                   ),
+//                                   SizedBox(width: 16),
+//                                   Expanded(
+//                                     child: Column(
+//                                       crossAxisAlignment: CrossAxisAlignment.start,
+//                                       children: [
+//                                         Text('Sale Price', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+//                                         SizedBox(height: 2),
+//                                         Text(
+//                                           '\$ ${variant['salePrice'] ?? '0.00'}',
+//                                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? Colors.white : Colors.black87),
+//                                         ),
+//                                       ],
+//                                     ),
+//                                   ),
+//                                 ],
+//                               ),
+//                               // Attributes display - Show all selected attributes
+//                               if (_getSelectedAttributesForDisplay(variant).isNotEmpty)
+//                                 Padding(
+//                                   padding: EdgeInsets.only(top: 8),
+//                                   child: Column(
+//                                     crossAxisAlignment: CrossAxisAlignment.start,
+//                                     children: [
+//                                       Text('Attributes:', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+//                                       ..._getSelectedAttributesForDisplay(variant).map((attrDisplay) {
+//                                         return Text(
+//                                           attrDisplay,
+//                                           style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black87),
+//                                         );
+//                                       }).toList(),
+//                                     ],
+//                                   ),
+//                                 ),
+//                             ],
+//                           ),
+//                         ),
+//                         SizedBox(width: 12),
+//                         Row(
+//                           children: [
+//                             InkWell(
+//                               onTap: () {
+//                                 setState(() {
+//                                   _currentVariantIndex = index;
+//                                   _currentVariantName = variant['name'] ?? '';
+//                                   _currentStock = variant['stock'] ?? '';
+//                                   _currentRegularPrice = variant['regularPrice'] ?? '';
+//                                   _currentSalePrice = variant['salePrice'] ?? '';
+//                                   _currentImageFile = variant['imageFile'];
+//
+//                                   // Load attributes for editing
+//                                   if (variant['attributes'] != null && (variant['attributes'] as List).isNotEmpty) {
+//                                     _variantAttributes = List<Map<String, dynamic>>.from(variant['attributes']);
+//                                   } else if (variant['attribute'] != null) {
+//                                     // Convert single attribute format to multiple for editing
+//                                     _variantAttributes = [{
+//                                       'attribute': variant['attribute'],
+//                                       'attributeItem': variant['attributeItem'],
+//                                       'selectedSlug': variant['attributeItem']?['slug'],
+//                                     }];
+//                                   } else {
+//                                     _variantAttributes = [{
+//                                       'attribute': null,
+//                                       'attributeItem': null,
+//                                       'selectedSlug': null,
+//                                     }];
+//                                   }
+//
+//                                   _variantNameController.text = _currentVariantName;
+//                                   _stockController.text = _currentStock;
+//                                   _regularPriceController.text = _currentRegularPrice;
+//                                   _salePriceController.text = _currentSalePrice;
+//                                 });
+//                               },
+//                               child: Container(
+//                                 padding: EdgeInsets.all(8),
+//                                 decoration: BoxDecoration(
+//                                   color: Color(0xFF2196F3).withOpacity(0.1),
+//                                   borderRadius: BorderRadius.circular(6),
+//                                 ),
+//                                 child: Icon(Icons.edit_outlined, size: 18, color: Color(0xFF2196F3)),
+//                               ),
+//                             ),
+//                             SizedBox(width: 8),
+//                             InkWell(
+//                               onTap: () {
+//                                 setState(() {
+//                                   _variants.removeAt(index);
+//                                 });
+//                               },
+//                               child: Container(
+//                                 padding: EdgeInsets.all(8),
+//                                 decoration: BoxDecoration(
+//                                   color: Color(0xFFEF5350).withOpacity(0.1),
+//                                   borderRadius: BorderRadius.circular(6),
+//                                 ),
+//                                 child: Icon(Icons.delete_outline, size: 18, color: Color(0xFFEF5350)),
+//                               ),
+//                             ),
+//                           ],
+//                         ),
+//                       ],
+//                     ),
+//                   );
+//                 }).toList(),
+//                 SizedBox(height: 12),
+//               ],
+//
+//               // Main ADD/EDIT FORM
+//               Container(
+//                 width: double.infinity,
+//                 padding: const EdgeInsets.all(16),
+//                 decoration: BoxDecoration(
+//                   color: isDark ? Color(0xFF1F1D2B) : Colors.white,
+//                   borderRadius: BorderRadius.circular(10),
+//                   border: Border.all(
+//                     color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
+//                   ),
+//                 ),
+//                 child: SingleChildScrollView(
+//                   child: Column(
+//                     crossAxisAlignment: CrossAxisAlignment.start,
+//                     children: [
+//                       // Image + Name/Stock/Price row
+//                       Row(
+//                         crossAxisAlignment: CrossAxisAlignment.start,
+//                         children: [
+//                           Column(
+//                             crossAxisAlignment: CrossAxisAlignment.start,
+//                             children: [
+//                               Text(
+//                                 'Variant Image',
+//                                 style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+//                               ),
+//                               SizedBox(height: 8),
+//                               InkWell(
+//                                 onTap: () async {
+//                                   final XFile? pickedFile = await _picker.pickImage(
+//                                     source: ImageSource.gallery,
+//                                     maxWidth: 200,
+//                                     maxHeight: 200,
+//                                     imageQuality: 85,
+//                                   );
+//                                   if (pickedFile != null) {
+//                                     setState(() {
+//                                       _currentImageFile = File(pickedFile.path);
+//                                     });
+//                                   }
+//                                 },
+//                                 child: Container(
+//                                   width: 100,
+//                                   height: 100,
+//                                   decoration: BoxDecoration(
+//                                     color: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+//                                     borderRadius: BorderRadius.circular(8),
+//                                     border: Border.all(color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0)),
+//                                   ),
+//                                   child: _currentImageFile != null
+//                                       ? ClipRRect(
+//                                     borderRadius: BorderRadius.circular(8),
+//                                     child: Image.file(_currentImageFile!, fit: BoxFit.cover),
+//                                   )
+//                                       : Column(
+//                                     mainAxisAlignment: MainAxisAlignment.center,
+//                                     children: [
+//                                       Icon(Icons.cloud_upload_outlined, size: 24, color: Color(0xFF2196F3)),
+//                                       SizedBox(height: 4),
+//                                       Text('Upload', style: TextStyle(fontSize: 11, color: Color(0xFF2196F3))),
+//                                     ],
+//                                   ),
+//                                 ),
+//                               ),
+//                             ],
+//                           ),
+//                           SizedBox(width: 16),
+//                           Expanded(
+//                             child: Column(
+//                               children: [
+//                                 Row(
+//                                   children: [
+//
+//                                     Expanded(
+//                                       child: Column(
+//                                         crossAxisAlignment: CrossAxisAlignment.start,
+//                                         children: [
+//                                           Text(
+//                                             'Variant Name',
+//                                             style: TextStyle(
+//                                               fontSize: 12,
+//                                               color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+//                                             ),
+//                                           ),
+//                                           SizedBox(height: 6),
+//                                           SizedBox(
+//                                             height: 36, // <-- make the TextField shorter
+//                                             child: TextField(
+//                                               controller: _variantNameController,
+//                                               onChanged: (value) => _currentVariantName = value,
+//                                               decoration: InputDecoration(
+//                                                 hintText: 'Enter name',
+//                                                 filled: true,
+//                                                 fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+//                                                 border: OutlineInputBorder(
+//                                                   borderRadius: BorderRadius.circular(6),
+//                                                 ),
+//                                                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 0), // reduce vertical padding
+//                                               ),
+//                                               style: TextStyle(fontSize: 14), // optional: adjust text size
+//                                             ),
+//                                           ),
+//                                         ],
+//                                       ),
+//                                     ),
+//
+//                                     SizedBox(width: 12),
+//
+//                                     SizedBox(
+//                                       width: 100,
+//                                       child: Column(
+//                                         crossAxisAlignment: CrossAxisAlignment.start,
+//                                         children: [
+//                                           Text(
+//                                             'Stock',
+//                                             style: TextStyle(
+//                                               fontSize: 12,
+//                                               color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+//                                             ),
+//                                           ),
+//                                           SizedBox(height: 6),
+//                                           SizedBox(
+//                                             height: 36, // <-- adjust the height to make it shorter
+//                                             child: TextField(
+//                                               controller: _stockController,
+//                                               onChanged: (value) => _currentStock = value,
+//                                               keyboardType: TextInputType.number,
+//                                               decoration: InputDecoration(
+//                                                 hintText: '0',
+//                                                 filled: true,
+//                                                 fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+//                                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+//                                                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 0), // smaller vertical padding
+//                                               ),
+//                                               style: TextStyle(fontSize: 14), // optional: make text slightly smaller
+//                                             ),
+//                                           ),
+//                                         ],
+//                                       ),
+//                                     ),
+//                                   ],
+//                                 ),
+//                                 SizedBox(height:4),
+//                                 Row(
+//                                   children: [
+//                                     Expanded(
+//                                       child: Column(
+//                                         crossAxisAlignment: CrossAxisAlignment.start,
+//                                         children: [
+//                                           Text(
+//                                             'Regular Price',
+//                                             style: TextStyle(
+//                                               fontSize: 12,
+//                                               color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+//                                             ),
+//                                           ),
+//                                           SizedBox(height: 6),
+//                                           SizedBox(
+//                                             height: 36, // <-- control overall height
+//                                             child: TextField(
+//                                               controller: _regularPriceController,
+//                                               onChanged: (value) => _currentRegularPrice = value,
+//                                               keyboardType: TextInputType.numberWithOptions(decimal: true),
+//                                               decoration: InputDecoration(
+//                                                 hintText: '\$ 0.00',
+//                                                 filled: true,
+//                                                 fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+//                                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+//                                                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 0), // reduced vertical padding
+//                                               ),
+//                                               style: TextStyle(fontSize: 14), // optional: slightly smaller text
+//                                             ),
+//                                           ),
+//                                         ],
+//                                       ),
+//                                     ),
+//
+//                                     SizedBox(width: 12),
+//                                     Expanded(
+//                                       child: Column(
+//                                         crossAxisAlignment: CrossAxisAlignment.start,
+//                                         children: [
+//                                           Text(
+//                                             'Sale Price',
+//                                             style: TextStyle(
+//                                               fontSize: 12,
+//                                               color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+//                                             ),
+//                                           ),
+//                                           SizedBox(height: 6),
+//                                           SizedBox(
+//                                             height: 36, // <-- make TextField shorter
+//                                             child: TextField(
+//                                               controller: _salePriceController,
+//                                               onChanged: (value) => _currentSalePrice = value,
+//                                               keyboardType: TextInputType.numberWithOptions(decimal: true),
+//                                               decoration: InputDecoration(
+//                                                 hintText: '\$ 0.00',
+//                                                 filled: true,
+//                                                 fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+//                                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+//                                                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 0), // smaller vertical padding
+//                                               ),
+//                                               style: TextStyle(fontSize: 14), // optional: slightly smaller text
+//                                             ),
+//                                           ),
+//                                         ],
+//                                       ),
+//                                     ),
+//
+//                                   ],
+//                                 ),
+//                               ],
+//                             ),
+//                           ),
+//                         ],
+//                       ),
+//
+//                       SizedBox(height:14),
+//
+//                       // Multiple Attributes Section with Add/Remove buttons
+//                       Column(
+//                         crossAxisAlignment: CrossAxisAlignment.start,
+//                         children: [
+//                           // Header for attributes
+//                           Row(
+//                             children: [
+//                               Text(
+//                                 'Attributes',
+//                                 style: TextStyle(
+//                                   fontSize: 14,
+//                                   fontWeight: FontWeight.w600,
+//                                   color: isDark ? Colors.white : Colors.black87,
+//                                 ),
+//                               ),
+//                               SizedBox(width: 8),
+//                               Text(
+//                                 '(Optional)',
+//                                 style: TextStyle(
+//                                   fontSize: 12,
+//                                   color: Colors.grey.shade500,
+//                                 ),
+//                               ),
+//                             ],
+//                           ),
+//                           SizedBox(height: 12),
+//
+//                           // Dynamic Attribute Rows
+//                           ..._variantAttributes.asMap().entries.map((entry) {
+//                             int index = entry.key;
+//                             var attrData = entry.value;
+//
+//                             return Padding(
+//                               padding: EdgeInsets.only(bottom: 12),
+//                               child: Row(
+//                                 crossAxisAlignment: CrossAxisAlignment.start,
+//                                 children: [
+//                                   // Attribute Column
+//                                   Expanded(
+//                                     flex: 2,
+//                                     child: Column(
+//                                       crossAxisAlignment: CrossAxisAlignment.start,
+//                                       children: [
+//                                         Text(
+//                                           'Attribute ${index + 1}',
+//                                           style: TextStyle(
+//                                             fontSize: 12,
+//                                             color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+//                                           ),
+//                                         ),
+//                                         SizedBox(height: 8),
+//                                         Container(
+//                                           child: InventoryAttributesWithItemsWidget(
+//                                             onAttributeSelected: (attribute) {
+//                                               setState(() {
+//                                                 _variantAttributes[index]['attribute'] = {
+//                                                   'id': attribute.id,
+//                                                   'name': attribute.name,
+//                                                   'slug': attribute.slug,
+//                                                 };
+//                                                 _variantAttributes[index]['attributeItem'] = null;
+//                                                 _variantAttributes[index]['selectedSlug'] = null;
+//                                               });
+//                                             },
+//                                             onItemSlugSelected: (attribute, slug) {
+//                                               setState(() {
+//                                                 _variantAttributes[index]['attributeItem'] = {'slug': slug};
+//                                                 _variantAttributes[index]['selectedSlug'] = slug;
+//                                               });
+//                                             },
+//                                           ),
+//                                         ),
+//                                       ],
+//                                     ),
+//                                   ),
+//
+//                                   SizedBox(width: 6),
+//
+//                                   // Selected Item Slug Column with Add/Remove buttons
+//                                   Expanded(
+//                                     flex: 1,
+//                                     child: Column(
+//                                       crossAxisAlignment: CrossAxisAlignment.start,
+//                                       children: [
+//                                         Text(
+//                                           'Selected Item Slug',
+//                                           style: TextStyle(
+//                                             fontSize: 12,
+//                                             color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+//                                           ),
+//                                         ),
+//                                         SizedBox(height: 8),
+//                                         Row(
+//                                           children: [
+//                                             Expanded(
+//                                               child: TextField(
+//                                                 controller: TextEditingController(
+//                                                     text: attrData['selectedSlug'] ?? ''
+//                                                 ),
+//                                                 enabled: false,
+//                                                 decoration: InputDecoration(
+//                                                   hintText: 'Auto-filled slug',
+//                                                   filled: true,
+//                                                   fillColor: isDark ? Color(0xFF1F1D2B) : Colors.white70,
+//                                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+//                                                   contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+//                                                 ),
+//                                                 style: TextStyle(
+//                                                   color: isDark ? Colors.white70 : Colors.black54,
+//                                                 ),
+//                                               ),
+//                                             ),
+//                                             SizedBox(width: 8),
+//                                             // Add Button (only on last row)
+//                                             if (index == _variantAttributes.length - 1)
+//                                               InkWell(
+//                                                 onTap: () {
+//                                                   setState(() {
+//                                                     _variantAttributes.add({
+//                                                       'attribute': null,
+//                                                       'attributeItem': null,
+//                                                       'selectedSlug': null,
+//                                                     });
+//                                                   });
+//                                                 },
+//                                                 child: Container(
+//                                                   padding: EdgeInsets.all(8),
+//                                                   decoration: BoxDecoration(
+//                                                     color: Color(0xFF2196F3).withOpacity(0.1),
+//                                                     borderRadius: BorderRadius.circular(6),
+//                                                     border: Border.all(color: Color(0xFF2196F3), width: 1),
+//                                                   ),
+//                                                   child: Icon(
+//                                                     Icons.add,
+//                                                     size: 18,
+//                                                     color: Color(0xFF2196F3),
+//                                                   ),
+//                                                 ),
+//                                               ),
+//                                             // Remove Button (only show if more than one attribute)
+//                                             if (_variantAttributes.length > 1) ...[
+//                                               SizedBox(width: 8),
+//                                               InkWell(
+//                                                 onTap: () {
+//                                                   setState(() {
+//                                                     _variantAttributes.removeAt(index);
+//                                                   });
+//                                                 },
+//                                                 child: Container(
+//                                                   padding: EdgeInsets.all(8),
+//                                                   decoration: BoxDecoration(
+//                                                     color: Color(0xFFEF5350).withOpacity(0.1),
+//                                                     borderRadius: BorderRadius.circular(6),
+//                                                   ),
+//                                                   child: Icon(
+//                                                     Icons.delete_outline,
+//                                                     size: 18,
+//                                                     color: Color(0xFFEF5350),
+//                                                   ),
+//                                                 ),
+//                                               ),
+//                                             ],
+//                                           ],
+//                                         ),
+//                                       ],
+//                                     ),
+//                                   ),
+//                                 ],
+//                               ),
+//                             );
+//                           }).toList(),
+//                         ],
+//                       ),
+//
+//                       SizedBox(height: 32),
+//
+//                       // Add / Update button
+//                       SizedBox(
+//                         width: double.infinity,
+//                         height: 44,
+//                         child: OutlinedButton(
+//                           onPressed: isVariantsEnabled
+//                               ? () {
+//                             if (_currentVariantName.trim().isEmpty) return;
+//
+//                             setState(() {
+//                               // Convert multiple attributes to single attribute format for backend
+//                               Map<String, dynamic>? singleAttribute;
+//                               Map<String, dynamic>? singleAttributeItem;
+//
+//                               // Get the first valid attribute for backend compatibility
+//                               for (var attr in _variantAttributes) {
+//                                 if (attr['attribute'] != null && attr['attributeItem'] != null) {
+//                                   singleAttribute = attr['attribute'];
+//                                   singleAttributeItem = attr['attributeItem'];
+//                                   break;
+//                                 }
+//                               }
+//
+//                               Map<String, dynamic> newVariant = {
+//                                 'name': _currentVariantName,
+//                                 'stock': _currentStock.isNotEmpty ? _currentStock : '0',
+//                                 'regularPrice': _currentRegularPrice.isNotEmpty ? _currentRegularPrice : '0.00',
+//                                 'salePrice': _currentSalePrice.isNotEmpty ? _currentSalePrice : '',
+//                                 'imageFile': _currentImageFile,
+//                                 // For backend compatibility - single attribute
+//                                 'attribute': singleAttribute,
+//                                 'attributeItem': singleAttributeItem,
+//                                 // For UI/display - multiple attributes
+//                                 'attributes': List<Map<String, dynamic>>.from(_variantAttributes),
+//                               };
+//
+//                               if (_currentVariantIndex >= 0) {
+//                                 _variants[_currentVariantIndex] = newVariant;
+//                               } else {
+//                                 _variants.add(newVariant);
+//                               }
+//
+//                               // Reset
+//                               _currentVariantName = '';
+//                               _currentStock = '';
+//                               _currentRegularPrice = '';
+//                               _currentSalePrice = '';
+//                               _currentImageFile = null;
+//                               _currentVariantIndex = -1;
+//                               _variantNameController.clear();
+//                               _stockController.clear();
+//                               _regularPriceController.clear();
+//                               _salePriceController.clear();
+//
+//                               // Reset attributes
+//                               _variantAttributes = [{
+//                                 'attribute': null,
+//                                 'attributeItem': null,
+//                                 'selectedSlug': null,
+//                               }];
+//                             });
+//                           }
+//                               : null,
+//                           style: OutlinedButton.styleFrom(
+//                             side: BorderSide(color: isVariantsEnabled ? Color(0xFF00BFA5) : Colors.grey, width: 1.5),
+//                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+//                           ),
+//                           child: Text(
+//                             _currentVariantIndex >= 0 ? 'Update Variant' : 'Add New Variant',
+//                             style: TextStyle(
+//                               color: isVariantsEnabled ? Color(0xFF00BFA5) : Colors.grey,
+//                               fontSize: 14,
+//                               fontWeight: FontWeight.w600,
+//                             ),
+//                           ),
+//                         ),
+//                       ),
+//                     ],
+//                   ),
+//                 ),
+//               ),
+//             ],
+//           ),
+//         ),
+//       ),
+//     );
+//   }
+//
+// // Helper method to get attributes for display
+//   List<String> _getSelectedAttributesForDisplay(Map<String, dynamic> variant) {
+//     List<String> displayList = [];
+//
+//     // First check for multiple attributes
+//     if (variant['attributes'] != null && (variant['attributes'] as List).isNotEmpty) {
+//       for (var attr in (variant['attributes'] as List)) {
+//         if (attr['attribute'] != null && attr['selectedSlug'] != null) {
+//           displayList.add('${attr['attribute']['name']}: ${attr['selectedSlug']}');
+//         }
+//       }
+//     }
+//     // Fallback to single attribute
+//     else if (variant['attribute'] != null) {
+//       displayList.add('${variant['attribute']['name']} (${variant['attribute']['slug']})');
+//       if (variant['attributeItem'] != null && variant['attributeItem']['slug'] != null) {
+//         displayList.add('Slug: ${variant['attributeItem']['slug']}');
+//       }
+//     }
+//
+//     return displayList;
+//   }
+
+
   Widget _buildVariantContent(bool isDark) {
-    final bool isVariantsEnabled = (_selectedProductType ?? '').toLowerCase() == 'variable';
+    final bool isVariantsEnabled = (_selectedProductType ?? '').toLowerCase() ==
+        'variable';
+
+    // Helper to generate name from selected attributes
+    String _generateVariantName() {
+      if (_variantAttributes.isEmpty) return '';
+
+      final parts = <String>[];
+
+      for (var attr in _variantAttributes) {
+        final attrName = attr['attribute']?['name'] as String?;
+        final selectedSlug = attr['selectedSlug'] as String?;
+
+        if (attrName != null && selectedSlug != null && selectedSlug
+            .trim()
+            .isNotEmpty) {
+          // Make slug look nicer (capitalize words)
+          final niceValue = selectedSlug
+              .split('-')
+              .map((w) =>
+          w.isNotEmpty ? w[0].toUpperCase() + w.substring(1).toLowerCase() : '')
+              .join(' ');
+
+          parts.add('$attrName: $niceValue');
+        }
+      }
+
+      if (parts.isEmpty) return '';
+
+      // You can change separator: ' / ' or ' - ' or ', '
+      return parts.join(' • ');
+    }
 
     return SingleChildScrollView(
       child: Opacity(
@@ -2788,49 +3980,27 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.only(left: 10, top: 10),
-                child: Row(
-                  children: [
-                    Text(
-                      "Variant's ",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    Text(
-                      isVariantsEnabled ? '(Optional)' : '(Only for Variable products)',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isVariantsEnabled ? Colors.grey.shade400 : Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Warning when not variable
               if (!isVariantsEnabled) ...[
                 Container(
                   padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.red.withOpacity(0.12) : Colors.red.withOpacity(0.07),
+                    color: isDark ? Colors.red.withOpacity(0.12) : Colors.red
+                        .withOpacity(0.07),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.red.withOpacity(0.3)),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.info_outline, color: Colors.red.shade400, size: 20),
+                      Icon(Icons.info_outline, color: Colors.red.shade400,
+                          size: 20),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           'Variants are only available when Product Type is "Variable"',
                           style: TextStyle(
-                            color: isDark ? Colors.red.shade300 : Colors.red.shade700,
+                            color: isDark ? Colors.red.shade300 : Colors.red
+                                .shade700,
                             fontSize: 13,
                           ),
                         ),
@@ -2841,154 +4011,223 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                 const SizedBox(height: 16),
               ],
 
-              // Existing variants list
+              // Existing variants list (unchanged)
               if (_variants.isNotEmpty) ...[
-                ..._variants.asMap().entries.map((entry) {
+                ..._variants
+                    .asMap()
+                    .entries
+                    .map((entry) {
                   int index = entry.key;
                   var variant = entry.value;
                   return Container(
-                    margin: EdgeInsets.only(bottom: 12),
-                    padding: EdgeInsets.all(12),
+                    margin: EdgeInsets.only(bottom: 16, left: 10, right: 10),
+                    padding: EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: isDark ? Color(0xFF1F1D2B) : Colors.white,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
                       ),
                     ),
                     child: Row(
                       children: [
+                        // Index Number
                         Container(
-                          width: 32,
-                          height: 32,
+                          width: 40,
+                          height: 40,
                           decoration: BoxDecoration(
                             color: Color(0xFF2196F3).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: Center(
                             child: Text(
                               '${index + 1}',
                               style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w600,
                                 color: Color(0xFF2196F3),
                               ),
                             ),
                           ),
                         ),
-                        SizedBox(width: 12),
-                        Container(
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            color: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-                            border: Border.all(
-                              color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
-                            ),
-                          ),
-                          child: variant['imageFile'] != null
-                              ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.file(
-                              variant['imageFile'],
-                              fit: BoxFit.cover,
-                            ),
-                          )
-                              : Icon(
-                            Icons.image_outlined,
-                            size: 24,
-                            color: Color(0xFF2196F3),
-                          ),
-                        ),
                         SizedBox(width: 16),
+
+                        // Image with remove button (unchanged)
+                        Stack(
+                          children: [
+                            Container(
+                              width: 70,
+                              height: 70,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                color: isDark ? Color(0xFF252837) : Color(
+                                    0xFFF8F9FA),
+                                border: Border.all(
+                                  color: isDark ? Color(0xFF3B4259) : Color(
+                                      0xFFE0E0E0),
+                                ),
+                              ),
+                              child: variant['imageFile'] != null
+                                  ? ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.file(
+                                  variant['imageFile'],
+                                  fit: BoxFit.cover,
+                                ),
+                              )
+                                  : Icon(
+                                Icons.image_outlined,
+                                size: 32,
+                                color: Colors.grey.shade400,
+                              ),
+                            ),
+                            if (variant['imageFile'] != null)
+                              Positioned(
+                                top: 4,
+                                right: 4,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      variant['imageFile'] = null;
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(3),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.black54,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.close,
+                                      size: 12,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+
+                        SizedBox(width: 16),
+
+                        // Details (unchanged)
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Variant Name', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-                                        SizedBox(height: 2),
-                                        Text(
-                                          variant['name'] ?? 'Unnamed',
-                                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? Colors.white : Colors.black87),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  SizedBox(width: 16),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('Stock', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-                                      SizedBox(height: 2),
-                                      Text(
-                                        variant['stock'] ?? '0',
-                                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? Colors.white : Colors.black87),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                              Text(
+                                variant['name'] ?? 'Unnamed',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
+                              SizedBox(height: 8),
+                              // Text(
+                              //   '\$ ${(() {
+                              //     final raw = variant['salePrice']?.toString() ?? '0';
+                              //     final cleaned = raw.replaceAll(RegExp(r'[^0-9.]'), '');
+                              //     final value = double.tryParse(cleaned) ?? 0.0;
+                              //     return value.toStringAsFixed(2);
+                              //   })()}',
+                              //   style: TextStyle(
+                              //     fontSize: 14,
+                              //     fontWeight: FontWeight.w500,
+                              //     color: isDark ? Colors.white70 : Colors.black54,
+                              //   ),
+                              // ),
+
                               SizedBox(height: 8),
                               Row(
                                 children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Regular Price', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-                                        SizedBox(height: 2),
-                                        Text(
-                                          '\$ ${variant['regularPrice'] ?? '0.00'}',
-                                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? Colors.white : Colors.black87),
+                                  // Regular price (always shown, crossed out if on sale)
+                                  Builder(
+                                    builder: (context) {
+                                      final regRaw = variant['regularPrice']
+                                          ?.toString() ?? '0';
+                                      final regClean = regRaw.replaceAll(
+                                          RegExp(r'[^0-9.]'), '');
+                                      final regValue = double.tryParse(
+                                          regClean) ?? 0.0;
+                                      final regFormatted = regValue
+                                          .toStringAsFixed(2);
+
+                                      final hasSale = variant['salePrice'] !=
+                                          null &&
+                                          variant['salePrice']
+                                              .toString()
+                                              .trim()
+                                              .isNotEmpty &&
+                                          double.tryParse(variant['salePrice']
+                                              .toString()
+                                              .replaceAll(
+                                              RegExp(r'[^0-9.]'), '')) !=
+                                              null &&
+                                          double.tryParse(variant['salePrice']
+                                              .toString()
+                                              .replaceAll(
+                                              RegExp(r'[^0-9.]'), ''))! > 0;
+
+                                      return Text(
+                                        '\$$regFormatted',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                          color: hasSale
+                                              ? (isDark
+                                              ? Colors.grey.shade500
+                                              : Colors.grey.shade600)
+                                              : (isDark
+                                              ? Colors.white70
+                                              : Colors.black54),
+                                          decoration: hasSale ? TextDecoration
+                                              .lineThrough : null,
                                         ),
-                                      ],
-                                    ),
+                                      );
+                                    },
                                   ),
-                                  SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Sale Price', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-                                        SizedBox(height: 2),
-                                        Text(
-                                          '\$ ${variant['salePrice'] ?? '0.00'}',
-                                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? Colors.white : Colors.black87),
-                                        ),
-                                      ],
+
+                                  // Sale price (shown only if it exists and > 0)
+                                  if (variant['salePrice'] != null &&
+                                      variant['salePrice']
+                                          .toString()
+                                          .trim()
+                                          .isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Builder(
+                                      builder: (context) {
+                                        final saleRaw = variant['salePrice']
+                                            .toString();
+                                        final saleClean = saleRaw.replaceAll(
+                                            RegExp(r'[^0-9.]'), '');
+                                        final saleValue = double.tryParse(
+                                            saleClean) ?? 0.0;
+
+                                        if (saleValue <= 0)
+                                          return const SizedBox.shrink();
+
+                                        return Text(
+                                          '\$${saleValue.toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: isDark ? Colors.orange
+                                                .shade300 : Colors.orange
+                                                .shade700,
+                                          ),
+                                        );
+                                      },
                                     ),
-                                  ),
+                                  ],
                                 ],
                               ),
-                              // Attributes display - Show all selected attributes
-                              if (_getSelectedAttributesForDisplay(variant).isNotEmpty)
-                                Padding(
-                                  padding: EdgeInsets.only(top: 8),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('Attributes:', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-                                      ..._getSelectedAttributesForDisplay(variant).map((attrDisplay) {
-                                        return Text(
-                                          attrDisplay,
-                                          style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black87),
-                                        );
-                                      }).toList(),
-                                    ],
-                                  ),
-                                ),
                             ],
                           ),
                         ),
-                        SizedBox(width: 12),
+
+                        // Edit + Delete (unchanged)
                         Row(
                           children: [
                             InkWell(
@@ -2997,41 +4236,46 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                   _currentVariantIndex = index;
                                   _currentVariantName = variant['name'] ?? '';
                                   _currentStock = variant['stock'] ?? '';
-                                  _currentRegularPrice = variant['regularPrice'] ?? '';
-                                  _currentSalePrice = variant['salePrice'] ?? '';
+                                  _currentRegularPrice =
+                                      variant['regularPrice']?.toString() ?? '';
+                                  _currentSalePrice =
+                                      variant['salePrice']?.toString() ?? '';
                                   _currentImageFile = variant['imageFile'];
 
-                                  // Load attributes for editing
-                                  if (variant['attributes'] != null && (variant['attributes'] as List).isNotEmpty) {
-                                    _variantAttributes = List<Map<String, dynamic>>.from(variant['attributes']);
-                                  } else if (variant['attribute'] != null) {
-                                    // Convert single attribute format to multiple for editing
+                                  if (variant['attributes'] != null &&
+                                      (variant['attributes'] as List)
+                                          .isNotEmpty) {
+                                    _variantAttributes =
+                                    List<Map<String, dynamic>>.from(
+                                        variant['attributes']);
+                                  } else {
                                     _variantAttributes = [{
                                       'attribute': variant['attribute'],
                                       'attributeItem': variant['attributeItem'],
                                       'selectedSlug': variant['attributeItem']?['slug'],
-                                    }];
-                                  } else {
-                                    _variantAttributes = [{
-                                      'attribute': null,
-                                      'attributeItem': null,
-                                      'selectedSlug': null,
-                                    }];
+                                    }
+                                    ];
                                   }
 
-                                  _variantNameController.text = _currentVariantName;
+                                  _variantNameController.text =
+                                      _currentVariantName;
                                   _stockController.text = _currentStock;
-                                  _regularPriceController.text = _currentRegularPrice;
+                                  _regularPriceController.text =
+                                      _currentRegularPrice;
                                   _salePriceController.text = _currentSalePrice;
                                 });
                               },
                               child: Container(
-                                padding: EdgeInsets.all(8),
+                                padding: EdgeInsets.all(10),
                                 decoration: BoxDecoration(
                                   color: Color(0xFF2196F3).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(6),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                      color: Color(0xFF2196F3).withOpacity(
+                                          0.3)),
                                 ),
-                                child: Icon(Icons.edit_outlined, size: 18, color: Color(0xFF2196F3)),
+                                child: Icon(Icons.edit_outlined, size: 20,
+                                    color: Color(0xFF2196F3)),
                               ),
                             ),
                             SizedBox(width: 8),
@@ -3042,12 +4286,16 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                 });
                               },
                               child: Container(
-                                padding: EdgeInsets.all(8),
+                                padding: EdgeInsets.all(10),
                                 decoration: BoxDecoration(
                                   color: Color(0xFFEF5350).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(6),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                      color: Color(0xFFEF5350).withOpacity(
+                                          0.3)),
                                 ),
-                                child: Icon(Icons.delete_outline, size: 18, color: Color(0xFFEF5350)),
+                                child: Icon(Icons.delete_outline, size: 20,
+                                    color: Color(0xFFEF5350)),
                               ),
                             ),
                           ],
@@ -3056,437 +4304,660 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                     ),
                   );
                 }).toList(),
-                SizedBox(height: 12),
+                SizedBox(height: 8),
               ],
 
-              // Main ADD/EDIT FORM
+
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.symmetric(horizontal: 10),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: isDark ? Color(0xFF1F1D2B) : Colors.white,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
                   ),
                 ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Image + Name/Stock/Price row
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Variant Image',
-                                style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Image Upload (unchanged)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Variant Image',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? Colors.grey.shade400 : Colors
+                                    .grey.shade600,
                               ),
-                              SizedBox(height: 8),
-                              InkWell(
-                                onTap: () async {
-                                  final XFile? pickedFile = await _picker.pickImage(
-                                    source: ImageSource.gallery,
-                                    maxWidth: 200,
-                                    maxHeight: 200,
-                                    imageQuality: 85,
-                                  );
-                                  if (pickedFile != null) {
-                                    setState(() {
-                                      _currentImageFile = File(pickedFile.path);
-                                    });
-                                  }
-                                },
-                                child: Container(
-                                  width: 100,
-                                  height: 100,
-                                  decoration: BoxDecoration(
-                                    color: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0)),
-                                  ),
-                                  child: _currentImageFile != null
-                                      ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.file(_currentImageFile!, fit: BoxFit.cover),
-                                  )
-                                      : Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.cloud_upload_outlined, size: 24, color: Color(0xFF2196F3)),
-                                      SizedBox(height: 4),
-                                      Text('Upload', style: TextStyle(fontSize: 11, color: Color(0xFF2196F3))),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('Variant Name', style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
-                                          SizedBox(height: 6),
-                                          TextField(
-                                            controller: _variantNameController,
-                                            onChanged: (value) => _currentVariantName = value,
-                                            decoration: InputDecoration(
-                                              hintText: 'Enter name',
-                                              filled: true,
-                                              fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-                                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    SizedBox(width: 12),
-                                    SizedBox(
-                                      width: 100,
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('Stock', style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
-                                          SizedBox(height: 6),
-                                          TextField(
-                                            controller: _stockController,
-                                            onChanged: (value) => _currentStock = value,
-                                            keyboardType: TextInputType.number,
-                                            decoration: InputDecoration(
-                                              hintText: '0',
-                                              filled: true,
-                                              fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-                                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('Regular Price', style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
-                                          SizedBox(height: 6),
-                                          TextField(
-                                            controller: _regularPriceController,
-                                            onChanged: (value) => _currentRegularPrice = value,
-                                            keyboardType: TextInputType.numberWithOptions(decimal: true),
-                                            decoration: InputDecoration(
-                                              hintText: '\$ 0.00',
-                                              filled: true,
-                                              fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-                                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('Sale Price', style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
-                                          SizedBox(height: 6),
-                                          TextField(
-                                            controller: _salePriceController,
-                                            onChanged: (value) => _currentSalePrice = value,
-                                            keyboardType: TextInputType.numberWithOptions(decimal: true),
-                                            decoration: InputDecoration(
-                                              hintText: '\$ 0.00',
-                                              filled: true,
-                                              fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-                                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
                             ),
-                          ),
-                        ],
-                      ),
-
-                      SizedBox(height: 24),
-
-                      // Multiple Attributes Section with Add/Remove buttons
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Header for attributes
-                          Row(
-                            children: [
-                              Text(
-                                'Attributes',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark ? Colors.white : Colors.black87,
-                                ),
-                              ),
-                              SizedBox(width: 8),
-                              Text(
-                                '(Optional)',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade500,
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 12),
-
-                          // Dynamic Attribute Rows
-                          ..._variantAttributes.asMap().entries.map((entry) {
-                            int index = entry.key;
-                            var attrData = entry.value;
-
-                            return Padding(
-                              padding: EdgeInsets.only(bottom: 12),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // Attribute Column
-                                  Expanded(
-                                    flex: 2,
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Attribute ${index + 1}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                                          ),
+                            SizedBox(height: 8),
+                            Stack(
+                              children: [
+                                InkWell(
+                                  onTap: () async {
+                                    final XFile? pickedFile = await _picker
+                                        .pickImage(
+                                      source: ImageSource.gallery,
+                                      maxWidth: 200,
+                                      maxHeight: 200,
+                                      imageQuality: 85,
+                                    );
+                                    if (pickedFile != null) {
+                                      setState(() {
+                                        _currentImageFile =
+                                            File(pickedFile.path);
+                                      });
+                                    }
+                                  },
+                                  child: Container(
+                                    width: 100,
+                                    height: 100,
+                                    decoration: BoxDecoration(
+                                      color: isDark ? Color(0xFF252837) : Color(
+                                          0xFFF8F9FA),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: isDark
+                                            ? Color(0xFF3B4259)
+                                            : Color(0xFFE0E0E0),
+                                      ),
+                                    ),
+                                    child: _currentImageFile != null
+                                        ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(
+                                        _currentImageFile!,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    )
+                                        : Column(
+                                      mainAxisAlignment: MainAxisAlignment
+                                          .center,
+                                      children: const [
+                                        Icon(
+                                          Icons.cloud_upload_outlined,
+                                          size: 24,
+                                          color: Color(0xFF2196F3),
                                         ),
-                                        SizedBox(height: 8),
-                                        Container(
-                                          child: InventoryAttributesWithItemsWidget(
-                                            onAttributeSelected: (attribute) {
-                                              setState(() {
-                                                _variantAttributes[index]['attribute'] = {
-                                                  'id': attribute.id,
-                                                  'name': attribute.name,
-                                                  'slug': attribute.slug,
-                                                };
-                                                _variantAttributes[index]['attributeItem'] = null;
-                                                _variantAttributes[index]['selectedSlug'] = null;
-                                              });
-                                            },
-                                            onItemSlugSelected: (attribute, slug) {
-                                              setState(() {
-                                                _variantAttributes[index]['attributeItem'] = {'slug': slug};
-                                                _variantAttributes[index]['selectedSlug'] = slug;
-                                              });
-                                            },
+                                        SizedBox(height: 4),
+                                        Text(
+                                          'Upload',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Color(0xFF2196F3),
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
+                                ),
+                                if (_currentImageFile != null)
+                                  Positioned(
+                                    top: 6,
+                                    right: 6,
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _currentImageFile = null;
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.black54,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.close,
+                                          size: 14,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        SizedBox(width: 16),
 
-                                  SizedBox(width: 6),
-
-                                  // Selected Item Slug Column with Add/Remove buttons
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
                                   Expanded(
-                                    flex: 1,
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment
+                                          .start,
                                       children: [
                                         Text(
-                                          'Selected Item Slug',
+                                          'Variant Name',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                            color: isDark
+                                                ? Colors.grey.shade400
+                                                : Colors.grey.shade600,
                                           ),
                                         ),
-                                        SizedBox(height: 8),
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: TextField(
-                                                controller: TextEditingController(
-                                                    text: attrData['selectedSlug'] ?? ''
-                                                ),
-                                                enabled: false,
-                                                decoration: InputDecoration(
-                                                  hintText: 'Auto-filled slug',
-                                                  filled: true,
-                                                  fillColor: isDark ? Color(0xFF1F1D2B) : Colors.grey.shade100,
-                                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                                ),
-                                                style: TextStyle(
-                                                  color: isDark ? Colors.white70 : Colors.black54,
-                                                ),
-                                              ),
+                                        SizedBox(height: 6),
+
+                                        Container(
+                                          height: 36,
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 12, vertical: 8),
+                                          decoration: BoxDecoration(
+                                            color: isDark
+                                                ? Color(0xFF2A2D3E)
+                                                : Colors.grey.shade100,
+                                            borderRadius: BorderRadius.circular(
+                                                6),
+                                            border: Border.all(
+                                              color: isDark
+                                                  ? Color(0xFF3B4259)
+                                                  : Colors.grey.shade300,
                                             ),
-                                            SizedBox(width: 8),
-                                            // Add Button (only on last row)
-                                            if (index == _variantAttributes.length - 1)
-                                              InkWell(
-                                                onTap: () {
-                                                  setState(() {
-                                                    _variantAttributes.add({
-                                                      'attribute': null,
-                                                      'attributeItem': null,
-                                                      'selectedSlug': null,
-                                                    });
-                                                  });
-                                                },
-                                                child: Container(
-                                                  padding: EdgeInsets.all(8),
-                                                  decoration: BoxDecoration(
-                                                    color: Color(0xFF2196F3).withOpacity(0.1),
-                                                    borderRadius: BorderRadius.circular(6),
-                                                    border: Border.all(color: Color(0xFF2196F3), width: 1),
-                                                  ),
-                                                  child: Icon(
-                                                    Icons.add,
-                                                    size: 18,
-                                                    color: Color(0xFF2196F3),
-                                                  ),
-                                                ),
+                                          ),
+                                          child: Align(
+                                            alignment: Alignment.centerLeft,
+                                            child: Text(
+                                              _generateVariantName().isNotEmpty
+                                                  ? _generateVariantName()
+                                                  : 'Auto from attributes',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                color: _generateVariantName()
+                                                    .isNotEmpty
+                                                    ? (isDark
+                                                    ? Colors.white70
+                                                    : Colors.black54)
+                                                    : (isDark ? Colors.grey
+                                                    .shade500 : Colors.grey
+                                                    .shade600),
+                                                fontStyle: _generateVariantName()
+                                                    .isEmpty
+                                                    ? FontStyle.italic
+                                                    : null,
                                               ),
-                                            // Remove Button (only show if more than one attribute)
-                                            if (_variantAttributes.length > 1) ...[
-                                              SizedBox(width: 8),
-                                              InkWell(
-                                                onTap: () {
-                                                  setState(() {
-                                                    _variantAttributes.removeAt(index);
-                                                  });
-                                                },
-                                                child: Container(
-                                                  padding: EdgeInsets.all(8),
-                                                  decoration: BoxDecoration(
-                                                    color: Color(0xFFEF5350).withOpacity(0.1),
-                                                    borderRadius: BorderRadius.circular(6),
-                                                  ),
-                                                  child: Icon(
-                                                    Icons.delete_outline,
-                                                    size: 18,
-                                                    color: Color(0xFFEF5350),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ],
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  SizedBox(width: 12),
+                                  SizedBox(
+                                    width: 100,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment
+                                          .start,
+                                      children: [
+                                        Text(
+                                          'Stock',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: isDark
+                                                ? Colors.grey.shade400
+                                                : Colors.grey.shade600,
+                                          ),
+                                        ),
+                                        SizedBox(height: 6),
+                                        SizedBox(
+                                          height: 36,
+                                          child: TextField(
+                                            controller: _stockController,
+                                            onChanged: (value) =>
+                                            _currentStock = value,
+                                            keyboardType: TextInputType.number,
+                                            decoration: InputDecoration(
+                                              hintText: '0',
+                                              filled: true,
+                                              fillColor: isDark ? Color(
+                                                  0xFF252837) : Color(
+                                                  0xFFF8F9FA),
+                                              border: OutlineInputBorder(
+                                                  borderRadius: BorderRadius
+                                                      .circular(6)),
+                                              contentPadding: EdgeInsets
+                                                  .symmetric(
+                                                  horizontal: 12, vertical: 0),
+                                            ),
+                                            style: TextStyle(fontSize: 14),
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
                                 ],
                               ),
-                            );
-                          }).toList(),
-                        ],
+                              SizedBox(height: 12),
+
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment
+                                          .start,
+                                      children: [
+                                        Text(
+                                          'Regular Price',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: isDark
+                                                ? Colors.grey.shade400
+                                                : Colors.grey.shade600,
+                                          ),
+                                        ),
+                                        SizedBox(height: 6),
+                                        SizedBox(
+                                          height: 36,
+                                          child: TextField(
+                                            controller: _regularPriceController,
+                                            keyboardType: const TextInputType
+                                                .numberWithOptions(
+                                                decimal: false),
+                                            textAlign: TextAlign.right,
+                                            inputFormatters: [
+                                              FilteringTextInputFormatter
+                                                  .digitsOnly,
+                                              TextInputFormatter.withFunction((
+                                                  oldValue, newValue) {
+                                                final rawText = newValue.text
+                                                    .replaceAll(
+                                                    RegExp(r'[^0-9]'), '');
+                                                if (rawText.isEmpty)
+                                                  return const TextEditingValue(
+                                                      text: '');
+                                                final cents = int.tryParse(
+                                                    rawText) ?? 0;
+                                                final dollars = cents / 100;
+                                                final formatted = dollars
+                                                    .toStringAsFixed(2);
+                                                return TextEditingValue(
+                                                  text: formatted,
+                                                  selection: TextSelection
+                                                      .collapsed(
+                                                      offset: formatted.length),
+                                                );
+                                              }),
+                                            ],
+                                            decoration: InputDecoration(
+                                              prefixText: '\$ ',
+                                              hintText: '0.00',
+                                              filled: true,
+                                              fillColor: isDark ? Color(
+                                                  0xFF252837) : Color(
+                                                  0xFFF8F9FA),
+                                              border: OutlineInputBorder(
+                                                  borderRadius: BorderRadius
+                                                      .circular(6)),
+                                              contentPadding: const EdgeInsets
+                                                  .symmetric(
+                                                  horizontal: 12, vertical: 0),
+                                            ),
+                                            style: TextStyle(fontSize: 14,
+                                                color: isDark
+                                                    ? Colors.white
+                                                    : Colors.black87),
+                                            onChanged: (value) =>
+                                            _currentRegularPrice = value,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment
+                                          .start,
+                                      children: [
+                                        Text(
+                                          'Sale Price',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: isDark
+                                                ? Colors.grey.shade400
+                                                : Colors.grey.shade600,
+                                          ),
+                                        ),
+                                        SizedBox(height: 6),
+                                        SizedBox(
+                                          height: 36,
+                                          child: TextField(
+                                            controller: _salePriceController,
+                                            keyboardType: const TextInputType
+                                                .numberWithOptions(
+                                                decimal: false),
+                                            textAlign: TextAlign.right,
+                                            inputFormatters: [
+                                              FilteringTextInputFormatter
+                                                  .digitsOnly,
+                                              TextInputFormatter.withFunction((
+                                                  oldValue, newValue) {
+                                                final rawText = newValue.text
+                                                    .replaceAll(
+                                                    RegExp(r'[^0-9]'), '');
+                                                if (rawText.isEmpty)
+                                                  return const TextEditingValue(
+                                                      text: '');
+                                                final cents = int.tryParse(
+                                                    rawText) ?? 0;
+                                                final dollars = cents / 100;
+                                                final formatted = dollars
+                                                    .toStringAsFixed(2);
+                                                return TextEditingValue(
+                                                  text: formatted,
+                                                  selection: TextSelection
+                                                      .collapsed(
+                                                      offset: formatted.length),
+                                                );
+                                              }),
+                                            ],
+                                            decoration: InputDecoration(
+                                              prefixText: '\$ ',
+                                              hintText: '0.00',
+                                              filled: true,
+                                              fillColor: isDark ? Color(
+                                                  0xFF252837) : Color(
+                                                  0xFFF8F9FA),
+                                              border: OutlineInputBorder(
+                                                  borderRadius: BorderRadius
+                                                      .circular(6)),
+                                              contentPadding: const EdgeInsets
+                                                  .symmetric(
+                                                  horizontal: 12, vertical: 0),
+                                            ),
+                                            style: TextStyle(fontSize: 14,
+                                                color: isDark
+                                                    ? Colors.white
+                                                    : Colors.black87),
+                                            onChanged: (value) =>
+                                            _currentSalePrice = value,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    SizedBox(height: 24),
+
+                    Text(
+                      'Attributes',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : Colors.black87,
                       ),
+                    ),
+                    SizedBox(height: 12),
 
-                      SizedBox(height: 32),
+                    ..._variantAttributes
+                        .asMap()
+                        .entries
+                        .map((entry) {
+                      final idx = entry.key;
+                      final attr = entry.value;
+                      final isLast = idx == _variantAttributes.length - 1;
 
-                      // Add / Update button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 44,
-                        child: OutlinedButton(
-                          onPressed: isVariantsEnabled
-                              ? () {
-                            if (_currentVariantName.trim().isEmpty) return;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2196F3).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${idx + 1}',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF2196F3),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 3,
+                              child: SizedBox(
+                                height: 48,
+                                child: InventoryAttributesWithItemsWidget(
+                                  onAttributeSelected: (attribute) {
+                                    setState(() {
+                                      _variantAttributes[idx]['attribute'] = {
+                                        'id': attribute.id,
+                                        'name': attribute.name,
+                                        'slug': attribute.slug,
+                                      };
+                                      _variantAttributes[idx]['attributeItem'] =
+                                      null;
+                                      _variantAttributes[idx]['selectedSlug'] =
+                                      null;
+                                    });
+                                  },
+                                  onItemSlugSelected: (attribute, slug) {
+                                    setState(() {
+                                      _variantAttributes[idx]['attributeItem'] =
+                                      {'slug': slug};
+                                      _variantAttributes[idx]['selectedSlug'] =
+                                          slug;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: Container(
+                                height: 40,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? const Color(0xFF252837)
+                                      : Colors.white70,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isDark
+                                        ? const Color(0xFF3B4259)
+                                        : const Color(0xFFE0E0E0),
+                                  ),
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    attr['selectedSlug'] ?? 'Not selected',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: isDark ? Colors.white70 : Colors
+                                          .black54,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            if (isLast)
+                              TextButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _variantAttributes.add({
+                                      'attribute': null,
+                                      'attributeItem': null,
+                                      'selectedSlug': null,
+                                    });
+                                  });
+                                },
+                                icon: const Icon(
+                                    Icons.add, size: 18, color: Colors.grey),
+                                label: const Text(
+                                  'Add',
+                                  style: TextStyle(
+                                      fontSize: 13, color: Colors.grey),
+                                ),
+                              ),
+                            if (!isLast && _variantAttributes.length > 1)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8),
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _variantAttributes.removeAt(idx);
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEF5350)
+                                          .withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: const Color(0xFFEF5350)
+                                            .withOpacity(0.3),
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.delete_outline,
+                                      size: 20,
+                                      color: Color(0xFFEF5350),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
 
-                            setState(() {
-                              // Convert multiple attributes to single attribute format for backend
-                              Map<String, dynamic>? singleAttribute;
-                              Map<String, dynamic>? singleAttributeItem;
+                    SizedBox(height: 28),
 
-                              // Get the first valid attribute for backend compatibility
-                              for (var attr in _variantAttributes) {
-                                if (attr['attribute'] != null && attr['attributeItem'] != null) {
-                                  singleAttribute = attr['attribute'];
-                                  singleAttributeItem = attr['attributeItem'];
-                                  break;
-                                }
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: isVariantsEnabled
+                            ? () {
+                          final generatedName = _generateVariantName().trim();
+                          if (generatedName.isEmpty) {
+                            return;
+                          }
+
+                          setState(() {
+                            _currentVariantName = generatedName;
+
+                            Map<String, dynamic>? singleAttribute;
+                            Map<String, dynamic>? singleAttributeItem;
+
+                            for (var attr in _variantAttributes) {
+                              if (attr['attribute'] != null &&
+                                  attr['attributeItem'] != null) {
+                                singleAttribute = attr['attribute'];
+                                singleAttributeItem = attr['attributeItem'];
+                                break;
                               }
+                            }
 
-                              Map<String, dynamic> newVariant = {
-                                'name': _currentVariantName,
-                                'stock': _currentStock.isNotEmpty ? _currentStock : '0',
-                                'regularPrice': _currentRegularPrice.isNotEmpty ? _currentRegularPrice : '0.00',
-                                'salePrice': _currentSalePrice.isNotEmpty ? _currentSalePrice : '',
-                                'imageFile': _currentImageFile,
-                                // For backend compatibility - single attribute
-                                'attribute': singleAttribute,
-                                'attributeItem': singleAttributeItem,
-                                // For UI/display - multiple attributes
-                                'attributes': List<Map<String, dynamic>>.from(_variantAttributes),
-                              };
+                            Map<String, dynamic> newVariant = {
+                              'name': _currentVariantName,
+                              'stock': _currentStock.isNotEmpty
+                                  ? _currentStock
+                                  : '0',
+                              'regularPrice': _currentRegularPrice.isNotEmpty
+                                  ? _currentRegularPrice
+                                  : '0.00',
+                              'salePrice': _currentSalePrice.isNotEmpty
+                                  ? _currentSalePrice
+                                  : '',
+                              'imageFile': _currentImageFile,
+                              'attribute': singleAttribute,
+                              'attributeItem': singleAttributeItem,
+                              'attributes': List<Map<String, dynamic>>.from(
+                                  _variantAttributes),
+                            };
 
-                              if (_currentVariantIndex >= 0) {
-                                _variants[_currentVariantIndex] = newVariant;
-                              } else {
-                                _variants.add(newVariant);
-                              }
+                            if (_currentVariantIndex >= 0) {
+                              _variants[_currentVariantIndex] = newVariant;
+                            } else {
+                              _variants.add(newVariant);
+                            }
 
-                              // Reset
-                              _currentVariantName = '';
-                              _currentStock = '';
-                              _currentRegularPrice = '';
-                              _currentSalePrice = '';
-                              _currentImageFile = null;
-                              _currentVariantIndex = -1;
-                              _variantNameController.clear();
-                              _stockController.clear();
-                              _regularPriceController.clear();
-                              _salePriceController.clear();
+                            _currentVariantName = '';
+                            _currentStock = '';
+                            _currentRegularPrice = '';
+                            _currentSalePrice = '';
+                            _currentImageFile = null;
+                            _currentVariantIndex = -1;
+                            _variantNameController.clear();
+                            _stockController.clear();
+                            _regularPriceController.clear();
+                            _salePriceController.clear();
 
-                              // Reset attributes
-                              _variantAttributes = [{
+                            _variantAttributes = [
+                              {
                                 'attribute': null,
                                 'attributeItem': null,
                                 'selectedSlug': null,
-                              }];
-                            });
-                          }
-                              : null,
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: isVariantsEnabled ? Color(0xFF00BFA5) : Colors.grey, width: 1.5),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          child: Text(
-                            _currentVariantIndex >= 0 ? 'Update Variant' : 'Add New Variant',
-                            style: TextStyle(
-                              color: isVariantsEnabled ? Color(0xFF00BFA5) : Colors.grey,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
+                              }
+                            ];
+                          });
+                        }
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isVariantsEnabled
+                              ? Color(0xFF00BFA5)
+                              : Colors.grey.shade300,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                          disabledBackgroundColor: Colors.grey.shade300,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _currentVariantIndex >= 0 ? Icons.check : Icons
+                                  .add,
+                              size: 20,
                             ),
-                          ),
+                            SizedBox(width: 8),
+                            Text(
+                              _currentVariantIndex >= 0
+                                  ? 'Update Variant'
+                                  : 'Add New Variant',
+                              style: const TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w600),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -3494,29 +4965,6 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         ),
       ),
     );
-  }
-
-// Helper method to get attributes for display
-  List<String> _getSelectedAttributesForDisplay(Map<String, dynamic> variant) {
-    List<String> displayList = [];
-
-    // First check for multiple attributes
-    if (variant['attributes'] != null && (variant['attributes'] as List).isNotEmpty) {
-      for (var attr in (variant['attributes'] as List)) {
-        if (attr['attribute'] != null && attr['selectedSlug'] != null) {
-          displayList.add('${attr['attribute']['name']}: ${attr['selectedSlug']}');
-        }
-      }
-    }
-    // Fallback to single attribute
-    else if (variant['attribute'] != null) {
-      displayList.add('${variant['attribute']['name']} (${variant['attribute']['slug']})');
-      if (variant['attributeItem'] != null && variant['attributeItem']['slug'] != null) {
-        displayList.add('Slug: ${variant['attributeItem']['slug']}');
-      }
-    }
-
-    return displayList;
   }
 
 

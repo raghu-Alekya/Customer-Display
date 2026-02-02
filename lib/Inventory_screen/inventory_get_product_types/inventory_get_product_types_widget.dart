@@ -173,7 +173,7 @@ class _InventoryGetProductTypesWidgetState
     // Detect dark mode
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final fillColor = isDark ? const Color(0xFF252837) : Colors.grey[200];
+    final fillColor = isDark ? const Color(0xFF252837) : Colors.white70;
     final borderColor = isDark ? const Color(0xFF3B4259) : Colors.grey.shade400;
     final textColor = isDark ? Colors.white70 : Colors.black87;
     final dropdownBackgroundColor = isDark ? const Color(0xFF2C2C3A) : Colors.white;

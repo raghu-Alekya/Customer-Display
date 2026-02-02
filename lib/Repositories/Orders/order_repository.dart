@@ -709,38 +709,39 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         "🟦 [SYNC] Woo Response → ${jsonEncode(decoded)}",
         wrapWidth: 1024,
       );
-      if (decoded is Map<String, dynamic> && decoded['id'] != null) {
-        final int serverOrderId =
-            int.tryParse(decoded['id'].toString()) ?? 0;
-
-        // ---------------------------------------------------------
-        // ⭐ ADD PAYMENT NOTES (VISIBLE IN WOO)
-        // ---------------------------------------------------------
-        for (final p in paymentsPayload) {
-          await _helper.post(
-            "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$serverOrderId/notes",
-            {
-              "note":
-              "POS Payment | ${p['method']} | \$${p['amount']} | Status: ${p['status']}",
-              "customer_note": false,
-            },
-            true,
-          );
-        }
-
-        // ---------------------------------------------------------
-        // ⭐ RETURN RESULT
-        // ---------------------------------------------------------
-        return {
-          "order_id": serverOrderId,
-          "payments": paymentsPayload
-              .map((p) => {
-            "local_id": p["local_id"],
-            "server_id": serverOrderId,
-          })
-              .toList(),
-        };
-      }
+      // if (decoded is Map<String, dynamic> && decoded['id'] != null) {
+      //   final int serverOrderId =
+      //       int.tryParse(decoded['id'].toString()) ?? 0;
+      //
+      //   // ---------------------------------------------------------
+      //   // ⭐ ADD PAYMENT NOTES (VISIBLE IN WOO)
+      //   // ---------------------------------------------------------
+      //   for (final p in paymentsPayload) {
+      //     await _helper.post(
+      //       "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$serverOrderId/notes",
+      //       {
+      //         "note":
+      //         "POS Payment | ${p['method']} | \$${p['amount']} | Status: ${p['status']}",
+      //         "customer_note": false,
+      //       },
+      //       true,
+      //     );
+      //   }
+      //
+      //   // ---------------------------------------------------------
+      //   // ⭐ RETURN RESULT
+      //   // ---------------------------------------------------------
+      //   return {
+      //     "id": serverOrderId,
+      //     "status": wooStatus,
+      //     "payments": paymentsPayload
+      //         .map((p) => {
+      //       "local_id": p["local_id"],
+      //       "server_id": serverOrderId,
+      //     })
+      //         .toList(),
+      //   };
+      // }
       // ---------------------------------------------------------
       // ⭐ Extract Cashback Fee (if backend adds it)
       // ---------------------------------------------------------
@@ -808,8 +809,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 // ⭐ Return all values including EBT
 // ---------------------------------------------------------
         return {
-          "order_id": serverOrderId,
-          "tax": wooTax,
+          "id": serverOrderId,
+          "status": wooStatus,
           "total": wooTotal,
           "cashback_fee": cashbackFee,
 

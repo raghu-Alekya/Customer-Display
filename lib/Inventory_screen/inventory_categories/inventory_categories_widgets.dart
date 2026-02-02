@@ -1,178 +1,3 @@
-// import 'package:flutter/material.dart';
-// import 'package:flutter_bloc/flutter_bloc.dart';
-//
-// import 'inventory_categories_bloc/inventory_categories_bloc.dart';
-// import 'inventory_categories_bloc/inventory_categories_event.dart';
-// import 'inventory_categories_bloc/inventory_categories_state.dart';
-//
-// class InventoryCategoriesDropdown extends StatefulWidget {
-//   final ValueChanged<dynamic>? onCategorySelected; // <-- new callback
-//
-//   const InventoryCategoriesDropdown({super.key,this.onCategorySelected});
-//
-//   @override
-//   State<InventoryCategoriesDropdown> createState() =>
-//       _InventoryCategoriesDropdownState();
-// }
-//
-// class _InventoryCategoriesDropdownState
-//     extends State<InventoryCategoriesDropdown> {
-//   String? selectedCategory;
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//     context
-//         .read<InventoryCategoriesBloc>()
-//         .add(InventoryCategoriesFetchEvent());
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return BlocBuilder<InventoryCategoriesBloc, InventoryCategoriesState>(
-//       builder: (context, state) {
-//
-//         // 🔹 Always show the dropdown to prevent flicker
-//         List categories = [];
-//         bool isLoading = false;
-//         String hintText = 'Please select the category';
-//
-//         if (state is InventoryCategoriesLoading) {
-//           isLoading = true;
-//           hintText = 'Loading categories...';
-//         } else if (state is InventoryCategoriesLoaded) {
-//           categories = state.categories;
-//         } else if (state is InventoryCategoriesError) {
-//           return Center(
-//             child: Text(
-//               state.message,
-//               style: const TextStyle(color: Colors.red),
-//             ),
-//           );
-//         }
-//
-//         return
-//         //   DropdownButtonFormField<String>(
-//         //   value: selectedCategory,
-//         //   hint: Text(hintText),
-//         //   decoration: InputDecoration(
-//         //     floatingLabelBehavior: FloatingLabelBehavior.never,
-//         //     filled: true,
-//         //     fillColor: Colors.grey[200],
-//         //     contentPadding:
-//         //     const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-//         //     border: OutlineInputBorder(
-//         //       borderRadius: BorderRadius.circular(8),
-//         //       borderSide: const BorderSide(color: Colors.grey),
-//         //     ),
-//         //     enabledBorder: OutlineInputBorder(
-//         //       borderRadius: BorderRadius.circular(8),
-//         //       borderSide: const BorderSide(color: Colors.grey),
-//         //     ),
-//         //     focusedBorder: OutlineInputBorder(
-//         //       borderRadius: BorderRadius.circular(8),
-//         //       borderSide: const BorderSide(color: Colors.grey),
-//         //     ),
-//         //   ),
-//         //   items: categories.map<DropdownMenuItem<String>>((category) {
-//         //     return DropdownMenuItem<String>(
-//         //       value: category.name,
-//         //       child: Row(
-//         //         children: [
-//         //           if (category.imageUrl.isNotEmpty)
-//         //             Image.network(
-//         //               category.imageUrl,
-//         //               width: 30,
-//         //               height: 30,
-//         //               fit: BoxFit.cover,
-//         //             ),
-//         //           const SizedBox(width: 10),
-//         //           Text('${category.name} (${category.count})'),
-//         //         ],
-//         //       ),
-//         //     );
-//         //   }).toList(),
-//         //   onChanged: isLoading
-//         //       ? null
-//         //       : (value) {
-//         //     setState(() {
-//         //       selectedCategory = value;
-//         //     });
-//         //     if (value != null) {
-//         //       print('Selected Category: $value,');
-//         //     }
-//         //   },
-//         // );
-//
-//           DropdownButtonFormField<dynamic>(
-//             value: selectedCategory,
-//             hint: Text(hintText),
-//             decoration: InputDecoration(
-//               floatingLabelBehavior: FloatingLabelBehavior.never,
-//               filled: true,
-//               fillColor: Colors.grey[200],
-//               contentPadding:
-//               const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-//               border: OutlineInputBorder(
-//                 borderRadius: BorderRadius.circular(8),
-//                 borderSide: const BorderSide(color: Colors.grey),
-//               ),
-//               enabledBorder: OutlineInputBorder(
-//                 borderRadius: BorderRadius.circular(8),
-//                 borderSide: const BorderSide(color: Colors.grey),
-//               ),
-//               focusedBorder: OutlineInputBorder(
-//                 borderRadius: BorderRadius.circular(8),
-//                 borderSide: const BorderSide(color: Colors.grey),
-//               ),
-//             ),
-//             items: categories.map<DropdownMenuItem<dynamic>>((category) {
-//               return DropdownMenuItem<dynamic>(
-//                 value: category, // <-- store the full category object
-//                 child: Row(
-//                   children: [
-//                     if (category.imageUrl.isNotEmpty)
-//                       Image.network(
-//                         category.imageUrl,
-//                         width: 30,
-//                         height: 30,
-//                         fit: BoxFit.cover,
-//                       ),
-//                     const SizedBox(width: 10),
-//                     Text('${category.name} (${category.count})'),
-//                   ],
-//                 ),
-//               );
-//             }).toList(),
-//             onChanged: isLoading
-//                 ? null
-//                 : (value) {
-//               setState(() {
-//                 selectedCategory = value;
-//               });
-//
-//               // ✅ Local debug print
-//               if (value != null) {
-//                 debugPrint(
-//                     'Selected Category -> ID: ${value.id}, Name: ${value.name}');
-//               }
-//
-//               // ✅ Trigger parent callback
-//               if (widget.onCategorySelected != null) {
-//                 widget.onCategorySelected!(value);
-//               }
-//             },
-//           );
-//
-//       },
-//     );
-//   }
-// }
-
-
-/////
-
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -181,9 +6,10 @@ import 'inventory_categories_bloc/inventory_categories_event.dart';
 import 'inventory_categories_bloc/inventory_categories_state.dart';
 
 class InventoryCategoriesDropdown extends StatefulWidget {
+  final dynamic selectedCategory;                    // ← new: controlled value
   final ValueChanged<dynamic>? onCategorySelected; // parent callback
 
-  const InventoryCategoriesDropdown({super.key, this.onCategorySelected});
+  const InventoryCategoriesDropdown({super.key, this.onCategorySelected,this.selectedCategory,});
 
   @override
   State<InventoryCategoriesDropdown> createState() =>
@@ -205,7 +31,7 @@ class _InventoryCategoriesDropdownState
     // Detect dark mode
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final fillColor = isDark ? const Color(0xFF252837) : Colors.grey[200];
+    final fillColor = isDark ? const Color(0xFF252837) : Colors.white70;
     final borderColor = isDark ? const Color(0xFF3B4259) : Colors.grey;
     final textColor = isDark ? Colors.white70 : Colors.black87;
     final dropdownBackgroundColor = isDark ? const Color(0xFF2C2C3A) : Colors.white;

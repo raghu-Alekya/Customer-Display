@@ -70,6 +70,16 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   final List<Employees> _filterUsers = [Employees(iD: "", displayName: "All")];
   final List<OrderType> _filterOrderType = [OrderType(slug: "", name: "All")];
 
+  // 🔥 Page-level lazy loading
+  final ScrollController _tableScrollController = ScrollController();
+
+  List<model.OrderModel> _pageOrders = [];     // full page data (20)
+  List<model.OrderModel> _visibleOrders = [];  // shown data (10 → 20)
+
+  int _chunkSize = 10;
+  int _currentChunk = 1;
+
+
   Map<String, dynamic>? _selectedOrder;
   // int? _selectedOrderId; // Build #1.0.248: right now saving in order helper class , because state level saving resetting after re build
   /// OrderHelper already singleton class , no need to create instance here again
@@ -104,6 +114,30 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     _maxSalesAmount = 10000.0; // Default max, will be updated from API
     _salesAmountRange = RangeValues(_minSalesAmount, _maxSalesAmount);
     initFilters();
+    _tableScrollController.addListener(() {
+      if (_rowsPerPage <= _chunkSize) return;
+
+      // ✅ NEW GUARD
+      if (!_tableScrollController.position.hasContentDimensions) return;
+      if (_tableScrollController.position.maxScrollExtent == 0) return;
+
+      if (_tableScrollController.position.pixels >=
+          _tableScrollController.position.maxScrollExtent - 80) {
+
+        final maxChunks = (_pageOrders.length / _chunkSize).ceil();
+
+        if (!isLoading && _currentChunk < maxChunks) {
+          setState(() {
+            _currentChunk++;
+            _visibleOrders =
+                _pageOrders.take(_currentChunk * _chunkSize).toList();
+            _orders = _visibleOrders;
+          });
+        }
+      }
+    });
+
+
     // Initialize order fetching
     //_fetchOrders();
     // _orderScreenPanel = OrderScreenPanel( //Build #1.0.234: No need
@@ -114,6 +148,12 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     //   activeOrderId: orderHelper.activeOrderId, // Pass activeOrderId
     //   fetchOrders: false, // Show shimmer initially
     // );
+  }
+  bool get _hasMoreLazyData {
+    if (_rowsPerPage <= _chunkSize) return false;
+
+    final maxChunks = (_pageOrders.length / _chunkSize).ceil();
+    return _currentChunk < maxChunks;
   }
 
   Future<void> initFilters() async {
@@ -143,12 +183,18 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                 "OrdersScreen: Successfully fetched ${response.data!.ordersData.length} orders, Total Count: ${response.data!.orderTotalCount}");
 
             setState(() {
-              _orders = response.data!.ordersData;
+              _pageOrders = response.data!.ordersData;
+
+              _currentChunk = 1;
+
+              // 👇 ALWAYS start with only chunkSize
+              _visibleOrders = _pageOrders.take(_chunkSize).toList();
+              _orders = _visibleOrders;
 
               _totalOrdersCount = response.data!.orderTotalCount;
               isLoading = false;
 
-              // -------------------------------------------------------------
+            // -------------------------------------------------------------
               // ⭐ MERGE OFFLINE DELETED ORDERS (Hive) WITH USER FILTER LOGIC
               // -------------------------------------------------------------
               final deletedBox = Hive.box('deletedOrders');
@@ -227,7 +273,11 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                 debugPrint("Added deleted offline orders: ${uniqueDeleted.length}");
 
                 // ⭐ PREPEND offline deleted orders
-                _orders = [...uniqueDeleted, ..._orders];
+                if (_currentPage == 1) {
+                  _pageOrders = [...uniqueDeleted, ..._pageOrders];
+                  _visibleOrders = _pageOrders.take(_chunkSize).toList();
+                  _orders = _visibleOrders;
+                }
 
                 // ⭐ SORT latest first
                 _orders.sort((a, b) {
@@ -825,235 +875,150 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
                       // Data Table and Pagination controls
                       Expanded(
-                        // color: Colors.red,
-                        // width: 300,
                         child: isLoading
-                            ? Center(child: CircularProgressIndicator())
+                            ? const Center(child: CircularProgressIndicator())
                             : Container(
-                                decoration: BoxDecoration(
-                                  color: themeHelper.themeMode == ThemeMode.dark
-                                      ? ThemeNotifier.primaryBackground
-                                      : Colors
-                                          .white, // 🔹 White background for whole table
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.05),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2),
+                          decoration: BoxDecoration(
+                            color: themeHelper.themeMode == ThemeMode.dark
+                                ? ThemeNotifier.primaryBackground
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          padding: const EdgeInsets.all(4),
+
+                          // 🔥 Horizontal scroll ONLY
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            child: SizedBox(
+                              width: MediaQuery.of(context).size.width,
+                              child: Column(
+                                children: [
+                                  // ================= HEADER =================
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: themeHelper.themeMode == ThemeMode.dark
+                                          ? const Color(0xFF252837)
+                                          : const Color(0xFF6F6F70),
+                                      borderRadius: const BorderRadius.vertical(
+                                        top: Radius.circular(12),
+                                      ),
                                     ),
-                                  ],
-                                ),
-                                padding: const EdgeInsets.all(4),
-                                child: SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  physics: const BouncingScrollPhysics(),
-                                  child: SingleChildScrollView(
-                                    scrollDirection: Axis.vertical,
-                                    physics: const BouncingScrollPhysics(),
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.start,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                    child: Row(
                                       children: [
-                                        // Table Header with colored container
-                                        Container(
-                                          padding: const EdgeInsets.only(
-                                              left: 0.0,
-                                              top: 12.0,
-                                              bottom: 12.0),
-                                          decoration: BoxDecoration(
-                                            color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                ? const Color(
-                                                    0xFF252837) // Dark mode → #252837
-                                                : const Color(
-                                                    0xFF6F6F70), // Light mode → #6F6F70
-                                            borderRadius:
-                                                const BorderRadius.only(
-                                              topLeft: Radius.circular(12),
-                                              topRight: Radius.circular(12),
-                                              bottomLeft: Radius.circular(0),
-                                              bottomRight: Radius.circular(0),
-                                            ),
-                                            border: Border.all(
-                                                color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                    ? const Color(
-                                                    0xFF252837)
-                                                    : Colors.grey.shade300),
-                                          ),
-                                          child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.start,
-                                            children: [
-                                              _buildSortableColumn("ID", 'id'),
-                                              _buildSortableColumn(
-                                                  "Order Type", 'orderType'),
-                                              _buildSortableColumn(
-                                                  "Date", 'date'),
-                                              _buildSortableColumn(
-                                                  "Time", 'time'),
-                                              _buildSortableColumn("Total",
-                                                  'sales_amount'), //Build #1.0.134: changed to "Total"
-                                              _buildSortableColumn(
-                                                  "Status", 'status'),
-                                              //_buildHeaderCell(""),
-                                            ],
-                                          ),
-                                        ),
-                                        SizedBox(height: 0),
+                                        _buildSortableColumn("ID", 'id'),
+                                        _buildSortableColumn("Order Type", 'orderType'),
+                                        _buildSortableColumn("Date", 'date'),
+                                        _buildSortableColumn("Time", 'time'),
+                                        _buildSortableColumn("Total", 'sales_amount'),
+                                        _buildSortableColumn("Status", 'status'),
+                                      ],
+                                    ),
+                                  ),
 
-                                        // Data Rows
-                                        //...filteredData.map((order)
-                                        ...paginatedData.map((order) {
-                                          final date = DateTime.tryParse(
-                                                  order.dateCreated)
-                                              ?.toLocal();
-                                          final formattedDate = date != null
-                                              ? DateFormat(
-                                                      TextConstants.dateFormat)
-                                                  .format(date)
-                                              : '';
-                                          final formattedTime = date != null
-                                              ? DateFormat('HH:mm:ss')
-                                                  .format(date)
-                                              : '';
-                                          final isSelected = OrderHelper()
-                                                  .selectedOrderId ==
-                                              order
-                                                  .id; // Build #1.0.248: Updated; Check if the row is selected
-
-                                          return Padding(
-                                            padding: EdgeInsets.only(bottom: 0),
-                                            child: GestureDetector(
-                                              // Add GestureDetector for row click
-                                              onTap: () =>
-                                                  _onOrderRowSelected(order.id),
-                                              child: Container(
-                                                padding: EdgeInsets.symmetric(
-                                                    vertical: 4.0,
-                                                    horizontal: 0),
-                                                decoration: BoxDecoration(
-                                                  color: isSelected
-                                                      ? (themeHelper
-                                                      .themeMode ==
-                                                      ThemeMode.dark
-                                                      ? Color(
-                                                      0xFF383B4C) // Dark selection color for dark mode 334756
-                                                      : Color(
-                                                      0xFFDFDFDF)) // Light selection color for light mode F3ECEC
-                                                      : (themeHelper
-                                                      .themeMode ==
-                                                      ThemeMode.dark
-                                                      ? Color(0xFF201F29)
-                                                      : Color(0xFFF9F9F9)),
-                                                  borderRadius:
-                                                      const BorderRadius.only(
-                                                    topLeft: Radius.circular(0),
-                                                    topRight:
-                                                        Radius.circular(0),
-                                                    bottomLeft:
-                                                        Radius.circular(0),
-                                                    bottomRight:
-                                                        Radius.circular(0),
-                                                  ),
-                                                  border: Border(
-                                                    bottom: BorderSide(
-                                                      color: themeHelper
-                                                                  .themeMode ==
-                                                              ThemeMode.dark
-                                                          ? const Color(
-                                                              0xFF474646) // Dark mode bottom border
-                                                          : const Color(
-                                                              0xFFD8D7D7), // Light mode bottom border
-                                                      width: 1.0,
-                                                    ),
-                                                  ),
-                                                  // boxShadow: [
-                                                  // BoxShadow(
-                                                  // color: themeHelper.themeMode == ThemeMode.dark
-                                                  // ? ThemeNotifier.shadow_F7 : Color(0xFF000000).withValues(alpha: 0.2),
-                                                  //blurRadius: 2,
-                                                  //offset: const Offset(0, 0),
-                                                  // ),
-                                                  // ],
-                                                ),
-                                                child: Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.start,
-                                                  children: [
-                                                    _buildDataCell(
-                                                        order.id.toString()),
-                                                    _buildDataCell(_filterOrderType
-                                                        .firstWhere((e) =>
-                                                            e.slug ==
-                                                            order.createdVia
-                                                                .toString())
-                                                        .name), //AppDBConst.orderType
-                                                    _buildDataCell(
-                                                        formattedDate),
-                                                    _buildDataCell(
-                                                        formattedTime),
-                                                    _buildDataCell(
-                                                        '${order.currencySymbol}${order.total}'),
-                                                    //  _buildDataCell('N/A'), // Over/short not in API response
-                                                    _buildDataCell(order.status,
-                                                        isStatus: true),
-                                                    // Add action buttons if needed
-                                                  ],
+                                  // ================= BODY =================
+                                  Expanded(
+                                    child: ListView.builder(
+                                      controller: _tableScrollController,
+                                      physics: const BouncingScrollPhysics(),
+                                      itemCount:
+                                      _orders.length + (_hasMoreLazyData ? 1 : 0),
+                                      itemBuilder: (context, index) {
+                                        // 🔥 Lazy loader
+                                        if (index >= _orders.length) {
+                                          return const Padding(
+                                            padding: EdgeInsets.symmetric(vertical: 12),
+                                            child: Center(
+                                              child: SizedBox(
+                                                height: 24,
+                                                width: 24,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2.5,
                                                 ),
                                               ),
                                             ),
                                           );
-                                        }),
-                                        // Show message when no data available
-                                        if (paginatedData.isEmpty &&
-                                            filteredData.isEmpty)
-                                          Container(
-                                            padding: const EdgeInsets.all(20),
-                                            child: Center(
-                                              child: Text(
-                                                'No orders found',
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  color: themeHelper
-                                                              .themeMode ==
-                                                          ThemeMode.dark
-                                                      ? ThemeNotifier.textDark
-                                                      : Colors.grey,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
+                                        }
 
-                                        // Show message when filters result in no data
-                                        if (paginatedData.isEmpty &&
-                                            filteredData.isEmpty &&
-                                            _orders.isNotEmpty)
-                                          Container(
-                                            padding: const EdgeInsets.all(20),
-                                            child: Center(
-                                              child: Text(
-                                                'No orders match the selected filters',
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  color: themeHelper
-                                                              .themeMode ==
-                                                          ThemeMode.dark
-                                                      ? ThemeNotifier.textDark
-                                                      : Colors.grey,
+                                        final order = _orders[index];
+                                        final date = DateTime.tryParse(order.dateCreated)
+                                            ?.toLocal();
+                                        final isSelected =
+                                            OrderHelper().selectedOrderId == order.id;
+
+                                        return GestureDetector(
+                                          onTap: () => _onOrderRowSelected(order.id),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(vertical: 6),
+                                            decoration: BoxDecoration(
+                                              color: isSelected
+                                                  ? (themeHelper.themeMode == ThemeMode.dark
+                                                  ? const Color(0xFF383B4C)
+                                                  : const Color(0xFFDFDFDF))
+                                                  : (themeHelper.themeMode == ThemeMode.dark
+                                                  ? const Color(0xFF201F29)
+                                                  : const Color(0xFFF9F9F9)),
+                                              border: Border(
+                                                bottom: BorderSide(
+                                                  color: themeHelper.themeMode == ThemeMode.dark
+                                                      ? const Color(0xFF474646)
+                                                      : const Color(0xFFD8D7D7),
                                                 ),
                                               ),
                                             ),
+                                            child: Row(
+                                              children: [
+                                                _buildDataCell(order.id.toString()),
+                                                _buildDataCell(
+                                                  _filterOrderType
+                                                      .firstWhere(
+                                                        (e) =>
+                                                    e.slug ==
+                                                        order.createdVia.toString(),
+                                                  )
+                                                      .name,
+                                                ),
+                                                _buildDataCell(
+                                                  date != null
+                                                      ? DateFormat(
+                                                      TextConstants.dateFormat)
+                                                      .format(date)
+                                                      : '',
+                                                ),
+                                                _buildDataCell(
+                                                  date != null
+                                                      ? DateFormat('HH:mm:ss').format(date)
+                                                      : '',
+                                                ),
+                                                _buildDataCell(
+                                                  '${order.currencySymbol}${order.total}',
+                                                ),
+                                                _buildDataCell(
+                                                  order.status,
+                                                  isStatus: true,
+                                                ),
+                                              ],
+                                            ),
                                           ),
-                                      ],
+                                        );
+                                      },
                                     ),
                                   ),
-                                ),
+                                ],
                               ),
+                            ),
+                          ),
+                        ),
                       ),
+
                       // ADDED: Pagination Controls
                       //if (!isLoading && totalItems > 0)
                       if (!isLoading && _totalOrdersCount > _rowsPerPage)
@@ -1210,6 +1175,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
         children: [
           const Text("Rows per page:"),
           const SizedBox(width: 8),
+
+          // ---------------- ROWS PER PAGE ----------------
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             decoration: BoxDecoration(
@@ -1229,68 +1196,113 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                 if (newValue != null) {
                   setState(() {
                     _rowsPerPage = newValue;
-                    _currentPage = 1; // Reset to first page
-                    _fetchOrders(); // Fetch new data
+                    _currentPage = 1;
+
+                    // 🔥 RESET LAZY STATE
+                    _currentChunk = 1;
+                    _pageOrders.clear();
+                    _visibleOrders.clear();
+
+                    _fetchOrders();
                   });
                 }
               },
             ),
           ),
+
           const SizedBox(width: 24),
+
+          // ---------------- PAGE INFO ----------------
           Text(
             totalItems == 0
                 ? '0-0 of 0'
-                : '${(_currentPage - 1) * _rowsPerPage + 1}-${(_currentPage * _rowsPerPage) > totalItems ? totalItems : (_currentPage * _rowsPerPage)} of $totalItems',
+                : '${(_currentPage - 1) * _rowsPerPage + 1}'
+                '-${(_currentPage * _rowsPerPage) > totalItems ? totalItems : (_currentPage * _rowsPerPage)}'
+                ' of $totalItems',
           ),
+
           const SizedBox(width: 24),
+
+          // ---------------- FIRST PAGE ----------------
           IconButton(
             icon: const Icon(Icons.first_page),
             onPressed: _currentPage == 1 || totalItems == 0
                 ? null
                 : () {
-                    setState(() {
-                      _currentPage = 1;
-                      _fetchOrders(); // Fetch new data
-                    });
-                  },
+              setState(() {
+                _currentPage = 1;
+
+                // 🔥 RESET LAZY STATE
+                _currentChunk = 1;
+                _pageOrders.clear();
+                _visibleOrders.clear();
+
+                _fetchOrders();
+              });
+            },
           ),
+
+          // ---------------- PREVIOUS PAGE ----------------
           IconButton(
             icon: const Icon(Icons.chevron_left),
             onPressed: _currentPage == 1 || totalItems == 0
                 ? null
                 : () {
-                    setState(() {
-                      _currentPage--;
-                      _fetchOrders(); // Fetch new data
-                    });
-                  },
+              setState(() {
+                _currentPage--;
+
+                // 🔥 RESET LAZY STATE
+                _currentChunk = 1;
+                _pageOrders.clear();
+                _visibleOrders.clear();
+
+                _fetchOrders();
+              });
+            },
           ),
+
+          // ---------------- NEXT PAGE ----------------
           IconButton(
             icon: const Icon(Icons.chevron_right),
             onPressed: _currentPage == totalPages || totalItems == 0
                 ? null
                 : () {
-                    setState(() {
-                      _currentPage++;
-                      _fetchOrders(); // Fetch new data
-                    });
-                  },
+              setState(() {
+                _currentPage++;
+
+                // 🔥 RESET LAZY STATE
+                _currentChunk = 1;
+                _pageOrders.clear();
+                _visibleOrders.clear();
+
+                _fetchOrders();
+              });
+            },
           ),
+
+          // ---------------- LAST PAGE ----------------
           IconButton(
             icon: const Icon(Icons.last_page),
             onPressed: _currentPage == totalPages || totalItems == 0
                 ? null
                 : () {
-                    setState(() {
-                      _currentPage = totalPages;
-                      _fetchOrders(); // Fetch new data
-                    });
-                  },
+              setState(() {
+                _currentPage = totalPages;
+
+                // 🔥 RESET LAZY STATE
+                _currentChunk = 1;
+                _pageOrders.clear();
+                _visibleOrders.clear();
+
+                _fetchOrders();
+              });
+            },
           ),
         ],
       ),
     );
   }
+
 
   // Build sortable column header
   Widget _buildSortableColumn(String label, String columnKey) {

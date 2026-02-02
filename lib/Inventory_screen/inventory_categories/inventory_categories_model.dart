@@ -1,4 +1,3 @@
-
 import 'inventory_categories_entity.dart';
 
 class InventoryCategoriesModel extends InventoryCategoriesEntity {
@@ -17,12 +16,32 @@ class InventoryCategoriesModel extends InventoryCategoriesEntity {
   }) : super(id: id, name: name, slug: slug, imageUrl: imageUrl, count: count);
 
   factory InventoryCategoriesModel.fromJson(Map<String, dynamic> json) {
+    // Safe image parsing
+    String imageUrl = '';
+    if (json['image'] is Map) {
+      final src = json['image']['src'];
+      if (src is String) {
+        imageUrl = src;
+      }
+    }
+
+    // Safe count parsing
+    int count = 0;
+    if (json['count'] is int) {
+      count = json['count'];
+    }
+
+    // Safe string parsing
+    String name = json['name'] is String ? json['name'] : '';
+    String slug = json['slug'] is String ? json['slug'] : '';
+    int id = json['id'] is int ? json['id'] : 0;
+
     return InventoryCategoriesModel(
-      id: json['id'],
-      name: json['name'],
-      slug: json['slug'],
-      imageUrl: json['image'] != null ? json['image']['src'] : '',
-      count: json['count'],
+      id: id,
+      name: name,
+      slug: slug,
+      imageUrl: imageUrl,
+      count: count,
     );
   }
 }

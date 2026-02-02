@@ -74,17 +74,18 @@ class _InventoryAttributesDropdownState
             Expanded(
               child: Container(
                 height: MediaQuery.of(context).size.height * 0.06,
+                width: MediaQuery.of(context).size.width * 0.6,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: bgColor,
-                  border: Border.all(color: borderColor, width: 0.5),
-                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: borderColor),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: DropdownButtonFormField<InventoryAttributesEntity>(
                   value: selectedAttribute,
                   isExpanded: true,
                   isDense: true,
-                  dropdownColor: bgColor, // 👈 Dark mode dropdown
+                  dropdownColor: bgColor, //  Dark mode dropdown
                   decoration: const InputDecoration(
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(
@@ -141,16 +142,13 @@ class _InventoryAttributesDropdownState
 
 
 /// 🔹 Parent Widget: Side-by-side layout with Dropdown + Items
-///
-
-
 
 
 class InventoryAttributesWithItemsWidget extends StatefulWidget {
   const InventoryAttributesWithItemsWidget({
     super.key,
     this.onAttributeSelected,
-    this.onItemSelected,       // kept for backward compatibility
+    this.onItemSelected,
     this.onItemSlugSelected,   // new recommended callback for slug
   });
 
@@ -177,24 +175,20 @@ class _InventoryAttributesWithItemsWidgetState
       child: Builder(
         builder: (context) {
           return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center, // center vertically
             children: [
               // LEFT: Attribute Dropdown
-              Container(
-                // height: 48,
-                child: Expanded(
-                  flex: 2,
+              Expanded(
+                flex: 2,
+                child: SizedBox(
+                  height: 48, // ensure same height as right side
                   child: InventoryAttributesDropdown(
                     onAttributeSelected: (attribute) {
                       setState(() {
                         selectedAttribute = attribute;
                       });
 
-                      debugPrint('Selected Attribute:');
-                      debugPrint('  • ID   : ${attribute.id}');
-                      debugPrint('  • Name : ${attribute.name}');
-                      debugPrint('  • Slug : ${attribute.slug}');
-                      debugPrint('  • Type : ${attribute.type}');
+                      debugPrint('Selected Attribute: ${attribute.name}');
 
                       // Load items for selected attribute
                       context
@@ -207,52 +201,36 @@ class _InventoryAttributesWithItemsWidgetState
                 ),
               ),
 
-              const SizedBox(width:4), // slightly better spacing
+              const SizedBox(width: 4),
 
               // RIGHT: Items selector or placeholder
               Expanded(
                 flex: 2,
-                child: selectedAttribute == null
-                    ? Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Container(
-                    height: 48,
+                child: SizedBox(
+                  height: 40, // ensure same height as left side
+                  child: selectedAttribute == null
+                      ? Container(
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.blueGrey.shade200, width: 0.8),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text(
-                      'Select an attribute first',
+                      'Select',
                       style: TextStyle(
                         color: Colors.grey,
-                        fontSize: 14,
+                        fontSize: 12,
                         fontStyle: FontStyle.italic,
                       ),
                     ),
-                  ),
-                )
-                    : Container(
-                  height: 48,
-                  child: InventoryAttributeItemsWidget(
+                  )
+                      : InventoryAttributeItemsWidget(
                     attributeId: selectedAttribute!.id,
                     onItemSelected: (itemSlug) {
-                      if (selectedAttribute == null || itemSlug == null || itemSlug.trim().isEmpty) {
-                        debugPrint('Invalid selection: no attribute or empty slug');
-                        return;
-                      }
+                      if (selectedAttribute == null || itemSlug.trim().isEmpty) return;
 
-                      debugPrint('Item selected:');
-                      debugPrint('  • Attribute ID   : ${selectedAttribute!.id}');
-                      debugPrint('  • Attribute Name : ${selectedAttribute!.name}');
-                      debugPrint('  • Attribute Slug : ${selectedAttribute!.slug}');
-                      debugPrint('  • Selected Slug  : $itemSlug');
-
-                      // Pass slug to parent (preferred)
                       widget.onItemSlugSelected?.call(selectedAttribute!, itemSlug);
 
-                      // Optional: if some old code still uses itemId, you can try to parse
-                      // (only if slug contains numeric ID — otherwise skip)
                       final possibleId = int.tryParse(itemSlug);
                       if (possibleId != null && widget.onItemSelected != null) {
                         widget.onItemSelected!(selectedAttribute!, possibleId);

@@ -12,7 +12,7 @@ class OfflineOrderSyncService {
 
   static void start() {
     _timer ??= Timer.periodic(
-      const Duration(minutes: 1),
+      const Duration(seconds: 10),
           (_) => syncPendingOrders(),
     );
 
@@ -48,20 +48,31 @@ class OfflineOrderSyncService {
 
         final order = Map<String, dynamic>.from(raw);
 
-        // 🚫 Skip Woo → Local mapping records
+        // 🚫 Skip Woo → Local mapping rows
         if (order.containsKey('map_to_local')) {
           if (kDebugMode) {
-            print("🔁 Skipping mapping record → $key");
+            print("🔁 Skipping mapping record → key:$key");
           }
+          continue;
+        }
+
+        // ✅ Parse local orderId safely
+        final int? orderId =
+        key is int ? key : int.tryParse(key.toString());
+
+        if (orderId == null) {
+          if (kDebugMode) print("⛔ Invalid order key → $key");
           continue;
         }
 
         // ✅ Normalize products (migration-safe)
         List products = [];
 
-        if (order['products'] is List && (order['products'] as List).isNotEmpty) {
+        if (order['products'] is List &&
+            (order['products'] as List).isNotEmpty) {
           products = order['products'];
-        } else if (order['items'] is List && (order['items'] as List).isNotEmpty) {
+        } else if (order['items'] is List &&
+            (order['items'] as List).isNotEmpty) {
           products = order['items'];
 
           // 🔥 Auto-migrate legacy orders
@@ -69,157 +80,100 @@ class OfflineOrderSyncService {
           await box.put(key, order);
         }
 
-        for (final key in keys) {
-          final raw = box.get(key);
-          if (raw is! Map) continue;
-
-          final order = Map<String, dynamic>.from(raw);
-
-          // ✅ Parse orderId safely
-
-          final int? orderId = key is int ? key : int.tryParse(key.toString());
-
-          if (orderId == null) {
-            if (kDebugMode) print("⛔ Invalid order key: $key");
-            continue;
-          }
-
-          final bool hasItems =
-              order['items'] != null && (order['items'] as List).isNotEmpty;
-
-          if (!hasItems) {
-            if (kDebugMode) print("⛔ Skipping order $orderId → no items");
-            continue;
-          }
-
-          // ✅ Fetch ONLY unsynced payments
-          final payments =
-          (await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId))
-              .where((p) => !p.isSynced)
-              .toList();
-
-          // Attach payments to order payload
-          order['payments'] = payments.map((p) => {
-            'local_id': p.id, // 👈 IMPORTANT for mapping back
-            'orderId': p.orderId,
-            'paymentMethod': p.paymentMethod,
-            'amount': p.amount,
-            'remainingBalance':
-            p.remainingBalance < 0 ? 0 : p.remainingBalance,
-            'status': p.status?.name ?? 'pending',
-            'createdAt': p.createdAt.toIso8601String(),
-          }).toList();
-
-          if (kDebugMode) {
-            print("\n📌 Payments for Order #$orderId (${payments.length}):");
-            for (var p in payments) {
-              print(
-                  "   → ID: ${p.id} | Method: ${p.paymentMethod} | "
-                      "Amount: \$${p.amount.toStringAsFixed(2)} | "
-                      "Remaining: \$${p.remainingBalance.toStringAsFixed(2)} | "
-                      "Status: ${p.status?.name ?? 'pending'} | Synced: ${p.isSynced}");
-            }
-
-            print("\n📤 Ready to sync order #$orderId:");
-            print(order);
-          }
-
-          // 🚀 Send to server
-          final result = await OrderRepository().syncSingleOfflineOrder(order);
-
-          if (result == null || result['order_id'] == null) {
-            if (kDebugMode) {
-              print("❌ Order sync failed for #$orderId");
-            }
-            continue;
-          }
-
-          // ✅ Mark order as synced
-          order['wooOrderId'] = result['order_id'];
-          order['synced'] = true;
-          order['sync_at'] = DateTime.now().toIso8601String();
-          await box.put(key, order);
-
-          // ✅ Mark PAYMENTS as synced
-          if (result['payments'] != null && result['payments'] is List) {
-            for (final sp in result['payments']) {
-              final int? localId = sp['local_id'];
-              final int? serverId = sp['server_id'];
-
-              if (localId != null && serverId != null) {
-                await LocalPaymentDBHelper.instance
-                    .markAsSynced(localId, serverId);
-              }
-            }
-          } else {
-            // ⚠️ If backend does NOT return payment mapping
-            for (final p in payments) {
-              await LocalPaymentDBHelper.instance
-                  .markAsSynced(p.id, result['order_id']);
-            }
-          }
-
-          if (kDebugMode) {
-            print("✅ Order + Payments synced → local:$orderId woo:${result['order_id']}");
-          }
-        }
-
         if (products.isEmpty) {
           if (kDebugMode) {
-            print("⛔ Skipping order $key → no products");
+            print("⛔ Skipping order $orderId → no products");
           }
           continue;
         }
 
-        final int? wooOrderId =
-        int.tryParse(order['wooOrderId']?.toString() ?? '');
-        final bool isSynced = order['synced'] == true;
-        final String wooStatus =
-            order['wooStatus']?.toString().toLowerCase() ?? '';
-        if (wooOrderId != null &&
-            wooOrderId > 0 &&
-            isSynced &&
-            wooStatus == 'completed') {
+        // ✅ Fetch ONLY unsynced payments
+        final payments =
+        (await LocalPaymentDBHelper.instance
+            .getPaymentsByOrderId(orderId))
+            .where((p) => !p.isSynced)
+            .toList();
 
-          await box.delete(key);
-
-          if (kDebugMode) {
-            print(
-              "🗑️ Completed Woo order removed → "
-                  "local:$key woo:$wooOrderId status:$wooStatus",
-            );
-          }
-
-          continue;
-        }
-
+        order['payments'] = payments.map((p) => {
+          'local_id': p.id,
+          'orderId': p.orderId,
+          'paymentMethod': p.paymentMethod,
+          'amount': p.amount,
+          'remainingBalance':
+          p.remainingBalance < 0 ? 0 : p.remainingBalance,
+          'status': p.status?.name ?? 'pending',
+          'createdAt': p.createdAt.toIso8601String(),
+        }).toList();
 
         if (kDebugMode) {
-          print("📤 Syncing offline order → $key");
+          print("\n📦 Syncing order → local:$orderId");
+          print("💰 Unsynced payments → ${payments.length}");
         }
 
+        // 🚀 SYNC ONCE
         final result =
         await OrderRepository().syncSingleOfflineOrder(order);
 
-        if (result != null && result['order_id'] != null) {
-          order['wooOrderId'] = result['order_id'];
-          order['synced'] = true;
-          order['sync_at'] = DateTime.now().toIso8601String();
+        if (result == null || result is! Map) {
+          if (kDebugMode) {
+            print("❌ Invalid Woo response for order → $orderId");
+          }
+          continue;
+        }
 
-          await box.put(key, order);
+        final Map<String, dynamic> woo =
+        Map<String, dynamic>.from(result);
+
+        final int wooOrderId = woo['id'] ?? 0;
+
+        final String wooStatus =
+            woo['status']?.toString().toLowerCase() ?? '';
+
+        if (kDebugMode) {
+          print("🟣 Woo response → order:$wooOrderId status:$wooStatus");
+        }
+
+
+        // ✅ Mark payments as synced
+        for (final p in payments) {
+          await LocalPaymentDBHelper.instance
+              .markAsSynced(p.id, wooOrderId);
+        }
+
+        // 🗑️ DELETE IMMEDIATELY if Woo says COMPLETED
+        if (wooStatus == 'completed') {
+          await box.delete(key);
+          await box.delete(wooOrderId.toString());
 
           if (kDebugMode) {
             print(
-              "✅ Order synced → local:$key woo:${result['order_id']}",
+              "🗑️ Offline order deleted → local:$orderId woo:$wooOrderId",
             );
           }
+
+          continue;
+        }
+
+        // 🔁 Otherwise keep order for retry
+        order['wooOrderId'] = wooOrderId;
+        order['wooStatus'] = wooStatus;
+        order['synced'] = true;
+        order['sync_at'] = DateTime.now().toIso8601String();
+
+        await box.put(key, order);
+
+        if (kDebugMode) {
+          print(
+            "✅ Order saved for retry → local:$orderId woo:$wooOrderId status:$wooStatus",
+          );
         }
       }
     } catch (e, s) {
-      print("❌ Offline background sync failed: $e");
+      print("❌ Offline sync failed: $e");
       print(s);
     } finally {
       _isSyncing = false;
     }
   }
+
 }

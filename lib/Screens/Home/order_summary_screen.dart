@@ -297,7 +297,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       print("Starting Balance: \$${computedNetPayable.toStringAsFixed(2)}");
       print("-" * 60);
 
-     // Track balance progression
+      // Track balance progression
       for (var i = 0; i < payments.length; i++) {
         final payment = payments[i];
         final paymentAmount = payment.amount;
@@ -8898,7 +8898,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         SnackBar(
           content: Text(TextConstants.smsConfiguration),
           backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
+          duration: const Duration(seconds: 1),
         ),
       );
     }
@@ -8930,7 +8930,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           style: const TextStyle(color: Colors.white),
         ),
         backgroundColor: Colors.green, // Build #1.0.104: updated to green
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 1),
       ),
     );
   }

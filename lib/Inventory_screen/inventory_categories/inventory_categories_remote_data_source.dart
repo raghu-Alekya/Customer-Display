@@ -36,39 +36,90 @@ class InventoryCategoriesRemoteDataSourceImpl implements InventoryCategoriesRemo
   }
 
   @override
+  // Future<List<InventoryCategoriesModel>> getCategories() async {
+  //   final token = await _getTokenFromDb();
+  //
+  //   /// Full correct URL
+  //   final String fullUrl =
+  //       "${UrlHelper.wooBaseUrl}products/categories";
+  //
+  //   final Uri url = Uri.parse(fullUrl);
+  //
+  //   if (kDebugMode) {
+  //     print("#### FULL REQUEST URL: $fullUrl");
+  //   }
+  //
+  //   final response = await client.get(
+  //     url,
+  //     headers: {
+  //       'Authorization': 'Bearer $token',
+  //       'Accept': 'application/json',
+  //     },
+  //   );
+  //
+  //   if (response.statusCode == 200) {
+  //     final List<dynamic> decoded = json.decode(response.body);
+  //     return decoded
+  //         .map((e) => InventoryCategoriesModel.fromJson(e))
+  //         .toList();
+  //   } else {
+  //     if (kDebugMode) {
+  //       print('#### API ERROR: ${response.statusCode}');
+  //       print('#### BODY: ${response.body}');
+  //     }
+  //     throw Exception('Failed to load categories');
+  //   }
+  // }
+
+  @override
   Future<List<InventoryCategoriesModel>> getCategories() async {
-    final token = await _getTokenFromDb();
+    try {
+      final token = await _getTokenFromDb();
 
-    /// Full correct URL
-    final String fullUrl =
-        "${UrlHelper.wooBaseUrl}products/categories";
+      final String fullUrl =
+          "${UrlHelper.wooBaseUrl}products/categories";
 
-    final Uri url = Uri.parse(fullUrl);
+      final Uri url = Uri.parse(fullUrl).replace(queryParameters: {
+        'page': '1',
+        'per_page': '100',
+      });
 
-    if (kDebugMode) {
-      print("#### FULL REQUEST URL: $fullUrl");
-    }
-
-    final response = await client.get(
-      url,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-      },
-    );
-
-    if (response.statusCode == 200) {
-      final List<dynamic> decoded = json.decode(response.body);
-      return decoded
-          .map((e) => InventoryCategoriesModel.fromJson(e))
-          .toList();
-    } else {
       if (kDebugMode) {
-        print('#### API ERROR: ${response.statusCode}');
-        print('#### BODY: ${response.body}');
+        debugPrint("#### FULL REQUEST URL: $url");
       }
-      throw Exception('Failed to load categories');
+
+      final response = await client.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (kDebugMode) {
+        debugPrint("#### STATUS CODE: ${response.statusCode}");
+        debugPrint("#### RESPONSE BODY: ${response.body}");
+      }
+
+      if (response.statusCode == 200) {
+        final List<dynamic> decoded = json.decode(response.body);
+
+        return decoded
+            .map((e) => InventoryCategoriesModel.fromJson(e))
+            .toList();
+      } else {
+        throw Exception(
+          'API Error ${response.statusCode}: ${response.body}',
+        );
+      }
+    } catch (e, stackTrace) {
+      // 🔥 THIS prints EVERYTHING
+      debugPrint('#### GET CATEGORIES ERROR: $e');
+      debugPrint('#### STACK TRACE:\n$stackTrace');
+
+      rethrow; // important: lets Bloc/UI handle the error
     }
   }
+
 
 }
