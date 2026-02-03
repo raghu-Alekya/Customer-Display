@@ -137,6 +137,8 @@ class _InventoryTaxDropdownWidgetState
           children: [
             DropdownButtonFormField<dynamic>(
               value: _selectedTax,
+              isDense: true, // ADD
+
               hint: Text(
                 hintText,
                 style: TextStyle(color: textColor),
@@ -144,8 +146,10 @@ class _InventoryTaxDropdownWidgetState
               decoration: InputDecoration(
                 filled: true,
                 fillColor: backgroundColor,
+                isDense: true, // 👈 ADD
+
                 contentPadding:
-                const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                const EdgeInsets.symmetric(vertical:6, horizontal: 12),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide(color: borderColor),

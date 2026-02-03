@@ -68,6 +68,11 @@ import 'OrderPopupHelper.dart';
 import 'discount_engine_constants.dart';
 import 'widget_logs_toast.dart';
 
+
+class ScannerMutex {
+  static bool noOrderBusy = false;
+}
+
 String logString = "";
 bool isOrderInForeground = true;  ///Add visibility code to check if order panel is visible or not
 class RightOrderPanel extends StatefulWidget {
@@ -769,6 +774,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         caseSensitive: true,
         onBarcodeScanned: (barcode) async {
 
+          if (ScannerMutex.noOrderBusy) {
+            print("🚫 BLOCKED BY ScannerMutex.noOrderBusy");
+            return;
+          }
+
           if (ScannerGuard.isCouponPopupOpen) {
             if (kDebugMode) {
               print("🚫 Scanner blocked (OrderSummary / Popup / Payment)");
@@ -829,7 +839,29 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             final activeOrderId = orderHelper.activeOrderId;
 
             if (activeOrderId == null) {
+
+              print("🟥 NO ORDER DETECTED");
+
+              // 🔒 lock BOTH
+              ScannerMutex.noOrderBusy = true;
+              _scanLocked = true;
+
+              if (mounted) setState(() {});
+
+              print("🔒 Scanner locked (mutex + local)");
+
               await OrderPopupHelper.showNoOrderPopup(context);
+
+              // ⏳ absorb scanner frames
+              await Future.delayed(const Duration(milliseconds: 1000));
+
+              print("🔓 Releasing no-order locks");
+
+              ScannerMutex.noOrderBusy = false;
+              _scanLocked = false;
+
+              if (mounted) setState(() {});
+
               return;
             }
 
@@ -1567,18 +1599,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             if (mounted) setState(() {});
           } catch (e, s) {
             print("❌ Scan failed: $e\n$s");
-            _isLoading = false;
-            if (mounted) setState(() {});
-          }
+          } finally {
 
-          finally {
-            _scanLocked = false;
-
+            // Only reset loading flags
             if (_isLoading) {
               _isLoading = false;
               if (mounted) setState(() {});
             }
           }
+
 
         },
 
@@ -4464,7 +4493,27 @@ double getCustomItemTax({
                                   (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
                             }
 
-                            // =======================================================
+                            debugPrint("""
+💰 [CHECKOUT] Saving cashback to Hive
+  orderId       : ${orderHelper.activeOrderId}
+  tax            : $totalTaxAfterDiscount
+  cashback_fee   : $cashbackFee
+""");
+
+                            await updateOfflineOrderTaxAndCashback(
+                              orderHelper.activeOrderId.toString(),
+                              totalTaxAfterDiscount,
+                              cashbackFee,
+
+                          );
+
+                          final saved = Hive.box('offlineOrders')
+                              .get(orderHelper.activeOrderId.toString());
+
+                          debugPrint("🔍 [VERIFY HIVE DATA] $saved");
+
+
+                          // =======================================================
                             // 🔹 NAVIGATE TO SUMMARY (USING SNAPSHOT)
                             // =======================================================
                             final result = await Navigator.push(

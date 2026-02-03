@@ -2683,6 +2683,34 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       await offlineBox.put(key, updatedOrder);
       print("🟩 SAVED ORDER → $updatedOrder");
 
+      final extrasBox = Hive.box('orderExtras');
+
+// 🔒 NEVER overwrite an existing cashback
+      final existingExtras = extrasBox.get(orderId.toString());
+
+      final double finalCashbackFee =
+      existingExtras != null && existingExtras['cashback_fee'] != null
+          ? (existingExtras['cashback_fee'] as num).toDouble()
+          : fee;
+
+      await extrasBox.put(orderId.toString(), {
+        "local_order_id": orderId,
+        "cashback_fee": finalCashbackFee,
+        "cashback_amount": cashbackAmount, // optional, useful for audit
+        "source": "cashback_payout",
+        "saved_at": DateTime.now().toIso8601String(),
+      });
+
+      if (kDebugMode) {
+        print("""
+💾 [orderExtras] Cashback SAVED DIRECTLY
+  Local Order ID : $orderId
+  Cashback Amt  : $cashbackAmount
+  Cashback Fee  : $finalCashbackFee
+""");
+      }
+
+
       // -------------------------------------------------------
       // ✔ UI feedback
       // -------------------------------------------------------

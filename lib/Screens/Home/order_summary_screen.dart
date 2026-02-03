@@ -205,7 +205,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
   bool _isShowingPartialDialog = false;
 
-
+  bool _isShowingPaymentDialog = false;
+  bool _isVoiding = false;
 
   double ebtTotal = 0.0;
   double payByEbt = 0.0;   // ADD THIS
@@ -715,13 +716,13 @@ Previous Remaining: \$${remaining.toStringAsFixed(2)}
             final couponResponse = (box.get(key)?["coupon_response"] as Map?)
                 ?.cast<String, dynamic>() ?? {};
 
-            _showPaymentDialog(
-              context,
-              tenderAmount,
-              changeAmount: changeAmount,
-              showChange: changeAmount != null && changeAmount! > 0,
-              couponResponse: couponResponse,
-            );
+            // _showPaymentDialog(
+            //   context,
+            //   tenderAmount,
+            //   changeAmount: changeAmount,
+            //   showChange: changeAmount != null && changeAmount! > 0,
+            //   couponResponse: couponResponse,
+            // );
           }
         });
       }
@@ -3365,83 +3366,42 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 //   }
 
   Future<void> _callCreatePaymentAPI({bool skipPopup = false}) async {
-
-
     if (kDebugMode) {
       print("###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount, skipPopup: $skipPopup");
     }
 
-    if (kDebugMode) {
-      print("###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount, skipPopup: $skipPopup");
-    }
+    final now = DateTime.now();
+    final String datetimeStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(now);
 
     // ────────────────────────────────────────────────
-    //  Fake success mode (for testing / demo)
+    //  Fake payment mode
     // ────────────────────────────────────────────────
-
-// ✅ Fix for fake payment success mode
-// Update the _callCreatePaymentAPI method (fake payment section):
     if (offline_PAYMENT_SUCCESS) {
-      print("⚡ FAKE PAYMENT SUCCESS MODE ACTIVE ⚡");
+      if (kDebugMode) print("⚡ FAKE PAYMENT SUCCESS MODE ACTIVE ⚡");
 
-      final now = DateTime.now();
-      final String fakeDateTime = DateFormat('yyyy-MM-dd HH:mm:ss').format(now);
-
-      final double amount = double.tryParse(
+      double amount = double.tryParse(
         amountController.text.replaceAll(TextConstants.currencySymbol, '').trim(),
       ) ??
           0.0;
 
-      // ⭐⭐⭐ CRITICAL FIX: Calculate new balance FIRST
-      final double currentBalance = balanceAmount; // Current balance before this payment
+      final double currentBalance = balanceAmount;
       final double newTender = tenderAmount + amount;
 
-      double newBalance = currentBalance - amount; // Calculate remaining balance
+      double newBalance = currentBalance - amount;
       double newChange = 0.0;
 
-      if (amount > currentBalance) {
+      if (amount >= currentBalance) {
         newChange = amount - currentBalance;
         newBalance = 0.0;
       }
 
-      // Round to 2 decimals safely
       newBalance = double.parse(newBalance.toStringAsFixed(2));
       newChange = double.parse(newChange.toStringAsFixed(2));
 
-      // Store for immediate use in dialog
-      final double remainingBalanceForDialog = newBalance;
+      final bool isFullPayment = newBalance <= 0;
+      final bool isPartialPayment = !isFullPayment && amount > 0;
 
-      if (amount > 0 && amount < balanceAmount) {
-        // This is a partial payment
-        double newBalance = balanceAmount - amount;
-        double newTenderAmount = tenderAmount + amount;
-
-        setState(() {
-          balanceAmount = newBalance;
-          tenderAmount = newTenderAmount;
-          _currentPaymentRemainingBalance = newBalance;
-          isPaymentStarted = true;
-
-          // Update payment method totals
-          if (selectedPaymentMethod == TextConstants.cash) {
-            payByCash += amount;
-          } else if (selectedPaymentMethod == TextConstants.ebtText) {
-            payByEbt += amount;
-            ebtTotal = (ebtTotal - amount).clamp(0, double.infinity);
-          }
-
-          _lastPaymentDetails = {
-            'amount': amount,
-            'method': selectedPaymentMethod,
-            'remainingBalance': newBalance,
-            'previousBalance': balanceAmount + amount, // Previous balance before this payment
-            'datetime': DateTime.now().toIso8601String(),
-            'paymentNumber': (_lastPaymentDetails?['paymentNumber'] ?? 0) + 1,
-          };
-        });
-      }
-
-      // ─── STEP 2: Update UI state FIRST ───
+      // ─── Update UI state ───
       setState(() {
         isPaymentStarted = true;
         _processingPaymentMethod = null;
@@ -3450,21 +3410,32 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         paymentId = "fake_${now.millisecondsSinceEpoch}";
         orderStatus = TextConstants.processing;
         tenderAmount = newTender;
-        balanceAmount = newBalance; // ⭐ Update balanceAmount immediately
+        balanceAmount = newBalance;
         changeAmount = newChange;
 
-        // ⭐⭐⭐ FIX: Only store for payment-specific display if NOT complete
-        if (newBalance > 0) {
-          _currentPaymentRemainingBalance = newBalance;
-        } else {
-          _currentPaymentRemainingBalance = null; // ⭐ Clear when complete
+        _currentPaymentRemainingBalance = isPartialPayment ? newBalance : null;
+
+        if (isPartialPayment) {
+          // Update payment method totals
+          if (selectedPaymentMethod == TextConstants.cash) payByCash += amount;
+          if (selectedPaymentMethod == TextConstants.ebtText) {
+            payByEbt += amount;
+            ebtTotal = (ebtTotal - amount).clamp(0, double.infinity);
+          }
+
+          _lastPaymentDetails = {
+            'amount': amount,
+            'method': selectedPaymentMethod,
+            'remainingBalance': newBalance,
+            'previousBalance': currentBalance,
+            'datetime': now.toIso8601String(),
+            'paymentNumber': (_lastPaymentDetails?['paymentNumber'] ?? 0) + 1,
+          };
         }
       });
 
-      // ─── STEP 3: Show partial payment dialog WITH UPDATED BALANCE ───
-      final bool willComplete = newBalance <= 0;
-
-      if (willComplete && !_successPopupShown) {
+      // ─── Show success popup only for full payment ───
+      if (isFullPayment && !_successPopupShown) {
         _successPopupShown = true;
 
         final box = Hive.box('offlineOrders');
@@ -3473,19 +3444,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         _showPaymentDialog(
           context,
-          amount,                    // this payment
-          changeAmount: newChange,   // ← correct change!
-          showChange: newChange > 0, // ← now correctly true when overpaid
+          amount,
+          changeAmount: newChange,
+          showChange: newChange > 0,
           couponResponse: couponResponse,
         );
-      } else {
-        //  Show partial payment dialog AFTER updating balance
-        Future.delayed(Duration.zero, () {
-          _showPartialPaymentDialog(context, amount);
-        });
       }
 
-      // ─── STEP 4: Prepare and save payment ───
+      // ─── Save fake payment locally ───
       _lastPayment = LastPaymentInfo(
         method: selectedPaymentMethod ?? "Cash",
         amount: amount,
@@ -3502,34 +3468,33 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         vendorId: vendorId,
         userId: userId ?? 0,
         serviceType: serviceType,
-        datetime: fakeDateTime,
+        datetime: datetimeStr,
         notes: "offline payment - ${now.toIso8601String()}",
         isSynced: false,
         createdAt: now,
-        status: newBalance <= 0 ? PaymentDbStatus.completed : PaymentDbStatus.pending,
+        status: isFullPayment ? PaymentDbStatus.completed : PaymentDbStatus.pending,
         remainingBalance: newBalance,
       );
 
       try {
         final saved = await LocalPaymentDBHelper.instance.savePayment(localPayment);
-        print("✓ Fake payment saved to Isar → local ID: ${saved.id}");
-        print("   Payment amount: $amount");
-        print("   New balance: $newBalance");
-        print("   Previous balance: $currentBalance");
-
         _lastPayment?.paymentId = "local_${saved.id}";
-
         _updateHivePaymentData(localPayment);
+
+        if (kDebugMode) {
+          print("✓ Fake payment saved → ID: ${saved.id}, Amount: $amount, New balance: $newBalance");
+        }
       } catch (e) {
         print("✗ Failed to save fake payment: $e");
       }
 
       amountController.clear();
-
-      return; // skip real API
+      return; // Skip real API
     }
 
-    // Validation checks remain the same
+    // ────────────────────────────────────────────────
+    //  Real payment mode
+    // ────────────────────────────────────────────────
     if (selectedPaymentMethod == null || selectedPaymentMethod!.isEmpty) {
       print("❌ ERROR: No payment method selected");
       return;
@@ -3537,46 +3502,38 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final bool isCard = selectedPaymentMethod == TextConstants.card;
 
-    if (!isCard && balanceAmount > 0 && amountController.text.isEmpty) {
+    if (!isCard && balanceAmount > 0 && amountController.text.trim().isEmpty) {
       print("❌ ERROR: Amount required for Cash / Wallet / EBT");
       return;
     }
 
-    String cleanAmount = amountController.text
-        .replaceAll(TextConstants.currencySymbol, '')
-        .trim();
+    double amount = double.tryParse(
+      amountController.text.replaceAll(TextConstants.currencySymbol, '').trim(),
+    ) ??
+        0.0;
 
-    double amount = double.tryParse(cleanAmount) ?? 0.0;
-
-    if (isCard) {
-      print("💳 CARD PAYMENT → Skipping amount validation, Sunmi handles it.");
-      amount = amount > 0 ? amount : 0.0;
-    } else {
+    if (!isCard) {
       if (amount < 0) {
         print("❌ ERROR: Negative amount");
         return;
       }
-
       if (amount == 0 && computedNetPayable > 0) {
         setState(() => _amountErrorText = TextConstants.amountValidation);
         return;
       }
+    } else {
+      if (amount <= 0) amount = 0.0;
     }
 
     _amountErrorText = null;
-    double remainingBalance = balanceAmount;
+    final double remainingBalance = balanceAmount;
 
     setState(() {
       _processingPaymentMethod = selectedPaymentMethod;
       isLoading = true;
     });
 
-    // ⭐⭐⭐ Only show progress dialog if skipPopup is false
-    if (!skipPopup) {
-      _showPaymentProgressDialog(context);
-    }
-
-    final String datetime = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    if (!skipPopup) _showPaymentProgressDialog(context);
 
     final paymentRequest = PaymentRequestModel(
       title: selectedPaymentMethod!,
@@ -3587,212 +3544,108 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       vendorId: vendorId,
       userId: userId ?? 0,
       serviceType: serviceType,
-      datetime: datetime,
+      datetime: datetimeStr,
       notes: '',
     );
-
-    if (kDebugMode) print("Creating payment with request: $paymentRequest");
 
     paymentBloc.createPayment(paymentRequest);
 
     StreamSubscription? subscription;
-    subscription = paymentBloc.createPaymentStream.listen(
-          (paymentResponse) async {
-        if (kDebugMode) {
-          print("Payment stream response: $paymentResponse");
+    subscription = paymentBloc.createPaymentStream.listen((paymentResponse) async {
+      if (kDebugMode) print("Payment stream response: $paymentResponse");
+
+      if (paymentResponse.status == Status.ERROR) {
+        if (!skipPopup) _hidePaymentProgressDialog();
+        else if (Navigator.canPop(context)) Navigator.pop(context);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Payment failed: ${paymentResponse.message}"),
+            backgroundColor: Colors.red,
+          ),
+        );
+
+        setState(() {
+          _processingPaymentMethod = null;
+          isLoading = false;
+          _successPopupShown = false;
+        });
+
+        subscription?.cancel();
+        return;
+      }
+
+      if (paymentResponse.status == Status.COMPLETED && paymentResponse.data != null && paymentResponse.data!.message == "Payment Created Successfully") {
+        final paymentData = paymentResponse.data!;
+        paidAmount = amount;
+        paymentId = paymentData.paymentId.toString();
+
+        final bool isFullPayment = amount >= remainingBalance;
+        final bool isPartialPayment = !isFullPayment && amount > 0;
+
+        // Update balances
+        tenderAmount += amount;
+        if (isFullPayment) {
+          balanceAmount = 0.0;
+          changeAmount = amount - remainingBalance;
+        } else {
+          balanceAmount = remainingBalance - amount;
+          changeAmount = 0.0;
+        }
+        balanceAmount = double.parse(balanceAmount.toStringAsFixed(2));
+
+        // ─── Save last payment info ───
+        _lastPayment = LastPaymentInfo(
+          method: selectedPaymentMethod!,
+          amount: amount,
+          paymentId: paymentId,
+          sunmiTxnId: null,
+        );
+
+        try {
+          final box = Hive.box('offlineOrders');
+          final key = (orderId ?? 0).toString();
+          final existing = box.containsKey(key) ? Map<String, dynamic>.from(box.get(key)) : <String, dynamic>{};
+          existing["lastPayment"] = _lastPayment!.toJson();
+          existing["balanceAmount"] = balanceAmount;
+          existing["paidAmount"] = tenderAmount;
+          existing["tenderAmount"] = tenderAmount;
+          existing["ebtTotal"] = ebtTotal;
+          box.put(key, existing);
+        } catch (e) {
+          print("⚠ Hive update error: $e");
         }
 
-        if (paymentResponse.status == Status.ERROR) {
-          // ⭐⭐⭐ Dismiss any open dialog on error
-          if (!skipPopup) {
-            _hidePaymentProgressDialog();
-          } else {
-            // If popup was already shown, dismiss it
-            if (Navigator.canPop(context)) {
-              Navigator.pop(context);
-            }
-          }
+        if (mounted) setState(() {
+          _processingPaymentMethod = null;
+          isLoading = false;
+          _currentPaymentRemainingBalance = isPartialPayment ? balanceAmount : null;
+        });
 
-          // Show error message
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Payment failed: ${paymentResponse.message}"),
-              backgroundColor: Colors.red,
-            ),
+        // ─── Show success popup only for full payment ───
+        if (isFullPayment && !_successPopupShown) {
+          _successPopupShown = true;
+
+          final box = Hive.box('offlineOrders');
+          final key = (orderId ?? 0).toString();
+          final couponResponse = (box.get(key)?["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
+
+          _showPaymentDialog(
+            context,
+            amount,
+            changeAmount: changeAmount,
+            showChange: changeAmount > 0,
+            couponResponse: couponResponse,
           );
-
-          setState(() {
-            _processingPaymentMethod = null;
-            isLoading = false;
-            _successPopupShown = false; // Reset flag on error
-          });
-          subscription?.cancel();
-          return;
         }
 
-        if (paymentResponse.status == Status.COMPLETED &&
-            paymentResponse.data != null &&
-            paymentResponse.data!.message == "Payment Created Successfully") {
-
-          setState(() {
-            isPaymentStarted = true;
-            _processingPaymentMethod = null;
-            isLoading = false;
-          });
-
-          final paymentData = paymentResponse.data!;
-          paidAmount = amount;
-          paymentId = paymentData.paymentId.toString();
-          orderStatus = paymentData.orderStatus ?? TextConstants.processing;
-
-          // Save coupon response to Hive
-          try {
-            final box = Hive.box('offlineOrders');
-            final key = (orderId ?? 0).toString();
-
-            final existing = box.containsKey(key)
-                ? Map<String, dynamic>.from(box.get(key))
-                : <String, dynamic>{};
-
-            existing["coupon_response"] = {
-              "available_coupons": paymentData.availableCoupons,
-              "coupons": paymentData.coupons?.map((c) => c.toJson()).toList(),
-            };
-
-            box.put(key, existing);
-
-            if (kDebugMode) {
-              print("🎁 FULL COUPON RESPONSE SAVED");
-              print(existing["coupon_response"]);
-            }
-          } catch (e) {
-            print("⚠ Coupon save failed: $e");
-          }
-
-          // Delete offline order if synced
-          if (widget.isOfflineSynced && widget.offlineOrderId != null) {
-            try {
-              final offlineId = widget.offlineOrderId!;
-              final box = Hive.box('offlineOrders');
-
-              if (box.containsKey(offlineId.toString())) {
-                await box.delete(offlineId.toString());
-              }
-
-              await orderHelper.deleteOrder(offlineId);
-            } catch (e) {
-              print("⚠ Failed deleting offline order: $e");
-            }
-          }
-
-          // Store last payment info
-          _lastPayment = LastPaymentInfo(
-            method: selectedPaymentMethod!,
-            amount: amount,
-            paymentId: paymentId,
-            sunmiTxnId: null,
-          );
-
-          // Save to Hive
-          try {
-            final box = Hive.box('offlineOrders');
-            final key = (orderId ?? 0).toString();
-
-            final existing = box.containsKey(key)
-                ? Map<String, dynamic>.from(box.get(key))
-                : <String, dynamic>{};
-
-            existing["lastPayment"] = _lastPayment!.toJson();
-            box.put(key, existing);
-
-            if (kDebugMode) {
-              print("💾 LAST PAYMENT SAVED (NON-CARD)");
-              print("   → method = ${_lastPayment!.method}");
-              print("   → amount = ${_lastPayment!.amount}");
-              print("   → paymentId = ${_lastPayment!.paymentId}");
-            }
-          } catch (e) {
-            print("⚠ Failed saving last payment to Hive: $e");
-          }
-
-          // Calculate balance
-          final bool isExactPayment = (amount == remainingBalance);
-          final bool isOverPayment = (amount > remainingBalance);
-          final bool isPartialPayment = (amount < remainingBalance);
-
-          tenderAmount += amount;
-
-          if (isOverPayment) {
-            changeAmount = amount - remainingBalance;
-            balanceAmount = 0.0;
-          } else if (isExactPayment) {
-            changeAmount = 0.0;
-            balanceAmount = 0.0;
-          } else if (isPartialPayment) {
-            balanceAmount = remainingBalance - amount;
-            changeAmount = 0.0;
-          }
-
-          balanceAmount = double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
-
-          if (changeAmount != null && changeAmount! > 0) {
-            final repo = PaymentRepository();
-            await repo.updatePaymentMeta(
-              paymentId: int.parse(paymentId!),
-              key: "_payment_remaining_change",
-              value: changeAmount!.toStringAsFixed(2),
-            );
-          }
-
-          _order["balanceAmount"] = balanceAmount;
-          _order["paidAmount"] = tenderAmount;
-          _order["tenderAmount"] = tenderAmount;
-
-          // Save to Hive
-          try {
-            final offlineBox = Hive.box('offlineOrders');
-            final key = (orderId ?? 0).toString();
-
-            if (offlineBox.containsKey(key)) {
-              final updated = Map<String, dynamic>.from(offlineBox.get(key));
-
-              updated["balanceAmount"] = balanceAmount;
-              updated["paidAmount"] = tenderAmount;
-              updated["tenderAmount"] = tenderAmount;
-              updated["ebtTotal"] = ebtTotal;
-
-              offlineBox.put(key, updated);
-
-              print("✔ Hive updated → balance=$balanceAmount paid=$tenderAmount ebt=$ebtTotal");
-            } else {
-              offlineBox.put(key, {
-                "balanceAmount": balanceAmount,
-                "paidAmount": tenderAmount,
-                "tenderAmount": tenderAmount,
-                "payByCash": payByCash,
-                "payByOther": payByOther,
-                "ebtTotal": ebtTotal,
-              });
-              print("✔ Hive created → balance=$balanceAmount paid=$tenderAmount ebt=$ebtTotal");
-            }
-          } catch (e) {
-            print("⚠ Hive update error: $e");
-          }
-
-          amountController.clear();
-
-          if (mounted) setState(() {});
-
-          // Refresh payment list
-          _fetchPaymentsByOrderId();
-
-          // ⭐⭐⭐ NO popup logic here - already shown before API call
-
-          subscription?.cancel();
-        }
-      },
-    );
+        amountController.clear();
+        _fetchPaymentsByOrderId();
+        subscription?.cancel();
+      }
+    });
   }
+
 
   void _hidePaymentProgressDialog() {
     if (Navigator.canPop(context)) {
@@ -7978,21 +7831,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   // --------------------
 
-  void _showPartialPaymentDialog(BuildContext context, double amount) {
-    // Prevent showing multiple times
+  Future<void> _showPartialPaymentDialog(BuildContext context, double amount) async {
     if (_isShowingPartialDialog) {
       print("Partial dialog already showing → skipping duplicate call");
       return;
     }
-
     _isShowingPartialDialog = true;
 
-    // Use the current remaining balance (same as before)
     final double remainingToShow = _currentPaymentRemainingBalance ?? balanceAmount;
-
     print("Showing Partial Payment Dialog → amount: $amount | remaining: $remainingToShow");
 
-    showDialog(
+    await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogCtx) => PaymentDialog(
@@ -8000,35 +7849,93 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         mode: PaymentMode.cash,
         amount: amount,
         remainingBalance: remainingToShow,
-        onVoid: () {
+        onVoid: () async {
           print("Void tapped from partial dialog");
-          showVoidExitConfirmation(context, true);
-        },
-
-        onNextPayment: () {
-          print("Next Payment tapped → closing partial dialog cleanly");
-
-          // Reset guard flag BEFORE closing
-          _isShowingPartialDialog = false;
-
-          // Close this dialog
+          // 1. Close the partial dialog cleanly first
           Navigator.of(dialogCtx).pop();
 
-          // Optional: Only auto-fill if still needed (but don't force dialog)
-          // You can comment this out completely if you don't want auto-fill after dialog
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            // _autoFillRemainingBalance();
-          });
-
-          // Do NOT call _showPartialPaymentDialog again here
+          // 2. Show void confirmation
+          await _showVoidConfirmation(context, isPartial: true);
+        },
+        onNextPayment: () {
+          print("Next Payment tapped → closing partial dialog cleanly");
+          Navigator.of(dialogCtx).pop();
         },
       ),
-    ).then((_) {
-      // When dialog is closed (by any means), reset guard
-      _isShowingPartialDialog = false;
-      print("Partial dialog closed → guard reset");
-    });
+    );
+
+    // Reset guard after dialog is fully closed
+    _isShowingPartialDialog = false;
+    print("Partial dialog closed → guard reset");
   }
+
+  Future<void> _showVoidConfirmation(BuildContext context, {required bool isPartial}) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => PaymentDialog.voidConfirmation(
+        onVoidCancel: () {
+          print("❌ VOID CANCELED BY USER");
+          Navigator.of(dialogCtx).pop();
+        },
+        onVoidConfirm: () async {
+          // 1. Immediately close confirmation dialog
+          Navigator.of(dialogCtx).pop();
+
+          if (_lastPayment == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("No payment to void")),
+            );
+            return;
+          }
+
+          final method = _lastPayment!.method.toLowerCase();
+
+          if (method == TextConstants.card.toLowerCase() &&
+              _lastPayment!.sunmiTxnId != null &&
+              _lastPayment!.sunmiOrderId != null) {
+            print("🔁 VOID CONFIRM → CARD → SUNMI HARDWARE VOID");
+            await _openSunmiVoidScreen(
+              amount: _lastPayment!.amount,
+              orderId: _lastPayment!.sunmiOrderId!,
+              originTransactionId: _lastPayment!.sunmiTxnId!,
+            );
+          } else {
+            print("🔁 VOID CONFIRM → $method → LOCAL VOID");
+            await _handleVoidPayment(context, isPartial: isPartial);
+          }
+
+          print("${isPartial ? 'Partial' : 'Full'} payment voided");
+
+          // ────────────────────────────────────────────────
+          // DIFFERENT BEHAVIOR DEPENDING ON isPartial
+          // ────────────────────────────────────────────────
+          if (isPartial) {
+            // === PARTIAL CASE: STAY ON CURRENT SCREEN ===
+            print("→ Partial void → staying on OrderSummaryScreen (refreshing state)");
+
+            // Optional: force UI refresh after void
+            if (mounted) {
+              setState(() {
+                // You can force-recalculate here if needed
+                // _calculateBalanceFromPaymentHistory();  // already called in _handleVoidPayment
+              });
+            }
+            // → NO Navigator.pop() here ← this is the key fix
+          } else {
+            // === FULL/SUCCESS CASE: go back one screen ===
+            print("→ Full void → navigating back one screen");
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                Navigator.of(context).pop(); // Only pop in full payment case
+              }
+            });
+          }
+        },
+      ),
+    );
+  }
+
 
   ////////
 
@@ -8151,6 +8058,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //   );
   // }
 
+
   void _showPaymentDialog(
       BuildContext context,
       double amount, {
@@ -8158,24 +8066,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         required bool showChange,
         Map<String, dynamic>? couponResponse,
       }) async {
-    if (kDebugMode) {
-      print(
-          "Showing Payment Dialog: amount=$amount, showChange=$showChange, changeAmount=$changeAmount");
+    if (_isShowingPaymentDialog) {
+      print("Payment dialog already showing → skipping duplicate call");
+      return;
     }
+
+    _isShowingPaymentDialog = true;
 
     final storeInfo = PinakaPreferences.getLoggedInStore();
 
-    Future<void> _updateCustomerDisplayWelcome(
-        Map<String, String?> storeInfo) async {
+    Future<void> _updateCustomerDisplayWelcome(Map<String, String?> storeInfo) async {
       if (storeInfo.isNotEmpty) {
-        if (kDebugMode) {
-          print(">>> Updating Customer Display with store info:");
-          print("Store ID: ${storeInfo['storeId']}");
-          print("Store Name: ${storeInfo['storeName']}");
-          print("Store Logo URL: ${storeInfo['storeLogoUrl']}");
-          print("Store Base URL: ${storeInfo['storeBaseUrl']}");
-        }
-
+        print(">>> Updating Customer Display with store info");
         await CustomerDisplayHelper.updateWelcomeWithStore(
           storeInfo['storeId'] ?? '0',
           storeInfo['storeName'] ?? 'Store',
@@ -8183,23 +8085,20 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
         );
       } else {
-        if (kDebugMode) {
-          print(">>> No store info found, showing default welcome screen");
-        }
         await CustomerDisplayService.showWelcome();
       }
     }
 
     try {
-      if (kDebugMode) print(">>> Showing THANK YOU screen before receipt options");
       await CustomerDisplayService.showThankYou();
     } catch (e) {
-      if (kDebugMode) print(">>> Error showing Thank You screen: $e");
+      print(">>> Error showing Thank You screen: $e");
     }
 
     showDialog(
       context: context,
       barrierDismissible: false,
+      useRootNavigator: false,
       builder: (dialogCtx) => PaymentDialog(
         status: PaymentStatus.successful,
         mode: PaymentMode.cash,
@@ -8210,32 +8109,28 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         onVoid: () {
           print("Void tapped from FULL payment success dialog");
 
-          // 1. Instantly close success dialog (synchronous)
-          Navigator.of(dialogCtx).pop();
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
 
-          // 2. Defer confirmation to next frame → prevents flicker
           SchedulerBinding.instance.addPostFrameCallback((_) {
-            showVoidExitConfirmation(context, false); // false = not partial
+            if (!_isShowingPartialDialog) {
+              showVoidExitConfirmation(context, false); // false = not partial
+            }
           });
         },
 
         onNoReceipt: () async {
-          if (kDebugMode) print(">>> NoReceipt pressed");
+          print(">>> NoReceipt pressed");
 
-          // Close dialog first to avoid flicker
-          Navigator.of(context).pop();
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
 
           await _updateCustomerDisplayWelcome(storeInfo);
           changeStatusToCompletedAndExit(false);
         },
 
         onDone: (selectedOption, {String? email}) async {
-          if (kDebugMode) {
-            print("DEBUG 0011 : $selectedOption, $email, ${email?.isNotEmpty}");
-          }
+          print("DEBUG : onDone → $selectedOption, email=$email");
 
-          // Close dialog immediately (reduces flicker)
-          Navigator.of(context).pop();
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
 
           if (selectedOption == TextConstants.email &&
               email != null &&
@@ -8245,7 +8140,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 SnackBar(
                   content: Text(TextConstants.canNotSendEmail),
                   backgroundColor: Colors.red,
-                  duration: const Duration(milliseconds: 1500), // shorter
+                  duration: const Duration(milliseconds: 1500),
                 ),
               );
               return;
@@ -8255,7 +8150,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             StreamSubscription? subscription;
             subscription = paymentBloc.sendOrderDetailsStream.listen((response) async {
               subscription?.cancel();
-              if (kDebugMode) print(">>> Email sent, updating customer display");
+              print(">>> Email sent, updating customer display");
               await _updateCustomerDisplayWelcome(storeInfo);
               changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
             });
@@ -8263,14 +8158,105 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           }
 
           if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
-            if (kDebugMode) print(">>> Printing receipt");
+            print(">>> Printing receipt");
             await _preparePrintTicket();
             await _printTicket(manual: true);
           }
 
-          if (kDebugMode) print(">>> Returning to Welcome after Thank You");
           await _updateCustomerDisplayWelcome(storeInfo);
           changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
+        },
+      ),
+    ).then((_) {
+      _isShowingPaymentDialog = false;
+      print("Payment dialog closed → guard reset");
+    });
+  }
+
+  void showVoidExitConfirmation(BuildContext context, bool isPartial) {
+    print("showVoidExitConfirmation → isPartial: $isPartial, orderId: $orderId");
+
+    if (_isVoiding) {
+      print("Void already in progress → skipping");
+      return;
+    }
+
+    _isVoiding = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: false,
+      builder: (dialogCtx) => PaymentDialog.voidConfirmation(
+        onVoidCancel: () {
+          print("❌ VOID CANCELED BY USER");
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
+          _isVoiding = false;
+        },
+
+        onVoidConfirm: () async {
+          print("✅ VOID CONFIRMED");
+
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
+
+          if (_lastPayment == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("No payment to void")),
+            );
+            _isVoiding = false;
+            return;
+          }
+
+          final method = _lastPayment!.method.toLowerCase();
+
+          if (method == TextConstants.card.toLowerCase() &&
+              _lastPayment!.sunmiTxnId != null &&
+              _lastPayment!.sunmiOrderId != null) {
+
+            await _openSunmiVoidScreen(
+              amount: _lastPayment!.amount,
+              orderId: _lastPayment!.sunmiOrderId!,
+              originTransactionId: _lastPayment!.sunmiTxnId!,
+            );
+          } else {
+            await _handleVoidPayment(context, isPartial: isPartial);
+          }
+
+          print("${isPartial ? 'Partial' : 'Full'} payment voided → stay on screen");
+          _isVoiding = false;
+        },
+      ),
+    );
+  }
+
+  void _showExitPaymentConfirmation(BuildContext context) {
+    if (_isVoiding) {
+      print("Exit confirmation skipped → void just completed");
+      _isVoiding = false;
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: false,
+      builder: (dialogCtx) => PaymentDialog(
+        status: PaymentStatus.exitConfirmation,
+        onExitCancel: () {
+          print("_showExitPaymentConfirmation → User canceled exit");
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
+        },
+        onExitConfirm: () {
+          print("_showExitPaymentConfirmation → User confirmed exit");
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
+
+          OrderHelper.isOrderPanelLoaded = false;
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => FastKeyScreen()),
+            result: TextConstants.refresh,
+          );
         },
       ),
     );
@@ -8935,217 +8921,125 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     );
   }
 
-  void showVoidExitConfirmation(BuildContext context, bool isPartial) {
-    if (kDebugMode) {
-      print(
-        "showVoidExitConfirmation → isPartial: $isPartial, orderId: $orderId",
-      );
-    }
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => PaymentDialog.voidConfirmation(
-        onVoidCancel: () {
-          if (kDebugMode) {
-            print("❌ VOID CANCELED BY USER");
-          }
-          Navigator.of(dialogContext).pop(); // Just close dialog
-        },
-
-        onVoidConfirm: () async {
-          // 1. Close confirmation dialog first
-          Navigator.of(dialogContext).pop();
-
-          if (_lastPayment == null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("No payment to void")),
-            );
-            return;
-          }
-
-          final method = _lastPayment!.method.toLowerCase();
-
-          // CARD → SUNMI VOID
-          if (method == TextConstants.card.toLowerCase() &&
-              _lastPayment!.sunmiTxnId != null &&
-              _lastPayment!.sunmiOrderId != null) {
-
-            if (kDebugMode) {
-              print("🔁 VOID CONFIRM → CARD → SUNMI HARDWARE VOID");
-            }
-
-            await _openSunmiVoidScreen(
-              amount: _lastPayment!.amount,
-              orderId: _lastPayment!.sunmiOrderId!,
-              originTransactionId: _lastPayment!.sunmiTxnId!,
-            );
-          }
-          // Other methods → local void
-          else {
-            if (kDebugMode) {
-              print("🔁 VOID CONFIRM → $method → LOCAL VOID");
-            }
-
-            await _handleVoidPayment(context, isPartial: isPartial);
-          }
-
-          // ────────────────────────────────────────────────
-          // SAME NAVIGATION FOR BOTH PARTIAL AND FULL VOID
-          // ────────────────────────────────────────────────
-          if (kDebugMode) {
-            print("${isPartial ? 'Partial' : 'Full'} payment voided → simple pop (back one screen)");
-          }
-
-          // Just go back one screen (same behavior for both cases)
-          Navigator.of(context).pop();
-
-          // Optional feedback (shows for both partial & full)
-          // ScaffoldMessenger.of(context).showSnackBar(
-          //   SnackBar(
-          //     content: Text(
-          //       "Void successful – ${isPartial ? 'partial' : 'full'} payment reversed",
-          //     ),
-          //     backgroundColor: Colors.orange[800],
-          //   ),
-          // );
-        },
-      ),
-    );
-  }
-// Helper: Navigate back instantly (no delay)
-  void _navigateBackInstantly(BuildContext context) {
-    if (!mounted) return;
-
-    // Pop current screen immediately
-    Navigator.of(context).pop();
-
-    if (kDebugMode) {
-      print("Void flow completed → instant navigation back (no delay)");
-    }
-  }
-
-  // Build #1.0.175: Modified _showExitPaymentConfirmation to check order_status
-
-  // void _showExitPaymentConfirmation(BuildContext context) {
-  //   // DEBUG: Log current payment & order state
+  // void showVoidExitConfirmation(BuildContext context, bool isPartial) {
   //   if (kDebugMode) {
   //     print(
-  //         "_showExitPaymentConfirmation → "
-  //             "payByCash: $payByCash | payByOther: $payByOther | "
-  //             "balanceAmount: $balanceAmount | orderTotal: $orderTotal | "
-  //             "orderStatus: $orderStatus | tenderAmount: $tenderAmount"
+  //       "showVoidExitConfirmation → isPartial: $isPartial, orderId: $orderId",
   //     );
   //   }
   //
-  //   // If order is still pending (has unpaid balance), ask for confirmation
-  //   if (orderStatus == TextConstants.pending) {
-  //     if (kDebugMode) {
-  //       print("_showExitPaymentConfirmation → Order is pending → showing exit confirmation dialog");
-  //     }
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (dialogContext) => PaymentDialog.voidConfirmation(
+  //       onVoidCancel: () {
+  //         if (kDebugMode) {
+  //           print("❌ VOID CANCELED BY USER");
+  //         }
+  //         Navigator.of(dialogContext).pop(); // Just close dialog
+  //       },
   //
-  //     showDialog(
-  //       context: context,
-  //       barrierDismissible: false,
-  //       builder: (dialogContext) => PaymentDialog(
-  //         status: PaymentStatus.exitConfirmation,
-  //         onExitCancel: () {
-  //           if (kDebugMode) {
-  //             print("_showExitPaymentConfirmation → User canceled exit → dialog closed");
-  //           }
-  //           Navigator.of(dialogContext).pop(); // Just close dialog
-  //         },
-  //         onExitConfirm: () {
-  //           if (kDebugMode) {
-  //             print("_showExitPaymentConfirmation → User confirmed exit → navigating back");
-  //           }
+  //       onVoidConfirm: () async {
+  //         // 1. Close confirmation dialog first
+  //         Navigator.of(dialogContext).pop();
   //
-  //           // Close the confirmation dialog
-  //           Navigator.of(dialogContext).pop();
-  //
-  //           // Mark order panel as no longer loaded
-  //           OrderHelper.isOrderPanelLoaded = false;
-  //
-  //           // Navigate back to FastKeyScreen with refresh signal
-  //           Navigator.pushReplacement(
-  //             context,
-  //             MaterialPageRoute(builder: (_) => FastKeyScreen()),
-  //             result: TextConstants.refresh,
-  //           );
-  //
-  //           // Show feedback that order is still pending
+  //         if (_lastPayment == null) {
   //           ScaffoldMessenger.of(context).showSnackBar(
-  //             SnackBar(
-  //               content: Text(
-  //                 TextConstants.orderPending,
-  //                 style: const TextStyle(color: Colors.white),
-  //               ),
-  //               backgroundColor: Colors.yellow[800],
-  //               duration: const Duration(seconds: 4),
-  //             ),
+  //             const SnackBar(content: Text("No payment to void")),
   //           );
-  //         },
-  //       ),
-  //     );
-  //   }
-  //   // Order is not pending (fully paid / completed / voided) → exit directly
-  //   else {
-  //     if (kDebugMode) {
-  //       print("_showExitPaymentConfirmation → Order is NOT pending → exiting directly (no dialog)");
-  //     }
+  //           return;
+  //         }
   //
-  //     // Direct pop (back to previous screen)
-  //     Navigator.of(context).pop();
+  //         final method = _lastPayment!.method.toLowerCase();
   //
-  //     // Optional: You can add a small feedback here if desired
-  //     // ScaffoldMessenger.of(context).showSnackBar(
-  //     //   SnackBar(
-  //     //     content: Text("Returning to order list..."),
-  //     //     backgroundColor: Colors.blueGrey,
-  //     //   ),
-  //     // );
-  //   }
+  //         // CARD → SUNMI VOID
+  //         if (method == TextConstants.card.toLowerCase() &&
+  //             _lastPayment!.sunmiTxnId != null &&
+  //             _lastPayment!.sunmiOrderId != null) {
+  //
+  //           if (kDebugMode) {
+  //             print("🔁 VOID CONFIRM → CARD → SUNMI HARDWARE VOID");
+  //           }
+  //
+  //           await _openSunmiVoidScreen(
+  //             amount: _lastPayment!.amount,
+  //             orderId: _lastPayment!.sunmiOrderId!,
+  //             originTransactionId: _lastPayment!.sunmiTxnId!,
+  //           );
+  //         }
+  //         // Other methods → local void
+  //         else {
+  //           if (kDebugMode) {
+  //             print("🔁 VOID CONFIRM → $method → LOCAL VOID");
+  //           }
+  //
+  //           await _handleVoidPayment(context, isPartial: isPartial);
+  //         }
+  //
+  //         // ────────────────────────────────────────────────
+  //         // SAME NAVIGATION FOR BOTH PARTIAL AND FULL VOID
+  //         // ────────────────────────────────────────────────
+  //         if (kDebugMode) {
+  //           print("${isPartial ? 'Partial' : 'Full'} payment voided → simple pop (back one screen)");
+  //         }
+  //
+  //         // Just go back one screen (same behavior for both cases)
+  //         Navigator.of(context).pop();
+  //
+  //         // Optional feedback (shows for both partial & full)
+  //         // ScaffoldMessenger.of(context).showSnackBar(
+  //         //   SnackBar(
+  //         //     content: Text(
+  //         //       "Void successful – ${isPartial ? 'partial' : 'full'} payment reversed",
+  //         //     ),
+  //         //     backgroundColor: Colors.orange[800],
+  //         //   ),
+  //         // );
+  //       },
+  //     ),
+  //   );
   // }
 
-  void _showExitPaymentConfirmation(BuildContext context) {
-    // No need for orderStatus check here anymore
 
-    if (kDebugMode) {
-      print("_showExitPaymentConfirmation called → will show dialog because caller already checked balance");
-      print("   payByCash: $payByCash | payByOther: $payByOther");
-      print("   balanceAmount: $balanceAmount | orderTotal: $orderTotal");
-      print("   orderStatus: $orderStatus | tenderAmount: $tenderAmount");
-    }
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => PaymentDialog(
-        status: PaymentStatus.exitConfirmation,
-        onExitCancel: () {
-          if (kDebugMode) {
-            print("_showExitPaymentConfirmation → User canceled exit");
-          }
-          Navigator.of(dialogContext).pop();
-        },
-        onExitConfirm: () {
-          if (kDebugMode) {
-            print("_showExitPaymentConfirmation → User confirmed exit → navigating back");
-          }
-          Navigator.of(dialogContext).pop();
-
-          OrderHelper.isOrderPanelLoaded = false;
-
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => FastKeyScreen()),
-            result: TextConstants.refresh,
-          );
-
-        },
-      ),
-    );
-  }
+  // void _showExitPaymentConfirmation(BuildContext context) {
+  //   // No need for orderStatus check here anymore
+  //
+  //   if (kDebugMode) {
+  //     print("_showExitPaymentConfirmation called → will show dialog because caller already checked balance");
+  //     print("   payByCash: $payByCash | payByOther: $payByOther");
+  //     print("   balanceAmount: $balanceAmount | orderTotal: $orderTotal");
+  //     print("   orderStatus: $orderStatus | tenderAmount: $tenderAmount");
+  //   }
+  //
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (dialogContext) => PaymentDialog(
+  //       status: PaymentStatus.exitConfirmation,
+  //       onExitCancel: () {
+  //         if (kDebugMode) {
+  //           print("_showExitPaymentConfirmation → User canceled exit");
+  //         }
+  //         Navigator.of(dialogContext).pop();
+  //       },
+  //       onExitConfirm: () {
+  //         if (kDebugMode) {
+  //           print("_showExitPaymentConfirmation → User confirmed exit → navigating back");
+  //         }
+  //         Navigator.of(dialogContext).pop();
+  //
+  //         OrderHelper.isOrderPanelLoaded = false;
+  //
+  //         Navigator.pushReplacement(
+  //           context,
+  //           MaterialPageRoute(builder: (_) => FastKeyScreen()),
+  //           result: TextConstants.refresh,
+  //         );
+  //
+  //       },
+  //     ),
+  //   );
+  // }
 
   Widget _buildPaymentAmountDisplay(
       String label,

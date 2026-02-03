@@ -46,75 +46,42 @@ class _InventoryTagMultiSelectWidgetState
     }
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(6),
-        // border: Border.all(
-        //   color: isSelected
-        //       ? const Color.fromRGBO(33, 150, 243, 1)
-        //       : borderColor,
-        //   width: 1.5,
-        // ),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Expanded(
             child: Text(
               tag.name,
               style: const TextStyle(
-                fontSize: 14,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: Color.fromRGBO(33, 33, 33, 1),
               ),
             ),
           ),
-          // Switch(
-          //   value: isSelected,
-          //   onChanged: (checked) {
-          //     setState(() {
-          //
-          //       // if (widget.onTypeSelected != null) {
-          //       //   widget.onTypeSelected!(value);
-          //       // }
-          //       /// ✅ Only one tag can be selected
-          //       _selectedTag = checked ? tag : null;
-          //       debugPrint('Selected Tag -> id: ${tag.id}, name: ${tag.name},slug: ${tag.slug}');
-          //
-          //     });
-          //   },
-          //
-          //   activeColor: const Color.fromRGBO(33, 150, 243, 1),
-          // ),
-
-          Switch(
-            value: isSelected,
-            onChanged: (checked) {
-              setState(() {
-                _selectedTag = checked ? tag : null;
-
-                // Trigger parent callback
-                if (widget.onTypeSelected != null) {
-                  widget.onTypeSelected!(_selectedTag);
-                }
-
-                // Local debugPrint (optional)
-                if (_selectedTag != null) {
-                  debugPrint(
-                      'Selected Tag -> id: ${_selectedTag.id}, name: ${_selectedTag.name}, slug: ${_selectedTag.slug}'
-                  );
-                }
-              });
-            },
-            activeColor: const Color.fromRGBO(33, 150, 243, 1),
+          Transform.scale(
+            scale: 0.8,
+            child: Switch(
+              value: isSelected,
+              onChanged: (checked) {
+                setState(() {
+                  _selectedTag = checked ? tag : null;
+                  widget.onTypeSelected?.call(_selectedTag);
+                });
+              },
+              activeColor: const Color.fromRGBO(33, 150, 243, 1),
+            ),
           ),
-
         ],
       ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -218,7 +185,7 @@ class VariablePriceCheckboxWidget extends StatelessWidget {
           text: TextSpan(
             text: 'If the product has ',
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 12,
               color: isDark ? Colors.white70 : Colors.black87,
             ),
             children: const [

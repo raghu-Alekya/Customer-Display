@@ -724,6 +724,31 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       }
     }
   }
+  double loadCashbackFee({
+    required String offlineOrderId,
+  }) {
+    // 🟢 1️⃣ orderExtras (persistent, survives sync & delete)
+    final extras = Hive.box('orderExtras').get(offlineOrderId);
+    if (extras != null && extras["cashback_fee"] != null) {
+      final cashback = (extras["cashback_fee"] as num).toDouble();
+      debugPrint("💰 Cashback from orderExtras (local) → $cashback");
+      return cashback;
+    }
+
+    // 🟡 2️⃣ offlineOrders (while order exists)
+    final offline = Hive.box('offlineOrders').get(offlineOrderId);
+    if (offline != null && offline["cashback_fee"] != null) {
+      final cashback = (offline["cashback_fee"] as num).toDouble();
+      debugPrint("💰 Cashback from offlineOrders → $cashback");
+      return cashback;
+    }
+
+    debugPrint("💰 Cashback not found → 0.0");
+    return 0.0;
+  }
+
+
+
   Widget buildCurrentOrder() {
     final theme = Theme.of(context);
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -881,21 +906,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
 
 
-    if (wooOrderId.isNotEmpty) {
-      // 1️⃣ Check orderExtras first
-      var extrasBox = Hive.box('orderExtras').get(wooOrderId);
-      if (extrasBox != null && extrasBox["cashback_fee"] != null) {
-        cashbackFee = (extrasBox["cashback_fee"] as num).toDouble();
-        print("💰 Cashback Fee loaded from orderExtras → $cashbackFee");
-      } else {
-        // 2️⃣ Fallback to offlineOrders
-        var offlineBox = Hive.box('offlineOrders').get(wooOrderId);
-        if (offlineBox != null && offlineBox["cashback_fee"] != null) {
-          cashbackFee = (offlineBox["cashback_fee"] as num).toDouble();
-          print("💰 Cashback Fee loaded from offlineOrders → $cashbackFee");
-        }
-      }
-    }
+    final String offlineOrderId = orderHelper.activeOrderId.toString();
+
+    cashbackFee = loadCashbackFee(
+     // wooOrderId: wooOrderId,
+      offlineOrderId: offlineOrderId,
+    );
+
 
 
     // ----------- ONLINE TOTAL COMPUTATION -----------
@@ -1114,14 +1131,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             ?.toString()
                             .toLowerCase() ??
                             '';
-
+                        final itemName =
+                        (orderItem[AppDBConst.itemName]?.toString().toLowerCase() ?? '');
                         /// Check if the item is a payout or a coupon
                         final isPayout =
                         itemType.contains(TextConstants.payoutText);
                         final isCoupon =
                         itemType.contains(TextConstants.couponText);
+                        // ✅ STRONG cashback detection
                         final isCashback =
-                        itemType.contains(TextConstants.cashback);
+                            itemType.contains('cashback') || itemName.contains('cashback');
                         final isCustomItem =
                         itemType.contains(TextConstants.customItemText);
                         final isPayoutOrCouponOrCustomItem =
@@ -1350,8 +1369,15 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                             height: MediaQuery.of(context).size.height * 0.08,
                                             width: MediaQuery.of(context).size.height * 0.075,
                                             fit: BoxFit.cover,
+                                          ) : isCashback
+                                              ? Image.asset(
+                                            "assets/cashback.jpeg",
+                                            height: MediaQuery.of(context).size.height * 0.08,
+                                            width: MediaQuery.of(context).size.height * 0.075,
+                                            fit: BoxFit.cover,
                                           )
-                                              : buildProductImage(
+
+                                      : buildProductImage(
                                             orderItem[AppDBConst.itemImage]?.toString(),
                                             height: MediaQuery.of(context).size.height * 0.08,
                                             width: MediaQuery.of(context).size.height * 0.075,
@@ -1635,7 +1661,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                               mainAxisAlignment: MainAxisAlignment.center,
                                               crossAxisAlignment: CrossAxisAlignment.end,
                                               children: [
-                                                if (isPayout || isCoupon)
+                                                if (isPayout || isCoupon )
                                                   Text(
                                                     "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.abs().toStringAsFixed(2)}",
                                                     style: TextStyle(
@@ -1965,11 +1991,23 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          Text(TextConstants.cashbackFee),
+                                          Text(
+                                            TextConstants.cashbackFee,
+                                            style: const TextStyle(
+                                              color: Color(0xFF55CBCD),
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
                                           Text(
                                             "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
-                                            style: const TextStyle(color: Colors.grey, fontSize: 14),
+                                            style: const TextStyle(
+                                              color: Color(0xFF55CBCD),
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                           ),
+
                                         ],
                                       ),
                                     SizedBox(

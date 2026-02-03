@@ -885,8 +885,16 @@ class _TopBarState extends State<TopBar> {
             onTap: () async {
               final isAuthorized = await _showCashDrawerPinPopup(context);
               if (!isAuthorized) return;
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cash drawer opening...")));
+
+              /// ✅ ACTUAL CASH DRAWER OPEN
+              await PrinterSettings.openDrawer(context: context);
+
+              List<int> bytes = [];
+              final ticket = await _printerSettings.getTicket();
+              bytes += ticket.feed(1);
+              await _printerSettings.printTicket(bytes, ticket);
             },
+
             child: Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(

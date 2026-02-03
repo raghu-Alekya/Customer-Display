@@ -12,7 +12,7 @@ class OfflineOrderSyncService {
 
   static void start() {
     _timer ??= Timer.periodic(
-      const Duration(seconds: 10),
+      const Duration(minutes: 1),
           (_) => syncPendingOrders(),
     );
 

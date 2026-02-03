@@ -1193,12 +1193,12 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           {"key": "pos_device_id", "value": order["device_id"] ?? ""},
           {"key": "pos_placed_by", "value": order["user_name"] ?? ""},
           {"key": "shift_id", "value": order["shift_id"]?.toString() ?? ""},
-          {
-            "key": "offline_woo_order_id",
-            "value": order["woo_order_id"] ??
-                order["wooOrderId"] ??
-                ""
-          },
+          // {
+          //   "key": "offline_woo_order_id",
+          //   "value": order["woo_order_id"] ??
+          //       order["wooOrderId"] ??
+          //       ""
+          // },
         ],
         "payment": {
           "method": "cash",

@@ -230,6 +230,7 @@ class _InventoryGetProductTypesWidgetState
           final types = state.productTypes.types;
 
           return DropdownButtonFormField<String>(
+            isDense: true,
             value: _selectedType,
             hint: Text(
               'Choose a product type',
@@ -238,8 +239,9 @@ class _InventoryGetProductTypesWidgetState
             decoration: InputDecoration(
               filled: true,
               fillColor: fillColor,
+              isDense: true,
               contentPadding:
-              const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+              const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide(color: borderColor),
