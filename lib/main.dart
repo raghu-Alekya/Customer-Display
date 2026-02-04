@@ -68,7 +68,6 @@ void main() async {
   await Hive.openBox('deletedOrders');
   await Hive.openBox('cashbackConfig');
   await Hive.openBox('orderExtras');
-  OfflineOrderSyncService.start();
   await Hive.openBox('user');
   AppDB.isar = await Isar.open(
     [DiscountRuleIsarSchema],

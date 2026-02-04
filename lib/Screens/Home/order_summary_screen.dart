@@ -45,6 +45,7 @@ import '../../Utilities/responsive_layout.dart';
 import '../../Utilities/result_utility.dart';
 import '../../Utilities/svg_images_utility.dart';
 import '../../Widgets/PaymentNumPad.dart';
+import '../../Widgets/offline_order_sync_service.dart';
 import '../../Widgets/scanner_guard.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_payment_dialog.dart';
@@ -52,6 +53,7 @@ import '../../services/CustomerDisplayService.dart';
 import '../Auth/login_screen.dart';
 import 'Settings/image_utils.dart';
 import 'Settings/printer_setup_screen.dart';
+import 'categories_screen.dart';
 import 'edit_product_screen.dart';
 import 'package:android_intent_plus/android_intent.dart';
 
@@ -214,6 +216,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
   static const bool offline_PAYMENT_SUCCESS = true;  // ← toggle this
 
+  bool _dialogGuard = false;
+  bool _successDialogAlreadyShown = false;
+  bool _partialDialogAlreadyShown = false;
 
   double NetTotal = 0.0;
   // AddED tax variable
@@ -476,41 +481,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     print("=" * 70 + "\n");
   }
 
-  // void _autoFillRemainingBalance() {
-  //   double amountToFill = _currentPaymentRemainingBalance ?? balanceAmount;
-  //
-  //   if (amountToFill > 0) {
-  //     _rawAmount = (amountToFill * 100).round();
-  //     amountController.text = '${TextConstants.currencySymbol}${amountToFill.toStringAsFixed(2)}';
-  //
-  //     setState(() {
-  //       _isAmountEntered = true;
-  //       _amountErrorText = null;
-  //     });
-  //
-  //     if (kDebugMode) {
-  //       print("\n✅ AUTO-FILLING PAYMENT #${(_lastPaymentDetails?['paymentNumber'] ?? 0) + 1}");
-  //       print("Amount to Pay: \$${amountToFill.toStringAsFixed(2)}");
-  //
-  //       if (tenderAmount > 0) {
-  //         print("📊 PAYMENT PROGRESSION:");
-  //         print("  Total Paid So Far: \$${tenderAmount.toStringAsFixed(2)}");
-  //         print("  Current Balance: \$${balanceAmount.toStringAsFixed(2)}");
-  //         print("  Balance Reduction: \$${(computedNetPayable - balanceAmount).toStringAsFixed(2)}");
-  //
-  //         if (_lastPaymentDetails != null) {
-  //           print("  Last Payment (#${_lastPaymentDetails!['paymentNumber']}):");
-  //           print("    Method: ${_lastPaymentDetails!['method']}");
-  //           print("    Amount: \$${_lastPaymentDetails!['amount']?.toStringAsFixed(2)}");
-  //           print("    Previous Balance: \$${_lastPaymentDetails!['previousBalance']?.toStringAsFixed(2)}");
-  //         }
-  //       }
-  //
-  //       print("Source: ${_currentPaymentRemainingBalance != null ? 'Remaining from last payment' : 'Main balance'}");
-  //       print("=" * 50);
-  //     }
-  //   }
-  // }
 
   Future<void> _savePaymentToHive({
     required double amount,
@@ -1774,13 +1744,34 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   // }
 
   void _handlePay() {
+
+    if (balanceAmount <= 0 &&
+        (double.tryParse(amountController.text.replaceAll(TextConstants.currencySymbol, '').trim()) ?? 0) > 0) {
+
+      print("⚠️ DEFENSIVE RESET: balance=0 but amount entered > 0 → forcing reset after possible void");
+
+      setState(() {
+        _successPopupShown = false;
+        _currentPaymentRemainingBalance = null;
+        isPaymentStarted = false;
+      });
+
+      // Optional: force recalc
+      _calculateBalanceFromPaymentHistory();
+    }
+
     final cleanAmount = amountController.text
         .replaceAll(TextConstants.currencySymbol, '')
         .trim();
 
     final double amount = double.tryParse(cleanAmount) ?? 0.0;
 
-    if (amount <= 0 && computedNetPayable > 0) {
+    // Convert to cents to avoid floating point issues
+    final int enteredCents = (amount * 100).round();
+    final int ebtCents = (ebtTotal * 100).round();
+
+    // ❌ Basic validation
+    if (enteredCents <= 0 && computedNetPayable > 0) {
       setState(() {
         _amountErrorText = TextConstants.amountValidation;
       });
@@ -1789,16 +1780,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     _amountErrorText = null;
 
-    // EBT validation
+    // ⭐ EBT validation
     if (selectedPaymentMethod == TextConstants.ebtText) {
-      if (ebtTotal <= 0) {
+      // ❌ No EBT balance
+      if (ebtCents <= 0) {
         setState(() {
           _amountErrorText = "No EBT balance available";
         });
         return;
       }
 
-      if (amount > ebtTotal) {
+      // ❌ Amount exceeds EBT balance (even by 1 cent)
+      if (enteredCents > ebtCents) {
         setState(() {
           _amountErrorText =
           "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
@@ -1807,9 +1800,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
     }
 
-    // CARD → Sunmi
+    // ⭐ CARD → Sunmi ONLY
     if (selectedPaymentMethod == TextConstants.card) {
-      _showPaymentProgressDialog(context);
       _openSunmiSaleScreen(
         amount: amount,
         orderId: (widget.orderId ?? widget.offlineOrderId).toString(),
@@ -1818,55 +1810,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       return;
     }
 
-    //  FIX: Use current payment remaining if available, otherwise use main balance
-    final double currentRemainingBalance = _currentPaymentRemainingBalance ?? balanceAmount;
-
-    print("\n🔍 PAYMENT CALCULATION SESSION:");
-    print("=" * 50);
-    print("💰 Amount entered: \$${amount.toStringAsFixed(2)}");
-    print("💵 Tendered so far: \$${tenderAmount.toStringAsFixed(2)}");
-    print("📊 Main balance: \$${balanceAmount.toStringAsFixed(2)}");
-    print("🎯 Current payment remaining: \$${(_currentPaymentRemainingBalance ?? balanceAmount).toStringAsFixed(2)}");
-    print("📈 Using for calculation: \$${currentRemainingBalance.toStringAsFixed(2)}");
-
-    final bool willCompletePayment = amount >= currentRemainingBalance;
-    final double changeAmount = willCompletePayment ? (amount - currentRemainingBalance) : 0.0;
-
-    print(" Will complete payment? $willCompletePayment");
-    print("💵 Change if complete: \$${changeAmount.toStringAsFixed(2)}");
-    print("=" * 50);
-
-    if (willCompletePayment) {
-      _successPopupShown = true;
-
-      // Coupon data for popup
-      final box = Hive.box('offlineOrders');
-      final key = (orderId ?? 0).toString();
-      final couponResponse = (box.get(key)?["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
-
-      print(" Showing FULL payment popup");
-      _showPaymentDialog(
-        context,
-        tenderAmount + amount,
-        changeAmount: changeAmount,
-        showChange: changeAmount > 0,
-        couponResponse: couponResponse,
-      );
-    } else {
-      print(" Showing PARTIAL payment popup");
-      _showPartialPaymentDialog(context, amount);
-    }
-
-    // Call API in background (no loading)
-    _callCreatePaymentAPI(skipPopup: true);
+    // ⭐ Wallet / Cash / EBT → API
+    _callCreatePaymentAPI(); // uses validated amount
     _resetAmountAfterPay();
   }
 
+
+
+//  ADD THIS METHOD (you might already have it, but here it is for reference)
   void _resetAmountAfterPay() {
     _rawAmount = 0;
     amountController.text = '${TextConstants.currencySymbol}0.00';
-    _isAmountEntered = false;
+    setState(() {
+      _isAmountEntered = false;
+      _amountErrorText = null;
+    });
   }
+
+
 
   //  UPDATED - Add Payment to Offline Order with Success Message
   Future<void> _addPaymentToOfflineOrder(LocalPayment payment) async {
@@ -2387,6 +2348,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     paymentBloc.dispose();
     _scrollController.dispose();
     amountController.dispose();
+
     super.dispose();
   }
 
@@ -3436,11 +3398,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // ─── Show success popup only for full payment ───
       if (isFullPayment && !_successPopupShown) {
+        // ✅ FULL PAYMENT
         _successPopupShown = true;
 
         final box = Hive.box('offlineOrders');
         final key = (orderId ?? 0).toString();
-        final couponResponse = (box.get(key)?["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
+        final couponResponse =
+            (box.get(key)?["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
 
         _showPaymentDialog(
           context,
@@ -3449,7 +3413,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           showChange: newChange > 0,
           couponResponse: couponResponse,
         );
+
+// 🟡 PARTIAL PAYMENT — only if amount > 0 and balance remains
+      } else if (!isFullPayment && amount > 0) {
+        print("🟡 SHOWING PARTIAL PAYMENT DIALOG");
+        _showPartialPaymentDialog(context, amount);
       }
+
 
       // ─── Save fake payment locally ───
       _lastPayment = LastPaymentInfo(
@@ -3482,7 +3452,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         _updateHivePaymentData(localPayment);
 
         if (kDebugMode) {
-          print("✓ Fake payment saved → ID: ${saved.id}, Amount: $amount, New balance: $newBalance");
+          print(" offline  payment saved → ID: ${saved.id}, Amount: $amount, New balance: $newBalance");
         }
       } catch (e) {
         print("✗ Failed to save fake payment: $e");
@@ -7642,7 +7612,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   // Build #1.0.175: Modified _handleVoidPayment for partial void with API call
 
   Future<void> _handleVoidPayment(BuildContext context, {required bool isPartial}) async {
-    // Basic validation
+    // ────────────────────────────────────────────────
+    //  0. Early validation
+    // ────────────────────────────────────────────────
     if (_lastPayment == null || _lastPayment!.amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("No valid payment to void")),
@@ -7654,16 +7626,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final voidedAmount = _lastPayment!.amount;
     final method = _lastPayment!.method;
 
-    print("Local VOID initiated → reversing \$$voidedAmount ($method)");
+    print("VOID INITIATED → reversing \$${voidedAmount.toStringAsFixed(2)} ($method) | isPartial: $isPartial");
 
     final now = DateTime.now();
     final String voidDateTime = DateFormat('yyyy-MM-dd HH:mm:ss').format(now);
 
-    // Create NEGATIVE payment record (local only - no API)
+    // ────────────────────────────────────────────────
+    //  1. Create NEGATIVE payment record
+    // ────────────────────────────────────────────────
     final negativePayment = LocalPayment(
       orderId: orderId ?? 0,
       title: "Void ($method)",
-      amount: -voidedAmount,                    // ← negative amount
+      amount: -voidedAmount,
       paymentMethod: "void",
       shiftId: shiftId,
       vendorId: vendorId,
@@ -7673,18 +7647,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       notes: "Local void of ${method} payment – original ID: ${_lastPayment?.paymentId ?? 'local'}",
       isSynced: false,
       createdAt: now,
-      remainingBalance: balanceAmount + voidedAmount, // future balance after void
+      remainingBalance: (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
       status: PaymentDbStatus.completed,
-      // Optional: keep reference to original
       serverPaymentId: int.tryParse(_lastPayment?.paymentId ?? "0"),
     );
 
     try {
-      // 1. Save to Isar
+      // ────────────────────────────────────────────────
+      //  2. Save void payment (Isar + Hive mirroring)
+      // ────────────────────────────────────────────────
       final savedVoid = await LocalPaymentDBHelper.instance.savePayment(negativePayment);
-      print("Void saved locally in Isar → ID: ${savedVoid.id} | amount: -${voidedAmount.toStringAsFixed(2)}");
+      print("Void saved in Isar → ID: ${savedVoid.id} | amount: -${voidedAmount.toStringAsFixed(2)}");
 
-      // 2. Mirror the same save logic used for normal payments
       await _savePaymentToHive(
         amount: -voidedAmount,
         paymentMethod: "void",
@@ -7694,42 +7668,65 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       await _saveLocalPaymentToHive(savedVoid);
 
-      // 3. Refresh balances from history (same as normal payment flow)
+      // ────────────────────────────────────────────────
+      //  3. Refresh balances from full payment history
+      //     (this should now include the -amount entry)
+      // ────────────────────────────────────────────────
       await _calculateBalanceFromPaymentHistory();
       await _printPaymentHistorySummary();
 
-      // 4. Clear last payment reference
-      _lastPayment = null;
-
-      // 5. Minimal UI refresh (no dialogs, no balance display changes forced)
+      // ────────────────────────────────────────────────
+      //  4. CRITICAL: Force-reset "payment completed" flags
+      //     Especially important when isPartial == false (full void)
+      // ────────────────────────────────────────────────
       setState(() {
+        // Always clear last payment reference
+        _lastPayment = null;
+        _lastPaymentDetails = null;
+
+        // If this was a FULL payment void → make sure we allow new full payment
+        if (!isPartial) {
+          // Most important resets for the bug you described
+          _currentPaymentRemainingBalance = null;     // no longer "in partial session"
+          _successPopupShown = false;                 // allow success dialog again
+          isPaymentStarted = false;                   // visually reset "payment in progress"
+        }
+
+        // Always update main UI flags based on new calculated balance
         isPaymentStarted = tenderAmount > 0;
-        // We do NOT touch _successPopupShown, _currentPaymentRemainingBalance, etc.
-        // → screen stays visually the same except updated totals from recalc
       });
 
-      // 6. Only show success message – no balance, no dialogs
+      // ────────────────────────────────────────────────
+      //  5. Optional: Show feedback (non-intrusive)
+      // ────────────────────────────────────────────────
+      String message = isPartial
+          ? "Partial payment of \$${voidedAmount.toStringAsFixed(2)} voided"
+          : "Full payment of \$${voidedAmount.toStringAsFixed(2)} voided. Ready for new payment.";
+
       // ScaffoldMessenger.of(context).showSnackBar(
       //   SnackBar(
-      //     content: Text("Void successful – ${voidedAmount.toStringAsFixed(2)} reversed locally"),
+      //     content: Text(message),
       //     backgroundColor: Colors.orange[800],
       //     duration: const Duration(seconds: 4),
       //   ),
       // );
 
     } catch (e, stack) {
-      print("Error during local void save: $e");
+      print("VOID FAILED: $e");
       print(stack);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Failed to record void locally: $e"),
-          backgroundColor: Colors.red,
-        ),
-      );
+
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   SnackBar(
+      //     content: Text("Failed to void payment: $e"),
+      //     backgroundColor: Colors.red,
+      //   ),
+      // );
     }
 
-    // Close the confirmation dialog
-    // Navigator.of(context).pop();
+    // Always close the confirmation dialog at the end
+    // if (Navigator.canPop(context)) {
+    //   Navigator.of(context).pop();
+    // }
   }
 
   // Build #1.0.175: New method for void order API call
@@ -8170,6 +8167,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     ).then((_) {
       _isShowingPaymentDialog = false;
       print("Payment dialog closed → guard reset");
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        print("🔁 Triggering offline order sync after payment dialog");
+        OfflineOrderSyncService.syncPendingOrders();
+      });
     });
   }
 
@@ -8254,7 +8255,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => FastKeyScreen()),
+            MaterialPageRoute(builder: (_) => CategoriesScreen()),
             result: TextConstants.refresh,
           );
         },
@@ -8906,7 +8907,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     Navigator.pushReplacement(
       result: TextConstants.refresh,
       context,
-      MaterialPageRoute(builder: (_) => FastKeyScreen()),
+      MaterialPageRoute(builder: (_) => CategoriesScreen()),
     );
 
     ScaffoldMessenger.of(context).showSnackBar(
