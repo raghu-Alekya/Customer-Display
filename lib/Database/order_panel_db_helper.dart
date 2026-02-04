@@ -125,6 +125,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       print("#### Order Panel DB helper loadData: orderIds = $orderIds, activeUserId: $activeUserId");
     }
   }
+
+
   Future<void> loadData() async {
     final prefs = await SharedPreferences.getInstance();
     activeOrderId = prefs.getInt('activeOrderId');
@@ -1140,16 +1142,22 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   }
 
   // Sets a specific order as the active order
-  Future<void> setActiveOrder(int orderId) async {
+  Future<void> setActiveOrder(int? orderId) async {
     activeOrderId = orderId;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('activeOrderId', activeOrderId!);
 
-    // Debugging log
+    final prefs = await SharedPreferences.getInstance();
+
+    if (orderId == null) {
+      await prefs.remove('activeOrderId');
+    } else {
+      await prefs.setInt('activeOrderId', orderId);
+    }
+
     if (kDebugMode) {
       print("#### Active order set to: $activeOrderId");
     }
   }
+
 
   // Build #1.0.161: Store current active order before leaving
   /// we are using same "activeOrderId" for both orderPanel & total order screen

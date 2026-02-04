@@ -155,6 +155,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     if (OrderHelper.isOrderPanelLoaded) {
       setState(() => _isFetchingInitialData = false);
       _getOrderTabs(); // Load tabs from OrderHelper.orders
+      //await _ensureAtLeastOneOrder();
       return;
     }
 
@@ -176,6 +177,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       // ✅ Mark panel loaded and render
       OrderHelper.isOrderPanelLoaded = true;
       _getOrderTabs(); // Use offline OrderHelper.orders
+      _ensureAtLeastOneOrder();
 
     } catch (e, s) {
       if (kDebugMode) {
@@ -187,6 +189,39 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         _isFetchingInitialData = false;
         _isLoading = false;
       });
+    }
+  }
+  Future<void> _ensureAtLeastOneOrder() async {
+    // 🔒 Prevent duplicate auto-creation
+    if (ScannerMutex.noOrderBusy) return;
+    ScannerMutex.noOrderBusy = true;
+
+    try {
+      // Reload visible unpaid orders
+      await orderHelper.loadProcessingData();
+
+      final unpaidOrders = [];
+
+      for (final order in orderHelper.orders) {
+        final int orderId = order[AppDBConst.orderServerId];
+        final payments =
+        await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+
+        if (payments.isEmpty) {
+          unpaidOrders.add(order);
+        }
+      }
+
+      // ✅ If NO unpaid orders → auto create ONE
+      if (unpaidOrders.isEmpty) {
+        if (kDebugMode) {
+          print("🆕 AUTO creating first order");
+        }
+
+        await addNewTab(); // 🔥 uses offline createOrder → 1001,1002...
+      }
+    } finally {
+      ScannerMutex.noOrderBusy = false;
     }
   }
 
@@ -212,6 +247,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         print("##### _isFetchingInitialData : $_isFetchingInitialData");
       }
       _getOrderTabs();
+    // _ensureAtLeastOneOrder();
     }
 
     if (kDebugMode) {
@@ -279,25 +315,55 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     // --------------------------------------------------
     // 3️⃣ ACTIVE TAB SAFETY
     // --------------------------------------------------
-    if (tabs.isNotEmpty) {
-      final visibleIds = tabs.map((t) => t['orderId'] as int).toList();
-
-      if (!visibleIds.contains(orderHelper.activeOrderId)) {
-        final newActiveId = visibleIds.first;
-
-        await orderHelper.setActiveOrder(newActiveId);
-        await orderHelper.saveLastActiveOrderId(newActiveId);
-
-        if (kDebugMode) {
-          print("🔁 Active order hidden → switched to $newActiveId");
-        }
-      }
-    }
+    // if (tabs.isNotEmpty) {
+    //   final visibleIds = tabs.map((t) => t['orderId'] as int).toList();
+    //
+    //   // if (orderHelper.activeOrderId == null && visibleIds.isNotEmpty) {
+    //   //   await orderHelper.setActiveOrder(visibleIds.last); // 👈 keep newest
+    //   //   await orderHelper.saveLastActiveOrderId(visibleIds.last);
+    //   // }
+    //
+    // }
 
     // --------------------------------------------------
     // 4️⃣ CONTROLLER + ITEMS
     // --------------------------------------------------
     if (!mounted) return;
+// --------------------------------------------------
+// 3️⃣ HARD ACTIVE ORDER SAFETY (REQUIRED)
+// --------------------------------------------------
+    final visibleOrderIds =
+    tabs.map((t) => t['orderId'] as int).toList();
+
+    final int? activeId = orderHelper.activeOrderId;
+
+    if (activeId != null &&
+        visibleOrderIds.isNotEmpty && // 🔥 KEY FIX
+        !visibleOrderIds.contains(activeId)) {
+      if (kDebugMode) {
+        print("🟥 Active order $activeId is hidden → clearing");
+      }
+
+      if (visibleOrderIds.isNotEmpty) {
+        await orderHelper.setActiveOrder(visibleOrderIds.last);
+        await orderHelper.saveLastActiveOrderId(visibleOrderIds.last);
+      } else {
+        await orderHelper.setActiveOrder(null);
+      }
+
+      if (mounted) {
+        setState(() {
+          orderItems.clear(); // ⛔ CRITICAL
+        });
+      }
+    }
+
+    if (tabs.isEmpty && mounted) {
+      setState(() {
+        orderItems.clear();
+      });
+    }
+
 
     _initializeTabController();
     await fetchOrderItems();
@@ -371,6 +437,23 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
+    final activeId = orderHelper.activeOrderId;
+
+    if (activeId == null ||
+        !tabs.any((t) => t['orderId'] == activeId)) {
+      if (kDebugMode) {
+        print("⛔ fetchOrderItems blocked — active order hidden");
+      }
+
+      if (mounted) {
+        setState(() {
+          orderItems.clear();
+          _listVersion++;
+        });
+      }
+      return;
+    }
+
     if (kDebugMode) {
       print("##### DEBUG: fetchOrderItems 112233");
     }
@@ -390,6 +473,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           });
           //   await orderHelper.saveLastActiveOrderId(null); // Clear saved activeOrderId
           await _getOrderTabs(); // Refresh tabs to reflect no active order
+          //await _ensureAtLeastOneOrder();
           return;
         }
 
@@ -496,9 +580,18 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     int defaultIndex = 0;
 
     if (orderHelper.activeOrderId != null) {
-      final idx = orderHelper.orderIds.indexOf(orderHelper.activeOrderId!);
-      if (idx != -1) defaultIndex = idx;
+      final idx = tabs.indexWhere(
+            (t) => t["orderId"] == orderHelper.activeOrderId,
+      );
+
+      if (idx != -1) {
+        defaultIndex = idx;
+      } else {
+        // 🚫 Do NOT override focus
+        return;
+      }
     }
+
 
     if (mounted) {
       _tabController!.index = defaultIndex;
@@ -514,7 +607,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   // Updated UI (tabs, tab controller, items) after API success.
   // Added alert dialog for error handling with retry option.
   // Loader is shown via _isLoading during the API call.
-  void addNewTab() async {
+  Future<void> addNewTab() async {
     // Create new order if none exists
     if (kDebugMode) {
       print("##### DEBUG: addNewTab - Creating new order");
@@ -1642,12 +1735,17 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 scrollDirection: Axis.horizontal,
                                 controller: _scrollController,
                                 child: Row(
-                                  children: List.generate(tabs.length, (index) {
-                                    final bool isSelected = _tabController!.index == index;
+                                  children: _tabController == null
+                                      ? []
+                                      : List.generate(tabs.length, (index) {
+                                    final int selectedIndex = _tabController?.index ?? 0;
+                                    final bool isSelected = selectedIndex == index;
+
                                     return Padding(
                                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                                       child: GestureDetector(
                                         onTap: () {
+                                          if (_tabController == null) return;
                                           setState(() {
                                             _tabController!.index = index;
                                           });
@@ -1680,9 +1778,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                               if (isSelected)
                                                 GestureDetector(
                                                   onTap: () {
-                                                    CustomDialog.showAreYouSure(context, confirm: () {
-                                                      removeTab(index);
-                                                    });
+                                                    CustomDialog.showAreYouSure(
+                                                      context,
+                                                      confirm: () {
+                                                        removeTab(index);
+                                                      },
+                                                    );
                                                   },
                                                   child: Image.asset(
                                                     "assets/deletecircle.png",
@@ -1696,6 +1797,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                       ),
                                     );
                                   }),
+
                                 ),
                               ),
                             ),
@@ -2503,52 +2605,52 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   }
 
 
-double getCustomItemTax({
-  required String taxClass,
-  required double unitPrice, // 👈 make this explicit
-  required int qty,
-  required List<Tax> taxes,
-  double? taxRate,
-}) {
-  try {
-    double rate = 0.0;
+  double getCustomItemTax({
+    required String taxClass,
+    required double unitPrice, // 👈 make this explicit
+    required int qty,
+    required List<Tax> taxes,
+    double? taxRate,
+  }) {
+    try {
+      double rate = 0.0;
 
-    // 🟣 1️⃣ Direct rate
-    if (taxRate != null && taxRate > 0) {
-      rate = taxRate;
-    }
-    // 🔵 2️⃣ Resolve from tax class
-    else {
-      final selected = taxes.firstWhere(
-            (t) => t.slug == taxClass,
-        orElse: () => Tax(slug: "", name: ""),
-      );
+      // 🟣 1️⃣ Direct rate
+      if (taxRate != null && taxRate > 0) {
+        rate = taxRate;
+      }
+      // 🔵 2️⃣ Resolve from tax class
+      else {
+        final selected = taxes.firstWhere(
+              (t) => t.slug == taxClass,
+          orElse: () => Tax(slug: "", name: ""),
+        );
 
-      if (selected.slug.isEmpty) {
-        debugPrint("⚠ No tax class match → tax = 0.0");
-        return 0.0;
+        if (selected.slug.isEmpty) {
+          debugPrint("⚠ No tax class match → tax = 0.0");
+          return 0.0;
+        }
+
+        final rateString =
+        selected.slug.replaceAll(RegExp(r'[^0-9.]'), '');
+        rate = double.tryParse(rateString) ?? 0.0;
       }
 
-      final rateString =
-      selected.slug.replaceAll(RegExp(r'[^0-9.]'), '');
-      rate = double.tryParse(rateString) ?? 0.0;
+      // ✅ EXACTLY like product tax
+      final double taxableBase = unitPrice * qty;
+      final double taxAmount = (taxableBase * rate) / 100;
+
+      debugPrint(
+        "🔥 Custom Item Tax → unit:$unitPrice qty:$qty "
+            "taxableBase:$taxableBase rate:$rate tax:$taxAmount",
+      );
+
+      return taxAmount;
+    } catch (e) {
+      debugPrint("❌ ERROR in getCustomItemTax → $e");
+      return 0.0;
     }
-
-    // ✅ EXACTLY like product tax
-    final double taxableBase = unitPrice * qty;
-    final double taxAmount = (taxableBase * rate) / 100;
-
-    debugPrint(
-      "🔥 Custom Item Tax → unit:$unitPrice qty:$qty "
-          "taxableBase:$taxableBase rate:$rate tax:$taxAmount",
-    );
-
-    return taxAmount;
-  } catch (e) {
-    debugPrint("❌ ERROR in getCustomItemTax → $e");
-    return 0.0;
   }
-}
 
 
   //
@@ -4505,15 +4607,15 @@ double getCustomItemTax({
                               totalTaxAfterDiscount,
                               cashbackFee,
 
-                          );
+                            );
 
-                          final saved = Hive.box('offlineOrders')
-                              .get(orderHelper.activeOrderId.toString());
+                            final saved = Hive.box('offlineOrders')
+                                .get(orderHelper.activeOrderId.toString());
 
-                          debugPrint("🔍 [VERIFY HIVE DATA] $saved");
+                            debugPrint("🔍 [VERIFY HIVE DATA] $saved");
 
 
-                          // =======================================================
+                            // =======================================================
                             // 🔹 NAVIGATE TO SUMMARY (USING SNAPSHOT)
                             // =======================================================
                             final result = await Navigator.push(
