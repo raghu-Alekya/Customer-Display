@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:hive/hive.dart';
+import '../Database/order_panel_db_helper.dart';
 import '../services/CustomerDisplayService.dart';
 
 class CustomerDisplayHelper {
@@ -22,9 +23,38 @@ class CustomerDisplayHelper {
     );
   }
 
-
-  static Future<void> updateCustomerDisplay(int serverOrderId) async {
+  static Future<void> clearOrder() async {
     try {
+      await CustomerDisplayService.showWelcome();
+      print("🧹 Customer display cleared (order reset)");
+    } catch (e) {
+      print("❌ Failed to clear customer display: $e");
+    }
+  }
+
+
+  static Future<void> updateCustomerDisplay(
+      int serverOrderId, {
+        bool summaryEnabled = false,
+      }) async {
+    try {
+
+      final int? activeId = OrderHelper().activeOrderId;
+
+      // If no active order, FORCE welcome screen
+      if (activeId == null) {
+        print("🟢 [CD] No active order → showing welcome");
+        await CustomerDisplayService.showWelcome();
+        return;
+      }
+
+// Ignore only truly stale updates
+      if (activeId != serverOrderId) {
+        print("🟥 [CD] Ignoring stale display update");
+        return;
+      }
+
+
       print("🟡 [CD] START updateCustomerDisplay → serverOrderId=$serverOrderId");
 
       final offlineBox = Hive.box('offlineOrders');
@@ -33,9 +63,12 @@ class CustomerDisplayHelper {
       print("🗃 [CD] Checking Hive for key=$serverOrderId → found=${raw != null}");
 
       if (raw == null) {
-        print("❌ [CD] No offline order found in Hive.");
+        print("❌ [CD] No offline order found → resetting display");
+
+        await CustomerDisplayService.showWelcome();
         return;
       }
+
 
       final data = Map<String, dynamic>.from(raw);
 
@@ -116,6 +149,11 @@ class CustomerDisplayHelper {
       // ------------------ FILTER PRODUCT LIST ------------------
       final productsRaw = (data["products"] ?? []) as List;
 
+      if (productsRaw.isEmpty) {
+        print("🟥 [CD] Order has no items → resetting display");
+        await CustomerDisplayService.showWelcome();
+        return;
+      }
 
       print("🔵 [CD] RAW PRODUCTS FROM HIVE (BEFORE FILTER):");
       for (var p in productsRaw) {
@@ -187,17 +225,47 @@ class CustomerDisplayHelper {
 
           final unitPrice = _getUnitPrice(item);
 
+          final discountMeta =
+          (item["discount_meta"] is Map)
+              ? Map<String, dynamic>.from(item["discount_meta"])
+              : {};
+
+          print("""
+🟠 [CD] PARSED DISCOUNT META
+  product : ${item["name"]}
+  meta    : $discountMeta
+""");
+
+
+          final double totalDiscount =
+              (discountMeta["amount"] as num?)?.toDouble() ?? 0.0;
+
+          final double perUnitDiscount =
+          qty > 0 ? totalDiscount / qty : 0.0;
+          print("""
+🔴 [CD] RAW PRODUCT ITEM FROM HIVE
+  name        : ${item["name"]}
+  quantity    : ${item["quantity"]}
+  price(raw)  : ${item["price"]}
+  unit_price  : ${item["unit_price"]}
+  discount_meta : ${item["discount_meta"]}
+""");
+
           return {
             "name": item["name"] ?? "",
             "qty": qty.toDouble(),
             "price": unitPrice,
             "original_price": unitPrice,
-            "auto_discount": 0.0, // 👈 always zero
+            "auto_discount": perUnitDiscount, // ✅ REAL VALUE
+            "discount_type": discountMeta["type"] ?? "",
+            "discount_source": discountMeta["source"] ?? "",
+            "rule_id": discountMeta["rule_id"] ?? "",
             "image": item["image"] ?? "",
           };
         }),
 
-        ...payouts.map((p) => {
+
+    ...payouts.map((p) => {
           "name": "Payout",
           "qty": 1.0,
           "price": (p["amount"] ?? 0).toDouble(),
@@ -214,14 +282,18 @@ class CustomerDisplayHelper {
       ];
 
       // ------------------ TOTALS ------------------
-      double productTotal = products.fold(0.0, (sum, p) {
-        final qty =
-            int.tryParse(p["quantity"]?.toString() ?? "1") ?? 1;
+      double productTotal = parsedItems
+          .where((i) => i["name"] != "Payout" && i["name"] != "Cashback")
+          .fold(0.0, (sum, i) {
+        final qty = (i["qty"] as num?)?.toDouble() ?? 1.0;
+        final price = (i["price"] as num?)?.toDouble() ?? 0.0;
+        final autoDiscount = (i["auto_discount"] as num?)?.toDouble() ?? 0.0;
 
-        final unitPrice = _getUnitPrice(p);
+        final effectiveUnitPrice = price - autoDiscount;
 
-        return sum + (unitPrice * qty);
+        return sum + (effectiveUnitPrice * qty);
       });
+
 
       double payoutTotal =
       payouts.fold(0, (sum, p) => sum + (p["amount"] ?? 0).toDouble());
@@ -245,7 +317,10 @@ class CustomerDisplayHelper {
 
       // Tax 🟡
       double orderTax =
-      (data["wooTax"] is num) ? (data["wooTax"] as num).toDouble() : 0.0;
+      (data["tax_discount"] is num)
+          ? (data["tax_discount"] as num).toDouble()
+          : 0.0;
+
 
       // Final calculations
       double netTotal = grossTotal - orderDiscount;
@@ -271,9 +346,21 @@ class CustomerDisplayHelper {
 
 
       // ------------------ PUSH TO CUSTOMER DISPLAY ------------------
-      final int safeOrderId =
-          int.tryParse(wooOrderId?.toString() ?? "") ?? serverOrderId;
+      // final int safeOrderId =
+      //     int.tryParse(wooOrderId?.toString() ?? "") ?? serverOrderId;
+      final int safeOrderId = serverOrderId;
 
+      final double totalItemDiscount = parsedItems.fold(
+        0.0,
+            (sum, i) => sum + ((i["auto_discount"] ?? 0.0) * (i["qty"] ?? 1)),
+      );
+
+      final String appliedDiscountType = parsedItems
+          .map((i) => i["discount_type"])
+          .firstWhere(
+            (t) => t != null && t.toString().isNotEmpty,
+        orElse: () => "NONE",
+      );
       await CustomerDisplayService.showCustomerData(
         orderId: safeOrderId,
         items: parsedItems,
@@ -287,6 +374,10 @@ class CustomerDisplayHelper {
         orderTime: orderTime,
         cashbackFee: cashbackFee,
         loyaltyContact: loyaltyContact,
+        summaryEnabled: summaryEnabled,
+        discountType: appliedDiscountType,
+        discountValue: totalItemDiscount,
+
       );
 
 

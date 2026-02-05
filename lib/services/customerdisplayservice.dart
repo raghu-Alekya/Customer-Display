@@ -73,6 +73,9 @@ class CustomerDisplayService {
     String storeId = '',
     String storeName = '',
     String? storeLogoUrl,
+    bool summaryEnabled = true,
+    String discountType = "",
+    double discountValue = 0.0,
   }) async {
     try {
       print("📢 [CustomerDisplayService] showCustomerData() called");
@@ -86,9 +89,22 @@ class CustomerDisplayService {
           "name": item["name"] ?? "Unknown",
           "qty": item["qty"] ?? 0,
           "price": item["price"] ?? 0.0,
+          "original_price": item["original_price"] ?? item["price"] ?? 0.0,
+          "auto_discount": item["auto_discount"] ?? 0.0,
+          "discount_type": item["discount_type"] ?? "",
           "image": item["image"] ?? "",
         };
       }).toList();
+
+// 🔍 Print discount details
+      for (final item in safeItems) {
+        print(
+            "🧾 Item: ${item['name']} | "
+                "Discount Type: ${item['discount_type']} | "
+                "Auto Discount: ${item['auto_discount']}"
+        );
+      }
+
 
       await _platform.invokeMethod('showCustomerData', {
         "orderId": orderId,
@@ -106,7 +122,10 @@ class CustomerDisplayService {
         "storeName": storeName,
         "storeLogoUrl": storeLogoUrl ?? "",
         "loyaltyContact": loyaltyContact,
-
+        "summaryEnabled": summaryEnabled,
+        // ✅ NEW
+        "discountType": discountType,
+        "discountValue": discountValue,
       });
 
       print("✅ [CustomerDisplayService] Customer data sent successfully");

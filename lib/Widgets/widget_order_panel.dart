@@ -337,32 +337,38 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
     final int? activeId = orderHelper.activeOrderId;
 
-    if (activeId != null &&
-        visibleOrderIds.isNotEmpty && // 🔥 KEY FIX
-        !visibleOrderIds.contains(activeId)) {
+// 🔥 HANDLE ALL INVALID ACTIVE ORDER CASES
+    if (activeId != null && !visibleOrderIds.contains(activeId)) {
       if (kDebugMode) {
-        print("🟥 Active order $activeId is hidden → clearing");
+        print("🟥 Active order $activeId is no longer visible → resetting");
       }
 
       if (visibleOrderIds.isNotEmpty) {
-        await orderHelper.setActiveOrder(visibleOrderIds.last);
-        await orderHelper.saveLastActiveOrderId(visibleOrderIds.last);
+        // 👉 Switch to newest visible order
+        final newActiveId = visibleOrderIds.last;
+
+        await orderHelper.setActiveOrder(newActiveId);
+        await orderHelper.saveLastActiveOrderId(newActiveId);
+
+        // 🔄 Update customer display for new order
+        await CustomerDisplayHelper.updateCustomerDisplay(newActiveId);
       } else {
+        // ❌ NO orders left → FULL RESET
         await orderHelper.setActiveOrder(null);
-      }
+        //await orderHelper.saveLastActiveOrderId(null);
 
-      if (mounted) {
-        setState(() {
-          orderItems.clear(); // ⛔ CRITICAL
-        });
+        // ⛔ CLEAR UI STATE
+        if (mounted) {
+          setState(() {
+            orderItems.clear();
+          });
+        }
+
+        // ⛔ CRITICAL: RESET CUSTOMER DISPLAY
+        await CustomerDisplayService.showWelcome();
       }
     }
 
-    if (tabs.isEmpty && mounted) {
-      setState(() {
-        orderItems.clear();
-      });
-    }
 
 
     _initializeTabController();
@@ -2239,11 +2245,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           // UI cleanup
           setState(() {
             tabs.removeAt(index);
-            if (tabs.isEmpty) {
-              orderHelper.activeOrderId = null;
-              orderItems = [];
-            }
           });
+
+          if (tabs.isEmpty) {
+            orderHelper.activeOrderId = null;
+            orderItems = [];
+
+            await _initializeTabController(); // ⭐ THIS TRIGGERS WELCOME
+            setState(() => _isLoading = false);
+            return;
+          }
 
           setState(() => _isLoading = false);
           return;
@@ -2390,7 +2401,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       setState(() => _isLoading = false);
     }
   }
-
 
 
   int totalItems = 0;
@@ -4562,11 +4572,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                             if (existingLocal != null) {
                               final updated = Map<String, dynamic>.from(existingLocal);
+
+                              // ✅ 1. UPDATE ITEMS (you already do this)
                               updated['items'] = orderItems.map((item) {
                                 return {
                                   ...item,
-
-                                  // 🔒 DISCOUNT META (FROZEN)
                                   "discount_meta": {
                                     "amount": (item['auto_discount'] as num?)?.toDouble() ?? 0.0,
                                     "type": item['discount_type'] ?? "",
@@ -4576,15 +4586,38 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 };
                               }).toList();
 
+                              // ✅ 2. UPDATE PRODUCTS (THIS WAS MISSING)
+                              updated['products'] = (updated['products'] as List).map((product) {
+                                final pid = product['product_id'];
+
+                                final matchedItem = orderItems.firstWhere(
+                                      (i) => i['product_id'] == pid,
+                                  orElse: () => {},
+                                );
+
+                                if (matchedItem.isEmpty) return product;
+
+                                return {
+                                  ...product,
+                                  "discount_meta": {
+                                    "amount": (matchedItem['auto_discount'] as num?)?.toDouble() ?? 0.0,
+                                    "type": matchedItem['discount_type'] ?? "",
+                                    "source": matchedItem['discount_source'] ?? "",
+                                    "rule_id": matchedItem['rule_id'] ?? "",
+                                  },
+                                };
+                              }).toList();
+
                               await box.put(localKey, updated);
                             }
 
-                            // =======================================================
-                            // 🔥 UPDATE CUSTOMER DISPLAY (MAY REBUILD OFFLINE DATA)
-                            // =======================================================
-                            await CustomerDisplayHelper.updateCustomerDisplay(
-                              orderHelper.activeOrderId!,
-                            );
+
+                            // // =======================================================
+                            // // 🔥 UPDATE CUSTOMER DISPLAY (MAY REBUILD OFFLINE DATA)
+                            // // =======================================================
+                            // await CustomerDisplayHelper.updateCustomerDisplay(
+                            //   orderHelper.activeOrderId!,
+                            // );
 
                             // =======================================================
                             // ⭐ CALCULATE TOTAL ENGINE DISCOUNT
@@ -4604,9 +4637,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                             await updateOfflineOrderTaxAndCashback(
                               orderHelper.activeOrderId.toString(),
-                              totalTaxAfterDiscount,
+                              totalTaxAfterDiscount,   // ✅ FINAL tax ONLY
                               cashbackFee,
-
+                            );
+                            await CustomerDisplayHelper.updateCustomerDisplay(
+                              orderHelper.activeOrderId!,
+                              summaryEnabled: true,
                             );
 
                             final saved = Hive.box('offlineOrders')
@@ -4719,28 +4755,41 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   }
 
   Future<void> updateOfflineOrderTaxAndCashback(
-      String orderId, double tax, double cashback) async {
+      String orderId,
+      double finalTaxAfterDiscount,
+      double cashback,
+      ) async {
     final box = Hive.box('offlineOrders');
     final existing = box.get(orderId);
 
     if (existing == null) {
       if (kDebugMode) {
-        print("⚠ [Hive] Cannot update order → Not found for ID: $orderId");
+        print("⚠ [Hive] Order not found → $orderId");
       }
       return;
     }
 
     final updatedOrder = Map<String, dynamic>.from(existing);
 
-    updatedOrder["tax"] = tax;
-    updatedOrder["cashback_fee"] = cashback;
+    // 🔒 FINAL VALUES — DO NOT TOUCH AFTER CHECKOUT
+    updatedOrder["tax_discount"] =
+        double.parse(finalTaxAfterDiscount.toStringAsFixed(2));
+
+    updatedOrder["cashback_fee"] =
+        double.parse(cashback.toStringAsFixed(2));
 
     await box.put(orderId, updatedOrder);
 
     if (kDebugMode) {
-      print("💾 [Hive] Updated offline order → ID: $orderId | tax: $tax | cashback_fee: $cashback");
+      print("""
+💾 [Hive] FINAL CHECKOUT SAVE
+  orderId : $orderId
+  tax     : ${updatedOrder["tax"]}
+  cashback: ${updatedOrder["cashback_fee"]}
+""");
     }
   }
+
 /// //Build #1.0.2 : Added showNumPadDialog if user tap on order layout list item
 
 // New method to show product edit screen (replace the existing showNumPadDialog)

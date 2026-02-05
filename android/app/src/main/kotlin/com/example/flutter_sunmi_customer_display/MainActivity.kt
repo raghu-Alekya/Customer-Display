@@ -28,6 +28,7 @@ import org.json.JSONArray
 import java.text.NumberFormat
 import java.util.Locale
 import android.content.Intent
+import android.graphics.Paint
 
 class MainActivity : FlutterActivity() {
 
@@ -131,6 +132,8 @@ class MainActivity : FlutterActivity() {
                     val orderTime = call.argument<String>("orderTime") ?: ""
                     val cashbackFee = call.argument<Double>("cashbackFee") ?: 0.0
                     val loyaltyContact = call.argument<String>("loyaltyContact") ?: ""
+                    val summaryEnabled = call.argument<Boolean>("summaryEnabled") ?: true
+
                     Log.d("CustomerDisplay", "☎ Loyalty Contact received: $loyaltyContact")
 
                     Log.d("CustomerDisplay", "➡ showCustomerData invoked → orderId=$orderId, items=${items.size}, grossTotal=$grossTotal, discount=$discount, merchantDiscount=$merchantDiscount, netTotal=$netTotal, tax=$tax, netPayable=$netPayable")
@@ -139,7 +142,7 @@ class MainActivity : FlutterActivity() {
 
                     val success = showDataOnCustomerDisplay(
                         orderId, currentStoreId, currentStoreName, currentStoreLogoUrl, items,
-                        grossTotal, discount, merchantDiscount, netTotal, tax, netPayable,orderDate, orderTime,cashbackFee,loyaltyContact
+                        grossTotal, discount, merchantDiscount, netTotal, tax, netPayable,orderDate, orderTime,cashbackFee,loyaltyContact,summaryEnabled
                     )
 
                     if (success) {
@@ -293,7 +296,8 @@ class MainActivity : FlutterActivity() {
         orderDate: String,
         orderTime: String,
         cashbackFee: Double,
-        loyaltyContact: String
+        loyaltyContact: String,
+        summaryEnabled: Boolean
     ): Boolean {
 
         if (customerDisplayPresentation == null) {
@@ -316,7 +320,8 @@ class MainActivity : FlutterActivity() {
             orderDate,
             orderTime,
             cashbackFee,
-            loyaltyContact
+            loyaltyContact,
+            summaryEnabled // ✅
         )
 
         Log.d("CustomerDisplay", "✔ CustomerDisplayPresentation updated with order #$orderId")
@@ -655,11 +660,18 @@ class MainActivity : FlutterActivity() {
             orderDate: String,
             orderTime: String,
             cashbackFee: Double,
-            loyaltyContact: String
+            loyaltyContact: String,
+            summaryEnabled: Boolean
         ) {
             val defaultStoreId = "STORE001"
             val defaultStoreName = "Pinaka"
             val defaultStoreLogoUrl: String? = null
+
+            Log.d(
+                "CustomerDisplay",
+                "🟢 updateCustomerData() called → orderId=$orderId, items=${items.size}, gross=$grossTotal, tax=$tax, net=$netPayable"
+            )
+
 
             currentStoreId = storeId?.takeIf { it.isNotEmpty() } ?: defaultStoreId
             currentStoreName = storeName?.takeIf { it.isNotEmpty() } ?: defaultStoreName
@@ -667,6 +679,7 @@ class MainActivity : FlutterActivity() {
                 storeLogoUrl?.takeIf { it?.isNotEmpty() == true } ?: defaultStoreLogoUrl
 
             Log.d("CustomerDisplay", "📱 Displaying Customer Contact: $loyaltyContact")
+            val showDiscountDetails = summaryEnabled
 
 
             Log.d("CustomerDisplay", "➡ Showing Customer Display layout")
@@ -784,12 +797,9 @@ class MainActivity : FlutterActivity() {
             // -----------------------------------------------------
             // CASE B: Items exist but tax = 0.0 → hide summary
             // -----------------------------------------------------
-            if (tax == 0.0) {
-                Log.d("CustomerDisplay", "✅ Tax=0.0 → hiding summary container")
-                summaryContainer.visibility = View.GONE
-            } else {
-                summaryContainer.visibility = View.VISIBLE
-            }
+            summaryContainer.visibility =
+                if (summaryEnabled) View.VISIBLE else View.GONE
+
 
             // -----------------------------------------------------
             // Items exist → Show list
@@ -807,12 +817,49 @@ class MainActivity : FlutterActivity() {
             }
             itemsHeader.visibility = if (hasRealItems) View.VISIBLE else View.GONE
 
+
+
             for ((index, item) in items.withIndex()) {
+                Log.d(
+                    "CustomerDisplay",
+                    "🔁 LOOP[$index] raw item = $item"
+                )
+
 
                 val name = (item["name"] as? String) ?: ""
                 val qty = (item["qty"] as? Number)?.toInt() ?: 0
                 val price = (item["price"] as? Number)?.toDouble() ?: 0.0
-                val total = price * qty
+
+                val originalPrice =
+                    (item["original_price"] as? Number)?.toDouble() ?: price
+
+
+
+                val discountValue =
+                    (item["auto_discount"] as? Number)?.toDouble() ?: 0.0
+
+                val discountType =
+                    (item["discount_type"] as? String)?.trim() ?: ""
+
+                Log.d(
+                    "CustomerDisplay",
+                    """
+    🧮 CALC[$index]
+      name          = $name
+      qty           = $qty
+      price         = $price
+      discountValue = $discountValue
+      discountType  = $discountType
+    """.trimIndent()
+                )
+
+
+                val hasDiscount = discountValue > 0
+                val originalTotal = price * qty
+                val discountedTotal = originalTotal - discountValue
+
+
+
 
                 // ✔ SAME CALCULATION
                 if (!name.equals("Payout", true) && !name.equals("Cashback", true)) {
@@ -831,50 +878,11 @@ class MainActivity : FlutterActivity() {
                     setBackgroundColor(Color.WHITE)
                 }
 
-                // ================= ITEM COLUMN (1.5f) =================
+// ================= ITEM COLUMN (1.6f) =================
                 val itemColumn = LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1.5f)
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1.6f)
                 }
-
-// ❌ Image removed from UI — no empty gap
-// (ImageView not added to itemColumn)
-
-// ================================================
-// IMAGE LOADING LOGIC (kept for future use)
-// ================================================
-                /*
-                val imageView = ImageView(context).apply {
-                    layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40))
-                        .apply { marginEnd = dpToPx(8) }
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                }
-
-                when {
-                    name.equals("Payout", true) -> imageView.setImageResource(R.drawable.ic_payout)
-                    name.equals("Coupon", true) -> imageView.setImageResource(R.drawable.ic_coupon)
-                    else -> {
-                        (item["image"] as? String)?.let { url ->
-                            Thread {
-                                try {
-                                    val bmp = BitmapFactory.decodeStream(URL(url).openStream())
-                                    Handler(Looper.getMainLooper()).post {
-                                        imageView.setImageBitmap(bmp)
-                                    }
-                                } catch (_: Exception) {
-                                    Handler(Looper.getMainLooper()).post {
-                                        imageView.setImageResource(R.drawable.custom)
-                                    }
-                                }
-                            }.start()
-                        }
-                    }
-                }
-
-                // To re-enable images later:
-                // itemColumn.addView(imageView)
-                */
 
                 val nameView = TextView(context).apply {
                     text = if (name.length > 26) "${name.take(26)}…" else name
@@ -882,46 +890,225 @@ class MainActivity : FlutterActivity() {
                     setTypeface(typeface, Typeface.BOLD)
                     setTextColor(Color.BLACK)
                 }
-
-//                itemColumn.addView(imageView)
                 itemColumn.addView(nameView)
 
-                // ================= QTY × PRICE COLUMN (1.0f) =================
+                val rawType = discountType.trim().lowercase()
+
+                val (displayText, displayColor) = when {
+                    rawType.contains("mixmatch") || rawType.contains("mix_match") ->
+                        "COMBO DISCOUNT" to Color.parseColor("#FF9800") // 🟠 Orange
+
+                    rawType.contains("multipack") || rawType.contains("multi_pack") ->
+                        "MULTIPACK DISCOUNT" to Color.parseColor("#2196F3") // 🔵 Blue
+
+                    rawType.contains("auto") ->
+                        "AUTO DISCOUNT" to Color.RED
+
+                    else ->
+                        rawType.uppercase() to Color.RED
+                }
+
+
+                if (hasDiscount && showDiscountDetails) {
+                    val discountText = TextView(context).apply {
+                        text = "$displayText -${formatCurrency(discountValue)}"
+                        textSize = 14f
+                        setTextColor(displayColor)
+                    }
+                    itemColumn.addView(discountText)
+                }
+
+
+// ================= QTY × PRICE (1.0f) =================
                 val qtyPriceView = TextView(context).apply {
                     layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
-                    gravity = Gravity.CENTER
+                    gravity = Gravity.START   // 👈 move left
                     textSize = 18f
                     setTextColor(Color.DKGRAY)
-                    text = when {
-                        name.equals("Payout", true) -> ""
-                        name.equals("Cashback", true) -> ""
-                        else -> "$qty × ${formatCurrency(price)}"
+                    text = if (
+                        name.equals("Payout", true) ||
+                        name.equals("Cashback", true)
+                    ) "" else "$qty × ${formatCurrency(price)}"
+                }
+
+// ================= PRICE COLUMN (0.8f) =================
+                val priceColumn = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.END
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        marginStart = dpToPx(6)
                     }
                 }
 
-                // ================= TOTAL COLUMN (0.8f) =================
-                val totalView = TextView(context).apply {
-                    layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 0.8f)
-                    gravity = Gravity.END
+                val finalPriceView = TextView(context).apply {
+                    text = formatCurrency(
+                        if (hasDiscount && showDiscountDetails) discountedTotal else originalTotal
+                    )
                     textSize = 17f
                     setTypeface(typeface, Typeface.BOLD)
-
-                    // 🔥 Color rule for payout:
                     setTextColor(
-                        if (name.equals("Payout", true)) Color.RED
-                        else Color.BLACK
+                        if (name.equals("Payout", true)) Color.RED else Color.BLACK
                     )
+                }
+                priceColumn.addView(finalPriceView)
 
-                    text = formatCurrency(total)
+                if (hasDiscount && showDiscountDetails) {
+                    val originalPriceView = TextView(context).apply {
+                        text = formatCurrency(originalTotal)
+                        textSize = 16f
+                        setTextColor(Color.GRAY)
+                        paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+                    }
+                    priceColumn.addView(originalPriceView)
                 }
 
-
-                // Add columns into row
+// ================= ADD TO ROW =================
                 row.addView(itemColumn)
                 row.addView(qtyPriceView)
-                row.addView(totalView)
+                row.addView(priceColumn)
 
                 itemsContainer.addView(row)
+
+
+//                // ================= ROW =================
+//                val row = LinearLayout(context).apply {
+//                    orientation = LinearLayout.HORIZONTAL
+//                    gravity = Gravity.CENTER_VERTICAL
+//                    setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
+//                    layoutParams = LinearLayout.LayoutParams(
+//                        LinearLayout.LayoutParams.MATCH_PARENT,
+//                        LinearLayout.LayoutParams.WRAP_CONTENT
+//                    )
+//                    setBackgroundColor(Color.WHITE)
+//                }
+//
+//                // ================= ITEM COLUMN (1.5f) =================
+//                val itemColumn = LinearLayout(context).apply {
+//                    orientation = LinearLayout.HORIZONTAL
+//                    gravity = Gravity.CENTER_VERTICAL
+//                    layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1.5f)
+//                }
+//
+//// ❌ Image removed from UI — no empty gap
+//// (ImageView not added to itemColumn)
+//
+//// ================================================
+//// IMAGE LOADING LOGIC (kept for future use)
+//// ================================================
+//                /*
+//                val imageView = ImageView(context).apply {
+//                    layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40))
+//                        .apply { marginEnd = dpToPx(8) }
+//                    scaleType = ImageView.ScaleType.CENTER_CROP
+//                }
+//
+//                when {
+//                    name.equals("Payout", true) -> imageView.setImageResource(R.drawable.ic_payout)
+//                    name.equals("Coupon", true) -> imageView.setImageResource(R.drawable.ic_coupon)
+//                    else -> {
+//                        (item["image"] as? String)?.let { url ->
+//                            Thread {
+//                                try {
+//                                    val bmp = BitmapFactory.decodeStream(URL(url).openStream())
+//                                    Handler(Looper.getMainLooper()).post {
+//                                        imageView.setImageBitmap(bmp)
+//                                    }
+//                                } catch (_: Exception) {
+//                                    Handler(Looper.getMainLooper()).post {
+//                                        imageView.setImageResource(R.drawable.custom)
+//                                    }
+//                                }
+//                            }.start()
+//                        }
+//                    }
+//                }
+//
+//                // To re-enable images later:
+//                // itemColumn.addView(imageView)
+//                */
+//
+//                val nameView = TextView(context).apply {
+//                    text = if (name.length > 26) "${name.take(26)}…" else name
+//                    textSize = 20f
+//                    setTypeface(typeface, Typeface.BOLD)
+//                    setTextColor(Color.BLACK)
+//                }
+//
+////                itemColumn.addView(imageView)
+//                itemColumn.addView(nameView)
+//
+//                // ================= QTY × PRICE COLUMN (1.0f) =================
+//                val qtyPriceView = TextView(context).apply {
+//                    layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+//                    gravity = Gravity.CENTER
+//                    textSize = 18f
+//                    setTextColor(Color.DKGRAY)
+//                    text = when {
+//                        name.equals("Payout", true) -> ""
+//                        name.equals("Cashback", true) -> ""
+//                        else -> "$qty × ${formatCurrency(price)}"
+//                    }
+//                }
+//
+//                // ================= TOTAL COLUMN (0.8f) =================
+//                val totalView = TextView(context).apply {
+//                    layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 0.8f)
+//                    gravity = Gravity.END
+//                    textSize = 17f
+//                    setTypeface(typeface, Typeface.BOLD)
+//
+//                    // 🔥 Color rule for payout
+//                    setTextColor(
+//                        if (name.equals("Payout", true)) Color.RED
+//                        else Color.BLACK
+//                    )
+//
+//                    // ✅ THIS IS THE KEY CHANGE
+//                    text = formatCurrency(
+//                        if (discountValue > 0) discountedTotal else originalTotal
+//                    )
+//                }
+//
+//
+//                // Add columns into row
+//                row.addView(itemColumn)
+//                row.addView(qtyPriceView)
+//                row.addView(totalView)
+//
+//                itemsContainer.addView(row)
+
+                // ================= DISCOUNT ROW =================
+//                if (hasDiscount) {
+//
+//                    val discountLayout = LinearLayout(context).apply {
+//                        orientation = LinearLayout.VERTICAL
+//                        setPadding(dpToPx(12), 0, dpToPx(12), dpToPx(6))
+//                    }
+//
+//                    // 🔸 Discount label (Combo Discount -$2.00)
+//                    val discountText = TextView(context).apply {
+//                        text = "$discountType -${formatCurrency(discountValue)}"
+//                        textSize = 14f
+//                        setTextColor(Color.parseColor("#E67E22")) // orange like screenshot
+//                    }
+//
+//                    // 🔸 Original price (strike-through)
+//                    val originalPriceText = TextView(context).apply {
+//                        text = formatCurrency(originalPrice * qty)
+//                        textSize = 14f
+//                        setTextColor(Color.GRAY)
+//                        paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+//                    }
+//
+//                    discountLayout.addView(discountText)
+//                    discountLayout.addView(originalPriceText)
+//
+//                    itemsContainer.addView(discountLayout)
+//                }
+
 
                 // ===== Divider =====
                 if (index < items.size - 1) {
