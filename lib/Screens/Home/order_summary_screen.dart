@@ -5226,24 +5226,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     // --------------------------------------------------
     // ✅ DISCOUNT EXTRACTION
+    // --------------------------------------------------
     final String discountType =
         orderItem['discount_type']?.toString() ?? '';
 
     final double autoDiscount =
-    discountType == 'auto'
+    discountType.isEmpty || discountType == 'auto'
         ? (orderItem['auto_discount'] ?? 0).toDouble()
         : 0.0;
 
     final double comboDiscount =
-    (discountType == 'mixmatch' || discountType == 'combo')
+    (discountType == 'combo' || discountType == 'mixmatch')
         ? (orderItem['auto_discount'] ?? 0).toDouble()
         : 0.0;
+
 
     final double multipackDiscount =
     discountType == 'multipack'
         ? (orderItem['auto_discount'] ?? 0).toDouble()
         : 0.0;
-
 
     final bool isComboDiscount = comboDiscount > 0;
     final bool isMultipackDiscount = multipackDiscount > 0;
@@ -5259,14 +5260,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final bool isCoupon = itemType.contains(TextConstants.couponText);
     final bool isCashback = itemType.contains("cashback");
     final bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
-
-    print(
-        "🧱 [UI BUILD] "
-            "index=$index | "
-            "name=${orderItem['item_name']} | "
-            "discType=${orderItem['discount_type']} | "
-            "autoDisc=${orderItem['auto_discount']}"
-    );
 
     return Column(
       children: [
@@ -5324,62 +5317,112 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           ],
                         ),
                       ),
-                      /// ROW — DISCOUNT BADGE + TEXT (SAME LINE)
-                      if ((hasAutoDiscount || isComboDiscount || isMultipackDiscount) &&
-                          !isPayoutOrCoupon)
+
+                      /// ROW 2 — BADGES
+                      if (isEbtEligible ||
+                          isVariant ||
+                          isComboDiscount ||
+                          isMultipackDiscount)
                         SizedBox(
-                          height: 14,
+                          height: 12,
                           child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              /// AUTO
-                              if (hasAutoDiscount) ...[
-                                _discountBadge("AD", Colors.red),
-                                const SizedBox(width: 4),
-                                Text(
-                                  "Auto Discount: -${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    height: 1.0,
-                                    color: Colors.red,
-                                    fontWeight: FontWeight.w600,
+
+                              if (isEbtEligible)
+                                Container(
+                                  height: 14,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6),
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: Colors.green,
+                                    borderRadius: BorderRadius.circular(3),
                                   ),
+                                  child: const Text(
+                                    "EBT",
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 8,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      height: 1.0,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.clip,
+                                  ),
+                                ),
+
+
+                              if (isVariant) ...[
+                                const SizedBox(width: 5),
+                                SvgPicture.asset(
+                                  SvgUtils.variationIcon,
+                                  height: 8,
+                                  width: 8,
                                 ),
                               ],
 
-                              /// COMBO
                               if (isComboDiscount) ...[
                                 _discountBadge("MM", Colors.orange),
-                                const SizedBox(width: 4),
-                                Text(
-                                  "Combo Discount: -${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}",
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    height: 1.0,
-                                    color: Colors.orange,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
                               ],
 
-                              /// MULTIPACK
                               if (isMultipackDiscount) ...[
                                 _discountBadge("MP", Colors.blue),
-                                const SizedBox(width: 4),
-                                Text(
-                                  "Multipack Discount: -${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}",
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    height: 1.0,
-                                    color: Colors.blue,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
                               ],
                             ],
                           ),
                         ),
 
+                      /// ROW 3 — AUTO DISCOUNT
+                      if (hasAutoDiscount && !isPayoutOrCoupon)
+                        SizedBox(
+                          height: 12,
+                          child: Text(
+                            "Auto Discount: -${TextConstants
+                                .currencySymbol}${autoDiscount.toStringAsFixed(
+                                2)}",
+                            style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.0,
+                              color: Colors.red,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+
+                      /// ROW 4 — COMBO DISCOUNT
+                      if (isComboDiscount && !isPayoutOrCoupon)
+                        SizedBox(
+                          height: 12,
+                          child: Text(
+                            "Combo Discount: -${TextConstants
+                                .currencySymbol}${comboDiscount.toStringAsFixed(
+                                2)}",
+                            style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.0,
+                              color: Colors.orange,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+
+                      /// ROW 5 — MULTIPACK DISCOUNT
+                      if (isMultipackDiscount && !isPayoutOrCoupon)
+                        SizedBox(
+                          height: 12,
+                          child: Text(
+                            "Multipack Discount: -${TextConstants
+                                .currencySymbol}${multipackDiscount
+                                .toStringAsFixed(2)}",
+                            style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.0,
+                              color: Colors.blue,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -5424,7 +5467,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           "${TextConstants.currencySymbol}${originalTotal
                               .toStringAsFixed(2)}",
                           style: const TextStyle(
-                            fontSize: 13,
+                            fontSize: 9.5,
                             height: 1.0,
                             color: Colors.grey,
                             decoration: TextDecoration.lineThrough,
