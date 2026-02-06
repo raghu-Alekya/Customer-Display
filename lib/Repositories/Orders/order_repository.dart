@@ -464,10 +464,29 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             taxRate: taxRate,
           );
 
+          String resolveSku(Map<String, dynamic> item) {
+            return item['sku']?.toString().trim().isNotEmpty == true
+                ? item['sku'].toString()
+                : item['generated_sku']?.toString().trim().isNotEmpty == true
+                ? item['generated_sku'].toString()
+                : item['meta']?['sku']?.toString().trim().isNotEmpty == true
+                ? item['meta']['sku'].toString()
+                : "";
+          }
+
+          final String sku = resolveSku(item);
+
+          if (sku.isEmpty) {
+            debugPrint("⚠️ CUSTOM ITEM SKU MISSING → $name | raw: $item");
+          }
+
+
+
           lineItems.add({
             "name": name,
             "quantity": qtyInt,
-            "sku": item["sku"] ?? item["generated_sku"] ?? "",
+            "sku": sku,
+            //"sku": item["sku"] ?? item["generated_sku"] ?? "",
             "price": price.toStringAsFixed(2),
 
             "tax_status": "taxable",

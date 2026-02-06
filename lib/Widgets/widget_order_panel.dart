@@ -2754,6 +2754,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
         if (product == null) continue;
 
+        // ❌ No tax
         if (product["tax_status"] == "none") {
           return 0.0;
         }
@@ -2763,13 +2764,28 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           double taxTotal = 0.0;
 
           for (final tax in taxRates) {
-            final rate =
+            final double rate =
                 double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
 
-            taxTotal += (taxableBase * rate) / 100;
+            // 🧮 Calculate tax for this rate
+            final double rawTax = (taxableBase * rate) / 100;
+
+            // ✅ ROUND EACH TAX PART (IMPORTANT)
+            final double roundedTax =
+                (rawTax * 100).roundToDouble() / 100;
+
+            taxTotal += roundedTax;
+
+            debugPrint(
+                "🧾 Tax → rate:$rate raw:$rawTax rounded:$roundedTax");
           }
 
-          return taxTotal;
+          // ✅ FINAL SAFETY ROUND
+          final double finalTax =
+              (taxTotal * 100).roundToDouble() / 100;
+
+          debugPrint("✅ FINAL TAX → $finalTax");
+          return finalTax;
         }
       }
     } catch (e, st) {
@@ -2953,7 +2969,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 'item_sum_price': price * qty,
                 'item_image': item['image'] ?? "",
                 'item_type': 'custom',
-
+                'sku': item['sku'],
                 // 🔥 REQUIRED FOR TAX-AFTER-DISCOUNT FLOW
                 'auto_discount': 0.0,        // 👈 MUST exist
                 'tax_class': taxClass,
@@ -4376,8 +4392,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             final box = Hive.box('offlineOrders');
                             final hiveKey = orderHelper.activeOrderId.toString();
 
-                            final double ebtAmount =
-                            (box.get(hiveKey)?["ebt_total"] ?? 0.0).toDouble();
+                            double totalEbtAfterDiscount = 0.0;
 
                             final double discountAmount =
                             (box.get(hiveKey)?["discount_amount"] ?? 0.0).toDouble();
@@ -4484,6 +4499,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               final double discountedUnitPrice =
                                   (price * qty - autoDiscount) / qty;
 
+
                               double itemTax = 0.0;
 
                               if (productId > 0) {
@@ -4507,6 +4523,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               // ✅ ADD BOTH TO TOTAL
                               totalTaxAfterDiscount += itemTax;
 
+
                               // 🔒 STORE FOR SUMMARY
                               item['tax_after_discount'] = itemTax;
 
@@ -4528,6 +4545,25 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             );
                             debugPrint("🧮 ===== TAX CALCULATION END =====");
 
+                            for (final item in orderItems) {
+                              final double price =
+                                  (item['item_price'] as num?)?.toDouble() ?? 0.0;
+
+                              final int qty =
+                                  (item['items_count'] as num?)?.toInt() ?? 1;
+
+                              final double autoDiscount =
+                                  (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
+
+                              final double discountedUnitPrice =
+                                  (price * qty - autoDiscount) / qty;
+
+                              final bool isEbtEligible = item['is_ebt_eligible'] == true;
+
+                              if (isEbtEligible) {
+                                totalEbtAfterDiscount += discountedUnitPrice * qty;
+                              }
+                            }
 
                             double grossAfterDiscount = 0.0;
 
@@ -4639,6 +4675,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                               orderHelper.activeOrderId.toString(),
                               totalTaxAfterDiscount,   // ✅ FINAL tax ONLY
                               cashbackFee,
+
                             );
                             await CustomerDisplayHelper.updateCustomerDisplay(
                               orderHelper.activeOrderId!,
@@ -4674,7 +4711,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                                   offlineOrderId: orderHelper.activeOrderId,
                                   cashbackFee: cashbackFee,
-                                  ebtAmount: ebtAmount,
+                                  ebtAmount: totalEbtAfterDiscount,
                                   discountAmount: discountAmount,
                                 ),
                               ),

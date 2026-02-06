@@ -2087,6 +2087,38 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   void initState() {
     super.initState();
     ScannerGuard.isCouponPopupOpen = true;
+
+    orderItems = widget.orderItems;
+    grossTotal = widget.grossTotal;
+    discount = widget.orderDiscount;
+    merchantDiscount = widget.merchantDiscount;
+    tax = widget.orderTax;
+    orderId = widget.orderId;
+    ebtTotal = widget.ebtAmount;
+    final box = Hive.box('offlineOrders');
+    final key = (orderId ?? 0).toString();
+
+    if (box.containsKey(key)) {
+      final existing = Map<String, dynamic>.from(box.get(key));
+
+      // 🔥 FORCE FIX OLD WRONG DATA
+      if (existing["originalEbt"] != widget.ebtAmount) {
+        existing["originalEbt"] = widget.ebtAmount;
+        existing["remainingEbt"] = widget.ebtAmount;
+
+        box.put(key, existing);
+
+        if (kDebugMode) {
+          print("🛠 MIGRATED EBT → ${widget.ebtAmount}");
+        }
+      }
+    }
+
+
+    _displayDate = widget.formattedDate;
+    _displayTime = widget.formattedTime;
+    cashbackFee = widget.cashbackFee;
+    discountValue = widget.discountAmount;
     Future.delayed(Duration.zero, () async {
       // Calculate balance from payment history first
       await _calculateBalanceFromPaymentHistory();
@@ -2135,11 +2167,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           // Balance is 0 - payment complete
           _currentPaymentRemainingBalance = null;
           _lastPaymentDetails = null;
-        }
-
-        if (offlineOrder!.containsKey('ebtTotal') &&
-            offlineOrder!['ebtTotal'] != null) {
-          ebtTotal = (offlineOrder!['ebtTotal'] as num).toDouble();
         }
       } else {
         balanceAmount = orderTotal;
@@ -2218,20 +2245,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     selectedPaymentMethod = TextConstants.cash;
     final bool isNegativeOrder = widget.grossTotal < 0;
 
-
-    // Load order values
-    orderItems = widget.orderItems;
-    grossTotal = widget.grossTotal;
-    discount = widget.orderDiscount;
-    merchantDiscount = widget.merchantDiscount;
-    tax = widget.orderTax;
-    orderId = widget.orderId;
-    ebtTotal = widget.ebtAmount;
-    _displayDate = widget.formattedDate;
-    _displayTime = widget.formattedTime;
-    cashbackFee = widget.cashbackFee;
-    discountValue = widget.discountAmount;
-
     print("🏷 q = $discountValue");
 
 
@@ -2264,11 +2277,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             (offlineOrder!['payByCash'] as num?)?.toDouble() ?? 0.0;
         payByOther =
             (offlineOrder!['payByOther'] as num?)?.toDouble() ?? 0.0;
-
-        if (offlineOrder!.containsKey('ebtTotal') &&
-            offlineOrder!['ebtTotal'] != null) {
-          ebtTotal = (offlineOrder!['ebtTotal'] as num).toDouble();
-        }
       } else {
         balanceAmount = orderTotal;
       }
@@ -5467,7 +5475,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           "${TextConstants.currencySymbol}${originalTotal
                               .toStringAsFixed(2)}",
                           style: const TextStyle(
-                            fontSize: 9.5,
+                            fontSize: 12,
                             height: 1.0,
                             color: Colors.grey,
                             decoration: TextDecoration.lineThrough,

@@ -223,25 +223,37 @@ class DiscountEngine {
     // =====================================================
     //  MULTIPACK — bundle logic USING requiredQty
     // =====================================================
-    for (final rule in rules.where((r) => r.ruleType == 'multipack')) {
-      final eligible = units
-          .where((u) => !u.used && rule.productIds.contains(u.pid))
+    // =====================================================
+    final Map<int, List<_Unit>> unitsByPid = {};
+
+    for (final u in units.where((u) => !u.used)) {
+      unitsByPid.putIfAbsent(u.pid, () => []).add(u);
+    }
+    final multipackRules =
+    rules.where((r) => r.ruleType == 'multipack').toList();
+
+    for (final entry in unitsByPid.entries) {
+      final pid = entry.key;
+      final productUnits = entry.value;
+      final qty = productUnits.length;
+      final applicableRules = multipackRules
+          .where((r) => r.productIds.contains(pid))
+          .where((r) => qty >= r.requiredQty)
           .toList();
 
-      if (eligible.length < rule.requiredQty) continue;
+      if (applicableRules.isEmpty) continue;
+      applicableRules.sort(
+            (a, b) => b.requiredQty.compareTo(a.requiredQty),
+      );
 
-      final samePid =
-      eligible.where((u) => u.pid == eligible.first.pid).toList();
+      final rule = applicableRules.first;
 
-      if (samePid.length < rule.requiredQty) continue;
-
-      final bundle = samePid.take(rule.requiredQty).toList();
-
-      final subtotal =
-      bundle.fold(0, (s, u) => s + u.priceCents);
+      final subtotal = productUnits.fold(
+        0,
+            (s, u) => s + u.priceCents,
+      );
 
       int discountCents;
-
       if (rule.bundlePriceType == 'percentage') {
         discountCents =
             (subtotal * rule.bundlePrice / 100).round();
@@ -251,22 +263,24 @@ class DiscountEngine {
 
       discountCents = discountCents.clamp(0, subtotal);
       if (discountCents <= 0) continue;
-
-      for (final u in bundle) {
+      for (final u in productUnits) {
         u.used = true;
       }
 
-      result[bundle.first.pid] = EngineDiscountResult(
+      result[pid] = EngineDiscountResult(
         fromCents(discountCents),
         'multipack',
         rule.ruleId,
       );
 
       print(
-        " MULTIPACK → pid=${bundle.first.pid} "
+        "🏷️ TIERED MULTIPACK → pid=$pid "
+            "qty=$qty "
+            "slab=${rule.requiredQty} "
             "discount=${fromCents(discountCents)}",
       );
     }
+
 
     //  FINAL RESULT
     return result;
