@@ -7,28 +7,28 @@ import '../Repositories/Orders/order_repository.dart';
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 
 class OfflineOrderSyncService {
-  //static Timer? _timer;
-  static bool _isSyncing = false;
+   static Timer? _timer;
+   static bool _isSyncing = false;
+  //
+  static void start() {
+    _timer ??= Timer.periodic(
+      const Duration(minutes: 5),
+          (_) => syncPendingOrders(),
+    );
 
-  // static void start() {
-  //   _timer ??= Timer.periodic(
-  //     const Duration(minutes: 1),
-  //         (_) => syncPendingOrders(),
-  //   );
-  //
-  //
-  //   if (kDebugMode) {
-  //     print("🔁 Offline order background sync started (1 min)");
-  //   }
-  // }
-  //
-  // static void stop() {
-  //   _timer?.cancel();
-  //   _timer = null;
-  //   if (kDebugMode) {
-  //     print("🛑 Offline order background sync stopped");
-  //   }
-  // }
+
+    if (kDebugMode) {
+      print("🔁 Offline order background sync started (1 min)");
+    }
+  }
+
+  static void stop() {
+    _timer?.cancel();
+    _timer = null;
+    if (kDebugMode) {
+      print("🛑 Offline order background sync stopped");
+    }
+  }
 
   static Future<void> syncPendingOrders() async {
     if (_isSyncing) return;

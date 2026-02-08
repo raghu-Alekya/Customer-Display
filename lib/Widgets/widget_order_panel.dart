@@ -120,7 +120,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   bool _scanLocked = false;
   bool _ageVerificationActive=false;
   Map<String, dynamic>? resolvedProductMap;
-
+  VoidCallback? _orderPanelRefreshListener;
 
   void _toggleSummary() {
     setState(() {
@@ -141,6 +141,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       await orderHelper.restoreActiveOrderId(); // ✅ WAIT
       fetchOrdersData(); // load after restore
     });
+    _orderPanelRefreshListener = () {
+      if (mounted) {
+        OrderHelper.isOrderPanelLoaded = false;
+        fetchOrdersData();
+      }
+    };
+    OrderHelper.orderPanelRefreshNotifier.addListener(_orderPanelRefreshListener!);
   }
 
 
@@ -150,15 +157,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       print("##### fetchOrdersData called (OFFLINE MODE)");
       print("##### fetchOrdersData -> isOrderPanelLoaded : ${OrderHelper.isOrderPanelLoaded}");
     }
-
-    // ✅ Skip re-fetch if already loaded
     if (OrderHelper.isOrderPanelLoaded) {
       setState(() => _isFetchingInitialData = false);
-      _getOrderTabs(); // Load tabs from OrderHelper.orders
-      //await _ensureAtLeastOneOrder();
+      await orderHelper.loadProcessingData();
+      if (mounted) await _getOrderTabs();
       return;
     }
-
     // ✅ Indicate that we are fetching
     setState(() {
       _isFetchingInitialData = true;
@@ -177,7 +181,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       // ✅ Mark panel loaded and render
       OrderHelper.isOrderPanelLoaded = true;
       _getOrderTabs(); // Use offline OrderHelper.orders
-      _ensureAtLeastOneOrder();
 
     } catch (e, s) {
       if (kDebugMode) {
@@ -189,39 +192,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         _isFetchingInitialData = false;
         _isLoading = false;
       });
-    }
-  }
-  Future<void> _ensureAtLeastOneOrder() async {
-    // 🔒 Prevent duplicate auto-creation
-    if (ScannerMutex.noOrderBusy) return;
-    ScannerMutex.noOrderBusy = true;
-
-    try {
-      // Reload visible unpaid orders
-      await orderHelper.loadProcessingData();
-
-      final unpaidOrders = [];
-
-      for (final order in orderHelper.orders) {
-        final int orderId = order[AppDBConst.orderServerId];
-        final payments =
-        await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
-
-        if (payments.isEmpty) {
-          unpaidOrders.add(order);
-        }
-      }
-
-      // ✅ If NO unpaid orders → auto create ONE
-      if (unpaidOrders.isEmpty) {
-        if (kDebugMode) {
-          print("🆕 AUTO creating first order");
-        }
-
-        await addNewTab(); // 🔥 uses offline createOrder → 1001,1002...
-      }
-    } finally {
-      ScannerMutex.noOrderBusy = false;
     }
   }
 
@@ -247,7 +217,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         print("##### _isFetchingInitialData : $_isFetchingInitialData");
       }
       _getOrderTabs();
-    // _ensureAtLeastOneOrder();
     }
 
     if (kDebugMode) {
@@ -285,7 +254,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       }
 
       // ❌ Hide order once payment starts
-      if (hasAnyPayment) continue;
+     if (hasAnyPayment) continue;
 
       visibleOrders.add(order);
     }
@@ -479,7 +448,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           });
           //   await orderHelper.saveLastActiveOrderId(null); // Clear saved activeOrderId
           await _getOrderTabs(); // Refresh tabs to reflect no active order
-          //await _ensureAtLeastOneOrder();
           return;
         }
 
@@ -651,6 +619,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         if (kDebugMode) {
           print("##### DEBUG: addNewTab - Order created successfully, serverOrderId: ${response.data!.id}");
         }
+        // Persist to SQLite so order panel shows this order
+        await orderHelper.createOrder(serverOrderId: response.data!.id);
         setState(() {
           tabs.add({
             "title": "#${response.data!.id}",
@@ -782,6 +752,9 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     _productBySkuSubscription?.cancel(); // Build #1.0.44 : Added Cancel product subscription
     // productBloc.dispose(); // Added: Dispose ProductBloc
     super.dispose();
+    if (_orderPanelRefreshListener != null) {
+      OrderHelper.orderPanelRefreshNotifier.removeListener(_orderPanelRefreshListener!);
+    }
   }
 
   Future<String> getDeviceId() async { // Build #1.0.44 : Get Device Id

@@ -1089,15 +1089,24 @@ class NestedGridWidget extends StatelessWidget {
                     children: [
                       GestureDetector(
                         onTap: () async {
-                          if (orderHelper?.activeOrderId == null) {
-                            print("⛔ No active order → Show popup and block product adding");
-
-                            await OrderPopupHelper.showNoOrderPopup(context);
-
-                            return; // 🚫 STOP item adding
-                          }
+                          // if (orderHelper?.activeOrderId == null) {
+                          //   print("⛔ No active order → Show popup and block product adding");
+                          //
+                          //   await OrderPopupHelper.showNoOrderPopup(context);
+                          //
+                          //   return; // 🚫 STOP item adding
+                          // }
 
                           try {
+                            final orderId = await orderHelper?.ensureOrderExists();
+
+                            if (orderId == null) {
+                              print("❌ Failed to create or restore order");
+                              return;
+                            }
+
+                            print("🆔 Active Order ID (ensured): $orderId");
+
                             print("🟩 TAP: Starting product add flow for item → ${item["fast_key_item_name"]}");
 
                             // 🧠 Hydrate from Isar cache (same flow as category load)

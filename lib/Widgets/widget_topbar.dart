@@ -451,22 +451,29 @@ class _TopBarState extends State<TopBar> {
         return;
       }
 
-      final serverOrderId = orderHelper.activeOrderId;
-      final dbOrderId = orderHelper.activeOrderId;
-      final offlineBox = Hive.box('offlineOrders');
+      // ✅ Ensure order exists (create or restore)
+      final ensuredOrderId = await orderHelper?.ensureOrderExists();
 
-      if (dbOrderId == null) {
-        await OrderPopupHelper.showNoOrderPopup(_context);
-        return;
+      if (ensuredOrderId == null) {
+        if (kDebugMode) {
+          print("❌ Failed to create or restore order");
+        }
+        return; // 🚫 Stop product add
       }
 
-      final activeOrderId = dbOrderId.toString();
-      final Map<String, dynamic> rawOrder = Map<String, dynamic>.from(offlineBox.get(activeOrderId) ?? {});
+      final offlineBox = Hive.box('offlineOrders');
+      final activeOrderId = ensuredOrderId.toString();
+
+      final Map<String, dynamic> rawOrder =
+      Map<String, dynamic>.from(
+        offlineBox.get(activeOrderId) ?? {},
+      );
 
       print("CATEGORY FLOW ITEMS: ${rawOrder['products']}");
       print("LINE ITEMS: ${rawOrder['line_items']}");
 
-      List<dynamic> lineItems = List.from(rawOrder['line_items'] ?? []);
+      final List<dynamic> lineItems =
+      List<dynamic>.from(rawOrder['line_items'] ?? []);
 
       // ─── Age verification ────────────────────────────────────────
       final tags = product.tags ?? [];

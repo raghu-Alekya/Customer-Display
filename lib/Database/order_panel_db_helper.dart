@@ -12,6 +12,7 @@ import '../Constants/text.dart';
 import '../Helper/api_response.dart';
 import '../Models/Category/category_product_model.dart';
 import '../Models/Orders/get_orders_model.dart' as model;
+import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import 'db_helper.dart';
 
 // Build #1.0.64: Add ItemType enum
@@ -29,8 +30,14 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   static final OrderHelper _instance = OrderHelper._internal(); // Singleton instance to ensure only one instance of OrderHelper exists
   factory OrderHelper() => _instance;
   static bool isOrderPanelLoaded = false;
-  Map<int, bool> orderAgeVerifiedFlags={};
+  /// Notifier so RightOrderPanel can refresh when a new order is created (e.g. from grid).
+  static final ValueNotifier<int> orderPanelRefreshNotifier = ValueNotifier(0);
 
+  static void notifyOrderPanelToRefresh() {
+    orderPanelRefreshNotifier.value++;
+  }
+
+  Map<int, bool> orderAgeVerifiedFlags={};
   int? activeOrderId; // Stores the currently active order ID
   int? activeUserId; // Stores the active user ID
   int? selectedOrderId; // Build #1.0.248 : save & persists across rebuilds of theme selection change
@@ -1066,35 +1073,126 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       }
     }
   }
+  Future<int?> ensureOrderExists() async {
+    // 1️⃣ If already active
+    if (activeOrderId != null) return activeOrderId;
 
+    // 2️⃣ Load orders list
+    await loadProcessingData();
+
+    // 3️⃣ Try reuse unpaid order
+    for (final order in orders) {
+      final int orderId = order[AppDBConst.orderServerId];
+      final payments =
+      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+
+      if (payments.isEmpty) {
+        await setActiveOrder(orderId);
+        await saveLastActiveOrderId(orderId);
+        return orderId;
+      }
+    }
+
+    // 4️⃣ Create new order
+    final repo = OrderRepository();
+    final response = await repo.createOrder();
+    final int newOrderId = response.id!;
+
+    // 5️⃣ Activate + persist
+    await setActiveOrder(newOrderId);
+    await saveLastActiveOrderId(newOrderId);
+
+    // 5b. Persist new order to SQLite so order panel and addItemToOrder see it (Hive already filled by repo)
+    await createOrder(serverOrderId: newOrderId);
+
+    // 6️⃣ Reload orders from SQLite so panel can show the new order
+    await loadProcessingData();
+
+    // 🔥 CRITICAL: RESTORE ACTIVE ORDER
+    await restoreActiveOrderId();
+
+    // Force order panel to refresh so new order tab appears
+    OrderHelper.isOrderPanelLoaded = false;
+    OrderHelper.notifyOrderPanelToRefresh();
+
+    if (kDebugMode) {
+      print("🆕 ensureOrderExists → $newOrderId");
+      print("🎯 ActiveOrderId → $activeOrderId");
+    }
+
+    return newOrderId;
+  }
 
 
   Future<int> createOrder({int? serverOrderId}) async { // Build #1.0.11 : updated
-    ///check if 'orderServerId' is 0 or not, if yes show alert
     final db = await DBHelper.instance.database;
+
+    // When serverOrderId is provided (offline or API), avoid duplicate insert
+    if (serverOrderId != null) {
+      final existing = await db.query(
+        AppDBConst.orderTable,
+        where: '${AppDBConst.orderServerId} = ?',
+        whereArgs: [serverOrderId],
+      );
+      if (existing.isNotEmpty) {
+        activeOrderId = serverOrderId;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('activeOrderId', activeOrderId!);
+        final box = Hive.box('offlineOrders');
+        if (!box.containsKey(serverOrderId.toString())) {
+          final minimalOrder = {
+            'order_id': serverOrderId,
+            'id': serverOrderId,
+            AppDBConst.orderServerId: serverOrderId,
+            'products': <Map<String, dynamic>>[],
+          };
+          await box.put(serverOrderId.toString(), minimalOrder);
+          _upsertOfflineOrderInMemory(serverOrderId, minimalOrder);
+        }
+        await loadData();
+        if (kDebugMode) print("#### Order already in DB, synced activeOrderId: $activeOrderId");
+        return activeOrderId!;
+      }
+    }
+
     activeOrderId = serverOrderId;
     await db.insert(AppDBConst.orderTable, {
       AppDBConst.userId: activeUserId ?? 1,
-      if (serverOrderId != null) AppDBConst.orderServerId: serverOrderId, /// server created order id, update after order created at backend
-      AppDBConst.orderTotal: 0.0, /// initially it will be 0
-      AppDBConst.orderStatus: "processing", /// initial value will be 'processing'
+      if (serverOrderId != null) AppDBConst.orderServerId: serverOrderId,
+      AppDBConst.orderTotal: 0.0,
+      AppDBConst.orderStatus: "processing",
       AppDBConst.orderType: 'in-store',
-      AppDBConst.orderDate: DateTime.now().toString(), /// update these from order created on server
+      AppDBConst.orderDate: DateTime.now().toString(),
       AppDBConst.orderTime: DateTime.now().toString(),
     });
 
-    // Update the user's order count
     await db.rawUpdate('''
     UPDATE ${AppDBConst.userTable}
     SET ${AppDBConst.userOrderCount} = ${AppDBConst.userOrderCount} + 1
     WHERE ${AppDBConst.userId} = ?
     ''', [activeUserId ?? 1]);
 
-    // Save the newly created order ID in shared preferences
+    // When order was created on server/offline, ensure Hive has it (only if not already - e.g. OrderRepository already put full order)
+    if (serverOrderId != null) {
+      final box = Hive.box('offlineOrders');
+      if (!box.containsKey(serverOrderId.toString())) {
+        final minimalOrder = {
+          'order_id': serverOrderId,
+          'id': serverOrderId,
+          AppDBConst.orderServerId: serverOrderId,
+          'products': <Map<String, dynamic>>[],
+        };
+        await box.put(serverOrderId.toString(), minimalOrder);
+        _upsertOfflineOrderInMemory(serverOrderId, minimalOrder);
+        if (kDebugMode) {
+          print("#### Order $serverOrderId added to Hive for order panel & addItemToOrder");
+        }
+      }
+    }
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('activeOrderId', activeOrderId!);
 
-    // Refresh the order list
     await loadData();
 
     if (kDebugMode) {
@@ -1103,7 +1201,6 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
     return activeOrderId!;
   }
-
   // Deletes an order from the database and updates local storage
   Future<void> deleteOrder(int orderId) async {
     final db = await DBHelper.instance.database;
