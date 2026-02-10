@@ -894,126 +894,122 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                           padding: const EdgeInsets.all(4),
 
                           // 🔥 Horizontal scroll ONLY
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            physics: const BouncingScrollPhysics(),
-                            child: SizedBox(
-                              width: MediaQuery.of(context).size.width,
-                              child: Column(
-                                children: [
-                                  // ================= HEADER =================
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: themeHelper.themeMode == ThemeMode.dark
-                                          ? const Color(0xFF252837)
-                                          : const Color(0xFF6F6F70),
-                                      borderRadius: const BorderRadius.vertical(
-                                        top: Radius.circular(12),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        _buildSortableColumn("ID", 'id'),
-                                        _buildSortableColumn("Order Type", 'orderType'),
-                                        _buildSortableColumn("Date", 'date'),
-                                        _buildSortableColumn("Time", 'time'),
-                                        _buildSortableColumn("Total", 'sales_amount'),
-                                        _buildSortableColumn("Status", 'status'),
-                                      ],
+                          child: SizedBox(
+                            width: MediaQuery.of(context).size.width,
+                            child: Column(
+                              children: [
+                                // ================= HEADER =================
+                                Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: themeHelper.themeMode == ThemeMode.dark
+                                        ? const Color(0xFF252837)
+                                        : const Color(0xFF6F6F70),
+                                    borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(12),
                                     ),
                                   ),
+                                  child: Row(
+                                    children: [
+                                      _buildSortableColumn("ID", 'id'),
+                                      _buildSortableColumn("Order Type", 'orderType'),
+                                      _buildSortableColumn("Date", 'date'),
+                                      _buildSortableColumn("Time", 'time'),
+                                      _buildSortableColumn("Total", 'sales_amount'),
+                                      _buildSortableColumn("Status", 'status'),
+                                    ],
+                                  ),
+                                ),
 
-                                  // ================= BODY =================
-                                  Expanded(
-                                    child: ListView.builder(
-                                      controller: _tableScrollController,
-                                      physics: const BouncingScrollPhysics(),
-                                      itemCount:
-                                      _orders.length + (_hasMoreLazyData ? 1 : 0),
-                                      itemBuilder: (context, index) {
-                                        // 🔥 Lazy loader
-                                        if (index >= _orders.length) {
-                                          return const Padding(
-                                            padding: EdgeInsets.symmetric(vertical: 12),
-                                            child: Center(
-                                              child: SizedBox(
-                                                height: 24,
-                                                width: 24,
-                                                child: CircularProgressIndicator(
-                                                  strokeWidth: 2.5,
-                                                ),
+                                // ================= BODY =================
+                                Expanded(
+                                  child: ListView.builder(
+                                    controller: _tableScrollController,
+                                    physics: const BouncingScrollPhysics(),
+                                    itemCount:
+                                    _orders.length + (_hasMoreLazyData ? 1 : 0),
+                                    itemBuilder: (context, index) {
+                                      // 🔥 Lazy loader
+                                      if (index >= _orders.length) {
+                                        return const Padding(
+                                          padding: EdgeInsets.symmetric(vertical: 12),
+                                          child: Center(
+                                            child: SizedBox(
+                                              height: 24,
+                                              width: 24,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.5,
                                               ),
-                                            ),
-                                          );
-                                        }
-
-                                        final order = _orders[index];
-                                        final date = DateTime.tryParse(order.dateCreated)
-                                            ?.toLocal();
-                                        final isSelected =
-                                            OrderHelper().selectedOrderId == order.id;
-
-                                        return GestureDetector(
-                                          onTap: () => _onOrderRowSelected(order.id),
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(vertical: 6),
-                                            decoration: BoxDecoration(
-                                              color: isSelected
-                                                  ? (themeHelper.themeMode == ThemeMode.dark
-                                                  ? const Color(0xFF383B4C)
-                                                  : const Color(0xFFDFDFDF))
-                                                  : (themeHelper.themeMode == ThemeMode.dark
-                                                  ? const Color(0xFF201F29)
-                                                  : const Color(0xFFF9F9F9)),
-                                              border: Border(
-                                                bottom: BorderSide(
-                                                  color: themeHelper.themeMode == ThemeMode.dark
-                                                      ? const Color(0xFF474646)
-                                                      : const Color(0xFFD8D7D7),
-                                                ),
-                                              ),
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                _buildDataCell(order.id.toString()),
-                                                _buildDataCell(
-                                                  _filterOrderType
-                                                      .firstWhere(
-                                                        (e) =>
-                                                    e.slug ==
-                                                        order.createdVia.toString(),
-                                                  )
-                                                      .name,
-                                                ),
-                                                _buildDataCell(
-                                                  date != null
-                                                      ? DateFormat(
-                                                      TextConstants.dateFormat)
-                                                      .format(date)
-                                                      : '',
-                                                ),
-                                                _buildDataCell(
-                                                  date != null
-                                                      ? DateFormat('HH:mm:ss').format(date)
-                                                      : '',
-                                                ),
-                                                _buildDataCell(
-                                                  '${order.currencySymbol}${order.total}',
-                                                ),
-                                                _buildDataCell(
-                                                  order.status,
-                                                  isStatus: true,
-                                                ),
-                                              ],
                                             ),
                                           ),
                                         );
-                                      },
-                                    ),
+                                      }
+
+                                      final order = _orders[index];
+                                      final date = DateTime.tryParse(order.dateCreated)
+                                          ?.toLocal();
+                                      final isSelected =
+                                          OrderHelper().selectedOrderId == order.id;
+
+                                      return GestureDetector(
+                                        onTap: () => _onOrderRowSelected(order.id),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: isSelected
+                                                ? (themeHelper.themeMode == ThemeMode.dark
+                                                ? const Color(0xFF383B4C)
+                                                : const Color(0xFFDFDFDF))
+                                                : (themeHelper.themeMode == ThemeMode.dark
+                                                ? const Color(0xFF201F29)
+                                                : const Color(0xFFF9F9F9)),
+                                            border: Border(
+                                              bottom: BorderSide(
+                                                color: themeHelper.themeMode == ThemeMode.dark
+                                                    ? const Color(0xFF474646)
+                                                    : const Color(0xFFD8D7D7),
+                                              ),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              _buildDataCell(order.id.toString()),
+                                              _buildDataCell(
+                                                _filterOrderType
+                                                    .firstWhere(
+                                                      (e) =>
+                                                  e.slug ==
+                                                      order.createdVia.toString(),
+                                                )
+                                                    .name,
+                                              ),
+                                              _buildDataCell(
+                                                date != null
+                                                    ? DateFormat(
+                                                    TextConstants.dateFormat)
+                                                    .format(date)
+                                                    : '',
+                                              ),
+                                              _buildDataCell(
+                                                date != null
+                                                    ? DateFormat('HH:mm:ss').format(date)
+                                                    : '',
+                                              ),
+                                              _buildDataCell(
+                                                '${order.currencySymbol}${order.total}',
+                                              ),
+                                              _buildDataCell(
+                                                order.status,
+                                                isStatus: true,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
                         ),

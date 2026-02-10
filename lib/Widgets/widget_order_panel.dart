@@ -906,38 +906,17 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
             _isLoading = true;
             if (mounted) setState(() {});
-
             final orderHelper = OrderHelper();
-            final activeOrderId = orderHelper.activeOrderId;
+            final ensuredOrderId = await orderHelper.ensureOrderExists();
 
-            if (activeOrderId == null) {
-
-              print("🟥 NO ORDER DETECTED");
-
-              // 🔒 lock BOTH
-              ScannerMutex.noOrderBusy = true;
-              _scanLocked = true;
-
+            if (ensuredOrderId == null) {
+              print("❌ Scanner: Failed to create or restore order");
+              _isLoading = false;
               if (mounted) setState(() {});
-
-              print("🔒 Scanner locked (mutex + local)");
-
-              await OrderPopupHelper.showNoOrderPopup(context);
-
-              // ⏳ absorb scanner frames
-              await Future.delayed(const Duration(milliseconds: 1000));
-
-              print("🔓 Releasing no-order locks");
-
-              ScannerMutex.noOrderBusy = false;
-              _scanLocked = false;
-
-              if (mounted) setState(() {});
-
               return;
             }
 
-
+            final activeOrderId = ensuredOrderId;
             final productBox = Hive.box('productCache');
             final cacheKey = "sku_${trimmedBarcode.toLowerCase()}";
 
@@ -3203,7 +3182,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 children: [
 
                   // 🔹 TOP TEXT
-                  if (orderHelper.activeOrderId != null)
+                  // if (orderHelper.activeOrderId != null)
                     Text(
                       "All updated discounts will be reflected after checkout.",
                       style: TextStyle(
@@ -4733,16 +4712,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             ),
           ],
         ),
-        if (_isLoading)
-          Container(
-            color: Colors.black.withOpacity(0.5),
-            child: const Center(
-              child: CircularProgressIndicator(
-                color: Colors.black,
-                strokeWidth: 6.0,
-              ),
-            ),
-          ),
       ],
     );
   }

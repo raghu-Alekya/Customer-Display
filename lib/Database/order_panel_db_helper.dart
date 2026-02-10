@@ -578,7 +578,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
             AppDBConst.itemProductId: apiItem.productId,
             AppDBConst.itemVariationId: apiItem.variationId,
             AppDBConst.multipackDiscount: apiItem.multipackDiscountAmount,
-            AppDBConst.autoDiscountTotal: apiItem.displayAutoDiscountAmount,
+            AppDBConst.autoDiscountTotal: apiItem.autoDiscountAmount,
             // NEW: Add combo discount and display auto discount
             AppDBConst.comboDiscountTotal: apiItem.comboDiscountAmount,
             AppDBConst.displayAutoDiscount: apiItem.displayAutoDiscountAmount,
@@ -677,7 +677,6 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       print("#### DEBUG: updateOrderItems for order id $orderId completed...");
     }
   }
-
   // Build #1.0.64 : Modified updateOrderPayoutItems to align with updateOrderItems
   @Deprecated("This API is deprecated and replaced by 'updateOrderPayoutItem' with line_item")
   Future<void> updateOrderPayoutItems(int orderId, List<model.FeeLine> feeLines) async {

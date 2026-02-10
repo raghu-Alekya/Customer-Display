@@ -6064,21 +6064,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                           ),
 
 
-                                          /// 🔴 ERROR TEXT BELOW FIELD
-                                          if (computedNetPayable > 0 && _amountErrorText != null)
-                                            Padding(
-                                              padding: EdgeInsets.only(
-                                                top: ResponsiveLayout.getPadding(4),
-                                                left: ResponsiveLayout.getPadding(12),
-                                              ),
-                                              child: Text(
-                                                _amountErrorText!,
-                                                style: TextStyle(
-                                                  color: Colors.red,
-                                                  fontSize: ResponsiveLayout.getFontSize(12),
-                                                ),
-                                              ),
-                                            ),
+                                          // /// 🔴 ERROR TEXT BELOW FIELD
+                                          // if (computedNetPayable > 0 && _amountErrorText != null)
+                                          //   Padding(
+                                          //     padding: EdgeInsets.only(
+                                          //       top: ResponsiveLayout.getPadding(4),
+                                          //       left: ResponsiveLayout.getPadding(12),
+                                          //     ),
+                                          //     child: Text(
+                                          //       _amountErrorText!,
+                                          //       style: TextStyle(
+                                          //         color: Colors.red,
+                                          //         fontSize: ResponsiveLayout.getFontSize(12),
+                                          //       ),
+                                          //     ),
+                                          //   ),
                                         ],
                                       ),
 
@@ -6232,14 +6232,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   double amount = double.tryParse(cleanAmount) ?? 0.0;
 
                                                   double effectiveBalance = _currentPaymentRemainingBalance ?? balanceAmount;
-
-                                                  // Validation
-                                                  if (amount == 0.0 && effectiveBalance > 0) {
-                                                    setState(() {
-                                                      _amountErrorText = TextConstants.amountValidation;
-                                                    });
-                                                    return;
-                                                  }
 
                                                   _amountErrorText = null;
 
@@ -8300,7 +8292,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final ticket = await _printerSettings.getTicket();
 
     // -------------------------------
-    // LOGO
+    // LOGO (unchanged)
     // -------------------------------
     final ByteData data;
     if (logo != "") {
@@ -8314,8 +8306,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final Uint8List imageBytes = data.buffer.asUint8List();
       final decodedImage = img.decodeImage(imageBytes)!;
       img.Image thumbnail = img.copyResize(decodedImage, height: 280);
-      img.Image originalImg =
-      img.copyResize(decodedImage, width: 470, height: 280);
+      img.Image originalImg = img.copyResize(decodedImage, width: 470, height: 280);
       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
       var padding = (originalImg.width - thumbnail.width) / 2;
       drawImage(originalImg, thumbnail, dstX: padding.toInt());
@@ -8324,7 +8315,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     // -------------------------------
-    // HEADER
+    // HEADER & STORE INFO (unchanged)
     // -------------------------------
     var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
     var storeId = "${merchantDetails?[AppDBConst.storeId]}";
@@ -8333,13 +8324,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     var storeDetails = await AssetDBHelper.instance.getStoreDetails();
     var storeName = "${storeDetails?.name}";
     var address = "${storeDetails?.address},";
-    var cityStateZip =
-        "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
+    var cityStateZip = "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
     var orderIdToPrint = '$orderId';
 
     final userData = await UserDbHelper().getUserData();
-    var cashierName =
-        "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
+    var cashierName = "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
     var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
 
     if (header != "") {
@@ -8426,7 +8415,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.feed(1);
 
     // -------------------------------
-    // ITEMS LOOP
+    // ITEMS LOOP (with Combo Discount added)
     // -------------------------------
     for (int i = 0; i < orderItems.length; i++) {
       var item = orderItems[i];
@@ -8439,7 +8428,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       bool isPayout = type.contains(TextConstants.payoutText);
       bool isCoupon = type.contains(TextConstants.couponText);
-      bool isPayoutOrCoupon = isPayout || isCoupon;
+      bool isCashback = type.contains("cashback");
+      bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
 
       String formattedRate = isCoupon || isPayout
           ? "-${TextConstants.currencySymbol}${unitPrice.abs().toStringAsFixed(2)}"
@@ -8457,25 +8447,27 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         PosColumn(text: formattedTotal, width: 3, styles: PosStyles(align: PosAlign.right)),
       ]);
 
+      // ────────────────────────────────────────────────
+      // DISCOUNT EXTRACTION & PRINTING
+      // ────────────────────────────────────────────────
       String discountType = item['discount_type']?.toString() ?? '';
 
-      double autoDiscount =
-      (discountType.isEmpty || discountType == 'auto')
+      double autoDiscount = (discountType.isEmpty || discountType == 'auto')
           ? (item['auto_discount'] ?? 0).toDouble()
           : 0.0;
 
-      double multipackDiscount =
-      (discountType == 'multipack')
+      double multipackDiscount = (discountType == 'multipack')
           ? (item['auto_discount'] ?? 0).toDouble()
           : 0.0;
 
-      double comboDiscount = (discountType == 'combo')
+      double comboDiscount = (discountType == 'combo' || discountType == 'mixmatch')
           ? (item['auto_discount'] ?? 0).toDouble()
           : 0.0;
 
+      // Auto Discount
       if (autoDiscount > 0 && !isPayoutOrCoupon) {
         bytes += ticket.row([
-          PosColumn(text: "   Auto Discount", width: 9),
+          PosColumn(text: "Auto Discount", width: 9),
           PosColumn(
             text: "-${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
             width: 3,
@@ -8484,10 +8476,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         ]);
       }
 
-      // Combo Discount (new)
+      // Combo / Mix & Match Discount  ←─ ADDED HERE
       if (comboDiscount > 0 && !isPayoutOrCoupon) {
         bytes += ticket.row([
-          PosColumn(text: "   Combo Discount", width: 9),
+          PosColumn(text: "Combo Discount", width: 9),
           PosColumn(
             text: "-${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}",
             width: 3,
@@ -8496,9 +8488,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         ]);
       }
 
+      // Multipack Discount
       if (multipackDiscount > 0 && !isPayoutOrCoupon) {
         bytes += ticket.row([
-          PosColumn(text: "   Multipack Discount", width: 9),
+          PosColumn(text: "Multipack Discount", width: 9),
           PosColumn(
             text: "-${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}",
             width: 3,
@@ -8511,7 +8504,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     // -------------------------------
-    // TOTALS
+    // TOTALS (unchanged from your version)
     // -------------------------------
     bytes += ticket.feed(1);
     bytes += ticket.row([
@@ -8519,7 +8512,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.grossTotal, width:8),
+      PosColumn(text: TextConstants.grossTotal, width: 8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}",
         width: 4,
@@ -8528,7 +8521,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.discountText, width:8),
+      PosColumn(text: TextConstants.discountText, width: 8),
       PosColumn(
         text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}",
         width: 4,
@@ -8537,7 +8530,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.taxText, width:8),
+      PosColumn(text: TextConstants.taxText, width: 8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}",
         width: 4,
@@ -8581,7 +8574,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.feed(1);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.netPayable, width:8),
+      PosColumn(text: TextConstants.netPayable, width: 8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${orderTotal.toStringAsFixed(2)}",
         width: 4,
@@ -8610,7 +8603,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.payByOther, width:8),
+      PosColumn(text: TextConstants.payByOther, width: 8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}",
         width: 4,
@@ -8619,7 +8612,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.tenderAmount, width:8),
+      PosColumn(text: TextConstants.tenderAmount, width: 8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
         width: 4,
@@ -8628,7 +8621,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     ]);
 
     bytes += ticket.row([
-      PosColumn(text: TextConstants.change, width:8),
+      PosColumn(text: TextConstants.change, width: 8),
       PosColumn(
         text: "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}",
         width: 4,

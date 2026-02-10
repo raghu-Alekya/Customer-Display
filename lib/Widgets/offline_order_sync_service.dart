@@ -9,10 +9,9 @@ import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 class OfflineOrderSyncService {
    static Timer? _timer;
    static bool _isSyncing = false;
-  //
   static void start() {
     _timer ??= Timer.periodic(
-      const Duration(minutes: 5),
+      const Duration(minutes: 30),
           (_) => syncPendingOrders(),
     );
 

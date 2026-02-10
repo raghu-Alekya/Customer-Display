@@ -4,7 +4,6 @@ import 'package:pinaka_pos/Constants/text.dart';
 
 class OrdersListModel {
   final List<OrderModel> orders;
-
   OrdersListModel({required this.orders});
 
   factory OrdersListModel.fromJson(List<dynamic> json) {
@@ -45,13 +44,11 @@ class OrderModel {
   final String number;
   final String currencySymbol;
 
-  // New fields for multipack and auto discounts at order level
   final String? multipackDiscountTotal;
   final String? autoDiscountTotal;
   final String? getTime;
   final String? autoDiscountMeta;
 
-  // **NEW: Order-level auto discount amount from meta_data**
   final double orderLevelAutoDiscountAmount;
 
   OrderModel({
@@ -92,13 +89,11 @@ class OrderModel {
   });
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
-    // Extract order-level meta_data
     final metaList = (json['meta_data'] as List<dynamic>?)
         ?.map((e) => MetaData.fromJson(e as Map<String, dynamic>))
         .toList() ??
         <MetaData>[];
 
-    // Helper to find meta value by key
     String? getOrderMetaValue(String key) {
       try {
         return metaList
@@ -113,7 +108,6 @@ class OrderModel {
       }
     }
 
-    // **Extract _discount_amount from order-level meta_data**
     final orderDiscountStr = getOrderMetaValue('_discount_amount');
     final orderLevelAutoDiscountAmount = double.tryParse(orderDiscountStr ?? '0') ?? 0.0;
 
@@ -170,32 +164,21 @@ class OrderModel {
     );
   }
 
-  // Computed: Total multipack discount from all line items
-  double get totalMultipackDiscount {
-    return lineItems.fold(0.0, (sum, item) => sum + item.multipackDiscountAmount);
-  }
+  double get totalMultipackDiscount =>
+      lineItems.fold(0.0, (sum, item) => sum + item.multipackDiscountAmount);
 
-  // Computed: Total auto discount from all line items
-  double get totalAutoDiscount {
-    return lineItems.fold(0.0, (sum, item) => sum + item.autoDiscountAmount);
-  }
+  double get totalAutoDiscount =>
+      lineItems.fold(0.0, (sum, item) => sum + item.autoDiscountAmount);
 
-  // **NEW: Total combo discount from all line items**
-  double get totalComboDiscount {
-    return lineItems.fold(0.0, (sum, item) => sum + item.comboDiscountAmount);
-  }
+  double get totalComboDiscount =>
+      lineItems.fold(0.0, (sum, item) => sum + item.comboDiscountAmount);
 
-  // **NEW: Total display auto discount from all line items**
-  double get totalDisplayAutoDiscount {
-    return lineItems.fold(0.0, (sum, item) => sum + item.displayAutoDiscountAmount);
-  }
+  double get totalDisplayAutoDiscount =>
+      lineItems.fold(0.0, (sum, item) => sum + item.displayAutoDiscountAmount);
 
-  // **NEW: Combined auto discount (order-level + line items)**
-  double get totalCombinedAutoDiscount {
-    return orderLevelAutoDiscountAmount + totalAutoDiscount;
-  }
+  double get totalCombinedAutoDiscount =>
+      orderLevelAutoDiscountAmount + totalAutoDiscount;
 
-  // Updated to include new discount types
   double get totalAllDiscounts {
     final discount = double.tryParse(discountTotal) ?? 0.0;
     final auto = double.tryParse(autoDiscountTotal ?? '0') ?? 0.0;
@@ -208,16 +191,9 @@ class OrderModel {
   }
 
   bool get hasMultipackDiscount => totalMultipackDiscount > 0;
-
   bool get hasAutoDiscount => totalCombinedAutoDiscount > 0;
-
-  // **NEW: Check if order has combo discounts**
   bool get hasComboDiscount => totalComboDiscount > 0;
-
-  // **NEW: Check if order has display auto discounts**
   bool get hasDisplayAutoDiscount => totalDisplayAutoDiscount > 0;
-
-  // **NEW: Check if order-level auto discount exists**
   bool get hasOrderLevelAutoDiscount => orderLevelAutoDiscountAmount > 0;
 }
 
@@ -357,22 +333,21 @@ class LineItem {
   final ProductData productData;
   final ProductVariationData? productVariationData;
 
-  // Multipack discount fields extracted from meta_data
+  // Multipack legacy fields
   final String? originalSubtotal;
   final String? multipackUnitPriceBefore;
   final String? multipackUnitPriceAfter;
+
+  // Discount fields
   final double multipackDiscountAmount;
   final bool multipackApplied;
 
-  // Auto discount fields
   final double autoDiscountAmount;
   final bool autoDiscountApplied;
 
-  // **NEW: Combo discount fields**
-  final double comboDiscountAmount;
+  final double comboDiscountAmount; // mixmatch
   final bool comboDiscountApplied;
 
-  // **NEW: Auto discount from display meta fields**
   final double displayAutoDiscountAmount;
 
   LineItem({
@@ -399,12 +374,12 @@ class LineItem {
     required this.multipackApplied,
     required this.autoDiscountAmount,
     required this.autoDiscountApplied,
-    // **NEW: Combo discount parameters**
     required this.comboDiscountAmount,
     required this.comboDiscountApplied,
-    // **NEW: Display auto discount parameter**
     required this.displayAutoDiscountAmount,
   });
+
+
 
   factory LineItem.fromJson(Map<String, dynamic> json) {
     final metaList = (json['meta_data'] as List<dynamic>?)
@@ -412,7 +387,6 @@ class LineItem {
         .toList() ??
         <MetaData>[];
 
-    // Helper to find meta value by key
     String? getMetaValue(String key) {
       try {
         return metaList
@@ -427,31 +401,57 @@ class LineItem {
       }
     }
 
-    // Existing multipack discount extraction
-    final originalSubtotal = getMetaValue('_pinaka_multipack_original_subtotal');
-    final unitBefore = getMetaValue('_pinaka_multipack_unit_price_before');
-    final unitAfter = getMetaValue('_pinaka_multipack_unit_price_after');
-    final discountStr = getMetaValue('_pinaka_multipack_product_discount');
-    final applied = getMetaValue('_pinaka_multipack_applied') == 'yes';
-    final discountAmount = double.tryParse(discountStr ?? '0') ?? 0.0;
 
-    // Auto discount extraction from line item meta_data
-    final autoDiscountStr = getMetaValue('_discount_amount');
-    final autoApplied = getMetaValue('_pinaka_discount_amount_auto_apply') == 'yes';
-    final autoDiscountAmount = double.tryParse(autoDiscountStr ?? '0') ?? 0.0;
+    final String? posAutoDiscountStr = getMetaValue('_pos_auto_discount');
+    final String? posDiscountTypeRaw = getMetaValue('_pos_discount_type');
 
-    // **NEW: Combo discount extraction**
-    // Looking for "Discount Applied" key or display_key
-    final comboDiscountStr = getMetaValue('Discount Applied') ??
-        _extractDisplayMetaValue(metaList, 'Discount Applied', keyToMatch: 'display_key');
-    final comboDiscountAmount = double.tryParse(comboDiscountStr ?? '0') ?? 0.0;
-    final comboApplied = comboDiscountAmount > 0;
+    final double discountValue = double.tryParse(posAutoDiscountStr ?? '0.00') ?? 0.0;
+    final String discountType = (posDiscountTypeRaw ?? '').trim().toLowerCase();
 
-    // **NEW: Auto discount from display meta fields**
-    // Looking for "auto_discount_amount" key or display_key
-    final displayAutoDiscountStr = getMetaValue('auto_discount_amount') ??
+    double multipackDiscountAmount = 0.0;
+    bool multipackApplied = false;
+
+    double autoDiscountAmount = 0.0;
+    bool autoDiscountApplied = false;
+
+    double comboDiscountAmount = 0.0;
+    bool comboDiscountApplied = false;
+
+    if (discountValue > 0 && discountType.isNotEmpty) {
+      switch (discountType) {
+        case 'multipack':
+          multipackDiscountAmount = discountValue;
+          multipackApplied = true;
+          break;
+        case 'mixmatch':
+          comboDiscountAmount = discountValue;
+          comboDiscountApplied = true;
+          break;
+        case 'auto':
+          autoDiscountAmount = discountValue;
+          autoDiscountApplied = true;
+          break;
+        default:
+        // Unknown type → treat as auto
+          autoDiscountAmount = discountValue;
+          autoDiscountApplied = true;
+          if (kDebugMode) {
+            print(" Unknown _pos_discount_type '$discountType' → treated as auto (value: $discountValue)");
+          }
+          break;
+      }
+    }
+
+    // Legacy multipack fields (kept for backward compatibility)
+    final String? originalSubtotal = getMetaValue('_pinaka_multipack_original_subtotal');
+    final String? multipackUnitPriceBefore = getMetaValue('_pinaka_multipack_unit_price_before');
+    final String? multipackUnitPriceAfter = getMetaValue('_pinaka_multipack_unit_price_after');
+
+    // Optional old display-key fallback
+    final String? displayAutoStr = getMetaValue('auto_discount_amount') ??
         _extractDisplayMetaValue(metaList, 'auto_discount_amount', keyToMatch: 'display_key');
-    final displayAutoDiscountAmount = double.tryParse(displayAutoDiscountStr ?? '0') ?? 0.0;
+    final double displayAutoDiscountAmount = double.tryParse(displayAutoStr ?? '0') ?? 0.0;
+
 
     return LineItem(
       id: json['id'] ?? 0,
@@ -475,28 +475,24 @@ class LineItem {
           ? ProductVariationData.fromJson(json['product_variation_data'])
           : null,
       originalSubtotal: originalSubtotal,
-      multipackUnitPriceBefore: unitBefore,
-      multipackUnitPriceAfter: unitAfter,
-      multipackDiscountAmount: discountAmount,
-      multipackApplied: applied,
+      multipackUnitPriceBefore: multipackUnitPriceBefore,
+      multipackUnitPriceAfter: multipackUnitPriceAfter,
+      multipackDiscountAmount: multipackDiscountAmount,
+      multipackApplied: multipackApplied,
       autoDiscountAmount: autoDiscountAmount,
-      autoDiscountApplied: autoApplied,
-      // **NEW: Combo discount fields**
+      autoDiscountApplied: autoDiscountApplied,
       comboDiscountAmount: comboDiscountAmount,
-      comboDiscountApplied: comboApplied,
-      // **NEW: Display auto discount field**
+      comboDiscountApplied: comboDiscountApplied,
       displayAutoDiscountAmount: displayAutoDiscountAmount,
     );
   }
 
-  // **NEW: Helper method to extract display meta values**
   static String? _extractDisplayMetaValue(
       List<MetaData> metaList,
       String valueToFind, {
-        String keyToMatch = 'display_key'
+        String keyToMatch = 'display_key',
       }) {
     try {
-      // Look for meta entries where display_key matches the value we're looking for
       for (var meta in metaList) {
         if (meta.value is Map<String, dynamic>) {
           final valueMap = meta.value as Map<String, dynamic>;
@@ -505,8 +501,6 @@ class LineItem {
           }
         }
       }
-
-      // Alternative: Check if value is a JSON string
       for (var meta in metaList) {
         if (meta.value is String) {
           try {
@@ -514,31 +508,20 @@ class LineItem {
             if (parsed[keyToMatch]?.toString() == valueToFind) {
               return parsed['display_value']?.toString();
             }
-          } catch (_) {
-            // Not a JSON string, continue
-          }
+          } catch (_) {}
         }
       }
-
       return null;
     } catch (e) {
       return null;
     }
   }
 
-  // Multipack discount helper
   bool get hasMultipackDiscount => multipackApplied && multipackDiscountAmount > 0;
-
-  // Auto discount helper
   bool get hasAutoDiscount => autoDiscountApplied && autoDiscountAmount > 0;
-
-  // **NEW: Combo discount helper**
   bool get hasComboDiscount => comboDiscountApplied && comboDiscountAmount > 0;
-
-  // **NEW: Display auto discount helper**
   bool get hasDisplayAutoDiscount => displayAutoDiscountAmount > 0;
 
-  // Updated total discount including all discount types
   double get totalDiscountAmount =>
       multipackDiscountAmount +
           autoDiscountAmount +
@@ -546,17 +529,13 @@ class LineItem {
           displayAutoDiscountAmount;
 }
 
+
+
 class Tag {
   final int id;
   final String name;
   final String slug;
-
-  Tag({
-    required this.id,
-    required this.name,
-    required this.slug,
-  });
-
+  Tag({required this.id, required this.name, required this.slug});
   factory Tag.fromJson(Map<String, dynamic> json) {
     return Tag(
       id: json['id'] ?? 0,
@@ -642,11 +621,7 @@ class MetaData {
   final String key;
   final dynamic value;
 
-  MetaData({
-    required this.id,
-    required this.key,
-    required this.value,
-  });
+  MetaData({required this.id, required this.key, required this.value});
 
   factory MetaData.fromJson(Map<String, dynamic> json) {
     return MetaData(
@@ -661,10 +636,7 @@ class ImageData {
   final String id;
   final String src;
 
-  ImageData({
-    required this.id,
-    required this.src,
-  });
+  ImageData({required this.id, required this.src});
 
   factory ImageData.fromJson(Map<String, dynamic> json) {
     return ImageData(

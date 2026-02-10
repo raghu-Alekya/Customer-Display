@@ -200,6 +200,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
     if (kDebugMode) {
       print("###### _processPaymentList - OrderScreenPanel");
+      print("###### activeOrderIdddddddddd: ${widget}- OrderScreenPanel");
       print("###### Cash Total: $cashTotal, Other Total: $otherTotal");
     }
 
@@ -344,7 +345,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
           "merchantDiscount": (map["merchant_discount"] as num?)?.toDouble() ?? 0.0,
           AppDBConst.orderTax: (map["order_tax"] as num?)?.toDouble() ?? 0.0,
 
-          // 🟩 FIXED NET + PAYABLE
+          //  FIXED NET + PAYABLE
           "netTotal": (map["net_total"] as num?)?.toDouble() ?? 0.0,
           "payable": (map["net_payable"] as num?)?.toDouble() ?? 0.0,
 
@@ -357,7 +358,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         return;
       }
 
-      // 3️⃣ No order found at all
+      //  No order found at all
       _order = {AppDBConst.orderStatus: ''};
       orderServerId = null;
     }
@@ -799,6 +800,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       final name = item["item_name"]?.toString().toLowerCase() ?? "";
       final type = item["item_type"]?.toString().toLowerCase() ?? "";
 
+
+
       final skip =
           name.contains("discount") ||
               name.contains("merchant discount") ||
@@ -825,6 +828,19 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
               "1"
       ) ?? 1;
 
+
+      final double multipackDiscount =
+          (item[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
+
+      final double autoDiscount =
+          (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
+
+      // final double comboDiscount =
+      //     (orderItem[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
+
+      final double comboDiscount    = (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
+
+
       // Price priority
       double unitPrice =
           double.tryParse(item["item_sum_price"]?.toString() ?? "") ??
@@ -833,7 +849,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
               double.tryParse(item["price"]?.toString() ?? "") ??
               0.0;
 
-      grossTotal += unitPrice;
+      grossTotal += unitPrice -multipackDiscount- autoDiscount -comboDiscount ;
+
     }
 
 
@@ -909,7 +926,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     final String offlineOrderId = orderHelper.activeOrderId.toString();
 
     cashbackFee = loadCashbackFee(
-     // wooOrderId: wooOrderId,
+      // wooOrderId: wooOrderId,
       offlineOrderId: offlineOrderId,
     );
 
@@ -1166,8 +1183,10 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                         final double autoDiscount =
                             (orderItem[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
 
-                        final double comboDiscount =
-                            (orderItem[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
+                        // final double comboDiscount =
+                        //     (orderItem[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
+
+                        final double comboDiscount    = (orderItem[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
 
                         /// Build #1.0.134: Item Price will check sales price if it is null/empty, check regular price else unit price
                         final salesPrice = (orderItem[
@@ -1377,7 +1396,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                             fit: BoxFit.cover,
                                           )
 
-                                      : buildProductImage(
+                                              : buildProductImage(
                                             orderItem[AppDBConst.itemImage]?.toString(),
                                             height: MediaQuery.of(context).size.height * 0.08,
                                             width: MediaQuery.of(context).size.height * 0.075,
@@ -1440,7 +1459,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                       style: TextStyle(
                                                         fontSize: 10,
                                                         fontWeight: FontWeight.w600,
-                                                        color: Colors.green,
+                                                        color: Colors.blue,
                                                       ),
                                                     ),
                                                   ],
@@ -1453,23 +1472,30 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                       style: TextStyle(
                                                         fontSize: 10,
                                                         fontWeight: FontWeight.w600,
-                                                        color: Colors.green,
+                                                        color: Colors.red,
                                                       ),
                                                     ),
                                                   ],
 
-                                                  if (combo != '' && comboDiscount > 0) ...[
+                                                  // if (combo != '' && comboDiscount > 0) ...[
+                                                  //   const SizedBox(height: 2),
+                                                  //   Text(
+                                                  //     "Combo Discount: -${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}",
+                                                  //     style: TextStyle(
+                                                  //       fontSize: 10,
+                                                  //       fontWeight: FontWeight.w600,
+                                                  //       color: Colors.green,
+                                                  //     ),
+                                                  //   ),
+                                                  // ],
+
+                                                  if (comboDiscount > 0) ...[   // ← just check value > 0
                                                     const SizedBox(height: 2),
                                                     Text(
                                                       "Combo Discount: -${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}",
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        fontWeight: FontWeight.w600,
-                                                        color: Colors.green,
-                                                      ),
+                                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.orange),
                                                     ),
                                                   ],
-
                                                   variationCount == 0
                                                       ? SizedBox(
                                                     width: 0,
@@ -1584,11 +1610,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                         (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1;
 
                                                     double unitPrice =
-                                                        // (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////---
-                                                            (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ??
-                                                            (orderItem[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
-                                                            (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////
-                                                            0.0;   ////
+                                                    // (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////---
+                                                    (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ??
+                                                        (orderItem[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
+                                                        (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////
+                                                        0.0;   ////
 
                                                     // If still zero → derive price from sum price
                                                     if (unitPrice == 0.0) {
@@ -1609,7 +1635,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
                                                       // 🔹 NEW: show unit price × qty = total amount
                                                       "${TextConstants.currencySymbol} ${unitPrice.toStringAsFixed(2)} × ${qty.toInt()} ",
-                                                          // "= ${TextConstants.currencySymbol} ${totalAmount.toStringAsFixed(2)}",
+                                                      // "= ${TextConstants.currencySymbol} ${totalAmount.toStringAsFixed(2)}",
 
                                                       style: TextStyle(
                                                         color: themeHelper.themeMode == ThemeMode.dark
@@ -5132,7 +5158,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       // 🔥 MULTIPACK / COMBO / AUTO DISCOUNT (only for normal items)
       final double multipackDiscount = (orderItem[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
       final double comboDiscount = (orderItem[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
-      final double autoDiscount = (orderItem[AppDBConst.displayAutoDiscount] as num?)?.toDouble() ?? 0.0;
+      final double autoDiscount = (orderItem[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
 
       if (!isPayout && !isCoupon && !isCashback) {
         if (multipackDiscount > 0) {
