@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:core';
@@ -68,26 +67,29 @@ import 'OrderPopupHelper.dart';
 import 'discount_engine_constants.dart';
 import 'widget_logs_toast.dart';
 
-
 class ScannerMutex {
   static bool noOrderBusy = false;
 }
 
 String logString = "";
-bool isOrderInForeground = true;  ///Add visibility code to check if order panel is visible or not
+bool isOrderInForeground = true;
+
+///Add visibility code to check if order panel is visible or not
 class RightOrderPanel extends StatefulWidget {
   final String? formattedDate;
   final String? formattedTime;
   final List<int> quantities;
   final VoidCallback? refreshOrderList;
-  final int refreshKey; //Build #1.0.170: Added: Key to trigger refresh only when explicitly needed
+  final int
+      refreshKey; //Build #1.0.170: Added: Key to trigger refresh only when explicitly needed
 
   const RightOrderPanel({
     this.formattedDate,
     this.formattedTime,
     required this.quantities,
     this.refreshOrderList,
-    this.refreshKey = 0, //Build #1.0.170: Default to 0, increment externally to trigger refresh
+    this.refreshKey =
+        0, //Build #1.0.170: Default to 0, increment externally to trigger refresh
     Key? key,
   }) : super(key: key);
 
@@ -95,42 +97,50 @@ class RightOrderPanel extends StatefulWidget {
   _RightOrderPanelState createState() => _RightOrderPanelState();
 }
 
-class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderStateMixin {
+class _RightOrderPanelState extends State<RightOrderPanel>
+    with TickerProviderStateMixin {
   List<Map<String, Object>> tabs = []; // List of order tabs
   TabController? _tabController; // Controller for tab switching
-  final ScrollController _scrollController = ScrollController(); // Scroll controller for tab scrolling
-  List<Map<String, dynamic>> orderItems = []; // List of items in the selected order
-  final OrderHelper orderHelper = OrderHelper(); // Helper instance to manage orders
+  final ScrollController _scrollController =
+      ScrollController(); // Scroll controller for tab scrolling
+  List<Map<String, dynamic>> orderItems =
+      []; // List of items in the selected order
+  final OrderHelper orderHelper =
+      OrderHelper(); // Helper instance to manage orders
   bool _isLoading = false;
   static bool _isCustomItemLoading = false;
   bool _isPayBtnLoading = false;
   late OrderBloc orderBloc;
   StreamSubscription? _updateOrderSubscription;
   StreamSubscription? _fetchOrdersSubscription;
-  final ProductBloc productBloc = ProductBloc(ProductRepository()); // Build #1.0.44 : Added for barcode scanning
-  StreamSubscription? _productBySkuSubscription; // Build #1.0.44 : Added for product stream
+  final ProductBloc productBloc = ProductBloc(
+      ProductRepository()); // Build #1.0.44 : Added for barcode scanning
+  StreamSubscription?
+      _productBySkuSubscription; // Build #1.0.44 : Added for product stream
   StreamSubscription? _removePayoutOrDiscountSubscription;
   StreamSubscription? _removeMerchantDiscountSubscription; // Build #1.0.274
   StreamSubscription? _removeCouponSubscription;
   bool _showFullSummary = false;
   late ScaffoldMessengerState _scaffoldMessenger;
-  bool _isFetchingInitialData = false; // Build #1.0.128: Added this flag to track if we're in the middle of initial fetch
-  int _listVersion = 0;  // Build 1.0.214: Added this version counter
-  double cashbackFee =0.0;
+  bool _isFetchingInitialData =
+      false; // Build #1.0.128: Added this flag to track if we're in the middle of initial fetch
+  int _listVersion = 0; // Build 1.0.214: Added this version counter
+  double cashbackFee = 0.0;
   bool _scanLocked = false;
-  bool _ageVerificationActive=false;
+  bool _ageVerificationActive = false;
   Map<String, dynamic>? resolvedProductMap;
   VoidCallback? _orderPanelRefreshListener;
+  bool _isNewTabDisabled = false;
 
   void _toggleSummary() {
     setState(() {
       _showFullSummary = !_showFullSummary;
     });
   }
+
   String normalizeSku(String sku) {
     return sku.trim().toLowerCase().replaceAll(" ", "");
   }
-
 
   @override
   void initState() {
@@ -147,15 +157,35 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         fetchOrdersData();
       }
     };
-    OrderHelper.orderPanelRefreshNotifier.addListener(_orderPanelRefreshListener!);
+    OrderHelper.orderPanelRefreshNotifier
+        .addListener(_orderPanelRefreshListener!);
   }
+  double getCurrentMerchantDiscount(Map<String, dynamic> order) {
+    final products = (order['products'] as List?) ?? [];
 
+    double currentGross = 0.0;
+    for (var p in products) {
+      final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+      final qty = int.tryParse(p['quantity']?.toString() ?? '1') ?? 1;
+      currentGross += price * qty;
+    }
 
+    final type = order['merchantDiscountType']?.toString() ?? 'fixed';
+    final perc = double.tryParse(order['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
+    final fixed = double.tryParse(order['merchantDiscountFixed']?.toString() ?? '0') ?? 0.0;
+
+    if (type == 'percentage' && perc > 0) {
+      return (currentGross * perc) / 100.0;
+    } else {
+      return fixed;
+    }
+  }
   // Build #1.0.104: created this function for initial call & while back to this screen
   void fetchOrdersData() async {
     if (kDebugMode) {
       print("##### fetchOrdersData called (OFFLINE MODE)");
-      print("##### fetchOrdersData -> isOrderPanelLoaded : ${OrderHelper.isOrderPanelLoaded}");
+      print(
+          "##### fetchOrdersData -> isOrderPanelLoaded : ${OrderHelper.isOrderPanelLoaded}");
     }
     if (OrderHelper.isOrderPanelLoaded) {
       setState(() => _isFetchingInitialData = false);
@@ -181,7 +211,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       // ✅ Mark panel loaded and render
       OrderHelper.isOrderPanelLoaded = true;
       _getOrderTabs(); // Use offline OrderHelper.orders
-
     } catch (e, s) {
       if (kDebugMode) {
         print("❌ Error loading offline orders in fetchOrdersData: $e");
@@ -211,8 +240,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     ///Build #1.0.170: Fixed -  Order Cart Flickering When Clicking on Fast Keys
     // Only trigger loading if refreshKey changed (indicating an external update like item add/delete)
     // This prevents unnecessary loading/flickering on unrelated parent rebuilds (e.g., time changes or screen switches)
-    if (widget.refreshKey != oldWidget.refreshKey && mounted && !_isFetchingInitialData) { // Build #1.0.128: hOnly update if not in initial fetch
-      setState(() => _isLoading = true); // Build #1.0.131: show loader in order panel after selecting item/product
+    if (widget.refreshKey != oldWidget.refreshKey &&
+        mounted &&
+        !_isFetchingInitialData) {
+      // Build #1.0.128: hOnly update if not in initial fetch
+      setState(() => _isLoading =
+          true); // Build #1.0.131: show loader in order panel after selecting item/product
       if (kDebugMode) {
         print("##### _isFetchingInitialData : $_isFetchingInitialData");
       }
@@ -243,7 +276,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       final int orderId = order[AppDBConst.orderServerId];
 
       final payments =
-      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+          await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
 
       final bool hasAnyPayment = payments.isNotEmpty;
 
@@ -254,7 +287,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       }
 
       // ❌ Hide order once payment starts
-     if (hasAnyPayment) continue;
+      if (hasAnyPayment) continue;
 
       visibleOrders.add(order);
     }
@@ -269,11 +302,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           .asMap()
           .entries
           .map((entry) => {
-        "title":
-        "#${entry.value[AppDBConst.orderServerId] ?? entry.value[AppDBConst.orderId]}",
-        "subtitle": "Tab ${entry.key + 1}",
-        "orderId": entry.value[AppDBConst.orderServerId] as Object,
-      })
+                "title":
+                    "#${entry.value[AppDBConst.orderServerId] ?? entry.value[AppDBConst.orderId]}",
+                "subtitle": "Tab ${entry.key + 1}",
+                "orderId": entry.value[AppDBConst.orderServerId] as Object,
+              })
           .toList();
 
       if (kDebugMode) {
@@ -301,8 +334,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 // --------------------------------------------------
 // 3️⃣ HARD ACTIVE ORDER SAFETY (REQUIRED)
 // --------------------------------------------------
-    final visibleOrderIds =
-    tabs.map((t) => t['orderId'] as int).toList();
+    final visibleOrderIds = tabs.map((t) => t['orderId'] as int).toList();
 
     final int? activeId = orderHelper.activeOrderId;
 
@@ -338,8 +370,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       }
     }
 
-
-
     _initializeTabController();
     await fetchOrderItems();
 
@@ -348,26 +378,30 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
   }
 
-
-  void _fetchOrders() { //Build #1.0.40: fetch orders items from API sync & updating to UI
+  void _fetchOrders() {
+    //Build #1.0.40: fetch orders items from API sync & updating to UI
     // updated above
     // setState(() => _isLoading = true); // Build #1.0.104: Show loader
     _fetchOrdersSubscription?.cancel(); //Build #1.0.170
-    _fetchOrdersSubscription = orderBloc.fetchOrdersStream.listen((response) async {
+    _fetchOrdersSubscription =
+        orderBloc.fetchOrdersStream.listen((response) async {
       if (!mounted) return;
 
       if (response.status == Status.COMPLETED) {
         if (kDebugMode) {
-          print("##### DEBUG: Fetched orders successfully 33333, total orders: ${orderHelper.orders.length}");
+          print(
+              "##### DEBUG: Fetched orders successfully 33333, total orders: ${orderHelper.orders.length}");
         }
-        setState(() => _isFetchingInitialData = false); // Build #1.0.128: Initial fetch complete
+        setState(() => _isFetchingInitialData =
+            false); // Build #1.0.128: Initial fetch complete
         await _getOrderTabs(); // Build  #1.0.177: add await to loadTabs to fix delay in loading
         OrderHelper.isOrderPanelLoaded = true;
         //_fetchOrdersSubscription?.cancel();
       } else if (response.status == Status.ERROR) {
         if (response.message!.contains('Unauthorised')) {
           if (kDebugMode) {
-            print("categories screen 1  ---- Unauthorised : ${response.message!}");
+            print(
+                "categories screen 1  ---- Unauthorised : ${response.message!}");
           }
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
@@ -379,16 +413,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               }
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text(
-                      "Unauthorised. Session is expired on this device."),
+                  content:
+                      Text("Unauthorised. Session is expired on this device."),
                   backgroundColor: Colors.red,
                   duration: Duration(seconds: 2),
                 ),
               );
             }
           });
-        }
-        else {
+        } else {
           if (kDebugMode) {
             print("##### ERROR: Fetch orders failed - ${response.message}");
           }
@@ -414,8 +447,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   Future<void> fetchOrderItems() async {
     final activeId = orderHelper.activeOrderId;
 
-    if (activeId == null ||
-        !tabs.any((t) => t['orderId'] == activeId)) {
+    if (activeId == null || !tabs.any((t) => t['orderId'] == activeId)) {
       if (kDebugMode) {
         print("⛔ fetchOrderItems blocked — active order hidden");
       }
@@ -434,13 +466,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
     if (orderHelper.activeOrderId != null) {
       if (kDebugMode) {
-        print("##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
+        print(
+            "##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
       }
-      try { // Build #1.0.189: Refresh tabs to reflect no active order
+      try {
+        // Build #1.0.189: Refresh tabs to reflect no active order
         var orders = await orderHelper.getOrderById(orderHelper.activeOrderId!);
         if (orders.isEmpty) {
           if (kDebugMode) {
-            print("##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
+            print(
+                "##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
           }
           setState(() {
             orderItems = []; // Clear items if no order exists
@@ -454,17 +489,22 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         var order = orders.first;
         if (kDebugMode) {
           print("##### DEBUG: fetchOrderItems - Retrieved ${order.length}");
-          print("##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
-          print("##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
+          print(
+              "##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
+          print(
+              "##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
         }
-        List<Map<String, dynamic>> items = await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
+        List<Map<String, dynamic>> items =
+            await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
         if (kDebugMode) {
-          print("##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
+          print(
+              "##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
         }
 
         if (mounted) {
           setState(() {
-            orderItems = List<Map<String, dynamic>>.from(items); // Create mutable copy
+            orderItems =
+                List<Map<String, dynamic>>.from(items); // Create mutable copy
             _listVersion++; // Build 1.0.214: Increment version when items change
           });
         }
@@ -555,7 +595,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
     if (orderHelper.activeOrderId != null) {
       final idx = tabs.indexWhere(
-            (t) => t["orderId"] == orderHelper.activeOrderId,
+        (t) => t["orderId"] == orderHelper.activeOrderId,
       );
 
       if (idx != -1) {
@@ -565,7 +605,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         return;
       }
     }
-
 
     if (mounted) {
       _tabController!.index = defaultIndex;
@@ -582,12 +621,25 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   // Added alert dialog for error handling with retry option.
   // Loader is shown via _isLoading during the API call.
   Future<void> addNewTab() async {
+    if (_isNewTabDisabled) return; // 🔒 hard guard
+
+    setState(() {
+      _isNewTabDisabled = true;
+    });
+
+    // 🔓 auto-unlock after 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() => _isNewTabDisabled = false);
+      }
+    });
     // Create new order if none exists
     if (kDebugMode) {
       print("##### DEBUG: addNewTab - Creating new order");
     }
     showLogs = true;
     logString += "##### DEBUG: addNewTab - Creating new order \n ";
+
     /// Build #1.0.128: No need here , now we are handling from Order repository class
     // final prefs = await SharedPreferences.getInstance();
     // final shiftId = prefs.getString(TextConstants.shiftId);
@@ -611,13 +663,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     // List<OrderMetaData> metaData = [device, placedBy, shiftIdValue];
 
     _updateOrderSubscription?.cancel();
-    _updateOrderSubscription = orderBloc.createOrderStream.listen((response) async {
+    _updateOrderSubscription =
+        orderBloc.createOrderStream.listen((response) async {
       if (!mounted) return;
 
       if (response.status == Status.COMPLETED) {
         setState(() => _isLoading = false); // Hide loader
         if (kDebugMode) {
-          print("##### DEBUG: addNewTab - Order created successfully, serverOrderId: ${response.data!.id}");
+          print(
+              "##### DEBUG: addNewTab - Order created successfully, serverOrderId: ${response.data!.id}");
         }
         // Persist to SQLite so order panel shows this order
         await orderHelper.createOrder(serverOrderId: response.data!.id);
@@ -634,7 +688,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         _scrollToSelectedTab();
         await fetchOrderItems();
 
-        if (Misc.showDebugSnackBar) { // Build #1.0.254
+        if (Misc.showDebugSnackBar) {
+          // Build #1.0.254
           _scaffoldMessenger.showSnackBar(
             SnackBar(
               content: Text("Order created successfully"),
@@ -646,7 +701,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       } else if (response.status == Status.ERROR) {
         if (response.message!.contains('Unauthorised')) {
           if (kDebugMode) {
-            print("categories screen 2  ---- Unauthorised : ${response.message!}");
+            print(
+                "categories screen 2  ---- Unauthorised : ${response.message!}");
           }
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
@@ -658,20 +714,19 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               }
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text(
-                      "Unauthorised. Session is expired on this device."),
+                  content:
+                      Text("Unauthorised. Session is expired on this device."),
                   backgroundColor: Colors.red,
                   duration: Duration(seconds: 2),
                 ),
               );
             }
           });
-        }
-        else {
+        } else {
           setState(() => _isLoading = false); //Build #1.0.99: Hide loader
           if (kDebugMode) {
-            print("##### ERROR: addNewTab - Failed to create order: ${response
-                .message}");
+            print(
+                "##### ERROR: addNewTab - Failed to create order: ${response.message}");
           }
           _scaffoldMessenger.showSnackBar(
             SnackBar(
@@ -687,13 +742,14 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     logString += await orderBloc.createOrder(); // Build #1.0.128
     setState(() {});
   }
+
   // =============================================================
 // GLOBAL HELPER — FIXES ALL MAP<dynamic, dynamic> ERRORS
 // =============================================================
   dynamic deepCast(dynamic source) {
     if (source is Map) {
       return source.map(
-            (key, value) => MapEntry(key.toString(), deepCast(value)),
+        (key, value) => MapEntry(key.toString(), deepCast(value)),
       );
     }
 
@@ -749,18 +805,22 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     productBloc.dispose();
     _tabController?.dispose();
     _scrollController.dispose(); // Dispose ScrollController
-    _productBySkuSubscription?.cancel(); // Build #1.0.44 : Added Cancel product subscription
+    _productBySkuSubscription
+        ?.cancel(); // Build #1.0.44 : Added Cancel product subscription
     // productBloc.dispose(); // Added: Dispose ProductBloc
     super.dispose();
     if (_orderPanelRefreshListener != null) {
-      OrderHelper.orderPanelRefreshNotifier.removeListener(_orderPanelRefreshListener!);
+      OrderHelper.orderPanelRefreshNotifier
+          .removeListener(_orderPanelRefreshListener!);
     }
   }
 
-  Future<String> getDeviceId() async { // Build #1.0.44 : Get Device Id
+  Future<String> getDeviceId() async {
+    // Build #1.0.44 : Get Device Id
     final storeValidationRepository = StoreValidationRepository();
     try {
-      final deviceDetails = await GlobalUtility.getDeviceDetails(); //Build #1.0.126: updated to GlobalUtility
+      final deviceDetails = await GlobalUtility
+          .getDeviceDetails(); //Build #1.0.126: updated to GlobalUtility
       return deviceDetails['device_id'] ?? 'unknown';
     } catch (e) {
       if (kDebugMode) {
@@ -793,7 +853,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     return null;
   }
 
-  Future<void> _openCustomItemDialog(BuildContext context, String barcode) async {
+  Future<void> _openCustomItemDialog(
+      BuildContext context, String barcode) async {
     if (_isCustomItemLoading) return;
     _isCustomItemLoading = true;
 
@@ -809,7 +870,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               selectedTabIndex: 2, // Custom Item tab
             ),
           ),
-              (route) => false,
+          (route) => false,
         );
       },
     ).then((_) {
@@ -819,6 +880,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       }
     });
   }
+
 //Build #1.0.268: 1. add below function in  BarcodeKeyboardListenerState lib
   // void callback(String barcode){
   //   _onBarcodeScannedCallback.call(barcode);
@@ -826,17 +888,18 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   // final GlobalKey<BarcodeKeyboardListenerState> _scannerKey = GlobalKey();//Build #1.0.268: 2. create global key
   @override
   Widget build(BuildContext context) {
-
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return FocusDetector(
-      onFocusLost: () { // Build #1.0.219 -> FIXED ISSUE [SCRUM - 366] : Swipe-to-Delete UI State Not Resetting
+      onFocusLost: () {
+        // Build #1.0.219 -> FIXED ISSUE [SCRUM - 366] : Swipe-to-Delete UI State Not Resetting
         // When this widget regains focus, reset slidable states
-        if(!mounted) return;
+        if (!mounted) return;
         setState(() {
           _listVersion++;
         });
       },
-      child: BarcodeKeyboardListener( // Build #1.0.44 : Added - Wrap with BarcodeKeyboardListener for barcode scanning
+      child: BarcodeKeyboardListener(
+        // Build #1.0.44 : Added - Wrap with BarcodeKeyboardListener for barcode scanning
         // key:  _scannerKey,//Build #1.0.268: 3. Add key for scanner event
         bufferDuration: Duration(milliseconds: 700),
         //Build #1.0.78: Removed orderHelper.addItemToOrder from the API success block, as it’s now in OrderBloc.updateOrderProducts.
@@ -845,7 +908,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         useKeyDownEvent: Platform.isWindows,
         caseSensitive: true,
         onBarcodeScanned: (barcode) async {
-
           if (ScannerMutex.noOrderBusy) {
             print("🚫 BLOCKED BY ScannerMutex.noOrderBusy");
             return;
@@ -861,7 +923,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           //  ⛔ HARD BLOCK — prevents duplicate scans
           if (_scanLocked) return;
 
-
           final trimmedBarcode = barcode;
 
           // ⛔ Ignore junk frames
@@ -872,14 +933,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
             final upper = trimmedBarcode.toUpperCase();
 
-            final bool isDriverLicense =
-                upper.contains("ANSI") ||
-                    upper.contains("DBB") ||
-                    upper.contains("DAQ") ||
-                    upper.contains("DL");
+            final bool isDriverLicense = upper.contains("ANSI") ||
+                upper.contains("DBB") ||
+                upper.contains("DAQ") ||
+                upper.contains("DL");
 
             if (isDriverLicense) {
-
               if (kDebugMode) {
                 print("🪪 Driver License detected → stopping product flow");
                 print("🪪 DRIVER LICENSE RAW BARCODE ↓↓↓");
@@ -897,7 +956,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               // 🔥 VERY IMPORTANT — STOP HERE
               return;
             }
-
 
             if (!isOrderInForeground ||
                 trimmedBarcode.isEmpty ||
@@ -948,19 +1006,19 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 if (memoryData is Map &&
                     memoryData["products"] is List &&
                     memoryData["products"].isNotEmpty) {
-
-                  productMap = Map<String, dynamic>.from(memoryData["products"][0]);
+                  productMap =
+                      Map<String, dynamic>.from(memoryData["products"][0]);
 
                   // 🔐 Restore meta_data safely
                   if (productMap["meta_data"] is List) {
-                    productMap["meta_data"] =
-                    List<Map<String, dynamic>>.from(productMap["meta_data"]);
+                    productMap["meta_data"] = List<Map<String, dynamic>>.from(
+                        productMap["meta_data"]);
                   }
 
                   // 🔐 Restore tags safely
                   if (productMap["tags"] is List) {
                     productMap["tags"] =
-                    List<Map<String, dynamic>>.from(productMap["tags"]);
+                        List<Map<String, dynamic>>.from(productMap["tags"]);
                   }
                 }
 
@@ -971,13 +1029,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 // 🔥 FIX FOR CUSTOM ITEM RE-SCAN 🔥
                 if (productMap.containsKey('product') &&
                     productMap['product'] is Map<String, dynamic>) {
-                  productMap =
-                  Map<String, dynamic>.from(productMap['product']);
+                  productMap = Map<String, dynamic>.from(productMap['product']);
                 }
 
 // ✅ STORE FINAL MAP FOR LATER USE
                 resolvedProductMap = productMap;
-
 
                 if (kDebugMode) {
                   print("💾 Extracted productMap from memory → $productMap");
@@ -987,10 +1043,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                     print("💾 productMap not JSON encodable");
                   }
                   // ⭐⭐⭐ ADD THESE THREE ⭐⭐⭐
-                  print("🖼 MEMORY productMap['images'] → ${productMap['images']}");
+                  print(
+                      "🖼 MEMORY productMap['images'] → ${productMap['images']}");
 
-                  if (productMap['images'] is List && productMap['images'].isNotEmpty) {
-                    print("🖼 MEMORY image src → ${productMap['images'][0]['src']}");
+                  if (productMap['images'] is List &&
+                      productMap['images'].isNotEmpty) {
+                    print(
+                        "🖼 MEMORY image src → ${productMap['images'][0]['src']}");
                   } else {
                     print("🖼 MEMORY image src → NONE");
                   }
@@ -1000,7 +1059,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 foundOffline = true;
 
                 if (kDebugMode) {
-                  print("🧠 MEMORY → PRODUCT → name=${product?.name}, price=${product?.price}, sku=${product?.sku}");
+                  print(
+                      "🧠 MEMORY → PRODUCT → name=${product?.name}, price=${product?.price}, sku=${product?.sku}");
                 }
               }
             } catch (e, s) {
@@ -1047,7 +1107,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                     foundOffline = true;
 
                     if (kDebugMode) {
-                      print("🟢 productCache → PRODUCT → name=${product?.name}, price=${product?.price}");
+                      print(
+                          "🟢 productCache → PRODUCT → name=${product?.name}, price=${product?.price}");
                     }
                   }
                 }
@@ -1066,24 +1127,23 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
               if (raw != null) {
                 List<Map<String, dynamic>> orderProducts =
-                List<Map<String, dynamic>>.from(raw["products"] ?? []);
+                    List<Map<String, dynamic>>.from(raw["products"] ?? []);
 
-                final int? selectedVariationId = null; // no variant selected yet
+                final int? selectedVariationId =
+                    null; // no variant selected yet
 
                 final existingIndex = orderProducts.indexWhere((p) =>
-                normalizeSku(p["sku"]) == trimmedBarcode &&
-                    (p["variation_id"] == null || p["variation_id"] == selectedVariationId)
-                );
-
+                    normalizeSku(p["sku"]) == trimmedBarcode &&
+                    (p["variation_id"] == null ||
+                        p["variation_id"] == selectedVariationId));
 
                 // 🚫 DO NOT AUTO-INCREMENT IF PRODUCT HAS VARIANTS
                 if (existingIndex != -1) {
-
                   final existingItem = orderProducts[existingIndex];
 
                   // 🔐 Determine if this is a variant product
                   final bool hasVariantInProduct =
-                  (product?.variations?.isNotEmpty ?? false);
+                      (product?.variations?.isNotEmpty ?? false);
 
                   final bool hasVariantInOrder =
                       existingItem["variation_id"] != null;
@@ -1105,14 +1165,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                   });
 
                   await fetchOrderItems();
-                  await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+                  await CustomerDisplayHelper.updateCustomerDisplay(
+                      activeOrderId);
 
                   _isLoading = false;
                   if (mounted) setState(() {});
                   return;
                 }
-
-
               }
             } catch (e) {
               print("⚠ Offline custom increment error: $e");
@@ -1127,9 +1186,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                 if (allData is List) {
                   for (var item in allData) {
-                    final p =
-                    SKU.ProductBySkuResponse.fromJson({"products": [deepCast(item)]});
-                    if ((p.sku ?? "").toLowerCase() == trimmedBarcode.toLowerCase()) {
+                    final p = SKU.ProductBySkuResponse.fromJson({
+                      "products": [deepCast(item)]
+                    });
+                    if ((p.sku ?? "").toLowerCase() ==
+                        trimmedBarcode.toLowerCase()) {
                       product = p;
                       foundOffline = true;
                       break;
@@ -1147,7 +1208,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             if (product == null) {
               try {
                 final products =
-                await ProductRepository().fetchProductBySku(trimmedBarcode);
+                    await ProductRepository().fetchProductBySku(trimmedBarcode);
 
                 if (products.isNotEmpty) {
                   product = products.first;
@@ -1157,23 +1218,25 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                       final map = p.toJson();
 
                       // 🔥 FIX: Persist tags
-                      map["tags"] = p.tags?.map((t) => {
-                        "id": t.id,
-                        "name": t.name,
-                        "slug": t.slug,
-                      }).toList();
+                      map["tags"] = p.tags
+                          ?.map((t) => {
+                                "id": t.id,
+                                "name": t.name,
+                                "slug": t.slug,
+                              })
+                          .toList();
 
                       // 🔥 Also persist meta_data if present
-                      map["meta_data"] = p.metaData?.map((m) => {
-                        "key": m.key,
-                        "value": m.value,
-                      }).toList();
+                      map["meta_data"] = p.metaData
+                          ?.map((m) => {
+                                "key": m.key,
+                                "value": m.value,
+                              })
+                          .toList();
 
                       return map;
                     }).toList(),
                   });
-
-
 
                   if (kDebugMode) print("🌐 Online fetch → ${product?.name}");
                 }
@@ -1187,7 +1250,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             // ---------------------------------------------------------------------------
             // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
             if (product == null) {
-
               // ❌ Block only if scanner or age flow is active
               if (_scanLocked || _ageVerificationActive || isDriverLicense) {
                 if (kDebugMode) {
@@ -1209,14 +1271,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               return;
             }
 
-
             // ---------------------------------------------------------------------------
             // 7️⃣ EXTRACT PRODUCT DATA
             // ---------------------------------------------------------------------------
-            final bool isCustomItem =
-                product.id == null ||
-                    product.id == 0 ||
-                    product.type == 'custom';
+            final bool isCustomItem = product.id == null ||
+                product.id == 0 ||
+                product.type == 'custom';
 
             final productId = product.id ?? 0;
 
@@ -1230,17 +1290,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
             final productPrice = isCustomItem
                 ? double.tryParse(
-              resolvedProductMap?['price']?.toString() ?? '0',
-            ) ??
-                0.0
+                      resolvedProductMap?['price']?.toString() ?? '0',
+                    ) ??
+                    0.0
                 : double.tryParse(product.price?.toString() ?? '0') ?? 0.0;
 
             final int? selectedVariationId =
-            (product.variations != null && product.variations!.isNotEmpty)
-                ? null  // variant not selected yet
-                : null;
-
-
+                (product.variations != null && product.variations!.isNotEmpty)
+                    ? null // variant not selected yet
+                    : null;
 
 // 🖼 Image
             String image = "";
@@ -1307,12 +1365,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                     slug == "ebt-eligible";
               });
 
-              print("💳 FINAL EBT Eligible? → $isEbtEligible (via product.tags)");
+              print(
+                  "💳 FINAL EBT Eligible? → $isEbtEligible (via product.tags)");
             } catch (e) {
               print("⚠ EBT eligibility error → $e");
             }
-
-
 
             // 🔥 ONLY AUTO-INCREMENT NON-VARIANT PRODUCTS
             if (exists && (product.variations ?? []).isEmpty) {
@@ -1332,8 +1389,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 variationId: -1,
               );
 
-
-
               await fetchOrderItems();
               await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
 
@@ -1347,13 +1402,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             final hasVariablePriceTag = (product.tags ?? []).any((tag) {
               final name = (tag.name ?? "").toLowerCase();
               final slug = (tag.slug ?? "").toLowerCase();
-              return name.contains("variable product") || slug.contains("variable-product");
+              return name.contains("variable product") ||
+                  slug.contains("variable-product");
             });
 
             print("🧪 hasVariablePriceTag = $hasVariablePriceTag");
             print("⏳ _isLoading before popup = $_isLoading");
-
-
 
 // ------------------------------------------------------------
 // ⭐ SHOW VARIABLE PRICE POPUP (ONLY FIRST TIME)
@@ -1369,7 +1423,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                   minPrice: productPrice,
                 );
 
-
                 print("💬 ManualPriceDialog returned → $enteredPrice");
 
                 if (enteredPrice == null) {
@@ -1377,7 +1430,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                   return;
                 }
 
-                print("✅ Adding variable product to order with price $enteredPrice");
+                print(
+                    "✅ Adding variable product to order with price $enteredPrice");
 
                 await orderHelper.addItemToOrder(
                   productId,
@@ -1412,15 +1466,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
                 await box.put(orderKey, hiveOrder);
 
-                print("💾 FIX APPLIED → Variable price flags saved for scanned product");
+                print(
+                    "💾 FIX APPLIED → Variable price flags saved for scanned product");
                 print("  → variable_price_added_$productId = true");
                 print("  → selected_price_$productId = $enteredPrice");
 
                 await fetchOrderItems();
-                await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+                await CustomerDisplayHelper.updateCustomerDisplay(
+                    activeOrderId);
 
                 print("📊 Customer display updated");
-
               } finally {
                 _isLoading = false;
                 if (mounted) setState(() {});
@@ -1430,13 +1485,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               return; // STOP FURTHER EXECUTION
             }
 
-
-
 // ------------------------------------------------------------
 // ⭐ NORMAL PRODUCT FLOW
 // ------------------------------------------------------------
             print("➡ Not a variable product, continuing normal flow");
-
 
             // ======================================================
 // ⭐ AGE RESTRICTION CHECK — FINAL STABLE VERSION
@@ -1458,10 +1510,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 // ------------------------------------------------------
             for (final meta in (product.metaData ?? [])) {
               final key = (meta.key ?? "").toLowerCase().trim();
-              final rawValue = (meta.value ?? "").toString().toLowerCase().trim();
+              final rawValue =
+                  (meta.value ?? "").toString().toLowerCase().trim();
 
               // Only process relevant keys
-              if (!(key.contains("age") || key.contains("age_restricted"))) continue;
+              if (!(key.contains("age") || key.contains("age_restricted")))
+                continue;
 
               // Case 1: Boolean restriction (true / yes / 1)
               if (rawValue == "true" || rawValue == "yes" || rawValue == "1") {
@@ -1491,13 +1545,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 isRestricted = true;
               }
 
-              final hasAge =
-                  name.contains("18+") ||
-                      name.contains("21+") ||
-                      name.contains("age") ||
-                      slug.contains("18+") ||
-                      slug.contains("21+") ||
-                      slug.contains("age");
+              final hasAge = name.contains("18+") ||
+                  name.contains("21+") ||
+                  name.contains("age") ||
+                  slug.contains("18+") ||
+                  slug.contains("21+") ||
+                  slug.contains("age");
 
               if (hasAge) {
                 final match = RegExp(r'\d+').firstMatch(name + slug);
@@ -1525,15 +1578,14 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             }
 
             final Map<String, dynamic> hiveOrder =
-            Map<String, dynamic>.from(hiveBox.get(orderKey));
+                Map<String, dynamic>.from(hiveBox.get(orderKey));
 
 // ------------------------------------------------------
 // 5️⃣ CHECK IF ALREADY VERIFIED
 // ------------------------------------------------------
-            final bool alreadyVerified =
-                hiveOrder["age_verified"] == true ||
-                    hiveOrder["age_verified"] == 1 ||
-                    hiveOrder["age_verified"]?.toString().toLowerCase() == "true";
+            final bool alreadyVerified = hiveOrder["age_verified"] == true ||
+                hiveOrder["age_verified"] == 1 ||
+                hiveOrder["age_verified"]?.toString().toLowerCase() == "true";
 
             if (kDebugMode) {
               print("Age restricted: $isRestricted");
@@ -1545,7 +1597,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 // 6️⃣ SHOW AGE VERIFICATION (ONCE)
 // ------------------------------------------------------
             if (isRestricted && !alreadyVerified) {
-
               // 🔴 STOP LOADING BEFORE OPENING AGE VERIFICATION
               _isLoading = false;
               if (mounted) setState(() {});
@@ -1563,8 +1614,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               await hiveBox.put(orderKey, hiveOrder);
             }
 
-
-
             if (kDebugMode) {
               print("---------------- AGE CHECK END ----------------\n");
             }
@@ -1573,7 +1622,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             // 8️⃣ VARIATIONS FLOW
             // =====================================================================
             if ((product.variations ?? []).isNotEmpty) {
-
               // 1️⃣ Fetch variants
               productBloc.fetchProductVariations(product.id!);
 
@@ -1582,13 +1630,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
               if (response.data == null || response.data!.isEmpty) return;
 
-              final variants = response.data!.map((v) => {
-                "id": v.id,
-                "name": v.name,
-                "price": v.price,
-                "image": v.image?.src,
-                "sku": v.sku,
-              }).toList();
+              final variants = response.data!
+                  .map((v) => {
+                        "id": v.id,
+                        "name": v.name,
+                        "price": v.price,
+                        "image": v.image?.src,
+                        "sku": v.sku,
+                      })
+                  .toList();
 
               // 2️⃣ SHOW VARIANT POPUP (ALWAYS)
               await showDialog(
@@ -1612,7 +1662,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                       isEbtEligible: isEbtEligible,
                     );
                     await fetchOrderItems();
-                    await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+                    await CustomerDisplayHelper.updateCustomerDisplay(
+                        activeOrderId);
 
                     Navigator.of(_).pop();
                   },
@@ -1651,15 +1702,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           } catch (e, s) {
             print("❌ Scan failed: $e\n$s");
           } finally {
-
             // Only reset loading flags
             if (_isLoading) {
               _isLoading = false;
               if (mounted) setState(() {});
             }
           }
-
-
         },
 
         child: Stack(
@@ -1683,7 +1731,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                         color: themeHelper.themeMode == ThemeMode.dark
                             ? ThemeNotifier.primaryBackground
                             : null,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -1696,73 +1745,91 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                   children: _tabController == null
                                       ? []
                                       : List.generate(tabs.length, (index) {
-                                    final int selectedIndex = _tabController?.index ?? 0;
-                                    final bool isSelected = selectedIndex == index;
+                                          final int selectedIndex =
+                                              _tabController?.index ?? 0;
+                                          final bool isSelected =
+                                              selectedIndex == index;
 
-                                    return Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          if (_tabController == null) return;
-                                          setState(() {
-                                            _tabController!.index = index;
-                                          });
-                                        },
-                                        child: Container(
-                                          height: 50,
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                                          decoration: BoxDecoration(
-                                            color: isSelected
-                                                ? const Color(0xFFFCDFDC)
-                                                : (themeHelper.themeMode == ThemeMode.dark
-                                                ? const Color(0xFF31354A)
-                                                : const Color(0xFFEFEEEE)),
-                                            borderRadius: BorderRadius.circular(10),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              Text(
-                                                tabs[index]["title"] as String,
-                                                style: TextStyle(
+                                          return Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 4, vertical: 4),
+                                            child: GestureDetector(
+                                              onTap: () {
+                                                if (_tabController == null)
+                                                  return;
+                                                setState(() {
+                                                  _tabController!.index = index;
+                                                });
+                                              },
+                                              child: Container(
+                                                height: 50,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 12),
+                                                decoration: BoxDecoration(
                                                   color: isSelected
-                                                      ? const Color(0xFFFE6464)
-                                                      : const Color(0xFF999393),
-                                                  fontWeight:
-                                                  isSelected ? FontWeight.bold : FontWeight.w500,
-                                                  fontSize: isSelected ? 15 : 14,
+                                                      ? const Color(0xFFFCDFDC)
+                                                      : (themeHelper
+                                                                  .themeMode ==
+                                                              ThemeMode.dark
+                                                          ? const Color(
+                                                              0xFF31354A)
+                                                          : const Color(
+                                                              0xFFEFEEEE)),
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                                child: Row(
+                                                  children: [
+                                                    Text(
+                                                      tabs[index]["title"]
+                                                          as String,
+                                                      style: TextStyle(
+                                                        color: isSelected
+                                                            ? const Color(
+                                                                0xFFFE6464)
+                                                            : const Color(
+                                                                0xFF999393),
+                                                        fontWeight: isSelected
+                                                            ? FontWeight.bold
+                                                            : FontWeight.w500,
+                                                        fontSize: isSelected
+                                                            ? 15
+                                                            : 14,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 40),
+                                                    if (isSelected)
+                                                      GestureDetector(
+                                                        onTap: () {
+                                                          CustomDialog
+                                                              .showAreYouSure(
+                                                            context,
+                                                            confirm: () {
+                                                              removeTab(index);
+                                                            },
+                                                          );
+                                                        },
+                                                        child: Image.asset(
+                                                          "assets/deletecircle.png",
+                                                          width: 20,
+                                                          height: 20,
+                                                        ),
+                                                      ),
+                                                  ],
                                                 ),
                                               ),
-                                              const SizedBox(width: 40),
-                                              if (isSelected)
-                                                GestureDetector(
-                                                  onTap: () {
-                                                    CustomDialog.showAreYouSure(
-                                                      context,
-                                                      confirm: () {
-                                                        removeTab(index);
-                                                      },
-                                                    );
-                                                  },
-                                                  child: Image.asset(
-                                                    "assets/deletecircle.png",
-                                                    width: 20,
-                                                    height: 20,
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }),
-
+                                            ),
+                                          );
+                                        }),
                                 ),
                               ),
                             ),
 
                             // 🔹 New tab button
                             ElevatedButton(
-                              onPressed: addNewTab,
+                              onPressed: _isNewTabDisabled ? null : addNewTab,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.transparent,
                                 shadowColor: Colors.transparent,
@@ -1777,23 +1844,32 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 height: 50,
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  color: themeHelper.themeMode == ThemeMode.dark
-                                      ? const Color(0xFF000000)
-                                      : const Color(0xFFFFFFFF),
+                                  color: _isNewTabDisabled
+                                      ? const Color(
+                                          0xFFE0E0E0) // 🔘 grey background
+                                      : (themeHelper.themeMode == ThemeMode.dark
+                                          ? const Color(0xFF000000)
+                                          : const Color(0xFFFFFFFF)),
                                   borderRadius: BorderRadius.circular(16),
                                   border: Border.all(
-                                    color: const Color(0xFFFE6464),
+                                    color: _isNewTabDisabled
+                                        ? const Color(
+                                            0xFFBDBDBD) // 🔘 grey border
+                                        : const Color(0xFFFE6464),
                                     width: 1.0,
                                   ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: themeHelper.themeMode == ThemeMode.dark
-                                          ? const Color(0xFF525252)
-                                          : const Color(0xFFB2AFAF),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
+                                  boxShadow: _isNewTabDisabled
+                                      ? [] // 🔕 no shadow when disabled
+                                      : [
+                                          BoxShadow(
+                                            color: themeHelper.themeMode ==
+                                                    ThemeMode.dark
+                                                ? const Color(0xFF525252)
+                                                : const Color(0xFFB2AFAF),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
                                 ),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -1804,21 +1880,30 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
                                         border: Border.all(
-                                          color: const Color(0xFFFE6464),
+                                          color: _isNewTabDisabled
+                                              ? const Color(
+                                                  0xFF9E9E9E) // 🔘 grey icon border
+                                              : const Color(0xFFFE6464),
                                           width: 2,
                                         ),
                                       ),
-                                      child: const Icon(
+                                      child: Icon(
                                         Icons.add,
                                         size: 16,
-                                        color: Color(0xFFFE6464),
+                                        color: _isNewTabDisabled
+                                            ? const Color(
+                                                0xFF9E9E9E) // 🔘 grey icon
+                                            : const Color(0xFFFE6464),
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    const Text(
+                                    Text(
                                       "New",
                                       style: TextStyle(
-                                        color: Color(0xFFFE6464),
+                                        color: _isNewTabDisabled
+                                            ? const Color(
+                                                0xFF9E9E9E) // 🔘 grey text
+                                            : const Color(0xFFFE6464),
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
                                       ),
@@ -1890,24 +1975,25 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
   //Build #1.0.268: 5. (optional) to show logs on screen
   bool showLogs = false;
-  Widget _showLogString(){
+  Widget _showLogString() {
     return Container(
       width: MediaQuery.of(context).size.width * 0.30,
       color: const Color(0x7A000000),
-      child:
-      Stack(children: [
-        Text(logString,style: TextStyle(color: Colors.white70),),
+      child: Stack(children: [
+        Text(
+          logString,
+          style: TextStyle(color: Colors.white70),
+        ),
         Positioned(
             top: 2,
             right: 2,
-            child: CloseButton(onPressed: (){
-              showLogs = false;
-              logString = "";
-              setState(() {
-
-              });
-            },))
-        ,
+            child: CloseButton(
+              onPressed: () {
+                showLogs = false;
+                logString = "";
+                setState(() {});
+              },
+            )),
       ]),
     );
   }
@@ -1964,21 +2050,23 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
   //Build #1.0.67: Handler methods for response and error
   Future<void> _handleResponse(
-      APIResponse response,
-      Map<String, dynamic> orderItem, {
-        bool isPayout = false,
-        bool isCoupon = false,
-        bool isCustomItem = false,
-        VoidCallback? retryCallback, // Call back
-      }) async {
+    APIResponse response,
+    Map<String, dynamic> orderItem, {
+    bool isPayout = false,
+    bool isCoupon = false,
+    bool isCustomItem = false,
+    VoidCallback? retryCallback, // Call back
+  }) async {
     if (!mounted) return;
     if (response.status == Status.COMPLETED) {
       //Build #1.0.170: Updated - No need to make _isLoading is false here , we are doing after refresh!
       // setState(() => _isLoading = false); //Build #1.0.92
-      if (Misc.showDebugSnackBar) { // Build #1.0.254
+      if (Misc.showDebugSnackBar) {
+        // Build #1.0.254
         _scaffoldMessenger.showSnackBar(
           SnackBar(
-            content: Text("${isPayout ? 'Payout' : isCoupon ? 'Coupon' : isCustomItem ? 'Custom Item' : 'Item'} removed successfully"),
+            content: Text(
+                "${isPayout ? 'Payout' : isCoupon ? 'Coupon' : isCustomItem ? 'Custom Item' : 'Item'} removed successfully"),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),
@@ -2002,22 +2090,20 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             }
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text(
-                    "Unauthorised. Session is expired on this device."),
+                content:
+                    Text("Unauthorised. Session is expired on this device."),
                 backgroundColor: Colors.red,
                 duration: Duration(seconds: 2),
               ),
             );
           }
         });
-      }
-      else {
+      } else {
         setState(() => _isLoading = false); //Build #1.0.99 : hide loader
         _scaffoldMessenger.showSnackBar(
           SnackBar(
-            content: Text("Failed to remove ${isPayout ? 'payout' : isCoupon
-                ? 'coupon'
-                : isCustomItem ? 'custom item' : 'item'}"),
+            content: Text(
+                "Failed to remove ${isPayout ? 'payout' : isCoupon ? 'coupon' : isCustomItem ? 'custom item' : 'item'}"),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 2),
           ),
@@ -2026,16 +2112,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           await CustomDialog.showDiscountNotApplied(
             context,
             errorMessageTitle: TextConstants.removePayoutFailed,
-            errorMessageDes: response.message ??
-                TextConstants.discountNotAppliedDescription,
+            errorMessageDes:
+                response.message ?? TextConstants.discountNotAppliedDescription,
             onRetry: retryCallback, // Pass retry callback
           );
         } else if (isCoupon) {
           await CustomDialog.showCouponNotApplied(
             context,
             errorMessageTitle: TextConstants.removeCouponFailed,
-            errorMessageDes: response.message ??
-                TextConstants.couponNotAppliedDescription,
+            errorMessageDes:
+                response.message ?? TextConstants.couponNotAppliedDescription,
             onRetry: retryCallback, // Pass retry callback
           );
         } else if (isCustomItem) {
@@ -2051,10 +2137,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
   }
 
-
-
   //Build #1.0.67
-  void _handleError(String message, {bool isPayout = false, bool isCoupon = false, bool isCustomItem = false}) async {
+  void _handleError(String message,
+      {bool isPayout = false,
+      bool isCoupon = false,
+      bool isCustomItem = false}) async {
     if (!mounted) return; // Check if widget is still mounted
     setState(() => _isLoading = false);
     _scaffoldMessenger.showSnackBar(
@@ -2069,10 +2156,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   }
 
   //Build #1.0.67
-  Future<void> _handleLocalDelete(Map<String, dynamic> orderItem, BuildContext context) async {
+  Future<void> _handleLocalDelete(
+      Map<String, dynamic> orderItem, BuildContext context) async {
     if (!mounted) return; // Check if widget is still mounted
     setState(() => _isLoading = false);
-    await orderHelper.deleteItem(orderItem[AppDBConst.itemServerId]); //Build #1.0.92
+    await orderHelper
+        .deleteItem(orderItem[AppDBConst.itemServerId]); //Build #1.0.92
     await fetchOrderItems();
     widget.refreshOrderList?.call();
     _scaffoldMessenger.showSnackBar(
@@ -2083,6 +2172,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       ),
     );
   }
+
   Future<void> removeTab(int index) async {
     if (tabs.isEmpty) {
       print("❌ removeTab called but tabs is empty");
@@ -2112,8 +2202,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         print("📦 deletedOrders box opened successfully");
       }
 
-
-      print("📦 Offline Orders Box Contains ID? ${offlineBox.containsKey(orderId.toString())}");
+      print(
+          "📦 Offline Orders Box Contains ID? ${offlineBox.containsKey(orderId.toString())}");
       print("📦 Deleted Orders Box Ready: ${deletedBox != null}");
 
       final bool isOfflineOrder = offlineBox.containsKey(orderId.toString());
@@ -2133,7 +2223,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         // ⭐ 2️⃣ Sync attempt BEFORE deleting locally
         print("🌐 Attempting to sync deleted offline order to backend…");
 
-        final result = await OrderRepository().syncOfflineDeletedOrders([orderData]);
+        final result =
+            await OrderRepository().syncOfflineDeletedOrders([orderData]);
         final bool syncSuccess = result["success"] == true;
         final int? syncedWooId = result["wooOrderId"];
 
@@ -2145,29 +2236,27 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 // 1️⃣ Resolve Woo Order ID correctly (supports all key formats)
         // if server returned Woo Order ID → use it
         final wooOrderId = (syncedWooId ??
-            orderData["woo_order_id"] ??
-            orderData["wooOrderId"] ??
-            orderId).toString();
-
+                orderData["woo_order_id"] ??
+                orderData["wooOrderId"] ??
+                orderId)
+            .toString();
 
 // 2️⃣ Resolve Cashback Fee from ALL possible key names
-        final cashbackFee = (
-            orderData["cashbackFee"] ??
+        final cashbackFee = (orderData["cashbackFee"] ??
                 orderData["order_cashback_fee"] ??
                 orderData["cashback_fee"] ??
                 orderData["cashbackFeeTotal"] ??
                 orderData["cashback"] ??
-                0
-        ).toDouble();
+                0)
+            .toDouble();
 
 // 3️⃣ Resolve Tax (all supported variations)
-        final tax = (
-            orderData["tax"] ??
+        final tax = (orderData["tax"] ??
                 orderData["wooTax"] ??
                 orderData["order_tax"] ??
                 orderData["totalTax"] ??
-                0
-        ).toDouble();
+                0)
+            .toDouble();
 
 // 4️⃣ Save final extras
         await extrasBox.put(wooOrderId, {
@@ -2186,7 +2275,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         print("   Synced: $syncSuccess");
         print("📦 Current orderExtras: ${extrasBox.get(wooOrderId)}");
 // ******************************************************************
-
 
         if (syncSuccess) {
           print("✅ Deleted order synced successfully → No Hive backup needed");
@@ -2236,7 +2324,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         await orderHelper.deleteOrder(orderId);
 
         orderHelper.orders.removeWhere((o) =>
-        o[AppDBConst.orderServerId] == orderId ||
+            o[AppDBConst.orderServerId] == orderId ||
             o[AppDBConst.orderId] == orderId);
         orderHelper.orderIds.remove(orderId);
 
@@ -2255,10 +2343,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           return;
         }
 
-        final int newIndex =
-        index >= tabs.length ? tabs.length - 1 : index;
-        final int newActiveOrderId =
-        tabs[newIndex]["orderId"] as int;
+        final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
+        final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
 
         if (isRemovedTabActive) {
           await orderHelper.setActiveOrder(newActiveOrderId);
@@ -2274,7 +2360,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         return;
       }
 
-
       // ============================================================
       // ===============  ONLINE ORDER DELETE AREA  ================
       // ============================================================
@@ -2286,62 +2371,64 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       _updateOrderSubscription?.cancel();
       _updateOrderSubscription =
           orderBloc.changeOrderStatusStream.listen((response) async {
-            if (!mounted) return;
+        if (!mounted) return;
 
-            print("🌐 Server Cancel Status: ${response.status}");
+        print("🌐 Server Cancel Status: ${response.status}");
 
-            if (response.status == Status.COMPLETED) {
-              print("✅ Server confirmed order cancellation");
+        if (response.status == Status.COMPLETED) {
+          print("✅ Server confirmed order cancellation");
 
-              await orderHelper.deleteOrder(orderId);
-              orderHelper.cancelledOrderId = serverOrderId;
+          await orderHelper.deleteOrder(orderId);
+          orderHelper.cancelledOrderId = serverOrderId;
 
-              print("🧹 Removing order tab from UI…");
-              setState(() {
-                tabs.removeAt(index);
-                for (int i = 0; i < tabs.length; i++) {
-                  tabs[i]["subtitle"] = "Tab ${i + 1}";
-                }
-              });
-
-              if (tabs.isEmpty) {
-                print("❗ All tabs closed after delete");
-                orderHelper.activeOrderId = null;
-                orderItems = [];
-                await _initializeTabController();
-                setState(() => _isLoading = false);
-                return;
-              }
-
-              final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
-              final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
-
-              print("🔄 New active tab index: $newIndex, OrderId: $newActiveOrderId");
-
-              if (isRemovedTabActive) {
-                print("🔄 Updating active order due to removal");
-                await orderHelper.setActiveOrder(newActiveOrderId);
-                await orderHelper.saveLastActiveOrderId(newActiveOrderId);
-              }
-
-              print("🔧 Reinitializing tab controller…");
-              await _initializeTabController();
-
-              if (offlineBox.containsKey(newActiveOrderId.toString())) {
-                print("📥 Loading offline items for new order");
-                await fetchOrderItems();
-              } else {
-                print("⚠️ No offline items found for this order");
-                setState(() => orderItems = []);
-              }
-
-              _tabController!.index = newIndex;
-
-              print("================= 🗑 REMOVE TAB END (ONLINE) ================\n");
-
-              setState(() => _isLoading = false);
+          print("🧹 Removing order tab from UI…");
+          setState(() {
+            tabs.removeAt(index);
+            for (int i = 0; i < tabs.length; i++) {
+              tabs[i]["subtitle"] = "Tab ${i + 1}";
             }
           });
+
+          if (tabs.isEmpty) {
+            print("❗ All tabs closed after delete");
+            orderHelper.activeOrderId = null;
+            orderItems = [];
+            await _initializeTabController();
+            setState(() => _isLoading = false);
+            return;
+          }
+
+          final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
+          final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
+
+          print(
+              "🔄 New active tab index: $newIndex, OrderId: $newActiveOrderId");
+
+          if (isRemovedTabActive) {
+            print("🔄 Updating active order due to removal");
+            await orderHelper.setActiveOrder(newActiveOrderId);
+            await orderHelper.saveLastActiveOrderId(newActiveOrderId);
+          }
+
+          print("🔧 Reinitializing tab controller…");
+          await _initializeTabController();
+
+          if (offlineBox.containsKey(newActiveOrderId.toString())) {
+            print("📥 Loading offline items for new order");
+            await fetchOrderItems();
+          } else {
+            print("⚠️ No offline items found for this order");
+            setState(() => orderItems = []);
+          }
+
+          _tabController!.index = newIndex;
+
+          print(
+              "================= 🗑 REMOVE TAB END (ONLINE) ================\n");
+
+          setState(() => _isLoading = false);
+        }
+      });
 
       print("🌐 Sending cancel order request to server…");
       await orderBloc.changeOrderStatus(
@@ -2354,7 +2441,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
   }
 
-
   int totalItems = 0;
   Future<void> deleteOfflineItem(Map<String, dynamic> orderItem) async {
     if (orderHelper.activeOrderId == null) return;
@@ -2366,7 +2452,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     if (rawOfflineOrder == null) return;
 
     final Map<String, dynamic> offlineOrder =
-    Map<String, dynamic>.from(rawOfflineOrder);
+        Map<String, dynamic>.from(rawOfflineOrder);
 
     // ============================
     // 🛑 CHECK: LAST ITEM + MERCHANT DISCOUNT
@@ -2382,16 +2468,21 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
 // If no discount → allow delete
     if (merchantDiscount > 0) {
-
       // 1️⃣ Calculate current total amount
-      double productsTotal = ((offlineOrder['products'] as List?) ?? [])
-          .fold(0.0, (sum, p) => sum + (double.tryParse(p['price']?.toString() ?? '0') ?? 0));
+      double productsTotal = ((offlineOrder['products'] as List?) ?? []).fold(
+          0.0,
+          (sum, p) =>
+              sum + (double.tryParse(p['price']?.toString() ?? '0') ?? 0));
 
-      double payoutsTotal = ((offlineOrder['payouts'] as List?) ?? [])
-          .fold(0.0, (sum, p) => sum + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0));
+      double payoutsTotal = ((offlineOrder['payouts'] as List?) ?? []).fold(
+          0.0,
+          (sum, p) =>
+              sum + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0));
 
-      double cashbacksTotal = ((offlineOrder['cashbacks'] as List?) ?? [])
-          .fold(0.0, (sum, c) => sum + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0));
+      double cashbacksTotal = ((offlineOrder['cashbacks'] as List?) ?? []).fold(
+          0.0,
+          (sum, c) =>
+              sum + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0));
 
       double currentTotal = productsTotal + payoutsTotal + cashbacksTotal;
 
@@ -2423,24 +2514,24 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
     // 🔍 Detect type: product / payout / cashback
     final String itemType =
-    (orderItem['item_type'] ?? '').toString().toLowerCase();
+        (orderItem['item_type'] ?? '').toString().toLowerCase();
 
     final List<Map<String, dynamic>> products =
         (offlineOrder['products'] as List?)
-            ?.map((e) => Map<String, dynamic>.from(e))
-            .toList() ??
+                ?.map((e) => Map<String, dynamic>.from(e))
+                .toList() ??
             [];
 
     final List<Map<String, dynamic>> payouts =
         (offlineOrder['payouts'] as List?)
-            ?.map((e) => Map<String, dynamic>.from(e))
-            .toList() ??
+                ?.map((e) => Map<String, dynamic>.from(e))
+                .toList() ??
             [];
 
     final List<Map<String, dynamic>> cashbacks =
         (offlineOrder['cashbacks'] as List?)
-            ?.map((e) => Map<String, dynamic>.from(e))
-            .toList() ??
+                ?.map((e) => Map<String, dynamic>.from(e))
+                .toList() ??
             [];
 
     // 🟦 DELETE PAYOUT
@@ -2472,35 +2563,33 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       String matchedSku = ""; // ⭐ Add this
 
       products.removeWhere((p) {
-        final name1 = (p['name'] ??
-            p['product_name'] ??
-            p['fast_key_item_name'] ??
-            '')
-            .toString()
-            .toLowerCase();
+        final name1 =
+            (p['name'] ?? p['product_name'] ?? p['fast_key_item_name'] ?? '')
+                .toString()
+                .toLowerCase();
 
         final name2 = (orderItem['item_name'] ?? '').toString().toLowerCase();
 
         final price1 = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
-        final price2 = double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+        final price2 =
+            double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
 
         final match = name1 == name2 && price1 == price2;
 
         if (match) {
           // Capture product_id
-          deletedProductId =
-              p['product_id'] ??
-                  p['id'] ??
-                  p['fast_key_product_id'] ??
-                  p['serverItemId'] ??
-                  -1;
+          deletedProductId = p['product_id'] ??
+              p['id'] ??
+              p['fast_key_product_id'] ??
+              p['serverItemId'] ??
+              -1;
 
           // ⭐ Capture SKU BEFORE removing product
           matchedSku = (p['sku'] ??
-              p['item_sku'] ??
-              p['product_sku'] ??
-              p['fast_key_item_sku'] ??
-              '')
+                  p['item_sku'] ??
+                  p['product_sku'] ??
+                  p['fast_key_item_sku'] ??
+                  '')
               .toString()
               .toLowerCase()
               .trim();
@@ -2518,7 +2607,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         offlineOrder.remove("variable_price_added_$deletedProductId");
         offlineOrder.remove("selected_price_$deletedProductId");
 
-        print("🧹 Cleared variable price flags for product → $deletedProductId");
+        print(
+            "🧹 Cleared variable price flags for product → $deletedProductId");
       } else {
         print("⚠️ Could not determine product_id for cleanup.");
       }
@@ -2566,7 +2656,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     });
   }
 
-
   double getCustomItemTax({
     required String taxClass,
     required double unitPrice, // 👈 make this explicit
@@ -2584,7 +2673,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       // 🔵 2️⃣ Resolve from tax class
       else {
         final selected = taxes.firstWhere(
-              (t) => t.slug == taxClass,
+          (t) => t.slug == taxClass,
           orElse: () => Tax(slug: "", name: ""),
         );
 
@@ -2593,8 +2682,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           return 0.0;
         }
 
-        final rateString =
-        selected.slug.replaceAll(RegExp(r'[^0-9.]'), '');
+        final rateString = selected.slug.replaceAll(RegExp(r'[^0-9.]'), '');
         rate = double.tryParse(rateString) ?? 0.0;
       }
 
@@ -2604,7 +2692,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
       debugPrint(
         "🔥 Custom Item Tax → unit:$unitPrice qty:$qty "
-            "taxableBase:$taxableBase rate:$rate tax:$taxAmount",
+        "taxableBase:$taxableBase rate:$rate tax:$taxAmount",
       );
 
       return taxAmount;
@@ -2613,7 +2701,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       return 0.0;
     }
   }
-
 
   //
   // double getProductTaxFromHive(
@@ -2673,10 +2760,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   //   return 0.0;
   // }
   double getProductTaxFromHive(
-      int productId,
-      double discountedUnitPrice,
-      int qty,
-      ) {
+    int productId,
+    double discountedUnitPrice,
+    int qty,
+  ) {
     try {
       debugPrint(
           "🧾 TAX START → productId:$productId unit:$discountedUnitPrice qty:$qty");
@@ -2698,9 +2785,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         final List products = json.decode(entry.json);
 
         final product = products.firstWhere(
-              (p) =>
-          p["fast_key_product_id"] == productId ||
-              p["id"] == productId,
+          (p) => p["fast_key_product_id"] == productId || p["id"] == productId,
           orElse: () => null,
         );
 
@@ -2723,18 +2808,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             final double rawTax = (taxableBase * rate) / 100;
 
             // ✅ ROUND EACH TAX PART (IMPORTANT)
-            final double roundedTax =
-                (rawTax * 100).roundToDouble() / 100;
+            final double roundedTax = (rawTax * 100).roundToDouble() / 100;
 
             taxTotal += roundedTax;
 
-            debugPrint(
-                "🧾 Tax → rate:$rate raw:$rawTax rounded:$roundedTax");
+            debugPrint("🧾 Tax → rate:$rate raw:$rawTax rounded:$roundedTax");
           }
 
           // ✅ FINAL SAFETY ROUND
-          final double finalTax =
-              (taxTotal * 100).roundToDouble() / 100;
+          final double finalTax = (taxTotal * 100).roundToDouble() / 100;
 
           debugPrint("✅ FINAL TAX → $finalTax");
           return finalTax;
@@ -2752,16 +2834,15 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
   final AssetDBHelper _assetDBHelper = AssetDBHelper.instance;
 
-
-
 // Current Order UI
   Widget buildCurrentOrder() {
-    final theme = Theme.of(context); // Build #1.0.6 - added theme for order panel
+    final theme =
+        Theme.of(context); // Build #1.0.6 - added theme for order panel
     bool isKeyboardVisible = View.of(context).viewInsets.bottom > 0;
     if (kDebugMode) {
       print("keyBoard visible : $isKeyboardVisible");
     }
-    if(_isLoading == true){
+    if (_isLoading == true) {
       if (kDebugMode) {
         print("###### buildCurrentOrder: _isLoading: $_isLoading");
       }
@@ -2770,7 +2851,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     // ADD THIS: Create a ScrollController for the scrollbar
     final ScrollController scrollController = ScrollController();
     if (kDebugMode) {
-      print("Building Current Order Widget _isLoading: $_isLoading and orderHelper.activeOrderId : ${orderHelper.activeOrderId}");
+      print(
+          "Building Current Order Widget _isLoading: $_isLoading and orderHelper.activeOrderId : ${orderHelper.activeOrderId}");
     } // Debug print
     // Fetch discount and tax for the active order
     double orderDiscount = 0.0;
@@ -2780,7 +2862,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     num grossTotal = 0.0;
     // Get Items Gross Total
     num netTotal = 0.0;
-    num netPayable = 0.0;  //Build #1.0.67
+    num netPayable = 0.0; //Build #1.0.67
 
     // Initialize display date and time variables
     DateTime now = DateTime.now();
@@ -2798,23 +2880,25 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
     if (orderHelper.activeOrderId != null) {
       final offlineBox = Hive.box('offlineOrders');
-      final rawOfflineOrder = offlineBox.get(orderHelper.activeOrderId.toString());
+      final rawOfflineOrder =
+          offlineBox.get(orderHelper.activeOrderId.toString());
 
       if (rawOfflineOrder != null) {
         if (kDebugMode) {
           print("📦 Detected offline order (${orderHelper.activeOrderId})");
         }
 
-        final Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(rawOfflineOrder);
+        final Map<String, dynamic> offlineOrder =
+            Map<String, dynamic>.from(rawOfflineOrder);
 
         // / ⭐ OPTIONAL: auto-remove cashback if amount is 0
         if (offlineOrder['cashbacks'] != null &&
             offlineOrder['cashbacks'] is List &&
             (offlineOrder['cashbacks'] as List).isNotEmpty) {
-
           final firstCashback = offlineOrder['cashbacks'][0];
           final cashbackAmount =
-              double.tryParse(firstCashback['amount']?.toString() ?? '0') ?? 0.0;
+              double.tryParse(firstCashback['amount']?.toString() ?? '0') ??
+                  0.0;
 
           if (cashbackAmount == 0) {
             if (kDebugMode) {
@@ -2860,51 +2944,48 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         //
         // final cashbackImageUrl = cashbackProduct?['image'] ?? '';
 
-
         // 🧾 Combine for UI
         orderItems = [
           // ---------------------- Products ----------------------
           ...offlineProducts.map((item) {
-            final itemType =
-            (item['item_type'] ?? item['type'] ?? '')
+            final itemType = (item['item_type'] ?? item['type'] ?? '')
                 .toString()
                 .toLowerCase();
 
-            final isCustom   = itemType.contains("custom");
-            final isPayout   = itemType.contains("payout");
+            final isCustom = itemType.contains("custom");
+            final isPayout = itemType.contains("payout");
             final isCashback = itemType.contains("cashback");
-            final isCoupon   = itemType.contains("coupon");
+            final isCoupon = itemType.contains("coupon");
 
             if (isCustom) {
               final name = item['name'] ?? "Item";
 
-              final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-              final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+              final price =
+                  double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+              final qty =
+                  int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
 
-              final String taxClass =
-                  item['tax_class']?.toString() ??
-                      item['tax_Class']?.toString() ?? '';
+              final String taxClass = item['tax_class']?.toString() ??
+                  item['tax_Class']?.toString() ??
+                  '';
 
-              final double taxRate =
-                  double.tryParse(
+              final double taxRate = double.tryParse(
                       item['tax_rate']?.toString() ??
                           item['tax_Rate']?.toString() ??
-                          '0'
-                  ) ?? 0.0;
+                          '0') ??
+                  0.0;
 
               final double itemTax =
-              taxRate > 0 ? ((price * taxRate) / 100) * qty : 0.0;
+                  taxRate > 0 ? ((price * taxRate) / 100) * qty : 0.0;
 
               if (kDebugMode) {
-                print(
-                    "🧾 CUSTOM ITEM TAX → "
-                        "Name:$name | "
-                        "Price:$price | "
-                        "Qty:$qty | "
-                        "TaxClass:$taxClass | "
-                        "Rate:$taxRate% | "
-                        "Tax:$itemTax"
-                );
+                print("🧾 CUSTOM ITEM TAX → "
+                    "Name:$name | "
+                    "Price:$price | "
+                    "Qty:$qty | "
+                    "TaxClass:$taxClass | "
+                    "Rate:$taxRate% | "
+                    "Tax:$itemTax");
               }
 
               if (kDebugMode) {
@@ -2923,14 +3004,12 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 'item_type': 'custom',
                 'sku': item['sku'],
                 // 🔥 REQUIRED FOR TAX-AFTER-DISCOUNT FLOW
-                'auto_discount': 0.0,        // 👈 MUST exist
+                'auto_discount': 0.0, // 👈 MUST exist
                 'tax_class': taxClass,
-                'tax_rate': taxRate,         // 👈 MUST exist
+                'tax_rate': taxRate, // 👈 MUST exist
                 'item_tax': itemTax,
               };
-
             }
-
 
             // ---------------- CUSTOM / NON-PRODUCT ITEMS ----------------
             if (isPayout || isCashback || isCoupon) {
@@ -2939,18 +3018,16 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                   item['item_name'] ??
                   "Item";
 
-              final price = double.tryParse(
-                  item['price']?.toString() ??
+              final price = double.tryParse(item['price']?.toString() ??
                       item['amount']?.toString() ??
                       item['custom_item_price']?.toString() ??
-                      "0"
-              ) ?? 0.0;
+                      "0") ??
+                  0.0;
 
-              final qty = int.tryParse(
-                  item['quantity']?.toString() ??
+              final qty = int.tryParse(item['quantity']?.toString() ??
                       item['items_count']?.toString() ??
-                      "1"
-              ) ?? 1;
+                      "1") ??
+                  1;
 
               return {
                 'item_name': name,
@@ -2964,8 +3041,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             }
 
             // ---------------- REAL PRODUCTS ONLY ----------------
-            final qty =
-                int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+            final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
 
             final price =
                 double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
@@ -2976,13 +3052,11 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             final String productIdStr =
                 (item['product_id'] ?? item['id'])?.toString() ?? '';
 
-            final int productId =
-                int.tryParse(productIdStr) ?? 0;
+            final int productId = int.tryParse(productIdStr) ?? 0;
 
             itemTax = getProductTaxFromHive(productId, price, qty);
 
-            item['auto_discount_per_unit'] =
-            qty > 0 ? itemDiscount / qty : 0.0;
+            item['auto_discount_per_unit'] = qty > 0 ? itemDiscount / qty : 0.0;
             item['auto_discount_total'] = itemDiscount;
 
             orderTax += itemTax;
@@ -3009,10 +3083,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             };
           }),
 
-
           // ---------------------- Payouts ----------------------
           ...offlinePayouts.map((payout) {
-            final price = double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0;
+            final price =
+                double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0;
 
             return {
               'item_name': 'Payout',
@@ -3027,7 +3101,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
 
           // ---------------------- Cashback ----------------------
           ...offlineCashback.map((cash) {
-            final price = double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0;
+            final price =
+                double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0;
 
             return {
               'item_name': 'Cashback',
@@ -3052,15 +3127,13 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
         double productTotal = 0.0;
 
         for (final item in offlineProducts) {
-          final itemType =
-          (item['item_type'] ?? item['type'] ?? '')
+          final itemType = (item['item_type'] ?? item['type'] ?? '')
               .toString()
               .toLowerCase();
 
           final bool isCustom = itemType.contains("custom");
 
-          final qty =
-              int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+          final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
 
           final price =
               double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
@@ -3072,33 +3145,35 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             final String productIdStr =
                 (item['product_id'] ?? item['id'])?.toString() ?? '';
 
-            final int productId =
-                int.tryParse(productIdStr) ?? 0;
-
+            final int productId = int.tryParse(productIdStr) ?? 0;
           }
 
           productTotal += (price * qty) - itemDiscount;
         }
 
-
         double payoutTotal = offlinePayouts.fold<double>(0, (sum, payout) {
-          return sum + (double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0);
+          return sum +
+              (double.tryParse(payout['amount']?.toString() ?? '0') ?? 0.0);
         });
         double cashbackTotal = offlineCashback.fold(0, (sum, cash) {
-          return sum + (double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0);
+          return sum +
+              (double.tryParse(cash['amount']?.toString() ?? '0') ?? 0.0);
         });
 
-        grossTotal = productTotal + payoutTotal+ cashbackTotal;
+        grossTotal = productTotal + payoutTotal + cashbackTotal;
 
         orderDiscount = (offlineOrder['orderDiscount'] is num)
             ? (offlineOrder['orderDiscount'] as num).toDouble()
             : 0.0;
 
-        merchantDiscount = (offlineOrder['merchantDiscount'] is num)
-            ? (offlineOrder['merchantDiscount'] as num).toDouble()
-            : 0.0;
+        if (offlineOrder.containsKey('merchantDiscountType')) {
+          merchantDiscount = getCurrentMerchantDiscount(offlineOrder);
 
-        final isPercentageDiscount = (offlineOrder['merchantDiscountIsPercentage'] as bool?) ?? false;
+          // Optional: update stored value so it's always fresh
+          offlineOrder['merchantDiscount'] = merchantDiscount;
+        }
+        final isPercentageDiscount =
+            (offlineOrder['merchantDiscountIsPercentage'] as bool?) ?? false;
         print("🔥 FINAL orderTax CALCULATED from Hive products = $orderTax");
 
         netTotal = grossTotal - orderDiscount - merchantDiscount;
@@ -3117,24 +3192,22 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           updatedOrder['net_payable'] = netPayable;
           updatedOrder['autoProductDiscount'] = autoProductDiscount;
 
-
           offlineBox.put(orderHelper.activeOrderId.toString(), updatedOrder);
           print("💾 Saved latest totals into offlineOrders Hive");
         }
-
-
 
         // 🔹 Format date/time
         if (offlineOrder['created_at'] != null) {
           try {
             final createdAt = DateTime.parse(offlineOrder['created_at']);
-            displayDate = DateFormat(TextConstants.dateFormat).format(createdAt);
-            displayTime = DateFormat(TextConstants.timeFormat).format(createdAt);
+            displayDate =
+                DateFormat(TextConstants.dateFormat).format(createdAt);
+            displayTime =
+                DateFormat(TextConstants.timeFormat).format(createdAt);
           } catch (e) {
             if (kDebugMode) print("⚠️ Failed to parse offline order date: $e");
           }
         }
-
 
         if (kDebugMode) {
           print("💾 Offline Order Calculation:");
@@ -3142,7 +3215,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
           print("   payoutTotal: $payoutTotal");
           print("cashbackTotal: $cashbackTotal");
           print("   grossTotal: $grossTotal");
-          print("   merchantDiscount: $merchantDiscount (${isPercentageDiscount ? 'Percentage' : 'Fixed'})");
+          print(
+              "   merchantDiscount: $merchantDiscount (${isPercentageDiscount ? 'Percentage' : 'Fixed'})");
           print("   netTotal: $netTotal");
           print("   netPayable: $netPayable");
           print("🧾 Offline items for UI → ${jsonEncode(orderItems)}");
@@ -3153,7 +3227,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
 
     if (kDebugMode) {
-      print("✅ Final Totals → gross: $grossTotal, discount: $orderDiscount, tax: $orderTax, net: $netTotal, payable: $netPayable");
+      print(
+          "✅ Final Totals → gross: $grossTotal, discount: $orderDiscount, tax: $orderTax, net: $netTotal, payable: $netPayable");
     }
 
     if (kDebugMode) {
@@ -3167,7 +3242,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       print("#### netPayable: $netPayable");
     }
 
-
     return Stack(
       children: [
         Column(
@@ -3180,21 +3254,20 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-
                   // 🔹 TOP TEXT
                   // if (orderHelper.activeOrderId != null)
-                    Text(
-                      "All updated discounts will be reflected after checkout.",
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white
-                            : const Color(0xFF1878DE),
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                  Text(
+                    "All updated discounts will be reflected after checkout.",
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : const Color(0xFF1878DE),
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
 
                   const SizedBox(height: 6),
 
@@ -3202,7 +3275,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-
                       // 📅 DATE (LEFT)
                       Row(
                         children: [
@@ -3210,9 +3282,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             'assets/svg/calendar.svg',
                             width: 20,
                             height: 20,
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white
-                                : Colors.black,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white
+                                    : Colors.black,
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -3220,7 +3293,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
-                              color: Theme.of(context).brightness == Brightness.dark
+                              color: Theme.of(context).brightness ==
+                                      Brightness.dark
                                   ? Colors.white
                                   : Colors.black,
                             ),
@@ -3235,9 +3309,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             'assets/svg/clock.svg',
                             width: 20,
                             height: 20,
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white
-                                : Colors.black,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white
+                                    : Colors.black,
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -3245,7 +3320,8 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
-                              color: Theme.of(context).brightness == Brightness.dark
+                              color: Theme.of(context).brightness ==
+                                      Brightness.dark
                                   ? Colors.white
                                   : Colors.black,
                             ),
@@ -3257,7 +3333,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                 ],
               ),
             ),
-            if(tabs.isNotEmpty)
+            if (tabs.isNotEmpty)
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: 10),
                 child: DottedLine(
@@ -3270,698 +3346,975 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
             const SizedBox(height: 10),
             Expanded(
               child: (orderItems.isEmpty)
-                  ? Container() ///Add your widget if needed to show empty tab contents
+                  ? Container()
+
+                  ///Add your widget if needed to show empty tab contents
                   : Container(
-                color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground: null,
-                child: Padding(
-                  padding: const EdgeInsets.only(left:0, right: 0),
-                  child: Scrollbar(
-                    controller: scrollController,
-                    scrollbarOrientation: ScrollbarOrientation.right,
-                    thumbVisibility: true,
-                    thickness: 8.0,
-                    interactive: false,
-                    radius: const Radius.circular(8),
-                    trackVisibility: true,
-                    child: ReorderableListView.builder(
-                      buildDefaultDragHandles: false,
-                      onReorder: (oldIndex, newIndex) {
-                        if (kDebugMode) {
-                          print("Reordering item from $oldIndex to $newIndex");
-                        } // Debug print
-                        if (oldIndex < newIndex) newIndex -= 1;
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.primaryBackground
+                          : null,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 0, right: 0),
+                        child: Scrollbar(
+                          controller: scrollController,
+                          scrollbarOrientation: ScrollbarOrientation.right,
+                          thumbVisibility: true,
+                          thickness: 8.0,
+                          interactive: false,
+                          radius: const Radius.circular(8),
+                          trackVisibility: true,
+                          child: ReorderableListView.builder(
+                            buildDefaultDragHandles: false,
+                            onReorder: (oldIndex, newIndex) {
+                              if (kDebugMode) {
+                                print(
+                                    "Reordering item from $oldIndex to $newIndex");
+                              } // Debug print
+                              if (oldIndex < newIndex) newIndex -= 1;
 
-                        setState(() {
-                          final movedItem = orderItems.removeAt(oldIndex);
-                          orderItems.insert(newIndex, movedItem);
-                        });
-                      },
-                      scrollController: scrollController,
-                      itemCount: orderItems.length,
-                      proxyDecorator: (Widget child, int index, Animation<double> animation) {
-                        return Material(
-                          color: Colors.transparent,// Removes white background
-                          child: child,
-                        );
-                      },
-                      itemBuilder: (context, index) {
-                        final orderItem = orderItems[index];
+                              setState(() {
+                                final movedItem = orderItems.removeAt(oldIndex);
+                                orderItems.insert(newIndex, movedItem);
+                              });
+                            },
+                            scrollController: scrollController,
+                            itemCount: orderItems.length,
+                            proxyDecorator: (Widget child, int index,
+                                Animation<double> animation) {
+                              return Material(
+                                color: Colors
+                                    .transparent, // Removes white background
+                                child: child,
+                              );
+                            },
+                            itemBuilder: (context, index) {
+                              final orderItem = orderItems[index];
 
-                        if (kDebugMode) {
-                          print("@@@@@@@@@@@@@@@@@ orderItem Data : $orderItem");
-                        }
-                        ///Build #1.0.64:  added conditions
-                        /// Compare item type
-                        /// if it is payout change icon, name is empty, show amount in red colour
-                        /// if it is coupon change icon, name is coupon code (show last 4 digits, prefix with 'X' for each character before last 4), show amount in red colour
-                        final itemType = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
+                              if (kDebugMode) {
+                                print(
+                                    "@@@@@@@@@@@@@@@@@ orderItem Data : $orderItem");
+                              }
 
-                        final bool isVariant =
-                            (orderItem['is_variant'] == true) ||
-                                (itemType == 'variant');
+                              ///Build #1.0.64:  added conditions
+                              /// Compare item type
+                              /// if it is payout change icon, name is empty, show amount in red colour
+                              /// if it is coupon change icon, name is coupon code (show last 4 digits, prefix with 'X' for each character before last 4), show amount in red colour
+                              final itemType = orderItem[AppDBConst.itemType]
+                                      ?.toString()
+                                      .toLowerCase() ??
+                                  '';
 
-                        /// Check if the item is a payout or a coupon
-                        final isCashback = itemType.contains("cashback");
-                        final isPayout = itemType.contains(TextConstants.payoutText);
-                        final isCoupon = itemType.contains(TextConstants.couponText);
-                        final isCustomItem = itemType.contains(TextConstants.customItemText);
-                        final isPayoutOrCouponOrCustomItem = isPayout || isCoupon || isCustomItem;
-                        final isCouponOrPayout = isPayout || isCoupon|| isCashback;
-                        /// Get the original name
-                        final originalName = orderItem[AppDBConst.itemName]?.toString() ?? '';
-                        final variationName = orderItem[AppDBConst.itemVariationCustomName]?.toString() ?? 'N/A';
-                        final variationCount = orderItem[AppDBConst.itemVariationCount] ?? 0;
-                        final combo = orderItem[AppDBConst.itemCombo] ?? '';
-                        if (kDebugMode) {
-                          print("#### originalName: $originalName, itemType: $itemType, isPayoutOrCouponOrCustomItem: $isPayoutOrCouponOrCustomItem");
-                          print("#### variationName: $variationName, variationCount: $variationCount");
-                          print("#### isCouponOrPayout: $isCouponOrPayout"); // Build #1.0.181: Debug print
-                        }
-                        /// Set display name based on item type
-                        String displayName = originalName;
+                              final bool isVariant =
+                                  (orderItem['is_variant'] == true) ||
+                                      (itemType == 'variant');
 
+                              /// Check if the item is a payout or a coupon
+                              final isCashback = itemType.contains("cashback");
+                              final isPayout =
+                                  itemType.contains(TextConstants.payoutText);
+                              final isCoupon =
+                                  itemType.contains(TextConstants.couponText);
+                              final isCustomItem = itemType
+                                  .contains(TextConstants.customItemText);
+                              final isPayoutOrCouponOrCustomItem =
+                                  isPayout || isCoupon || isCustomItem;
+                              final isCouponOrPayout =
+                                  isPayout || isCoupon || isCashback;
 
-                        if (isPayout) {
-                          displayName = 'Payout';
-                        } else if (isCashback) {
-                          displayName = 'Cashback';
-                        } else if (isCoupon) {
-                          // masking logic for coupon
-                          final visiblePartLength = 4;
-                          final nameLength = originalName.length;
-                          if (nameLength > visiblePartLength) {
-                            final maskedLength = nameLength - visiblePartLength;
-                            final maskedPart = 'X' * maskedLength;
-                            final visiblePart = originalName.substring(nameLength - visiblePartLength);
-                            displayName = '$maskedPart$visiblePart';
-                          }
-                        }
+                              /// Get the original name
+                              final originalName =
+                                  orderItem[AppDBConst.itemName]?.toString() ??
+                                      '';
+                              final variationName =
+                                  orderItem[AppDBConst.itemVariationCustomName]
+                                          ?.toString() ??
+                                      'N/A';
+                              final variationCount =
+                                  orderItem[AppDBConst.itemVariationCount] ?? 0;
+                              final combo =
+                                  orderItem[AppDBConst.itemCombo] ?? '';
+                              if (kDebugMode) {
+                                print(
+                                    "#### originalName: $originalName, itemType: $itemType, isPayoutOrCouponOrCustomItem: $isPayoutOrCouponOrCustomItem");
+                                print(
+                                    "#### variationName: $variationName, variationCount: $variationCount");
+                                print(
+                                    "#### isCouponOrPayout: $isCouponOrPayout"); // Build #1.0.181: Debug print
+                              }
 
+                              /// Set display name based on item type
+                              String displayName = originalName;
 
-                        /// Build #1.0.134: Item Price will check sales price if it is null/empty, check regular price else unit price
-                        final salesPrice =
-                        (orderItem[AppDBConst.itemSalesPrice] == null || (orderItem[AppDBConst.itemSalesPrice]?.toDouble() ?? 0.0) == 0.0)
-                            ? (orderItem[AppDBConst.itemRegularPrice] == null || (orderItem[AppDBConst.itemRegularPrice]?.toDouble() ?? 0.0) == 0.0)
-                            ? orderItem[AppDBConst.itemUnitPrice]?.toDouble() ?? 0.0
-                            : orderItem[AppDBConst.itemRegularPrice]!.toDouble()
-                            : orderItem[AppDBConst.itemSalesPrice]!.toDouble();
+                              if (isPayout) {
+                                displayName = 'Payout';
+                              } else if (isCashback) {
+                                displayName = 'Cashback';
+                              } else if (isCoupon) {
+                                // masking logic for coupon
+                                final visiblePartLength = 4;
+                                final nameLength = originalName.length;
+                                if (nameLength > visiblePartLength) {
+                                  final maskedLength =
+                                      nameLength - visiblePartLength;
+                                  final maskedPart = 'X' * maskedLength;
+                                  final visiblePart = originalName.substring(
+                                      nameLength - visiblePartLength);
+                                  displayName = '$maskedPart$visiblePart';
+                                }
+                              }
 
-                        final regularPrice =  (orderItem[AppDBConst.itemRegularPrice] == null || (orderItem[AppDBConst.itemRegularPrice]?.toDouble() ?? 0.0) == 0.0)
-                            ? orderItem[AppDBConst.itemUnitPrice]?.toDouble() ?? 0.0
-                            : orderItem[AppDBConst.itemRegularPrice]!.toDouble();
-                        final bool isEbtEligible = orderItem["is_ebt_eligible"] == true;
+                              /// Build #1.0.134: Item Price will check sales price if it is null/empty, check regular price else unit price
+                              final salesPrice = (orderItem[
+                                              AppDBConst.itemSalesPrice] ==
+                                          null ||
+                                      (orderItem[AppDBConst.itemSalesPrice]
+                                                  ?.toDouble() ??
+                                              0.0) ==
+                                          0.0)
+                                  ? (orderItem[AppDBConst.itemRegularPrice] ==
+                                              null ||
+                                          (orderItem[AppDBConst
+                                                          .itemRegularPrice]
+                                                      ?.toDouble() ??
+                                                  0.0) ==
+                                              0.0)
+                                      ? orderItem[AppDBConst.itemUnitPrice]
+                                              ?.toDouble() ??
+                                          0.0
+                                      : orderItem[AppDBConst.itemRegularPrice]!
+                                          .toDouble()
+                                  : orderItem[AppDBConst.itemSalesPrice]!
+                                      .toDouble();
 
-                        return ClipRRect(
-                          // Build #1.0.151: FIXED - change ensures that sliding an item in one order does not affect the Slidable state of items at the same index in other orders.
-                          key: ValueKey('${orderItem[AppDBConst.itemServerId]}_${_listVersion}_ClipRRect_$index'), // Build 1.0.214: Fixed Issue [SCRUM - 366] -> Swipe-to-Delete UI State Not Resetting After Add/Delete Operations // Updated key to include order ID
-                          borderRadius: BorderRadius.circular(20),
-                          child: SizedBox(
-                            height: MediaQuery.of(context).size.height * 0.11,
-                            child: Slidable(
-                              // Build #1.0.151: FIXED - change ensures that sliding an item in one order does not affect the Slidable state of items at the same index in other orders.
-                              key: ValueKey('${orderItem[AppDBConst.itemServerId]}_${_listVersion}_Slidable_$index'), // Build 1.0.214: Fixed Issue [SCRUM - 366] -> Swipe-to-Delete UI State Not Resetting After Add/Delete Operations // Updated key to include order ID
-                              closeOnScroll: true,
-                              direction: Axis.horizontal,
-                              endActionPane: ActionPane(
-                                motion: const DrawerMotion(),
-                                children: [
-                                  CustomSlidableAction(
-                                    onPressed: (context) async {
-                                      if (kDebugMode) {
-                                        print("🗑️ Delete tapped for item: $orderItem");
-                                      }
+                              final regularPrice = (orderItem[
+                                              AppDBConst.itemRegularPrice] ==
+                                          null ||
+                                      (orderItem[AppDBConst.itemRegularPrice]
+                                                  ?.toDouble() ??
+                                              0.0) ==
+                                          0.0)
+                                  ? orderItem[AppDBConst.itemUnitPrice]
+                                          ?.toDouble() ??
+                                      0.0
+                                  : orderItem[AppDBConst.itemRegularPrice]!
+                                      .toDouble();
+                              final bool isEbtEligible =
+                                  orderItem["is_ebt_eligible"] == true;
 
-                                      final bool isOffline = orderHelper.activeOrderId != null &&
-                                          Hive.box('offlineOrders').containsKey(orderHelper.activeOrderId.toString());
-
-                                      await deleteOfflineItem(orderItem);
-
-                                      if (kDebugMode) {
-                                        print(isOffline
-                                            ? "✅ Offline item deleted immediately."
-                                            : "✅ Online item deleted immediately.");
-                                      }
-                                    },
-                                    backgroundColor: Colors.transparent,
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                              return ClipRRect(
+                                // Build #1.0.151: FIXED - change ensures that sliding an item in one order does not affect the Slidable state of items at the same index in other orders.
+                                key: ValueKey(
+                                    '${orderItem[AppDBConst.itemServerId]}_${_listVersion}_ClipRRect_$index'), // Build 1.0.214: Fixed Issue [SCRUM - 366] -> Swipe-to-Delete UI State Not Resetting After Add/Delete Operations // Updated key to include order ID
+                                borderRadius: BorderRadius.circular(20),
+                                child: SizedBox(
+                                  height:
+                                      MediaQuery.of(context).size.height * 0.11,
+                                  child: Slidable(
+                                    // Build #1.0.151: FIXED - change ensures that sliding an item in one order does not affect the Slidable state of items at the same index in other orders.
+                                    key: ValueKey(
+                                        '${orderItem[AppDBConst.itemServerId]}_${_listVersion}_Slidable_$index'), // Build 1.0.214: Fixed Issue [SCRUM - 366] -> Swipe-to-Delete UI State Not Resetting After Add/Delete Operations // Updated key to include order ID
+                                    closeOnScroll: true,
+                                    direction: Axis.horizontal,
+                                    endActionPane: ActionPane(
+                                      motion: const DrawerMotion(),
                                       children: [
-                                        Icon(Icons.delete, color: Colors.red),
-                                        const SizedBox(height: 4),
-                                        const Text(TextConstants.deleteText, style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              child: GestureDetector(
-                                //Removed orderHelper.updateItemQuantity from the API success block, as it’s now in OrderBloc.updateOrderProducts.
-                                // Kept local updateItemQuantity for non-API orders.
-                                // Ensured loader is shown during API calls.
-                                onTap: () async {
-                                  if (isCouponOrPayout) return; // Skip coupon or payout
-                                  if (kDebugMode) {
-                                    print("🟩 Tapped on product item (offline mode)");
-                                  }
-
-                                  showDialog(
-                                    context: context,
-                                    barrierColor: Colors.black.withValues(alpha: 0.5),
-                                    builder: (BuildContext dialogContext) {
-                                      return EditProduct(
-                                        orderItem: {
-                                          AppDBConst.itemName: orderItem['item_name'],
-                                          AppDBConst.itemUnitPrice: orderItem['item_price'],
-                                          AppDBConst.itemRegularPrice: orderItem['item_price'],
-                                          AppDBConst.itemCount: orderItem['items_count'],
-                                          AppDBConst.itemImage: orderItem['item_image'],
-                                        },
-                                        onQuantityUpdated: (newQuantity) async {
-                                          try {
-                                            if (orderHelper.activeOrderId == null) return;
-
-                                            final String orderKey = orderHelper.activeOrderId.toString();
-                                            final offlineBox = Hive.box('offlineOrders');
-                                            final rawOfflineOrder = offlineBox.get(orderKey);
-
-                                            if (rawOfflineOrder == null) return;
-
-                                            // Convert to editable map
-                                            final Map<String, dynamic> offlineOrder =
-                                            Map<String, dynamic>.from(rawOfflineOrder);
-
-                                            // -------- NORMAL PRODUCTS ----------
-                                            final List<Map<String, dynamic>> products =
-                                                (offlineOrder['products'] as List?)
-                                                    ?.map((e) => Map<String, dynamic>.from(e))
-                                                    .toList() ??
-                                                    [];
-
-                                            // -------- CUSTOM ITEMS ----------
-                                            final List<Map<String, dynamic>> customItems =
-                                                (offlineOrder['custom_items'] as List?)
-                                                    ?.map((e) => Map<String, dynamic>.from(e))
-                                                    .toList() ??
-                                                    [];
-
-                                            final tappedItemName = (orderItem['item_name'] ?? '').toString();
-
-                                            // 🔍 UPDATE NORMAL PRODUCTS
-                                            for (var product in products) {
-                                              final productName = (product['name'] ??
-                                                  product['product_name'] ??
-                                                  product['fast_key_item_name'] ??
-                                                  '')
-                                                  .toString();
-
-                                              if (productName == tappedItemName) {
-                                                final price =
-                                                    double.tryParse(product['price']?.toString() ?? '0') ?? 0.0;
-
-                                                product['quantity'] = newQuantity;
-                                                product['items_count'] = newQuantity;
-                                                product['subtotal'] = price * newQuantity;
-
-                                                if (kDebugMode) {
-                                                  print("🟢 Updated PRODUCT → $productName | Qty: $newQuantity");
-                                                }
-                                                break;
-                                              }
+                                        CustomSlidableAction(
+                                          onPressed: (context) async {
+                                            if (kDebugMode) {
+                                              print(
+                                                  "🗑️ Delete tapped for item: $orderItem");
                                             }
 
+                                            final bool isOffline =
+                                                orderHelper.activeOrderId !=
+                                                        null &&
+                                                    Hive.box('offlineOrders')
+                                                        .containsKey(orderHelper
+                                                            .activeOrderId
+                                                            .toString());
 
-                                            // 🔍 UPDATE CUSTOM ITEMS
-                                            for (var custom in customItems) {
-                                              final customName =
-                                              (custom['custom_item_name'] ?? custom['item_name'] ?? '').toString();
-
-                                              if (customName == tappedItemName) {
-                                                final price = double.tryParse(
-                                                    custom['custom_item_price']?.toString() ??
-                                                        custom['amount']?.toString() ??
-                                                        '0') ??
-                                                    0.0;
-
-                                                custom['quantity'] = newQuantity;
-                                                custom['items_count'] = newQuantity;
-                                                custom['subtotal'] = price * newQuantity;
-
-                                                if (kDebugMode) {
-                                                  print("🟣 Updated CUSTOM ITEM → $customName | Qty: $newQuantity");
-                                                }
-                                                break;
-                                              }
-                                            }
-
-                                            // Save updated lists back to Hive
-                                            offlineOrder['products'] = products;
-                                            offlineOrder['custom_items'] = customItems;
-
-                                            await offlineBox.put(orderKey, offlineOrder);
-
-                                            // 🖥 Update customer display
-                                            await CustomerDisplayHelper.updateCustomerDisplay(orderHelper.activeOrderId!);
-
-                                            // 🔁 Refresh UI instantly
-                                            if (mounted) {
-                                              setState(() {
-                                                // Rebuild products
-                                                final updatedProducts = products.map((item) {
-                                                  final price =
-                                                      double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-                                                  final qty =
-                                                      int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-
-                                                  return {
-                                                    'item_name':
-                                                    item['name'] ?? item['product_name'] ?? '',
-                                                    'item_price': price,
-                                                    'items_count': qty,
-                                                    'item_sum_price': price * qty,
-                                                    'item_type': 'product',
-                                                    'item_image': item['image'] ?? '',
-                                                  };
-                                                }).toList();
-
-
-                                                // Rebuild custom items
-                                                final updatedCustom = customItems.map((item) {
-                                                  final price = double.tryParse(
-                                                      item['custom_item_price']?.toString() ??
-                                                          item['amount']?.toString() ??
-                                                          '0') ??
-                                                      0.0;
-                                                  final qty =
-                                                      int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-
-                                                  return {
-                                                    'item_name': item['custom_item_name'] ?? item['item_name'] ?? "",
-                                                    'item_price': price,
-                                                    'items_count': qty,
-                                                    'item_sum_price': price * qty,
-                                                    'item_type': 'custom item',
-                                                    'item_image': item['item_image']
-                                                        ?? item['custom_item_image']
-                                                        ?? item['image']
-                                                        ?? 'assets/custom.png',
-                                                  };
-                                                }).toList();
-
-                                                // Payout & Cashback maps intact
-                                                final updatedPayouts =
-                                                ((offlineOrder['payouts'] ?? []) as List)
-                                                    .map((e) => Map<String, dynamic>.from(e))
-                                                    .toList();
-
-                                                final updatedCashbacks =
-                                                ((offlineOrder['cashbacks'] ?? []) as List)
-                                                    .map((e) => Map<String, dynamic>.from(e))
-                                                    .toList();
-
-                                                // FINAL ORDER ITEMS
-                                                orderItems = [
-                                                  ...updatedProducts,
-                                                  ...updatedCustom,
-                                                  ...updatedPayouts.map((payout) => {
-                                                    'item_name': 'Payout',
-                                                    'item_price': double.tryParse(
-                                                        payout['amount']?.toString() ?? '0') ??
-                                                        0.0,
-                                                    'items_count': 1,
-                                                    'item_sum_price': double.tryParse(
-                                                        payout['amount']?.toString() ?? '0') ??
-                                                        0.0,
-                                                    'item_image': 'assets/svg/payout.svg',
-                                                    'item_type': 'payout',
-                                                  }),
-                                                  ...updatedCashbacks.map((cb) => {
-                                                    'item_name': 'Cashback',
-                                                    'item_price': double.tryParse(
-                                                        cb['amount']?.toString() ?? '0') ??
-                                                        0.0,
-                                                    'items_count': 1,
-                                                    'item_sum_price': double.tryParse(
-                                                        cb['amount']?.toString() ?? '0') ??
-                                                        0.0,
-                                                    'item_image': cb['product_image'] ??
-                                                        cb['item_image'] ??
-                                                        cb['image'] ??
-                                                        "",
-                                                    'item_type': 'cashback',
-                                                  }),
-                                                ];
-                                              });
-                                            }
+                                            await deleteOfflineItem(orderItem);
 
                                             if (kDebugMode) {
-                                              print("✅ Quantity updated for PRODUCT or CUSTOM ITEM");
+                                              print(isOffline
+                                                  ? "✅ Offline item deleted immediately."
+                                                  : "✅ Online item deleted immediately.");
                                             }
-                                          } catch (e) {
-                                            if (kDebugMode) print("❌ Failed updating quantity: $e");
-                                          }
-                                        },
+                                          },
+                                          backgroundColor: Colors.transparent,
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Icon(Icons.delete,
+                                                  color: Colors.red),
+                                              const SizedBox(height: 4),
+                                              const Text(
+                                                  TextConstants.deleteText,
+                                                  style: TextStyle(
+                                                      color: Colors.red,
+                                                      fontWeight:
+                                                          FontWeight.bold)),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    child: GestureDetector(
+                                      //Removed orderHelper.updateItemQuantity from the API success block, as it’s now in OrderBloc.updateOrderProducts.
+                                      // Kept local updateItemQuantity for non-API orders.
+                                      // Ensured loader is shown during API calls.
+                                      onTap: () async {
+                                        if (isCouponOrPayout)
+                                          return; // Skip coupon or payout
+                                        if (kDebugMode) {
+                                          print(
+                                              "🟩 Tapped on product item (offline mode)");
+                                        }
 
-                                        isDialog: true,
-                                      );
-                                    },
-                                  );
-                                },
+                                        showDialog(
+                                          context: context,
+                                          barrierColor: Colors.black
+                                              .withValues(alpha: 0.5),
+                                          builder:
+                                              (BuildContext dialogContext) {
+                                            return EditProduct(
+                                              orderItem: {
+                                                AppDBConst.itemName:
+                                                    orderItem['item_name'],
+                                                AppDBConst.itemUnitPrice:
+                                                    orderItem['item_price'],
+                                                AppDBConst.itemRegularPrice:
+                                                    orderItem['item_price'],
+                                                AppDBConst.itemCount:
+                                                    orderItem['items_count'],
+                                                AppDBConst.itemImage:
+                                                    orderItem['item_image'],
+                                              },
+                                              onQuantityUpdated:
+                                                  (newQuantity) async {
+                                                try {
+                                                  if (orderHelper
+                                                          .activeOrderId ==
+                                                      null) return;
 
-                                child: Container(
-                                  margin: const EdgeInsets.symmetric(vertical: 1, horizontal: 8),
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: themeHelper.themeMode ==
-                                        ThemeMode.dark
-                                        ? Color(0xFF252837)
-                                        : Color(0xFFE8E8E8), // ThemeNotifier.secondaryBackground color of items in order panel
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      // ClipRRect(
-                                      //   borderRadius: BorderRadius.circular(5),
-                                      //   child: orderItem[AppDBConst.itemImage].toString().startsWith('http')
-                                      //       ? SizedBox(
-                                      //     height: MediaQuery.of(context).size.height * 0.08,
-                                      //     width: MediaQuery.of(context).size.height * 0.075,
-                                      //     child: Image.network(
-                                      //       orderItem[AppDBConst.itemImage],
-                                      //       height: MediaQuery.of(context).size.height * 0.08,
-                                      //       width: MediaQuery.of(context).size.height * 0.075,
-                                      //       fit: BoxFit.cover,
-                                      //       errorBuilder: (context, error,
-                                      //           stackTrace) {
-                                      //         return Image.asset(
-                                      //           'assets/custom.png',
-                                      //           height: MediaQuery.of(context).size.height * 0.08,
-                                      //           width: MediaQuery.of(context).size.height * 0.08,
-                                      //           fit: BoxFit.cover,
-                                      //         );
-                                      //
-                                      //       },
-                                      //     ),
-                                      //   )
-                                      //       : orderItem[AppDBConst.itemImage].toString().startsWith('assets/')
-                                      //       ? (
-                                      //       orderItem[AppDBConst.itemImage].toString().endsWith('.svg')
-                                      //           ? SvgPicture.asset(
-                                      //         orderItem[AppDBConst.itemImage],
-                                      //         height: MediaQuery.of(context).size.height * 0.08,
-                                      //         width: MediaQuery.of(context).size.height * 0.075,
-                                      //         fit: BoxFit.cover,
-                                      //       )
-                                      //           : Image.asset(
-                                      //         orderItem[AppDBConst.itemImage],
-                                      //         height: MediaQuery.of(context).size.height * 0.08,
-                                      //         width: MediaQuery.of(context).size.height * 0.075,
-                                      //         fit: BoxFit.cover,
-                                      //       )
-                                      //   )
-                                      //
-                                      //       : Platform.isWindows
-                                      //       ? Image.asset(
-                                      //     'assets/custom.png',
-                                      //     height: MediaQuery.of(context).size.height * 0.08,
-                                      //     width: MediaQuery.of(context).size.height * 0.075,
-                                      //     fit: BoxFit.cover,
-                                      //   )
-                                      //       : Image.file(
-                                      //     File(orderItem[AppDBConst.itemImage]),
-                                      //     height: MediaQuery.of(context).size.height * 0.08,
-                                      //     width: MediaQuery.of(context).size.height * 0.075,
-                                      //     fit: BoxFit.cover,
-                                      //     errorBuilder: (context, error, stackTrace) {
-                                      //       return Image.asset(
-                                      //         'assets/custom.png',
-                                      //         height: MediaQuery.of(context).size.height * 0.08,
-                                      //         width: MediaQuery.of(context).size.height * 0.08,
-                                      //         fit: BoxFit.cover,
-                                      //       );
-                                      //
-                                      //     },
-                                      //   ),
-                                      // ),
-                                      const SizedBox(width: 10),
+                                                  final String orderKey =
+                                                      orderHelper.activeOrderId
+                                                          .toString();
+                                                  final offlineBox =
+                                                      Hive.box('offlineOrders');
+                                                  final rawOfflineOrder =
+                                                      offlineBox.get(orderKey);
 
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                                  if (rawOfflineOrder == null)
+                                                    return;
+
+                                                  // Convert to editable map
+                                                  final Map<String, dynamic>
+                                                      offlineOrder =
+                                                      Map<String, dynamic>.from(
+                                                          rawOfflineOrder);
+
+                                                  // -------- NORMAL PRODUCTS ----------
+                                                  final List<
+                                                          Map<String, dynamic>>
+                                                      products =
+                                                      (offlineOrder['products']
+                                                                  as List?)
+                                                              ?.map((e) => Map<
+                                                                  String,
+                                                                  dynamic>.from(e))
+                                                              .toList() ??
+                                                          [];
+
+                                                  // -------- CUSTOM ITEMS ----------
+                                                  final List<
+                                                          Map<String, dynamic>>
+                                                      customItems =
+                                                      (offlineOrder['custom_items']
+                                                                  as List?)
+                                                              ?.map((e) => Map<
+                                                                  String,
+                                                                  dynamic>.from(e))
+                                                              .toList() ??
+                                                          [];
+
+                                                  final tappedItemName =
+                                                      (orderItem['item_name'] ??
+                                                              '')
+                                                          .toString();
+
+                                                  // 🔍 UPDATE NORMAL PRODUCTS
+                                                  for (var product
+                                                      in products) {
+                                                    final productName = (product[
+                                                                'name'] ??
+                                                            product[
+                                                                'product_name'] ??
+                                                            product[
+                                                                'fast_key_item_name'] ??
+                                                            '')
+                                                        .toString();
+
+                                                    if (productName ==
+                                                        tappedItemName) {
+                                                      final price = double
+                                                              .tryParse(product[
+                                                                          'price']
+                                                                      ?.toString() ??
+                                                                  '0') ??
+                                                          0.0;
+
+                                                      product['quantity'] =
+                                                          newQuantity;
+                                                      product['items_count'] =
+                                                          newQuantity;
+                                                      product['subtotal'] =
+                                                          price * newQuantity;
+
+                                                      if (kDebugMode) {
+                                                        print(
+                                                            "🟢 Updated PRODUCT → $productName | Qty: $newQuantity");
+                                                      }
+                                                      break;
+                                                    }
+                                                  }
+
+                                                  // 🔍 UPDATE CUSTOM ITEMS
+                                                  for (var custom
+                                                      in customItems) {
+                                                    final customName = (custom[
+                                                                'custom_item_name'] ??
+                                                            custom[
+                                                                'item_name'] ??
+                                                            '')
+                                                        .toString();
+
+                                                    if (customName ==
+                                                        tappedItemName) {
+                                                      final price = double.tryParse(custom[
+                                                                      'custom_item_price']
+                                                                  ?.toString() ??
+                                                              custom['amount']
+                                                                  ?.toString() ??
+                                                              '0') ??
+                                                          0.0;
+
+                                                      custom['quantity'] =
+                                                          newQuantity;
+                                                      custom['items_count'] =
+                                                          newQuantity;
+                                                      custom['subtotal'] =
+                                                          price * newQuantity;
+
+                                                      if (kDebugMode) {
+                                                        print(
+                                                            "🟣 Updated CUSTOM ITEM → $customName | Qty: $newQuantity");
+                                                      }
+                                                      break;
+                                                    }
+                                                  }
+
+                                                  // Save updated lists back to Hive
+                                                  offlineOrder['products'] =
+                                                      products;
+                                                  offlineOrder['custom_items'] =
+                                                      customItems;
+
+                                                  await offlineBox.put(
+                                                      orderKey, offlineOrder);
+
+                                                  // 🖥 Update customer display
+                                                  await CustomerDisplayHelper
+                                                      .updateCustomerDisplay(
+                                                          orderHelper
+                                                              .activeOrderId!);
+
+                                                  // 🔁 Refresh UI instantly
+                                                  if (mounted) {
+                                                    setState(() {
+                                                      // Rebuild products
+                                                      final updatedProducts =
+                                                          products.map((item) {
+                                                        final price = double
+                                                                .tryParse(item[
+                                                                            'price']
+                                                                        ?.toString() ??
+                                                                    '0') ??
+                                                            0.0;
+                                                        final qty = int.tryParse(
+                                                                item['quantity']
+                                                                        ?.toString() ??
+                                                                    '1') ??
+                                                            1;
+
+                                                        return {
+                                                          'item_name': item[
+                                                                  'name'] ??
+                                                              item[
+                                                                  'product_name'] ??
+                                                              '',
+                                                          'item_price': price,
+                                                          'items_count': qty,
+                                                          'item_sum_price':
+                                                              price * qty,
+                                                          'item_type':
+                                                              'product',
+                                                          'item_image':
+                                                              item['image'] ??
+                                                                  '',
+                                                        };
+                                                      }).toList();
+
+                                                      // Rebuild custom items
+                                                      final updatedCustom =
+                                                          customItems
+                                                              .map((item) {
+                                                        final price = double.tryParse(item[
+                                                                        'custom_item_price']
+                                                                    ?.toString() ??
+                                                                item['amount']
+                                                                    ?.toString() ??
+                                                                '0') ??
+                                                            0.0;
+                                                        final qty = int.tryParse(
+                                                                item['quantity']
+                                                                        ?.toString() ??
+                                                                    '1') ??
+                                                            1;
+
+                                                        return {
+                                                          'item_name': item[
+                                                                  'custom_item_name'] ??
+                                                              item[
+                                                                  'item_name'] ??
+                                                              "",
+                                                          'item_price': price,
+                                                          'items_count': qty,
+                                                          'item_sum_price':
+                                                              price * qty,
+                                                          'item_type':
+                                                              'custom item',
+                                                          'item_image': item[
+                                                                  'item_image'] ??
+                                                              item[
+                                                                  'custom_item_image'] ??
+                                                              item['image'] ??
+                                                              'assets/custom.png',
+                                                        };
+                                                      }).toList();
+
+                                                      // Payout & Cashback maps intact
+                                                      final updatedPayouts =
+                                                          ((offlineOrder[
+                                                                      'payouts'] ??
+                                                                  []) as List)
+                                                              .map((e) => Map<
+                                                                  String,
+                                                                  dynamic>.from(e))
+                                                              .toList();
+
+                                                      final updatedCashbacks =
+                                                          ((offlineOrder[
+                                                                      'cashbacks'] ??
+                                                                  []) as List)
+                                                              .map((e) => Map<
+                                                                  String,
+                                                                  dynamic>.from(e))
+                                                              .toList();
+
+                                                      // FINAL ORDER ITEMS
+                                                      orderItems = [
+                                                        ...updatedProducts,
+                                                        ...updatedCustom,
+                                                        ...updatedPayouts
+                                                            .map((payout) => {
+                                                                  'item_name':
+                                                                      'Payout',
+                                                                  'item_price':
+                                                                      double.tryParse(payout['amount']?.toString() ??
+                                                                              '0') ??
+                                                                          0.0,
+                                                                  'items_count':
+                                                                      1,
+                                                                  'item_sum_price':
+                                                                      double.tryParse(payout['amount']?.toString() ??
+                                                                              '0') ??
+                                                                          0.0,
+                                                                  'item_image':
+                                                                      'assets/svg/payout.svg',
+                                                                  'item_type':
+                                                                      'payout',
+                                                                }),
+                                                        ...updatedCashbacks
+                                                            .map((cb) => {
+                                                                  'item_name':
+                                                                      'Cashback',
+                                                                  'item_price':
+                                                                      double.tryParse(cb['amount']?.toString() ??
+                                                                              '0') ??
+                                                                          0.0,
+                                                                  'items_count':
+                                                                      1,
+                                                                  'item_sum_price':
+                                                                      double.tryParse(cb['amount']?.toString() ??
+                                                                              '0') ??
+                                                                          0.0,
+                                                                  'item_image': cb[
+                                                                          'product_image'] ??
+                                                                      cb['item_image'] ??
+                                                                      cb['image'] ??
+                                                                      "",
+                                                                  'item_type':
+                                                                      'cashback',
+                                                                }),
+                                                      ];
+                                                    });
+                                                  }
+
+                                                  if (kDebugMode) {
+                                                    print(
+                                                        "✅ Quantity updated for PRODUCT or CUSTOM ITEM");
+                                                  }
+                                                } catch (e) {
+                                                  if (kDebugMode)
+                                                    print(
+                                                        "❌ Failed updating quantity: $e");
+                                                }
+                                              },
+                                              isDialog: true,
+                                            );
+                                          },
+                                        );
+                                      },
+
+                                      child: Container(
+                                        margin: const EdgeInsets.symmetric(
+                                            vertical: 1, horizontal: 8),
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: themeHelper.themeMode ==
+                                                  ThemeMode.dark
+                                              ? Color(0xFF252837)
+                                              : Color(
+                                                  0xFFE8E8E8), // ThemeNotifier.secondaryBackground color of items in order panel
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
                                           children: [
-                                            /// TODO: Change here to apply meta values for (mix & match) "combo" and "variation"
-                                            Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisAlignment: MainAxisAlignment.start,
-                                              children: [
-                                                Row(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    Expanded(
-                                                      child: Column(
-                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                            // ClipRRect(
+                                            //   borderRadius: BorderRadius.circular(5),
+                                            //   child: orderItem[AppDBConst.itemImage].toString().startsWith('http')
+                                            //       ? SizedBox(
+                                            //     height: MediaQuery.of(context).size.height * 0.08,
+                                            //     width: MediaQuery.of(context).size.height * 0.075,
+                                            //     child: Image.network(
+                                            //       orderItem[AppDBConst.itemImage],
+                                            //       height: MediaQuery.of(context).size.height * 0.08,
+                                            //       width: MediaQuery.of(context).size.height * 0.075,
+                                            //       fit: BoxFit.cover,
+                                            //       errorBuilder: (context, error,
+                                            //           stackTrace) {
+                                            //         return Image.asset(
+                                            //           'assets/custom.png',
+                                            //           height: MediaQuery.of(context).size.height * 0.08,
+                                            //           width: MediaQuery.of(context).size.height * 0.08,
+                                            //           fit: BoxFit.cover,
+                                            //         );
+                                            //
+                                            //       },
+                                            //     ),
+                                            //   )
+                                            //       : orderItem[AppDBConst.itemImage].toString().startsWith('assets/')
+                                            //       ? (
+                                            //       orderItem[AppDBConst.itemImage].toString().endsWith('.svg')
+                                            //           ? SvgPicture.asset(
+                                            //         orderItem[AppDBConst.itemImage],
+                                            //         height: MediaQuery.of(context).size.height * 0.08,
+                                            //         width: MediaQuery.of(context).size.height * 0.075,
+                                            //         fit: BoxFit.cover,
+                                            //       )
+                                            //           : Image.asset(
+                                            //         orderItem[AppDBConst.itemImage],
+                                            //         height: MediaQuery.of(context).size.height * 0.08,
+                                            //         width: MediaQuery.of(context).size.height * 0.075,
+                                            //         fit: BoxFit.cover,
+                                            //       )
+                                            //   )
+                                            //
+                                            //       : Platform.isWindows
+                                            //       ? Image.asset(
+                                            //     'assets/custom.png',
+                                            //     height: MediaQuery.of(context).size.height * 0.08,
+                                            //     width: MediaQuery.of(context).size.height * 0.075,
+                                            //     fit: BoxFit.cover,
+                                            //   )
+                                            //       : Image.file(
+                                            //     File(orderItem[AppDBConst.itemImage]),
+                                            //     height: MediaQuery.of(context).size.height * 0.08,
+                                            //     width: MediaQuery.of(context).size.height * 0.075,
+                                            //     fit: BoxFit.cover,
+                                            //     errorBuilder: (context, error, stackTrace) {
+                                            //       return Image.asset(
+                                            //         'assets/custom.png',
+                                            //         height: MediaQuery.of(context).size.height * 0.08,
+                                            //         width: MediaQuery.of(context).size.height * 0.08,
+                                            //         fit: BoxFit.cover,
+                                            //       );
+                                            //
+                                            //     },
+                                            //   ),
+                                            // ),
+                                            const SizedBox(width: 10),
+
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceEvenly,
+                                                children: [
+                                                  /// TODO: Change here to apply meta values for (mix & match) "combo" and "variation"
+                                                  Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment.start,
+                                                    children: [
+                                                      Row(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
                                                         children: [
-                                                          Row(
-                                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                                            children: [
-                                                              Expanded(
-                                                                child: Column(
-                                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                          Expanded(
+                                                            child: Column(
+                                                              crossAxisAlignment:
+                                                                  CrossAxisAlignment
+                                                                      .start,
+                                                              children: [
+                                                                Row(
+                                                                  crossAxisAlignment:
+                                                                      CrossAxisAlignment
+                                                                          .start,
                                                                   children: [
-                                                                    Text(
-                                                                      displayName.length > 40
-                                                                          ? displayName.substring(0, 40) + "..."
-                                                                          : displayName,
-                                                                      maxLines: 1,
-                                                                      overflow: TextOverflow.ellipsis,
-                                                                      style: TextStyle(
-                                                                        fontSize: 12,
-                                                                        fontWeight: FontWeight.bold,
-                                                                        color: themeHelper.themeMode == ThemeMode.dark
-                                                                            ? ThemeNotifier.textDark
-                                                                            : ThemeNotifier.textLight,
+                                                                    Expanded(
+                                                                      child:
+                                                                          Column(
+                                                                        crossAxisAlignment:
+                                                                            CrossAxisAlignment.start,
+                                                                        children: [
+                                                                          Text(
+                                                                            displayName.length > 40
+                                                                                ? displayName.substring(0, 40) + "..."
+                                                                                : displayName,
+                                                                            maxLines:
+                                                                                1,
+                                                                            overflow:
+                                                                                TextOverflow.ellipsis,
+                                                                            style:
+                                                                                TextStyle(
+                                                                              fontSize: 12,
+                                                                              fontWeight: FontWeight.bold,
+                                                                              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
+                                                                            ),
+                                                                          ),
+                                                                          if ((orderItem['auto_discount'] ?? 0) >
+                                                                              0)
+                                                                            Padding(
+                                                                              padding: const EdgeInsets.only(top: 2),
+                                                                              child: Text(
+                                                                                "Auto Discount: -${TextConstants.currencySymbol}${orderItem['auto_discount'].toStringAsFixed(2)}",
+                                                                                style: const TextStyle(
+                                                                                  fontSize: 11,
+                                                                                  color: Colors.red,
+                                                                                  fontWeight: FontWeight.w600,
+                                                                                ),
+                                                                              ),
+                                                                            ),
+
+                                                                          // if (isVariant) ...[
+                                                                          //   const SizedBox(height: 4),
+                                                                          //   Icon(Icons.link, size: 15, color: Colors.red),
+                                                                          // ],
+
+                                                                          // ⭐ ADD EBT TAG HERE
+                                                                          // if (isEbtEligible) ...[
+                                                                          //   const SizedBox(height: 4),
+                                                                          //   Container(
+                                                                          //     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                                          //     decoration: BoxDecoration(
+                                                                          //       color: Colors.green,
+                                                                          //       borderRadius: BorderRadius.circular(4),
+                                                                          //     ),
+                                                                          //     child: const Text(
+                                                                          //       "EBT",
+                                                                          //       style: TextStyle(
+                                                                          //         color: Colors.white,
+                                                                          //         fontSize: 10,
+                                                                          //         fontWeight: FontWeight.bold,
+                                                                          //       ),
+                                                                          //     ),
+                                                                          //   ),
+                                                                          // ],
+                                                                        ],
                                                                       ),
                                                                     ),
-                                                                    if ((orderItem['auto_discount'] ?? 0) > 0)
-                                                                      Padding(
-                                                                        padding: const EdgeInsets.only(top: 2),
-                                                                        child: Text(
-                                                                          "Auto Discount: -${TextConstants.currencySymbol}${orderItem['auto_discount'].toStringAsFixed(2)}",
-                                                                          style: const TextStyle(
-                                                                            fontSize: 11,
-                                                                            color: Colors.red,
-                                                                            fontWeight: FontWeight.w600,
-                                                                          ),
-                                                                        ),
-                                                                      ),
-
-                                                                    // if (isVariant) ...[
-                                                                    //   const SizedBox(height: 4),
-                                                                    //   Icon(Icons.link, size: 15, color: Colors.red),
-                                                                    // ],
-
-                                                                    // ⭐ ADD EBT TAG HERE
-                                                                    // if (isEbtEligible) ...[
-                                                                    //   const SizedBox(height: 4),
-                                                                    //   Container(
-                                                                    //     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                                    //     decoration: BoxDecoration(
-                                                                    //       color: Colors.green,
-                                                                    //       borderRadius: BorderRadius.circular(4),
-                                                                    //     ),
-                                                                    //     child: const Text(
-                                                                    //       "EBT",
-                                                                    //       style: TextStyle(
-                                                                    //         color: Colors.white,
-                                                                    //         fontSize: 10,
-                                                                    //         fontWeight: FontWeight.bold,
-                                                                    //       ),
-                                                                    //     ),
-                                                                    //   ),
-                                                                    // ],
-
                                                                   ],
                                                                 ),
-                                                              ),
-                                                            ],
+                                                              ],
+                                                            ),
                                                           ),
                                                         ],
                                                       ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                variationCount == 0 ? SizedBox(width: 0,) : Row(
-                                                  children: [
-                                                    Text(
-                                                      ///Todo: use variation name here
-                                                      variationName == '' ? "" : "(${variationName ?? ''})",
-                                                      overflow: TextOverflow.ellipsis,
-                                                      style: TextStyle(fontSize: 10, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey),
-                                                    ),
-                                                    SizedBox(
-                                                      width: 4,
-                                                    ),
-                                                    ///Todo: show variation icon if variation count is no zero
-                                                    SvgPicture.asset("assets/svg/variation.svg",height: 10, width: 10,),
-                                                    SizedBox(
-                                                      width: 4,
-                                                    ),
-                                                    Text(///Todo: show variation count if no zero
-                                                      "${variationCount ?? 0}",
-                                                      overflow: TextOverflow.ellipsis,
-                                                      style: TextStyle(fontSize: 10, color: Color(0xFFFE6464)),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                            // Build #1.0.181: Fixed - Quantity for Custom Item Not Displayed After Switching Screens [JIRA #319]
-                                            // we have to show price * qty for custom item also / condition updated, only dont show for payout and coupons
-                                            Row(
-                                              children: [
-                                                // PRICE × QTY
-                                                if (!isCouponOrPayout)
-                                                  Text(
-                                                    "${TextConstants.currencySymbol}${(orderItem['item_price'] ?? orderItem['price'] ?? 0).toStringAsFixed(2)} × ${(orderItem['items_count'] ?? orderItem['quantity'] ?? 1)}",
-                                                    style: TextStyle(
-                                                      color: themeHelper.themeMode == ThemeMode.dark
-                                                          ? ThemeNotifier.textDark
-                                                          : Colors.black54,
-                                                      fontSize: 12,
-                                                      fontWeight: FontWeight.bold,
-                                                    ),
-                                                  ),
+                                                      variationCount == 0
+                                                          ? SizedBox(
+                                                              width: 0,
+                                                            )
+                                                          : Row(
+                                                              children: [
+                                                                Text(
+                                                                  ///Todo: use variation name here
+                                                                  variationName ==
+                                                                          ''
+                                                                      ? ""
+                                                                      : "(${variationName ?? ''})",
+                                                                  overflow:
+                                                                      TextOverflow
+                                                                          .ellipsis,
+                                                                  style: TextStyle(
+                                                                      fontSize:
+                                                                          10,
+                                                                      color: themeHelper.themeMode ==
+                                                                              ThemeMode
+                                                                                  .dark
+                                                                          ? ThemeNotifier
+                                                                              .textDark
+                                                                          : Colors
+                                                                              .grey),
+                                                                ),
+                                                                SizedBox(
+                                                                  width: 4,
+                                                                ),
 
-                                                // Space only when price exists AND (EBT or Variant to show)
-                                                if (!isCouponOrPayout && (isEbtEligible || isVariant))
-                                                  const SizedBox(width: 6),
-
-                                                // EBT BADGE
-                                                if (isEbtEligible)
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.green,
-                                                      borderRadius: BorderRadius.circular(4),
-                                                    ),
-                                                    child: const Text(
-                                                      "EBT",
-                                                      style: TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 6,
-                                                        fontWeight: FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                  ),
-
-                                                // Spacing ONLY if EBT is shown AND variant icon also needs to appear
-                                                if (isEbtEligible && isVariant)
-                                                  const SizedBox(width: 6),
-
-                                                // VARIANT LINK ICON
-                                                if (isVariant)
-                                                  Row(
-                                                    children: [
-                                                      SvgPicture.asset(
-                                                          SvgUtils
-                                                              .variationIcon,
-                                                          height: 10,
-                                                          width: 10),
-                                                      // SizedBox(width: 4),
-                                                      // Text(
-                                                      //   '${item["variations"].length}',
-                                                      //   style: TextStyle(
-                                                      //     fontSize: 12,
-                                                      //     color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
-                                                      //   ),
-                                                      // ),
+                                                                ///Todo: show variation icon if variation count is no zero
+                                                                SvgPicture
+                                                                    .asset(
+                                                                  "assets/svg/variation.svg",
+                                                                  height: 10,
+                                                                  width: 10,
+                                                                ),
+                                                                SizedBox(
+                                                                  width: 4,
+                                                                ),
+                                                                Text(
+                                                                  ///Todo: show variation count if no zero
+                                                                  "${variationCount ?? 0}",
+                                                                  overflow:
+                                                                      TextOverflow
+                                                                          .ellipsis,
+                                                                  style: TextStyle(
+                                                                      fontSize:
+                                                                          10,
+                                                                      color: Color(
+                                                                          0xFFFE6464)),
+                                                                ),
+                                                              ],
+                                                            ),
                                                     ],
                                                   ),
-                                              ],
-                                            )
+                                                  // Build #1.0.181: Fixed - Quantity for Custom Item Not Displayed After Switching Screens [JIRA #319]
+                                                  // we have to show price * qty for custom item also / condition updated, only dont show for payout and coupons
+                                                  Row(
+                                                    children: [
+                                                      // PRICE × QTY
+                                                      if (!isCouponOrPayout)
+                                                        Text(
+                                                          "${TextConstants.currencySymbol}${(orderItem['item_price'] ?? orderItem['price'] ?? 0).toStringAsFixed(2)} × ${(orderItem['items_count'] ?? orderItem['quantity'] ?? 1)}",
+                                                          style: TextStyle(
+                                                            color: themeHelper
+                                                                        .themeMode ==
+                                                                    ThemeMode
+                                                                        .dark
+                                                                ? ThemeNotifier
+                                                                    .textDark
+                                                                : Colors
+                                                                    .black54,
+                                                            fontSize: 12,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                        ),
+
+                                                      // Space only when price exists AND (EBT or Variant to show)
+                                                      if (!isCouponOrPayout &&
+                                                          (isEbtEligible ||
+                                                              isVariant))
+                                                        const SizedBox(
+                                                            width: 6),
+
+                                                      // EBT BADGE
+                                                      if (isEbtEligible)
+                                                        Container(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .symmetric(
+                                                                  horizontal: 6,
+                                                                  vertical: 2),
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: Colors.green,
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        4),
+                                                          ),
+                                                          child: const Text(
+                                                            "EBT",
+                                                            style: TextStyle(
+                                                              color:
+                                                                  Colors.white,
+                                                              fontSize: 6,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                            ),
+                                                          ),
+                                                        ),
+
+                                                      // Spacing ONLY if EBT is shown AND variant icon also needs to appear
+                                                      if (isEbtEligible &&
+                                                          isVariant)
+                                                        const SizedBox(
+                                                            width: 6),
+
+                                                      // VARIANT LINK ICON
+                                                      if (isVariant)
+                                                        Row(
+                                                          children: [
+                                                            SvgPicture.asset(
+                                                                SvgUtils
+                                                                    .variationIcon,
+                                                                height: 10,
+                                                                width: 10),
+                                                            // SizedBox(width: 4),
+                                                            // Text(
+                                                            //   '${item["variations"].length}',
+                                                            //   style: TextStyle(
+                                                            //     fontSize: 12,
+                                                            //     color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
+                                                            //   ),
+                                                            // ),
+                                                          ],
+                                                        ),
+                                                    ],
+                                                  )
+                                                ],
+                                              ),
+                                            ),
+                                            // SizedBox(width: 8,),
+                                            // if (!isCouponOrPayout)
+                                            //   Text(
+                                            //     "${TextConstants.currencySymbol} ${(regularPrice * orderItem[AppDBConst.itemCount]).toStringAsFixed(2)}",
+                                            //     style: TextStyle(color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.blueGrey, fontSize: 14),
+                                            //   ),
+                                            SizedBox(
+                                              width: 20,
+                                            ),
+                                            SizedBox(width: 20),
+
+                                            Builder(
+                                              builder: (context) {
+                                                final int qty =
+                                                    (orderItem['items_count'] ??
+                                                        orderItem['quantity'] ??
+                                                        orderItem[AppDBConst
+                                                            .itemCount] ??
+                                                        1);
+
+                                                final double originalTotal = (orderItem[
+                                                            'original_total'] ??
+                                                        ((orderItem['item_price'] ??
+                                                                orderItem[
+                                                                    'price'] ??
+                                                                0) *
+                                                            qty))
+                                                    .toDouble();
+
+                                                final double discount =
+                                                    (orderItem['auto_discount'] ??
+                                                            0)
+                                                        .toDouble();
+
+                                                final double finalTotal =
+                                                    originalTotal - discount;
+
+                                                return Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.end,
+                                                  children: [
+                                                    /// 🔴 ORIGINAL PRICE (STRIKE)
+                                                    if (discount > 0)
+                                                      Text(
+                                                        "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
+                                                        style: const TextStyle(
+                                                          fontSize: 12,
+                                                          color: Colors.grey,
+                                                          decoration:
+                                                              TextDecoration
+                                                                  .lineThrough,
+                                                        ),
+                                                      ),
+
+                                                    /// 🟢 FINAL PRICE (AFTER DISCOUNT)
+                                                    Text(
+                                                      isPayout || isCoupon
+                                                          ? "-${TextConstants.currencySymbol}${finalTotal.abs().toStringAsFixed(2)}"
+                                                          : "${TextConstants.currencySymbol}${finalTotal.toStringAsFixed(2)}",
+                                                      style: TextStyle(
+                                                        fontSize: 14,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color: isPayout ||
+                                                                isCoupon
+                                                            ? Colors.red
+                                                            : themeHelper
+                                                                        .themeMode ==
+                                                                    ThemeMode
+                                                                        .dark
+                                                                ? ThemeNotifier
+                                                                    .textDark
+                                                                : ThemeNotifier
+                                                                    .textLight,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                );
+                                              },
+                                            ),
                                           ],
                                         ),
                                       ),
-                                      // SizedBox(width: 8,),
-                                      // if (!isCouponOrPayout)
-                                      //   Text(
-                                      //     "${TextConstants.currencySymbol} ${(regularPrice * orderItem[AppDBConst.itemCount]).toStringAsFixed(2)}",
-                                      //     style: TextStyle(color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.blueGrey, fontSize: 14),
-                                      //   ),
-                                      SizedBox(width: 20,),
-                                      SizedBox(width: 20),
-
-                                      Builder(
-                                        builder: (context) {
-                                          final int qty =
-                                          (orderItem['items_count'] ??
-                                              orderItem['quantity'] ??
-                                              orderItem[AppDBConst.itemCount] ??
-                                              1);
-
-                                          final double originalTotal =
-                                          (orderItem['original_total'] ??
-                                              ((orderItem['item_price'] ?? orderItem['price'] ?? 0) * qty))
-                                              .toDouble();
-
-                                          final double discount =
-                                          (orderItem['auto_discount'] ?? 0).toDouble();
-
-                                          final double finalTotal = originalTotal - discount;
-
-                                          return Column(
-                                            crossAxisAlignment: CrossAxisAlignment.end,
-                                            children: [
-
-                                              /// 🔴 ORIGINAL PRICE (STRIKE)
-                                              if (discount > 0)
-                                                Text(
-                                                  "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey,
-                                                    decoration: TextDecoration.lineThrough,
-                                                  ),
-                                                ),
-
-                                              /// 🟢 FINAL PRICE (AFTER DISCOUNT)
-                                              Text(
-                                                isPayout || isCoupon
-                                                    ? "-${TextConstants.currencySymbol}${finalTotal.abs().toStringAsFixed(2)}"
-                                                    : "${TextConstants.currencySymbol}${finalTotal.toStringAsFixed(2)}",
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: isPayout || isCoupon
-                                                      ? Colors.red
-                                                      : themeHelper.themeMode == ThemeMode.dark
-                                                      ? ThemeNotifier.textDark
-                                                      : ThemeNotifier.textLight,
-                                                ),
-                                              ),
-                                            ],
-                                          );
-                                        },
-                                      ),
-
-                                    ],
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
+                              );
+                            },
                           ),
-                        );
-                      },
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ),
             ),
+
             ///Todo: update ui as per loading from screen
             ///Show print and email invoice buttons if coming from order history screen
             ///else show regular buttons
             Container(
-              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground: null,
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.primaryBackground
+                  : null,
               child: Column(
                 children: [
                   // Summary container
@@ -3971,297 +4324,385 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                       curve: Curves.easeInOut,
                       child: (!isKeyboardVisible && _showFullSummary)
                           ? Container(
-                        margin: const EdgeInsets.only(top: 8, right: 6, left: 6),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.only(topRight: Radius.circular(8), topLeft: Radius.circular(8)),
-                          color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.orderPanelSummary : Colors.white,
-                          boxShadow: [
-                            // Shadow at the bottom
-                            BoxShadow(
-                              // color: Colors.black.withOpacity(0.25),
-                              color: themeHelper.themeMode ==
-                                  ThemeMode.dark
-                                  ? Color(0xFFF0F0F0).withOpacity(
-                                  0.15) // stronger shadow for dark mode
-                                  : Colors.black.withOpacity(
-                                  0.25), // lighter shadow for light mode
-                              offset: Offset(0,
-                                  4), // 0 horizontal, 4 vertical (down)
-                              blurRadius: 6,
-                              spreadRadius: -0.5,
-                            ),
-                            // Shadow at the top
-                            BoxShadow(
-                              color:
-                              themeHelper.themeMode == ThemeMode.dark
-                                  ? Color(0xFFF0F0F0).withOpacity(
-                                  0.15) // dark mode top shadow
-                                  : Colors.black.withOpacity(
-                                  0.15), // light mode top shadow
-                              // color: Colors.black.withOpacity(0.15),
-                              offset: Offset(0,
-                                  -4), // 0 horizontal, -4 vertical (up)
-                              blurRadius: 6,
-                              spreadRadius: -0.5,
-                            ),
-                          ],
-                        ),
-                        padding: const EdgeInsets.all(8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(TextConstants.subTotalText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight), ),
-                                Text("${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", //Build #1.0.68
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
-                              ],
-                            ),
-                            SizedBox(height: 2),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Text(TextConstants.taxText, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13,color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 : Colors.grey),),
-                                Text("${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}", //Build #1.0.92: removed minus "-"
-                                    style: TextStyle( fontWeight: FontWeight.w600,fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 :Colors.grey)),
-                              ],
-                            ),
-                            SizedBox(height: 2),
-                            if(merchantDiscount>0)
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    spacing: 5,
-                                    children: [
-                                      // SvgPicture.asset("assets/svg/discount_star.svg",
-                                      //   height: 12, width: 12,
-                                      //   colorFilter: ColorFilter.mode(Colors.blueAccent, BlendMode.srcIn),),
-                                      Text(TextConstants.merchantDiscount, style: TextStyle(color: Color(0xFF007BFF), fontSize: 12,fontWeight: FontWeight.w600,)),
-                                      merchantDiscount.toStringAsFixed(2) == '0.00' ? SizedBox() : GestureDetector(
-                                        onTap: () async {
-                                          if (kDebugMode) print("####################### Remove Merchant Discount locally");
-
-                                          final activeOrderId = orderHelper.activeOrderId;
-                                          if (activeOrderId == null) {
-                                            _scaffoldMessenger.showSnackBar(
-                                              const SnackBar(
-                                                content: Text("No active order found"),
-                                                backgroundColor: Colors.red,
-                                                duration: Duration(seconds: 2),
-                                              ),
-                                            );
-                                            return;
-                                          }
-
-                                          // Step 1: Show confirmation dialog
-                                          await CustomDialog.showRemoveSpecialOrderItemsConfirmation(
-                                            context,
-                                            confirm: () async {
-                                              setState(() => _isLoading = true);
-
-                                              final offlineBox = Hive.box('offlineOrders');
-                                              final rawOrder = offlineBox.get(activeOrderId.toString());
-
-                                              if (rawOrder == null) {
-                                                setState(() => _isLoading = false);
-                                                _scaffoldMessenger.showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text("No offline order found"),
-                                                    backgroundColor: Colors.red,
-                                                    duration: Duration(seconds: 2),
-                                                  ),
-                                                );
-                                                return;
-                                              }
-
-                                              // Convert to Map
-                                              final Map<String, dynamic> order = Map<String, dynamic>.from(rawOrder);
-
-                                              // Remove merchant discount completely
-                                              if (order.containsKey('merchantDiscount') || order.containsKey('merchantDiscountIds')) {
-
-                                                order.remove('merchantDiscount');
-                                                order.remove('merchantDiscountIds');
-                                                order.remove('discounts');
-
-                                                await offlineBox.put(activeOrderId.toString(), order);
-
-                                                setState(() => _isLoading = false);
-                                                _scaffoldMessenger.showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text("Merchant discount removed locally"),
-                                                    backgroundColor: Colors.green,
-                                                    duration: Duration(seconds: 2),
-                                                  ),
-                                                );
-
-                                                widget.refreshOrderList?.call();  // Refresh summary & order panel
-
-                                              } else {
-                                                setState(() => _isLoading = false);
-                                                _scaffoldMessenger.showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text("No merchant discount found on this order"),
-                                                    backgroundColor: Colors.red,
-                                                    duration: Duration(seconds: 2),
-                                                  ),
-                                                );
-                                              }
-                                            },
-                                          );
-                                        },
-
-
-                                        child: SvgPicture.asset("assets/svg/delete.svg", height: 24, width: 24),
-                                      ),
-                                    ],
+                              margin: const EdgeInsets.only(
+                                  top: 8, right: 6, left: 6),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.only(
+                                    topRight: Radius.circular(8),
+                                    topLeft: Radius.circular(8)),
+                                color: themeHelper.themeMode == ThemeMode.dark
+                                    ? ThemeNotifier.orderPanelSummary
+                                    : Colors.white,
+                                boxShadow: [
+                                  // Shadow at the bottom
+                                  BoxShadow(
+                                    // color: Colors.black.withOpacity(0.25),
+                                    color: themeHelper.themeMode ==
+                                            ThemeMode.dark
+                                        ? Color(0xFFF0F0F0).withOpacity(
+                                            0.15) // stronger shadow for dark mode
+                                        : Colors.black.withOpacity(
+                                            0.25), // lighter shadow for light mode
+                                    offset: Offset(0,
+                                        4), // 0 horizontal, 4 vertical (down)
+                                    blurRadius: 6,
+                                    spreadRadius: -0.5,
                                   ),
-                                  Text("-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
-                                      style: TextStyle(color: Colors.blue, fontSize: 12,fontWeight: FontWeight.w600,)),
+                                  // Shadow at the top
+                                  BoxShadow(
+                                    color:
+                                        themeHelper.themeMode == ThemeMode.dark
+                                            ? Color(0xFFF0F0F0).withOpacity(
+                                                0.15) // dark mode top shadow
+                                            : Colors.black.withOpacity(
+                                                0.15), // light mode top shadow
+                                    // color: Colors.black.withOpacity(0.15),
+                                    offset: Offset(0,
+                                        -4), // 0 horizontal, -4 vertical (up)
+                                    blurRadius: 6,
+                                    spreadRadius: -0.5,
+                                  ),
                                 ],
                               ),
-                            SizedBox(height: 2),
-                            Builder(
-                              builder: (_) {
-                                print("🔥 SUMMARY → cashbackFee = $cashbackFee");
-                                return SizedBox.shrink();
-                              },
-                            ),
-                            if (cashbackFee > 0)
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              padding: const EdgeInsets.all(8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
-                                    spacing: 5,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      // Icon(Icons.wallet_giftcard,
-                                      //     size: 14,
-                                      //     color: Color(0XFF55CBCD)),
                                       Text(
-                                        TextConstants.cashbackFee,
+                                        TextConstants.subTotalText,
                                         style: TextStyle(
-                                          color: Color(0XFF55CBCD),
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                            color: themeHelper.themeMode ==
+                                                    ThemeMode.dark
+                                                ? ThemeNotifier.textDark
+                                                : ThemeNotifier.textLight),
                                       ),
+                                      Text(
+                                          "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", //Build #1.0.68
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 15,
+                                              color: themeHelper.themeMode ==
+                                                      ThemeMode.dark
+                                                  ? ThemeNotifier.textDark
+                                                  : ThemeNotifier.textLight)),
                                     ],
                                   ),
-                                  Text(
-                                    "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
-                                    style: TextStyle(
-                                      color: Color(0XFF55CBCD),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                  SizedBox(height: 2),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        TextConstants.taxText,
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 13,
+                                            color: themeHelper.themeMode ==
+                                                    ThemeMode.dark
+                                                ? Colors.white54
+                                                : Colors.grey),
+                                      ),
+                                      Text(
+                                          "${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}", //Build #1.0.92: removed minus "-"
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 12,
+                                              color: themeHelper.themeMode ==
+                                                      ThemeMode.dark
+                                                  ? Colors.white54
+                                                  : Colors.grey)),
+                                    ],
                                   ),
+                                  SizedBox(height: 2),
+                                  if (merchantDiscount > 0)
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          spacing: 5,
+                                          children: [
+                                            // SvgPicture.asset("assets/svg/discount_star.svg",
+                                            //   height: 12, width: 12,
+                                            //   colorFilter: ColorFilter.mode(Colors.blueAccent, BlendMode.srcIn),),
+                                            Text(TextConstants.merchantDiscount,
+                                                style: TextStyle(
+                                                  color: Color(0xFF007BFF),
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                )),
+                                            merchantDiscount
+                                                        .toStringAsFixed(2) ==
+                                                    '0.00'
+                                                ? SizedBox()
+                                                : GestureDetector(
+                                              onTap: () async {
+                                                if (kDebugMode) {
+                                                  print("####################### Remove Merchant Discount locally");
+                                                }
+
+                                                final activeOrderId = orderHelper.activeOrderId;
+                                                if (activeOrderId == null) {
+                                                  _scaffoldMessenger.showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text("No active order found"),
+                                                      backgroundColor: Colors.red,
+                                                      duration: Duration(seconds: 2),
+                                                    ),
+                                                  );
+                                                  return;
+                                                }
+
+                                                // Step 1: Show confirmation dialog
+                                                await CustomDialog.showRemoveSpecialOrderItemsConfirmation(
+                                                  context,
+                                                  confirm: () async {
+                                                    setState(() => _isLoading = true);
+
+                                                    final offlineBox = Hive.box('offlineOrders');
+                                                    final rawOrder = offlineBox.get(activeOrderId.toString());
+
+                                                    if (rawOrder == null) {
+                                                      setState(() => _isLoading = false);
+                                                      _scaffoldMessenger.showSnackBar(
+                                                        const SnackBar(
+                                                          content: Text("No offline order data found"),
+                                                          backgroundColor: Colors.red,
+                                                          duration: Duration(seconds: 2),
+                                                        ),
+                                                      );
+                                                      return;
+                                                    }
+
+                                                    // Convert to editable Map
+                                                    final Map<String, dynamic> order = Map<String, dynamic>.from(rawOrder);
+
+                                                    // ────────────────────────────────────────────────
+                                                    // Remove ALL possible merchant discount fields
+                                                    // (covers both old and new storage formats)
+                                                    // ────────────────────────────────────────────────
+                                                    bool hadDiscount = false;
+
+                                                    if (order.containsKey('merchantDiscount') ||
+                                                        order.containsKey('merchantDiscountIds') ||
+                                                        order.containsKey('discounts') ||
+                                                        order.containsKey('merchantDiscountType') ||
+                                                        order.containsKey('merchantDiscountPercentage') ||
+                                                        order.containsKey('merchantDiscountFixed') ||
+                                                        order.containsKey('merchantDiscountBaseGross')) {
+
+                                                      hadDiscount = true;
+
+                                                      order.remove('merchantDiscount');
+                                                      order.remove('merchantDiscountIds');
+                                                      order.remove('discounts');
+                                                      order.remove('merchantDiscountType');
+                                                      order.remove('merchantDiscountPercentage');
+                                                      order.remove('merchantDiscountFixed');
+                                                      order.remove('merchantDiscountBaseGross');
+
+                                                      // Optional: Also clean any cached calculated values if you store them
+                                                      order.remove('merchant_discount_calculated');
+                                                    }
+
+                                                    // Save back to Hive
+                                                    await offlineBox.put(activeOrderId.toString(), order);
+
+                                                    setState(() => _isLoading = false);
+
+                                                    if (hadDiscount) {
+                                                      _scaffoldMessenger.showSnackBar(
+                                                        const SnackBar(
+                                                          content: Text("Merchant discount removed successfully"),
+                                                          backgroundColor: Colors.green,
+                                                          duration: Duration(seconds: 2),
+                                                        ),
+                                                      );
+                                                    } else {
+                                                      _scaffoldMessenger.showSnackBar(
+                                                        const SnackBar(
+                                                          content: Text("No merchant discount was found on this order"),
+                                                          backgroundColor: Colors.orange,
+                                                          duration: Duration(seconds: 2),
+                                                        ),
+                                                      );
+                                                    }
+
+                                                    // Refresh UI everywhere
+                                                    widget.refreshOrderList?.call();
+                                                  },
+                                                );
+                                              },
+
+                                              child: SvgPicture.asset(
+                                                "assets/svg/delete.svg",
+                                                height: 24,
+                                                width: 24,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        Text(
+                                            "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
+                                            style: TextStyle(
+                                              color: Colors.blue,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                            )),
+                                      ],
+                                    ),
+                                  SizedBox(height: 2),
+                                  Builder(
+                                    builder: (_) {
+                                      print(
+                                          "🔥 SUMMARY → cashbackFee = $cashbackFee");
+                                      return SizedBox.shrink();
+                                    },
+                                  ),
+                                  if (cashbackFee > 0)
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          spacing: 5,
+                                          children: [
+                                            // Icon(Icons.wallet_giftcard,
+                                            //     size: 14,
+                                            //     color: Color(0XFF55CBCD)),
+                                            Text(
+                                              TextConstants.cashbackFee,
+                                              style: TextStyle(
+                                                color: Color(0XFF55CBCD),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        Text(
+                                          "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
+                                          style: TextStyle(
+                                            color: Color(0XFF55CBCD),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  // ShaderMask(
+                                  //   shaderCallback: (Rect bounds) {
+                                  //     return LinearGradient(
+                                  //       begin: Alignment.centerLeft,
+                                  //       end: Alignment.centerRight,
+                                  //       colors: themeHelper.themeMode ==
+                                  //           ThemeMode.dark
+                                  //           ? [
+                                  //         Colors.white.withOpacity(0.1),
+                                  //         Colors.white.withOpacity(0.7),
+                                  //         Colors.white.withOpacity(0.1),
+                                  //       ]
+                                  //           : [
+                                  //         Colors.black.withOpacity(0.1),
+                                  //         Colors.black.withOpacity(0.7),
+                                  //         Colors.black.withOpacity(0.1),
+                                  //       ],
+                                  //       stops: const [0.0, 0.5, 1.0],
+                                  //     ).createShader(bounds);
+                                  //   },
+                                  //   blendMode: BlendMode.srcIn,
+                                  //   child: DottedLine(
+                                  //     dashLength: 6,
+                                  //     dashGapLength: 4,
+                                  //     lineThickness: 1,
+                                  //     direction: Axis.horizontal,
+                                  //     dashColor: themeHelper.themeMode ==
+                                  //         ThemeMode.dark
+                                  //         ? Colors.white
+                                  //         : Colors
+                                  //         .black, // ✅ ensures gradient works correctly
+                                  //   ),
+                                  // ),
+                                  // SizedBox(height: 2),
+                                  // Row(
+                                  //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  //   crossAxisAlignment: CrossAxisAlignment.center,
+                                  //   children: [
+                                  //     Text(TextConstants.taxText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12,color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 : Colors.grey),),
+                                  //     Text("${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}", //Build #1.0.92: removed minus "-"
+                                  //         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 :Colors.grey)),
+                                  //   ],
+                                  // ),
+                                  // SizedBox(height: 2),
+                                  // ShaderMask(
+                                  //   shaderCallback: (Rect bounds) {
+                                  //     return LinearGradient(
+                                  //       begin: Alignment.centerLeft,
+                                  //       end: Alignment.centerRight,
+                                  //       colors: themeHelper.themeMode ==
+                                  //           ThemeMode.dark
+                                  //           ? [
+                                  //         Colors.white.withOpacity(0.1),
+                                  //         Colors.white.withOpacity(0.7),
+                                  //         Colors.white.withOpacity(0.1),
+                                  //       ]
+                                  //           : [
+                                  //         Colors.black.withOpacity(0.1),
+                                  //         Colors.black.withOpacity(0.7),
+                                  //         Colors.black.withOpacity(0.1),
+                                  //       ],
+                                  //       stops: const [0.0, 0.5, 1.0],
+                                  //     ).createShader(bounds);
+                                  //   },
+                                  //   blendMode: BlendMode.srcIn,
+                                  //   child: DottedLine(
+                                  //     dashLength: 6,
+                                  //     dashGapLength: 4,
+                                  //     lineThickness: 1,
+                                  //     direction: Axis.horizontal,
+                                  //     dashColor: themeHelper.themeMode ==
+                                  //         ThemeMode.dark
+                                  //         ? Colors.white
+                                  //         : Colors
+                                  //         .black, // ✅ ensures gradient works correctly
+                                  //   ),
+                                  // ),
+                                  // SizedBox(height: 2),
+                                  // Row(
+                                  //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  //   crossAxisAlignment: CrossAxisAlignment.center,
+                                  //   children: [
+                                  //     Text(TextConstants.netPayable, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
+                                  //     Text("${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
+                                  //         style: TextStyle(fontWeight: FontWeight.bold, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
+                                  //   ],
+                                  // ),
                                 ],
                               ),
-                            // ShaderMask(
-                            //   shaderCallback: (Rect bounds) {
-                            //     return LinearGradient(
-                            //       begin: Alignment.centerLeft,
-                            //       end: Alignment.centerRight,
-                            //       colors: themeHelper.themeMode ==
-                            //           ThemeMode.dark
-                            //           ? [
-                            //         Colors.white.withOpacity(0.1),
-                            //         Colors.white.withOpacity(0.7),
-                            //         Colors.white.withOpacity(0.1),
-                            //       ]
-                            //           : [
-                            //         Colors.black.withOpacity(0.1),
-                            //         Colors.black.withOpacity(0.7),
-                            //         Colors.black.withOpacity(0.1),
-                            //       ],
-                            //       stops: const [0.0, 0.5, 1.0],
-                            //     ).createShader(bounds);
-                            //   },
-                            //   blendMode: BlendMode.srcIn,
-                            //   child: DottedLine(
-                            //     dashLength: 6,
-                            //     dashGapLength: 4,
-                            //     lineThickness: 1,
-                            //     direction: Axis.horizontal,
-                            //     dashColor: themeHelper.themeMode ==
-                            //         ThemeMode.dark
-                            //         ? Colors.white
-                            //         : Colors
-                            //         .black, // ✅ ensures gradient works correctly
-                            //   ),
-                            // ),
-                            // SizedBox(height: 2),
-                            // Row(
-                            //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            //   crossAxisAlignment: CrossAxisAlignment.center,
-                            //   children: [
-                            //     Text(TextConstants.taxText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12,color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 : Colors.grey),),
-                            //     Text("${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}", //Build #1.0.92: removed minus "-"
-                            //         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: themeHelper.themeMode == ThemeMode.dark ? Colors.white54 :Colors.grey)),
-                            //   ],
-                            // ),
-                            // SizedBox(height: 2),
-                            // ShaderMask(
-                            //   shaderCallback: (Rect bounds) {
-                            //     return LinearGradient(
-                            //       begin: Alignment.centerLeft,
-                            //       end: Alignment.centerRight,
-                            //       colors: themeHelper.themeMode ==
-                            //           ThemeMode.dark
-                            //           ? [
-                            //         Colors.white.withOpacity(0.1),
-                            //         Colors.white.withOpacity(0.7),
-                            //         Colors.white.withOpacity(0.1),
-                            //       ]
-                            //           : [
-                            //         Colors.black.withOpacity(0.1),
-                            //         Colors.black.withOpacity(0.7),
-                            //         Colors.black.withOpacity(0.1),
-                            //       ],
-                            //       stops: const [0.0, 0.5, 1.0],
-                            //     ).createShader(bounds);
-                            //   },
-                            //   blendMode: BlendMode.srcIn,
-                            //   child: DottedLine(
-                            //     dashLength: 6,
-                            //     dashGapLength: 4,
-                            //     lineThickness: 1,
-                            //     direction: Axis.horizontal,
-                            //     dashColor: themeHelper.themeMode ==
-                            //         ThemeMode.dark
-                            //         ? Colors.white
-                            //         : Colors
-                            //         .black, // ✅ ensures gradient works correctly
-                            //   ),
-                            // ),
-                            // SizedBox(height: 2),
-                            // Row(
-                            //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            //   crossAxisAlignment: CrossAxisAlignment.center,
-                            //   children: [
-                            //     Text(TextConstants.netPayable, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
-                            //     Text("${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
-                            //         style: TextStyle(fontWeight: FontWeight.bold, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight)),
-                            //   ],
-                            // ),
-                          ],
-                        ),
-                      )
+                            )
                           : SizedBox.shrink(),
                     ),
                   if (tabs.isNotEmpty)
                     GestureDetector(
                       onTap: isKeyboardVisible ? null : _toggleSummary,
                       child: Container(
-                        margin: const EdgeInsets.only(top: 0, right: 6, left: 6),
+                        margin:
+                            const EdgeInsets.only(top: 0, right: 6, left: 6),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.only(bottomRight: Radius.circular(8), bottomLeft: Radius.circular(8)),
+                          borderRadius: BorderRadius.only(
+                              bottomRight: Radius.circular(8),
+                              bottomLeft: Radius.circular(8)),
                           color: themeHelper.themeMode == ThemeMode.dark
                               ? const Color(
-                              0xFF2A2C36) // ✅ dark mode background 393C48
+                                  0xFF2A2C36) // ✅ dark mode background 393C48
                               : Colors.grey.shade300,
                           boxShadow: [
                             // Shadow at the bottom
@@ -4280,18 +4721,18 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                             ),
                           ],
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 5),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text("${TextConstants.totalItemsText}: $totalItems",
-                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                style: TextStyle(
+                                    fontSize: 14, fontWeight: FontWeight.bold)),
                             Row(
                               children: [
                                 Text(
-                                  'Amount: ${netPayable < 0
-                                      ? '-${TextConstants.currencySymbol}${netPayable.abs().toStringAsFixed(2)}'
-                                      : '${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}'}',
+                                  'Amount: ${netPayable < 0 ? '-${TextConstants.currencySymbol}${netPayable.abs().toStringAsFixed(2)}' : '${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}'}',
                                   style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.bold,
@@ -4305,7 +4746,6 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                                 ),
                               ],
                             ),
-
                           ],
                         ),
                       ),
@@ -4314,383 +4754,320 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                   // Payment button - outside the container
                   if (tabs.isNotEmpty)
                     Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 6),
                       width: double.infinity,
                       height: MediaQuery.of(context).size.height * 0.0585,
-                      // 👇 outer container adds shadow
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(8),
+                        // Uncomment below if you want shadow
                         // boxShadow: [
                         //   BoxShadow(
                         //     color: Colors.black.withOpacity(0.5),
-                        //     offset: const Offset(0, 4), // push shadow downward
-                        //     blurRadius: 4, // soft, natural spread
-                        //     spreadRadius: 0, // makes shadow fuller
+                        //     offset: const Offset(0, 4),
+                        //     blurRadius: 4,
+                        //     spreadRadius: 0,
                         //   ),
                         // ],
                       ),
-                      //Build 1.1.36: on pay tap calling updateOrderProducts api call
                       child: ElevatedButton(
-                        onPressed: orderItems.isNotEmpty
+                        onPressed: (orderItems.isNotEmpty && !_isPayBtnLoading)
                             ? () async {
-                          setState(() => _isPayBtnLoading = true);
+                                if (kDebugMode) {
+                                  debugPrint(" CHECK OUT BUTTON CLICKED ");
+                                }
 
-                          try {
-                            int? serverOrderId;
+                                setState(() => _isPayBtnLoading = true);
 
-                            // =======================================================
-                            // 🔹 LOAD VALUES FOR SUMMARY
-                            // =======================================================
-                            final box = Hive.box('offlineOrders');
-                            final hiveKey = orderHelper.activeOrderId.toString();
+                                try {
+                                  int? serverOrderId;
 
-                            double totalEbtAfterDiscount = 0.0;
+                                  // =======================================================
+                                  // 🔹 LOAD VALUES FOR SUMMARY
+                                  // =======================================================
+                                  final box = Hive.box('offlineOrders');
+                                  final hiveKey =
+                                      orderHelper.activeOrderId.toString();
 
-                            final double discountAmount =
-                            (box.get(hiveKey)?["discount_amount"] ?? 0.0).toDouble();
+                                  double totalEbtAfterDiscount = 0.0;
 
-                            // =======================================================
-                            // 🔹 PREPARE CART FOR ENGINE
-                            // =======================================================
-                            final List<Map<String, dynamic>> cartItems =
-                            orderItems
-                                .where((item) =>
-                            item['product_id'] != null &&
-                                (item['product_id'] as int) > 0)
-                                .map((item) {
-                              return {
-                                'product_id': item['product_id'],
-                                'price': item['item_price'],
-                                'qty': item['items_count'],
-                              };
-                            }).toList();
+                                  final double discountAmount =
+                                      (box.get(hiveKey)?["discount_amount"] ??
+                                              0.0)
+                                          .toDouble();
 
+                                  // =======================================================
+                                  // 🔹 PREPARE CART FOR ENGINE
+                                  // =======================================================
+                                  final List<Map<String, dynamic>> cartItems =
+                                      orderItems
+                                          .where((item) =>
+                                              item['product_id'] != null &&
+                                              (item['product_id'] as int) > 0)
+                                          .map((item) {
+                                    return {
+                                      'product_id': item['product_id'],
+                                      'price': item['item_price'],
+                                      'qty': item['items_count'],
+                                    };
+                                  }).toList();
 
-                            // =======================================================
-                            // 🔥 CALL DISCOUNT ENGINE
-                            // =======================================================
-                            final engineDiscounts =
-                            await DiscountEngine.applyAll(AppDB.isar, cartItems);
+                                  // =======================================================
+                                  // 🔥 CALL DISCOUNT ENGINE
+                                  // =======================================================
+                                  final engineDiscounts =
+                                      await DiscountEngine.applyAll(
+                                          AppDB.isar, cartItems);
 
-                            if (kDebugMode) {
-                              print("🔥 ENGINE RESULT MAP = $engineDiscounts");
-                            }
+                                  if (kDebugMode) {
+                                    print(
+                                        "🔥 ENGINE RESULT MAP = $engineDiscounts");
+                                  }
 
-                            // if (engineDiscounts.isEmpty) {
-                            //   ScaffoldMessenger.of(context).showSnackBar(
-                            //     const SnackBar(
-                            //       content:
-                            //       Text("Discount engine failed. Please retry checkout."),
-                            //       backgroundColor: Colors.red,
-                            //     ),
-                            //   );
-                            //   return;
-                            // }
+                                  // =======================================================
+                                  // 🔥 APPLY + NORMALIZE ENGINE RESULTS (ONCE)
+                                  // =======================================================
+                                  setState(() {
+                                    orderItems = orderItems.map((item) {
+                                      final dynamic rawPid = item['product_id'];
+                                      final int? pid = rawPid != null
+                                          ? int.tryParse(rawPid.toString())
+                                          : null;
 
-                            // =======================================================
-                            // 🔥 APPLY + NORMALIZE ENGINE RESULTS (ONCE)
-                            // =======================================================
-                            setState(() {
-                              orderItems = orderItems.map((item) {
-                                final dynamic rawPid = item['product_id'];
+                                      final engineResult = pid != null
+                                          ? engineDiscounts[pid]
+                                          : null;
 
-                                final int? pid =
-                                rawPid != null ? int.tryParse(rawPid.toString()) : null;
+                                      return {
+                                        ...item,
+                                        'auto_discount':
+                                            engineResult?.amount ?? 0.0,
+                                        'discount_type':
+                                            engineResult?.ruleType ?? '',
+                                        'discount_source': engineResult != null
+                                            ? 'engine'
+                                            : '',
+                                        'rule_id': engineResult?.ruleId ?? '',
+                                      };
+                                    }).toList();
+                                  });
 
-// ✅ Engine applies ONLY when pid is NOT null
-                                final engineResult =
-                                pid != null ? engineDiscounts[pid] : null;
+                                  // =======================================================
+                                  // 🔹 CALCULATE TAX & TOTALS
+                                  // =======================================================
+                                  double totalTaxAfterDiscount = 0.0;
+                                  final List<Tax> taxList =
+                                      await _assetDBHelper.getTaxList();
 
+                                  for (final item in orderItems) {
+                                    final int productId = int.tryParse(
+                                            item['product_id']?.toString() ??
+                                                '0') ??
+                                        0;
+                                    final double price =
+                                        (item['item_price'] as num?)
+                                                ?.toDouble() ??
+                                            0.0;
+                                    final int qty =
+                                        (item['items_count'] as num?)
+                                                ?.toInt() ??
+                                            1;
+                                    final double autoDiscount =
+                                        (item['auto_discount'] as num?)
+                                                ?.toDouble() ??
+                                            0.0;
 
-                                return {
-                                  ...item,
-                                  'auto_discount': engineResult?.amount ?? 0.0,
-                                  'discount_type': engineResult?.ruleType ?? '',
-                                  'discount_source': engineResult != null ? 'engine' : '',
-                                  'rule_id': engineResult?.ruleId ?? '',
-                                };
-                              }).toList();
-                            });
+                                    final double discountedUnitPrice =
+                                        (price * qty - autoDiscount) / qty;
 
-                            if (kDebugMode) {
-                              print("🧾 NORMALIZED ORDER ITEMS");
-                              for (final item in orderItems) {
-                                print(
-                                  "item=${item['item_name']} | "
-                                      "pid=${item['product_id']} | "
-                                      "qty=${item['items_count']} | "
-                                      "price=${item['item_price']} | "
-                                      "autoDisc=${item['auto_discount']} | "
-                                      "type=${item['discount_type']} | "
-                                      "source=${item['discount_source']} | "
-                                      "rule=${item['rule_id']}",
-                                );
+                                    double itemTax = 0.0;
+                                    if (productId > 0) {
+                                      itemTax = getProductTaxFromHive(
+                                          productId, discountedUnitPrice, qty);
+                                    } else if (item['item_type'] == 'custom') {
+                                      itemTax = getCustomItemTax(
+                                        taxClass: item['tax_class'] ?? '',
+                                        unitPrice: discountedUnitPrice,
+                                        qty: qty,
+                                        taxes: taxList,
+                                        taxRate: item['tax_rate'],
+                                      );
+                                    }
+
+                                    totalTaxAfterDiscount += itemTax;
+                                    item['tax_after_discount'] = itemTax;
+                                  }
+
+                                  for (final item in orderItems) {
+                                    final double price =
+                                        (item['item_price'] as num?)
+                                                ?.toDouble() ??
+                                            0.0;
+                                    final int qty =
+                                        (item['items_count'] as num?)
+                                                ?.toInt() ??
+                                            1;
+                                    final double autoDiscount =
+                                        (item['auto_discount'] as num?)
+                                                ?.toDouble() ??
+                                            0.0;
+
+                                    final double discountedUnitPrice =
+                                        (price * qty - autoDiscount) / qty;
+
+                                    if (item['is_ebt_eligible'] == true) {
+                                      totalEbtAfterDiscount +=
+                                          discountedUnitPrice * qty;
+                                    }
+                                  }
+
+                                  double grossAfterDiscount =
+                                      orderItems.fold(0.0, (sum, item) {
+                                    final double price =
+                                        (item['item_price'] as num?)
+                                                ?.toDouble() ??
+                                            0.0;
+                                    final int qty = item['items_count'] ?? 1;
+                                    final double autoDiscount =
+                                        (item['auto_discount'] as num?)
+                                                ?.toDouble() ??
+                                            0.0;
+                                    return sum + ((price * qty) - autoDiscount);
+                                  });
+                                  grossAfterDiscount = double.parse(
+                                      grossAfterDiscount.toStringAsFixed(2));
+
+                                  // =======================================================
+                                  // 🔒 FREEZE SNAPSHOT FOR SUMMARY
+                                  // =======================================================
+                                  final List<Map<String, dynamic>>
+                                      summaryItems = orderItems
+                                          .map((e) =>
+                                              Map<String, dynamic>.from(e))
+                                          .toList();
+
+                                  // =======================================================
+                                  // 🔹 SAVE TO HIVE
+                                  // =======================================================
+                                  final localKey =
+                                      orderHelper.activeOrderId.toString();
+                                  final existingLocal = box.get(localKey);
+                                  if (existingLocal != null) {
+                                    final updated = Map<String, dynamic>.from(
+                                        existingLocal);
+                                    updated['items'] = orderItems.map((item) {
+                                      return {
+                                        ...item,
+                                        "discount_meta": {
+                                          "amount":
+                                              (item['auto_discount'] as num?)
+                                                      ?.toDouble() ??
+                                                  0.0,
+                                          "type": item['discount_type'] ?? "",
+                                          "source":
+                                              item['discount_source'] ?? "",
+                                          "rule_id": item['rule_id'] ?? "",
+                                        },
+                                      };
+                                    }).toList();
+
+                                    updated['products'] =
+                                        (updated['products'] as List)
+                                            .map((product) {
+                                      final pid = product['product_id'];
+                                      final matchedItem = orderItems.firstWhere(
+                                        (i) => i['product_id'] == pid,
+                                        orElse: () => {},
+                                      );
+                                      if (matchedItem.isEmpty) return product;
+                                      return {
+                                        ...product,
+                                        "discount_meta": {
+                                          "amount":
+                                              (matchedItem['auto_discount']
+                                                          as num?)
+                                                      ?.toDouble() ??
+                                                  0.0,
+                                          "type":
+                                              matchedItem['discount_type'] ??
+                                                  "",
+                                          "source":
+                                              matchedItem['discount_source'] ??
+                                                  "",
+                                          "rule_id":
+                                              matchedItem['rule_id'] ?? "",
+                                        },
+                                      };
+                                    }).toList();
+
+                                    await box.put(localKey, updated);
+                                  }
+
+                                  // =======================================================
+                                  // 🔹 UPDATE OFFLINE TAX & CUSTOMER DISPLAY
+                                  // =======================================================
+                                  await updateOfflineOrderTaxAndCashback(
+                                      orderHelper.activeOrderId.toString(),
+                                      totalTaxAfterDiscount,
+                                      cashbackFee);
+                                  await CustomerDisplayHelper
+                                      .updateCustomerDisplay(
+                                          orderHelper.activeOrderId!,
+                                          summaryEnabled: true);
+
+                                  // =======================================================
+                                  // 🔹 NAVIGATE TO SUMMARY SCREEN
+                                  // =======================================================
+                                  final result = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => OrderSummaryScreen(
+                                        formattedDate: displayDate,
+                                        formattedTime: displayTime,
+                                        orderItems: summaryItems,
+                                        grossTotal: grossAfterDiscount,
+                                        orderDiscount: orderDiscount,
+                                        merchantDiscount: merchantDiscount,
+                                        orderTax: totalTaxAfterDiscount,
+                                        netPayable: (grossAfterDiscount +
+                                            totalTaxAfterDiscount),
+                                        orderId: serverOrderId ??
+                                            orderHelper.activeOrderId,
+                                        isOfflineSynced: serverOrderId != null,
+                                        offlineOrderId:
+                                            orderHelper.activeOrderId,
+                                        cashbackFee: cashbackFee,
+                                        ebtAmount: totalEbtAfterDiscount,
+                                        discountAmount: discountAmount,
+                                      ),
+                                    ),
+                                  );
+
+                                  if (result == TextConstants.refresh) {
+                                    setState(() {
+                                      OrderHelper.isOrderPanelLoaded = false;
+                                      fetchOrdersData();
+                                    });
+                                  }
+                                } catch (e, s) {
+                                  debugPrint("❌ Error syncing order: $e");
+                                  debugPrint("$s");
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text("Failed to sync order")),
+                                  );
+                                } finally {
+                                  if (mounted) {
+                                    setState(() => _isPayBtnLoading = false);
+                                  }
+                                }
                               }
-                            }
-                            double totalTaxAfterDiscount = 0.0;
-
-                            debugPrint("🧮 ===== TAX CALCULATION START =====");
-
-                            final List<Tax> taxList = await _assetDBHelper.getTaxList();
-
-
-                            for (final item in orderItems) {
-                              final int productId =
-                                  int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
-
-                              final double price =
-                                  (item['item_price'] as num?)?.toDouble() ?? 0.0;
-
-                              final int qty =
-                                  (item['items_count'] as num?)?.toInt() ?? 1;
-
-                              final double autoDiscount =
-                                  (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
-
-                              // ✅ DISCOUNT FIRST (COMMON FOR ALL)
-                              final double discountedUnitPrice =
-                                  (price * qty - autoDiscount) / qty;
-
-
-                              double itemTax = 0.0;
-
-                              if (productId > 0) {
-                                // 🟢 REAL PRODUCT TAX
-                                itemTax = getProductTaxFromHive(
-                                  productId,
-                                  discountedUnitPrice,
-                                  qty,
-                                );
-                              } else if (item['item_type'] == 'custom') {
-                                // 🟣 CUSTOM ITEM TAX
-                                itemTax = getCustomItemTax(
-                                  taxClass: item['tax_class'] ?? '',
-                                  unitPrice: discountedUnitPrice,
-                                  qty: qty,
-                                  taxes: taxList,
-                                  taxRate: item['tax_rate'],
-                                );
-                              }
-
-                              // ✅ ADD BOTH TO TOTAL
-                              totalTaxAfterDiscount += itemTax;
-
-
-                              // 🔒 STORE FOR SUMMARY
-                              item['tax_after_discount'] = itemTax;
-
-                              debugPrint("""
-🧾 ITEM TAX BREAKDOWN
-  name              : ${item['item_name']}
-  type              : ${item['item_type']}
-  productId         : $productId
-  unitPrice         : $price
-  qty               : $qty
-  autoDiscount      : $autoDiscount
-  discountedUnit    : ${discountedUnitPrice.toStringAsFixed(4)}
-  itemTax           : ${itemTax.toStringAsFixed(2)}
-""");
-                            }
-
-                            debugPrint(
-                              "🧮 TOTAL TAX AFTER DISCOUNT → ${totalTaxAfterDiscount.toStringAsFixed(2)}",
-                            );
-                            debugPrint("🧮 ===== TAX CALCULATION END =====");
-
-                            for (final item in orderItems) {
-                              final double price =
-                                  (item['item_price'] as num?)?.toDouble() ?? 0.0;
-
-                              final int qty =
-                                  (item['items_count'] as num?)?.toInt() ?? 1;
-
-                              final double autoDiscount =
-                                  (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
-
-                              final double discountedUnitPrice =
-                                  (price * qty - autoDiscount) / qty;
-
-                              final bool isEbtEligible = item['is_ebt_eligible'] == true;
-
-                              if (isEbtEligible) {
-                                totalEbtAfterDiscount += discountedUnitPrice * qty;
-                              }
-                            }
-
-                            double grossAfterDiscount = 0.0;
-
-                            for (final item in orderItems) {
-                              final double price =
-                                  (item['item_price'] as num?)?.toDouble() ?? 0.0;
-                              final int qty = item['items_count'] ?? 1;
-                              final double autoDiscount =
-                                  (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
-
-                              final double lineTotal = (price * qty) - autoDiscount;
-
-                              grossAfterDiscount += lineTotal;
-                            }
-
-                            grossAfterDiscount =
-                                double.parse(grossAfterDiscount.toStringAsFixed(2));
-
-
-                            // =======================================================
-                            // 🔒 FREEZE ENGINE SNAPSHOT (🔥 THIS IS THE FIX 🔥)
-                            // =======================================================
-                            final List<Map<String, dynamic>> summaryItems =
-                            orderItems.map((e) => Map<String, dynamic>.from(e)).toList();
-
-                            if (kDebugMode) {
-                              print("🧊 [ENGINE SNAPSHOT – FROZEN]");
-                              for (final item in summaryItems) {
-                                print(
-                                  "name=${item['item_name']} | "
-                                      "disc=${item['auto_discount']} | "
-                                      "type=${item['discount_type']}",
-                                );
-                              }
-                            }
-
-                            // =======================================================
-                            // 🔹 SAVE ORDER TO HIVE (CAN MUTATE orderItems SAFELY)
-                            // =======================================================
-                            final localKey = orderHelper.activeOrderId.toString();
-                            final existingLocal = box.get(localKey);
-
-                            if (existingLocal != null) {
-                              final updated = Map<String, dynamic>.from(existingLocal);
-
-                              // ✅ 1. UPDATE ITEMS (you already do this)
-                              updated['items'] = orderItems.map((item) {
-                                return {
-                                  ...item,
-                                  "discount_meta": {
-                                    "amount": (item['auto_discount'] as num?)?.toDouble() ?? 0.0,
-                                    "type": item['discount_type'] ?? "",
-                                    "source": item['discount_source'] ?? "",
-                                    "rule_id": item['rule_id'] ?? "",
-                                  },
-                                };
-                              }).toList();
-
-                              // ✅ 2. UPDATE PRODUCTS (THIS WAS MISSING)
-                              updated['products'] = (updated['products'] as List).map((product) {
-                                final pid = product['product_id'];
-
-                                final matchedItem = orderItems.firstWhere(
-                                      (i) => i['product_id'] == pid,
-                                  orElse: () => {},
-                                );
-
-                                if (matchedItem.isEmpty) return product;
-
-                                return {
-                                  ...product,
-                                  "discount_meta": {
-                                    "amount": (matchedItem['auto_discount'] as num?)?.toDouble() ?? 0.0,
-                                    "type": matchedItem['discount_type'] ?? "",
-                                    "source": matchedItem['discount_source'] ?? "",
-                                    "rule_id": matchedItem['rule_id'] ?? "",
-                                  },
-                                };
-                              }).toList();
-
-                              await box.put(localKey, updated);
-                            }
-
-
-                            // // =======================================================
-                            // // 🔥 UPDATE CUSTOMER DISPLAY (MAY REBUILD OFFLINE DATA)
-                            // // =======================================================
-                            // await CustomerDisplayHelper.updateCustomerDisplay(
-                            //   orderHelper.activeOrderId!,
-                            // );
-
-                            // =======================================================
-                            // ⭐ CALCULATE TOTAL ENGINE DISCOUNT
-                            // =======================================================
-                            double totalAutoDiscount = 0.0;
-                            for (final item in orderItems) {
-                              totalAutoDiscount +=
-                                  (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
-                            }
-
-                            debugPrint("""
-💰 [CHECKOUT] Saving cashback to Hive
-  orderId       : ${orderHelper.activeOrderId}
-  tax            : $totalTaxAfterDiscount
-  cashback_fee   : $cashbackFee
-""");
-
-                            await updateOfflineOrderTaxAndCashback(
-                              orderHelper.activeOrderId.toString(),
-                              totalTaxAfterDiscount,   // ✅ FINAL tax ONLY
-                              cashbackFee,
-
-                            );
-                            await CustomerDisplayHelper.updateCustomerDisplay(
-                              orderHelper.activeOrderId!,
-                              summaryEnabled: true,
-                            );
-
-                            final saved = Hive.box('offlineOrders')
-                                .get(orderHelper.activeOrderId.toString());
-
-                            debugPrint("🔍 [VERIFY HIVE DATA] $saved");
-
-
-                            // =======================================================
-                            // 🔹 NAVIGATE TO SUMMARY (USING SNAPSHOT)
-                            // =======================================================
-                            final result = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => OrderSummaryScreen(
-                                  formattedDate: displayDate,
-                                  formattedTime: displayTime,
-                                  orderItems: summaryItems,
-                                  grossTotal: grossAfterDiscount,
-                                  orderDiscount: orderDiscount,
-                                  merchantDiscount: merchantDiscount,
-                                  orderTax: totalTaxAfterDiscount,
-                                  netPayable:
-                                  (grossAfterDiscount + totalTaxAfterDiscount).toDouble(),
-
-                                  orderId: serverOrderId ?? orderHelper.activeOrderId,
-
-                                  isOfflineSynced: serverOrderId != null,
-
-                                  offlineOrderId: orderHelper.activeOrderId,
-                                  cashbackFee: cashbackFee,
-                                  ebtAmount: totalEbtAfterDiscount,
-                                  discountAmount: discountAmount,
-                                ),
-                              ),
-                            );
-
-                            if (result == TextConstants.refresh) {
-                              setState(() {
-                                OrderHelper.isOrderPanelLoaded = false;
-                                fetchOrdersData();
-                              });
-                            }
-                          } catch (e, s) {
-                            print("❌ Error syncing order: $e");
-                            print(s);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Failed to sync order")),
-                            );
-                          } finally {
-                            if (mounted) {
-                              setState(() => _isPayBtnLoading = false);
-                            }
-                          }
-                        }
-                            : null,
+                            : null, // disables button when no items or loading
                         style: ElevatedButton.styleFrom(
                           backgroundColor:
-                          orderItems.isNotEmpty ? const Color(0xFFFF6B6B) : Colors.grey,
+                              (orderItems.isNotEmpty && !_isPayBtnLoading)
+                                  ? const Color(0xFFFF6B6B)
+                                  : Colors.grey,
                           foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
@@ -4698,14 +5075,20 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
                           ),
                         ),
                         child: _isPayBtnLoading
-                            ? const CircularProgressIndicator(color: Colors.white)
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
                             : const Text(
-                          "Check Out",
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                        ),
+                                "Check Out",
+                                style: TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.w700),
+                              ),
                       ),
-
-
                     ),
                 ],
               ),
@@ -4715,6 +5098,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
       ],
     );
   }
+
   /// //Build #1.0.2 : Added showNumPadDialog if user tap on order layout list item
 // ========================
 // HIVE HELPER FUNCTIONS
@@ -4734,10 +5118,10 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
   }
 
   Future<void> updateOfflineOrderTaxAndCashback(
-      String orderId,
-      double finalTaxAfterDiscount,
-      double cashback,
-      ) async {
+    String orderId,
+    double finalTaxAfterDiscount,
+    double cashback,
+  ) async {
     final box = Hive.box('offlineOrders');
     final existing = box.get(orderId);
 
@@ -4754,8 +5138,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     updatedOrder["tax_discount"] =
         double.parse(finalTaxAfterDiscount.toStringAsFixed(2));
 
-    updatedOrder["cashback_fee"] =
-        double.parse(cashback.toStringAsFixed(2));
+    updatedOrder["cashback_fee"] = double.parse(cashback.toStringAsFixed(2));
 
     await box.put(orderId, updatedOrder);
 
@@ -4769,7 +5152,7 @@ class _RightOrderPanelState extends State<RightOrderPanel> with TickerProviderSt
     }
   }
 
-/// //Build #1.0.2 : Added showNumPadDialog if user tap on order layout list item
+  /// //Build #1.0.2 : Added showNumPadDialog if user tap on order layout list item
 
 // New method to show product edit screen (replace the existing showNumPadDialog)
 // void showProductEditScreen(BuildContext context, Map<String, dynamic> orderItem) {

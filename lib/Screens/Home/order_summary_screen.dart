@@ -6650,7 +6650,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                   // Payment options - make flexible
                   Expanded(
-                    flex: 1, // Give less space to payment options
+                    flex: 2, // Give less space to payment options
                     child: Container(
                       width: double.infinity,
                       padding:
@@ -6683,6 +6683,22 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           Column(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
+                              const SizedBox(height: 10),
+                        _buildCouponButton(
+                          TextConstants.generatecoupon,
+                          "assets/coupon.png",
+                          onTap: () async {
+                            if (offlineOrder == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text("No offline order found")),
+                              );
+                              return;
+                            }
+
+                            await _syncAndShowCouponPopup();
+                          },
+                        ),
+                        const SizedBox(height: 10),
                               /// ⭐ Redeem Points
                               _buildPaymentOptionButton(
                                 TextConstants.redeemPoints,
@@ -6888,6 +6904,168 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             ),
           ],
         ),
+      ),
+    );
+  }
+  Future<void> _syncAndShowCouponPopup() async {
+    if (_isProcessing) return;
+
+    setState(() => _isProcessing = true);
+
+    bool loaderOpen = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final response = await OrderRepository().CouponApply(offlineOrder!);
+
+      if (loaderOpen) {
+        Navigator.of(context).pop();
+        loaderOpen = false;
+      }
+
+      // 🔒 HARD GUARD
+      if (response == null || response is! Map<String, dynamic>) {
+        _showErrorPopup("Coupon applied but no response data received.");
+        return;
+      }
+
+      final coupons = response["coupons"] as List? ?? [];
+      if (coupons.isEmpty) {
+        _showErrorPopup("Coupon applied, but no coupon details returned.");
+        return;
+      }
+
+      final coupon = coupons.first;
+      final double discountAmount =
+          (coupon["amount"] as num?)?.toDouble() ?? 0.0;
+
+      setState(() {
+        couponValue     = discountAmount;
+        ebtTotal        = 0.0;
+        cashbackFee    = 0.0;
+        isCouponActive = true;
+      });
+
+      _showCouponResponsePopup(response);
+
+      final box = Hive.box('offlineOrders');
+
+// 🔑 always resolve order key safely
+      final String key =
+          offlineOrder?['id']?.toString() ??
+              offlineOrder?['order_id']?.toString() ??
+              offlineOrder?['local_order_id']?.toString() ??
+              "";
+
+// 🧠 merge with existing order
+      final Map<String, dynamic> existing =
+      box.containsKey(key)
+          ? Map<String, dynamic>.from(box.get(key))
+          : Map<String, dynamic>.from(offlineOrder!);
+
+// ✅ STORE coupon data for later payment success
+      existing["coupon_response"] = response;      // decoded Map
+      existing["coupon_applied"] = true;
+      existing["coupon_applied_at"] = DateTime.now().toIso8601String();
+      existing["coupon_amount"] = discountAmount;
+
+      await box.put(key, existing);
+
+      debugPrint("✅ Coupon saved in Hive for order $key");
+
+
+    } catch (e) {
+      if (loaderOpen) {
+        Navigator.of(context).pop();
+        loaderOpen = false;
+      }
+      _showErrorPopup("Something went wrong while applying coupon.");
+      debugPrint("❌ Coupon popup error: $e");
+    } finally {
+      setState(() => _isProcessing = false);
+    }
+  }
+
+
+
+  void _showErrorPopup(String message) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Error"),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCouponResponsePopup(Map<String, dynamic> response) {
+    final coupons = response["coupons"] as List? ?? [];
+    final coupon = coupons.isNotEmpty ? coupons.first : null;
+
+    showDialog(
+      context: context,
+      builder: (_) {
+        return AlertDialog(
+          title: const Text("Coupon Generated – Can Be Redeemed After Payment 🎉"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              //_row("Order Total", "\$${response["order_total"]}"),
+
+              if (coupon != null) ...[
+                _row("Coupon Code", coupon["code"]),
+                //_row("Discount Type", coupon["discount_type"]),
+                _row("Discount Amount", "\$${coupon["amount"]}"),
+
+                _row(
+                  "Min Order Amount",
+                  coupon["min_amount"] == null
+                      ? "No minimum"
+                      : "\$${coupon["min_amount"]}",
+                ),
+
+                _row(
+                  "Max Discount Amount",
+                  coupon["max_amount"] == null
+                      ? "No maximum"
+                      : "\$${coupon["max_amount"]}",
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("OK"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+
+  Widget _row(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(value),
+        ],
       ),
     );
   }
@@ -7286,7 +7464,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     return Container(
       width: MediaQuery.of(context).size.width * 0.240, // fixed width
-      height: ResponsiveLayout.getHeight(63),           // fixed height
+      height: ResponsiveLayout.getHeight(40),           // fixed height
       alignment: Alignment.centerLeft,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -7294,7 +7472,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           // 🔴 LEFT INDICATOR BAR (VERTICALLY CENTERED)
           Container(
             width: 4,
-            height: ResponsiveLayout.getHeight(45), // slightly taller for visual effect
+            height: ResponsiveLayout.getHeight(40), // slightly taller for visual effect
             decoration: BoxDecoration(
               color: leftBarColor,
               borderRadius: const BorderRadius.only(
@@ -7332,7 +7510,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Text(
                 amount,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(22),
+                  fontSize: ResponsiveLayout.getFontSize(15),
                   fontWeight: FontWeight.w700,
                   color: amountColor ??
                       (themeHelper.themeMode == ThemeMode.dark
@@ -9059,7 +9237,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     return Container(
       width: MediaQuery.of(context).size.width * 0.240,
-      height: ResponsiveLayout.getHeight(63),
+      height: ResponsiveLayout.getHeight(40),
       alignment: Alignment.centerLeft,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -9105,7 +9283,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Text(
                 amount,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(22),
+                  fontSize: ResponsiveLayout.getFontSize(15),
                   fontWeight: FontWeight.w700,
                   color: amountColor ??
                       (themeHelper.themeMode == ThemeMode.dark

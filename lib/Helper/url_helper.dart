@@ -121,6 +121,7 @@ class UrlMethodConstants {
   static const String productByCategories = "products-by-category"; // Build #1.0.21
   static const String payments = "payments";
   static const String orders = "orders";
+  static const String issuingCoupons = "issuing-coupons";
   static const String variations = "products"; // Used for variations endpoint
   static const String assets = "assets"; //Build #1.0.40
   static const String shifts = "shifts"; // Build #1.0.70
