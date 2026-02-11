@@ -6527,7 +6527,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       ),
                                       child: _buildPaymentAmountDisplay(
                                         TextConstants.balanceAmount,
-                                        '-${TextConstants.currencySymbol}${balanceAmount.abs().toStringAsFixed(2)}',
+                                        balanceAmount < 0
+                                            ? '-${TextConstants.currencySymbol}${balanceAmount.abs().toStringAsFixed(2)}'
+                                            : '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
                                         leftBarColor: const Color(0xFFE85C43),
                                         amountColor: themeHelper.themeMode == ThemeMode.dark
                                             ? Colors.white
