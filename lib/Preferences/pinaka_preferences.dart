@@ -46,7 +46,22 @@ class PinakaPreferences { // Build #1.0.7 , Naveen - added PinakaPreferences cod
     }
     return {};
   }
+  static Future<void> clearUserPreferences() async {
+    // Clear stored store info
+    await _prefs.remove('storeId');
+    await _prefs.remove('storeName');
+    await _prefs.remove('storeLogoUrl');
+    await _prefs.remove('storeBaseUrl');
 
+    // Clear layout selection
+    layoutSelectionNotifier.value = '';
+    await _prefs.remove(SharedPreferenceTextConstants.layoutSelection);
+
+    // Clear selected printer
+    await _prefs.remove(SharedPreferenceTextConstants.selectedPrinter);
+
+    if (kDebugMode) print("#### PinakaPreferences: User preferences cleared");
+  }
   /// Build #1.0.122: No need , now we are using DB saving code
   // saveThemeMode
   // Future<void> saveAppThemeMode(ThemeMode mode) async {

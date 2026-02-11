@@ -6,6 +6,7 @@ import 'package:pinaka_pos/Screens/Home/apps_dashboard_screen.dart';
 import 'package:pinaka_pos/Screens/Home/categories_screen.dart';
 import 'package:pinaka_pos/Screens/Home/fast_key_screen.dart';
 import 'package:pinaka_pos/Widgets/scanner_guard.dart';
+import 'package:pinaka_pos/Widgets/widget_topbar.dart';
 import 'package:provider/provider.dart';
 import 'package:quickalert/models/quickalert_animtype.dart';
 import 'package:quickalert/models/quickalert_type.dart';
@@ -958,91 +959,39 @@ class NavigationBar extends StatelessWidget {
                                 ),
                               ),
                               onPressed: () async {
-                                if (kDebugMode) {
-                                  print("Logout confirmed, initiating logout process");
-                                }
+                                if (kDebugMode) print("Logout confirmed, initiating logout process");
 
+                                // Show loader
                                 showDialog(
                                   context: context,
                                   barrierDismissible: false,
-                                  builder: (BuildContext context) {
-                                    logoutBloc.logoutStream.listen((response) async {
-                                      if (response.status == Status.COMPLETED) {
-                                        if (kDebugMode) {
-                                          print("Logout successful, navigating to LoginScreen");
-                                        }
+                                  builder: (_) => const Center(child: CircularProgressIndicator()),
+                                );
 
-                                        final storeInfo = PinakaPreferences.getLoggedInStore();
-                                        if (storeInfo.isNotEmpty) {
-                                          await CustomerDisplayHelper.updateWelcomeWithStore(
-                                            storeInfo['storeId']!,
-                                            storeInfo['storeName']!,
-                                            storeLogoUrl: storeInfo['storeLogoUrl'],
-                                            storeBaseUrl: storeInfo['storeBaseUrl'],
-                                          );
-                                        } else {
-                                          await CustomerDisplayService.showWelcome();
-                                        }
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              response.message ?? TextConstants.successfullyLogout,
-                                            ),
-                                            backgroundColor: Colors.green,
-                                            duration: const Duration(seconds: 2),
-                                          ),
-                                        );
+                                // 1️⃣ Logout user from DB
+                                await UserDbHelper().logout();
 
-                                        Navigator.of(context).pop(); // Close loader
-                                        ScannerGuard.isCouponPopupOpen = false; // 🔓 enable scanner
-                                        Navigator.pushReplacement(
-                                          context,
-                                          MaterialPageRoute(builder: (context) => LoginScreen()),
-                                        );
+                                // 2️⃣ Clear SharedPreferences
+                                await PinakaPreferences.clearUserPreferences();
 
-                                      } else if (response.status == Status.ERROR) {
-                                        if (response.message!.contains('Unauthorised')) {
-                                          if (kDebugMode) {
-                                            print("Nav bar -- Unauthorised : ${response.message!}");
-                                          }
-                                          Navigator.of(context).pop();
-                                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                                            Navigator.pushReplacement(
-                                              context,
-                                              MaterialPageRoute(builder: (context) => LoginScreen()),
-                                            );
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(
-                                                content: Text("Unauthorised. Session expired."),
-                                                backgroundColor: Colors.red,
-                                                duration: Duration(seconds: 2),
-                                              ),
-                                            );
-                                          });
-                                        } else {
-                                          if (kDebugMode) {
-                                            print("Logout failed: ${response.message}");
-                                          }
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                response.message ?? TextConstants.failedToLogout,
-                                              ),
-                                              backgroundColor: Colors.red,
-                                              duration: const Duration(seconds: 2),
-                                            ),
-                                          );
-                                          Navigator.of(context).pop();
-                                        }
-                                      }
-                                    });
+                                // 3️⃣ Clear TopBar cached user data 🔥 USE PUBLIC METHOD
+                                TopBar.clearUserCache();
 
-                                    logoutBloc.performLogout();
+                                // 4️⃣ Clear any other runtime cache
+                                // VendorData.clearAll();
 
-                                    return const Center(
-                                      child: CircularProgressIndicator(),
-                                    );
-                                  },
+                                if (kDebugMode) {
+                                  print("#### User data cleared during logout");
+                                }
+
+                                // 5️⃣ Close loader
+                                Navigator.of(context).pop();
+
+                                // 6️⃣ Navigate to login screen
+                                ScannerGuard.isCouponPopupOpen = false;
+                                Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => LoginScreen()),
                                 );
                               },
                               child: Text(

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
@@ -8,7 +7,6 @@ import 'package:hive/hive.dart';
 import 'package:isar/isar.dart';
 import 'package:pinaka_pos/Widgets/widget_variants_dialog.dart';
 import 'package:provider/provider.dart';
-
 import '../Blocs/Orders/order_bloc.dart';
 import '../Blocs/Search/product_search_bloc.dart';
 import '../Constants/text.dart';
@@ -31,7 +29,6 @@ import '../Utilities/responsive_layout.dart';
 import '../Utilities/svg_images_utility.dart';
 import 'ManualPriceDialog.dart';
 import 'OrderPopupHelper.dart';
-
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 
 enum Screen { FASTKEY, CATEGORY, ADD, ORDERS, APPS, SHIFT, SAFE, EDIT }
@@ -39,7 +36,6 @@ enum Screen { FASTKEY, CATEGORY, ADD, ORDERS, APPS, SHIFT, SAFE, EDIT }
 class _PinBoxField extends StatefulWidget {
   final TextEditingController controller;
   final bool hasError;
-
   const _PinBoxField({required this.controller, required this.hasError});
 
   @override
@@ -52,7 +48,6 @@ class _PinBoxFieldState extends State<_PinBoxField> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return SizedBox(
       height: 48,
       child: TextField(
@@ -97,13 +92,15 @@ class TopBar extends StatefulWidget {
   final Function() onModeChanged;
   final Function(ProductResponse)? onProductSelected;
   final Screen screen;
-
   const TopBar({
     required this.screen,
     required this.onModeChanged,
     this.onProductSelected,
     super.key,
   });
+  static void clearUserCache() {
+    _TopBarState.clearUserDataCache();
+  }
 
   @override
   State<TopBar> createState() => _TopBarState();
@@ -116,24 +113,33 @@ class _TopBarState extends State<TopBar> {
   Timer? _debounce;
   OverlayEntry? _overlayEntry;
   final _searchFieldKey = GlobalKey();
-
   final orderHelper = OrderHelper();
   late OrderBloc _orderBloc;
-
   bool isAddingItemLoading = false;
   int? userId;
   String? userRole;
   String? userDisplayName;
-
   bool _isSearchEnabled = true;
   var _printerSettings = PrinterSettings();
-
   List<dynamic> _cachedProducts = [];
   bool _cacheLoaded = false;
   final ProductBloc productBloc = ProductBloc(ProductRepository());
-
   bool _dialogOpen = false;
 
+  // 🔥 CACHED USER DATA - LOADED ONCE
+  static Map<String, dynamic>? _cachedUserData;
+  static bool _isUserDataLoaded = false;
+  static Future<Map<String, dynamic>?>? _initialUserFuture;
+
+  // 🔥 ADD THIS STATIC METHOD TO CLEAR CACHE
+  static void clearUserDataCache() {
+    _cachedUserData = null;
+    _isUserDataLoaded = false;
+    _initialUserFuture = null;
+    if (kDebugMode) {
+      print("🧹 TopBar user data cache cleared");
+    }
+  }
 
   @override
   void initState() {
@@ -141,10 +147,18 @@ class _TopBarState extends State<TopBar> {
     _orderBloc = OrderBloc(OrderRepository());
     _searchController.addListener(_onSearchChanged);
     _searchFocusNode.addListener(_onFocusChanged);
-    _fetchUserId();
     _isSearchEnabled = widget.screen != Screen.ORDERS && widget.screen != Screen.APPS;
-
     _loadCachedProducts();
+
+    // 🔥 LOAD USER DATA ONLY ONCE
+    if (!_isUserDataLoaded) {
+      _initialUserFuture = UserDbHelper().getUserData();
+      _initialUserFuture!.then((userData) {
+        _cachedUserData = userData;
+        _isUserDataLoaded = true;
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   @override
@@ -193,24 +207,19 @@ class _TopBarState extends State<TopBar> {
 
   void _onSearchChanged() {
     if (_debounce?.isActive ?? false) _debounce?.cancel();
-
     _debounce = Timer(const Duration(milliseconds: 350), () {
       final query = _searchController.text.toLowerCase();
-
       print('Search query: "$query"');
-
       if (query.isEmpty) {
         _removeOverlay();
         setState(() {});
         return;
       }
-
       if (_overlayEntry == null) {
         _showSearchResultsOverlay();
       } else {
         _overlayEntry?.markNeedsBuild();
       }
-
       setState(() {});
     });
   }
@@ -223,14 +232,11 @@ class _TopBarState extends State<TopBar> {
   }
 
   void _showSearchResultsOverlay() {
-    if (_overlayEntry != null || _dialogOpen) return; // 🔥 ADD THIS
-
+    if (_overlayEntry != null || _dialogOpen) return;
     final box = _searchFieldKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
-
     final offset = box.localToGlobal(Offset.zero);
     final size = box.size;
-
     _overlayEntry = OverlayEntry(
       builder: (context) {
         final theme = Provider.of<ThemeNotifier>(context);
@@ -270,23 +276,19 @@ class _TopBarState extends State<TopBar> {
         );
       },
     );
-
     Overlay.of(context).insert(_overlayEntry!);
   }
 
   Widget _buildLocalResultsList() {
     final query = _searchController.text.toLowerCase();
-
     if (!_cacheLoaded) return const Center(child: CircularProgressIndicator());
     if (_cachedProducts.isEmpty) return const Center(child: Text("No products in cache"));
-
     final Map<String, dynamic> unique = {};
     for (final p in _cachedProducts) {
       final name = (p["fast_key_item_name"] ?? "").toString().trim().toLowerCase();
       if (name.isEmpty || !name.contains(query)) continue;
       unique[name] = p;
     }
-
     final list = unique.values.toList()
       ..sort((a, b) {
         final na = (a["fast_key_item_name"] ?? "").toString().toLowerCase();
@@ -297,9 +299,7 @@ class _TopBarState extends State<TopBar> {
         if (!sa && sb) return 1;
         return na.compareTo(nb);
       });
-
     if (list.isEmpty) return const Center(child: Text("No products found"));
-
     return ListView.builder(
       shrinkWrap: true,
       itemCount: list.length,
@@ -307,7 +307,6 @@ class _TopBarState extends State<TopBar> {
         final p = list[i];
         final name = p["fast_key_item_name"]?.toString() ?? "Unknown";
         final price = p["fast_key_item_price"]?.toString() ?? "0.00";
-
         String? imageUrl;
         final imagesRaw = p["images"];
         if (imagesRaw != null) {
@@ -320,7 +319,6 @@ class _TopBarState extends State<TopBar> {
           }
         }
         imageUrl ??= p["fast_key_item_image"]?.toString();
-
         return ListTile(
           leading: SizedBox(
             width: 50,
@@ -338,7 +336,7 @@ class _TopBarState extends State<TopBar> {
             ),
           ),
           title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
-          subtitle: Text("\$${price}"),
+          subtitle: Text("$price"),
           onTap: () async {
             ProductResponse fullProduct = ProductResponse(
               id: int.tryParse(p["fast_key_product_id"]?.toString() ?? "0") ?? 0,
@@ -347,22 +345,19 @@ class _TopBarState extends State<TopBar> {
               sku: p["sku"]?.toString(),
               images: imageUrl != null ? [imageUrl] : [],
             );
-
             try {
               final isar = await IsarService.instance;
               final entries = await isar.isarCacheEntrys
                   .where()
                   .filter()
-                  .keyStartsWith("products_")
+                  .keyStartsWith("products*")
                   .findAll();
-
               for (final entry in entries) {
                 final List<dynamic> cached = jsonDecode(entry.json);
                 final match = cached.firstWhere(
                       (item) => item["fast_key_product_id"]?.toString() == p["fast_key_product_id"]?.toString(),
                   orElse: () => null,
                 );
-
                 if (match != null) {
                   final rawTags = match["tags"];
                   if (rawTags is List) {
@@ -380,7 +375,6 @@ class _TopBarState extends State<TopBar> {
             } catch (e) {
               debugPrint("Enrich product failed: $e");
             }
-
             _handleProductTap(fullProduct);
           },
         );
@@ -393,24 +387,18 @@ class _TopBarState extends State<TopBar> {
     final entries = await isar.isarCacheEntrys
         .where()
         .filter()
-        .keyStartsWith("products_")
+        .keyStartsWith("products*")
         .findAll();
-
     for (final entry in entries) {
       final List<dynamic> products = jsonDecode(entry.json);
-
       final match = products.firstWhere(
             (p) => p["fast_key_product_id"]?.toString() == productId.toString(),
         orElse: () => null,
       );
-
       if (match == null) continue;
-
       final rawVariations = match["variations"];
       if (rawVariations is! List || rawVariations.isEmpty) continue;
-
       final List<Map<String, dynamic>> variants = [];
-
       for (final v in rawVariations) {
         if (v is Map<String, dynamic>) {
           variants.add({
@@ -430,123 +418,88 @@ class _TopBarState extends State<TopBar> {
           });
         }
       }
-
       if (variants.isNotEmpty) return variants;
     }
-
     return [];
   }
 
-  // ──────────────────────────────────────────────────────────────
-  // FIXED VERSION – removes overlay before EVERY popup
-  // ──────────────────────────────────────────────────────────────
   Future<void> _handleProductTap(ProductResponse product) async {
     try {
       _searchFocusNode.unfocus();
       _removeOverlay();
-
       var screen = widget.screen;
       if (screen != Screen.FASTKEY && screen != Screen.CATEGORY && screen != Screen.ADD) {
         if (kDebugMode) print("TopBar - return from product selection (invalid screen)");
         return;
       }
-
-      // ✅ Ensure order exists (create or restore)
       final ensuredOrderId = await orderHelper?.ensureOrderExists();
-
       if (ensuredOrderId == null) {
         if (kDebugMode) {
           print("❌ Failed to create or restore order");
         }
-        return; // 🚫 Stop product add
+        return;
       }
-
       final offlineBox = Hive.box('offlineOrders');
       final activeOrderId = ensuredOrderId.toString();
-
       final Map<String, dynamic> rawOrder =
       Map<String, dynamic>.from(
         offlineBox.get(activeOrderId) ?? {},
       );
-
       print("CATEGORY FLOW ITEMS: ${rawOrder['products']}");
       print("LINE ITEMS: ${rawOrder['line_items']}");
-
       final List<dynamic> lineItems =
       List<dynamic>.from(rawOrder['line_items'] ?? []);
-
-      // ─── Age verification ────────────────────────────────────────
       final tags = product.tags ?? [];
       final bool hasAgeRestriction =
       tags.any((t) => t.name == TextConstants.age_restricted);
-
       SKU.Tags? ageRestrictedTag;
       if (hasAgeRestriction) {
         ageRestrictedTag =
             tags.firstWhere((t) => t.name == TextConstants.age_restricted);
       }
-
       final dynamic hiveAge = rawOrder["age_verified"];
       final bool alreadyVerified =
           hiveAge == true ||
               hiveAge == 1 ||
               hiveAge?.toString().toLowerCase() == "true";
-
       if (hasAgeRestriction && !alreadyVerified) {
         final int minAge =
             int.tryParse(ageRestrictedTag?.slug?.toString() ?? "0") ?? 0;
-
         print("🔞 Showing Age Verification Popup (SEARCH)");
-
-        _dialogOpen = true; // 🔥 LOCK SEARCH OVERLAY
-
+        _dialogOpen = true;
         _searchFocusNode.unfocus();
         _removeOverlay();
         await WidgetsBinding.instance.endOfFrame;
-
         final prov = AgeVerificationProvider();
         final ok = await prov.verifyAge(
           context,
           minAge: minAge,
         );
-
-        _dialogOpen = false; // 🔓 UNLOCK SEARCH OVERLAY
-
+        _dialogOpen = false;
         if (!ok) {
           print("❌ Age verification failed → Block product");
           return;
         }
-
         rawOrder["age_verified"] = true;
         await offlineBox.put(activeOrderId, rawOrder);
-
         print("💾 Saved age_verified = true for search flow");
       }
-
-
-      // ─── EBT eligibility ─────────────────────────────────────────
       bool isEbtEligible = false;
-
       try {
         final isar = await IsarService.instance;
-
         final cachedEntries = await isar.isarCacheEntrys
             .where()
             .filter()
-            .keyStartsWith("products_")
+            .keyStartsWith("products*")
             .findAll();
-
         for (final entry in cachedEntries) {
           final List<dynamic> products = jsonDecode(entry.json);
-
           final match = products.firstWhere(
                 (p) => p["fast_key_product_id"]?.toString() == product.id.toString(),
             orElse: () => null,
           );
-
           if (match != null) {
             isEbtEligible = match["is_ebt_eligible"] == true;
-
             if (kDebugMode) {
               print("🥗 EBT FOUND (ISAR) → ${match["fast_key_item_name"]} | Eligible: $isEbtEligible");
             }
@@ -558,56 +511,39 @@ class _TopBarState extends State<TopBar> {
           print("⚠️ Error resolving EBT eligibility (ISAR): $e");
         }
       }
-
-      // ─── Variable / variants logic ───────────────────────────────
-
       final double productPrice = (product.price is num)
           ? (product.price as num).toDouble()
           : double.tryParse(product.price?.toString() ?? "") ?? 0.0;
-
       double finalPrice = productPrice;
-
       final bool hasVariablePriceTag = tags.any((t) =>
       t.slug?.toLowerCase() == "variable-product" ||
           t.slug?.toLowerCase() == "variable" ||
           t.name?.toLowerCase() == "variable product" ||
           t.name?.toLowerCase() == "variable");
-
       List<Map<String, dynamic>> products = (rawOrder["products"] ?? [])
           .map<Map<String, dynamic>>((i) => Map<String, dynamic>.from(i))
           .toList();
-
-      final String variableKey = "variable_price_added_${product.id}";
-      final String savedPriceKey = "selected_price_${product.id}";
-
+      final String variableKey = "variable_price_added*${product.id}";
+      final String savedPriceKey = "selected_price*${product.id}";
       final bool popupAlreadyShown = rawOrder[variableKey] == true;
-
       if (popupAlreadyShown) {
         final savedPrice = rawOrder[savedPriceKey] ?? productPrice;
         finalPrice = double.tryParse(savedPrice.toString()) ?? productPrice;
       }
-
       bool hasVariants = false;
-
       final cachedVariants = await _getVariantsFromCache(product.id!);
       hasVariants = cachedVariants.isNotEmpty;
-
       if (!hasVariants) {
         productBloc.fetchProductVariations(product.id!);
         final response = await productBloc.variationStream
             .firstWhere((r) => r.status == Status.COMPLETED);
-
         hasVariants = response.data != null && response.data!.isNotEmpty;
       }
-
       if (hasVariants) {
         productBloc.fetchProductVariations(product.id!);
-
         final response = await productBloc.variationStream
             .firstWhere((r) => r.status == Status.COMPLETED);
-
         List<Map<String, dynamic>> variants = [];
-
         if (response.data != null && response.data!.isNotEmpty) {
           variants = response.data!.map((v) => {
             "id": v.id,
@@ -619,14 +555,10 @@ class _TopBarState extends State<TopBar> {
         } else {
           variants = cachedVariants;
         }
-
         if (variants.isEmpty) return;
-
-        // ─── FIX: Aggressive overlay removal before variants popup ───
         _removeOverlay();
         await Future.delayed(const Duration(milliseconds: 40));
         _removeOverlay();
-
         await showDialog(
           context: _context,
           barrierDismissible: false,
@@ -635,7 +567,6 @@ class _TopBarState extends State<TopBar> {
             variations: variants,
             onAddVariant: (selected, qty) async {
               final price = double.tryParse(selected["price"].toString()) ?? 0;
-
               await orderHelper.addItemToOrder(
                 selected["id"],
                 selected["name"],
@@ -651,11 +582,9 @@ class _TopBarState extends State<TopBar> {
                 onItemAdded: () {
                   _removeOverlay();
                   _clearSearch();
-
                   if (mounted) {
                     setState(() => isAddingItemLoading = false);
                   }
-
                   widget.onProductSelected?.call(product);
                 },
               );
@@ -663,41 +592,32 @@ class _TopBarState extends State<TopBar> {
             },
           ),
         );
-
         _removeOverlay();
         _clearSearch();
         setState(() => isAddingItemLoading = false);
         return;
       }
-
       if (hasVariablePriceTag && !popupAlreadyShown) {
-        // ─── FIX: Aggressive overlay removal before manual price popup ───
         _removeOverlay();
         await Future.delayed(const Duration(milliseconds: 40));
         _removeOverlay();
-
         final enteredPrice = await ManualPriceDialog.show(
           _context,
           productName: product.name ?? "Product",
           productImage: _getProductImage(product),
           minPrice: productPrice,
         );
-
         if (enteredPrice == null) return;
-
         finalPrice = enteredPrice;
         rawOrder[variableKey] = true;
         rawOrder[savedPriceKey] = finalPrice;
         await offlineBox.put(activeOrderId, rawOrder);
       }
-
       setState(() => isAddingItemLoading = true);
-
       try {
         final pid = product.id!;
         final psku = product.sku ?? '';
         final image = product.images?.isNotEmpty == true ? product.images!.first : '';
-
         await orderHelper.addItemToOrder(
           pid,
           product.name ?? 'Unknown',
@@ -938,7 +858,6 @@ class _TopBarState extends State<TopBar> {
   Widget build(BuildContext context) {
     _context = context;
     final themeHelper = Provider.of<ThemeNotifier>(context);
-
     return Container(
       color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.white,
       height: 70,
@@ -989,16 +908,12 @@ class _TopBarState extends State<TopBar> {
             onTap: () async {
               final isAuthorized = await _showCashDrawerPinPopup(context);
               if (!isAuthorized) return;
-
-              /// ✅ ACTUAL CASH DRAWER OPEN
               await PrinterSettings.openDrawer(context: context);
-
               List<int> bytes = [];
               final ticket = await _printerSettings.getTicket();
               bytes += ticket.feed(1);
               await _printerSettings.printTicket(bytes, ticket);
             },
-
             child: Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -1048,41 +963,127 @@ class _TopBarState extends State<TopBar> {
             child: Icon(Icons.notifications, size: 24, color: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black54),
           ),
           const SizedBox(width: 16),
-          Container(
-            height: 45,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-            decoration: BoxDecoration(
-              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.white,
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF3B3939) : const Color(0xFFF1F1F3)),
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 15,
-                  backgroundColor: Colors.deepPurple,
-                  child: Text(
-                    (userDisplayName ?? "Unknown").substring(0, 1),
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+          Builder(
+            builder: (context) {
+              final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);
+
+              if (!_isUserDataLoaded) {
+                return Container(
+                  height: 45,
+                  width: 150,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: themeHelper.themeMode == ThemeMode.dark
+                        ? ThemeNotifier.secondaryBackground
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? const Color(0xFF3B3939)
+                          : const Color(0xFFF1F1F3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 15,
+                        backgroundColor: Colors.deepPurple.shade200,
+                        child: const Text(
+                          "...",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 15),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 60,
+                            height: 12,
+                            color: Colors.grey.shade300,
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            width: 40,
+                            height: 10,
+                            color: Colors.grey.shade200,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              final userData = _cachedUserData;
+              if (userData == null) {
+                return const SizedBox(width: 150);
+              }
+
+              final displayName = userData[AppDBConst.userDisplayName] ?? "";
+              final role = userData[AppDBConst.userRole] ?? "Unknown";
+
+              return Container(
+                height: 45,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.secondaryBackground
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(
+                    color: themeHelper.themeMode == ThemeMode.dark
+                        ? const Color(0xFF3B3939)
+                        : const Color(0xFFF1F1F3),
                   ),
                 ),
-                const SizedBox(width: 15),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+                child: Row(
                   children: [
-                    Text(
-                      userDisplayName ?? "",
-                      style: TextStyle(fontWeight: FontWeight.w500, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight, fontSize: 14),
+                    CircleAvatar(
+                      radius: 15,
+                      backgroundColor: Colors.deepPurple,
+                      child: Text(
+                        displayName.isNotEmpty ? displayName[0] : "?",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
                     ),
-                    Text(
-                      userRole ?? "Unknown",
-                      style: TextStyle(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFFE09696) : const Color(0xFFE09696), fontSize: 12),
+                    const SizedBox(width: 15),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          displayName,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                            color: themeHelper.themeMode == ThemeMode.dark
+                                ? ThemeNotifier.textDark
+                                : ThemeNotifier.textLight,
+                            fontSize: 14,
+                          ),
+                        ),
+                        Text(
+                          role,
+                          style: const TextStyle(
+                            color: Color(0xFFE09696),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ],
       ),
