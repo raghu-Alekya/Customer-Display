@@ -6527,16 +6527,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       ),
                                       child: _buildPaymentAmountDisplay(
                                         TextConstants.balanceAmount,
-                                        '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
+                                        '-${TextConstants.currencySymbol}${balanceAmount.abs().toStringAsFixed(2)}',
                                         leftBarColor: const Color(0xFFE85C43),
                                         amountColor: themeHelper.themeMode == ThemeMode.dark
                                             ? Colors.white
                                             : Colors.black,
                                       ),
                                     ),
-
-
-
 
                                   SizedBox(height: ResponsiveLayout.getHeight(15)),
 
@@ -8438,7 +8435,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => CategoriesScreen()),
+            MaterialPageRoute(builder: (_) => FastKeyScreen()),
             result: TextConstants.refresh,
           );
         },
@@ -9091,7 +9088,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     Navigator.pushReplacement(
       result: TextConstants.refresh,
       context,
-      MaterialPageRoute(builder: (_) => CategoriesScreen()),
+      MaterialPageRoute(builder: (_) => FastKeyScreen()),
     );
 
     ScaffoldMessenger.of(context).showSnackBar(

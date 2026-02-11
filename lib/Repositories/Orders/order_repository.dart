@@ -97,11 +97,22 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
     // ---------- OFFLINE MODE ONLY ----------
     final box = Hive.box('offlineOrders');
+    // ---------- SMART 6-DIGIT ORDER ID ----------
 
-    // Generate a 4-digit order ID that increments each time
-    int lastOrderId = box.get('lastOrderId', defaultValue: 1000);
-    int newOrderId = lastOrderId + 1;
-    box.put('lastOrderId', newOrderId);
+    final now = DateTime.now();
+    String yearPart = (now.year % 100).toString().padLeft(2, '0');
+    int dayOfYear =
+        now.difference(DateTime(now.year, 1, 1)).inDays + 1;
+    String dayPart = dayOfYear.toString().padLeft(2, '0');
+    int totalSeconds =
+        now.hour * 3600 + now.minute * 60 + now.second;
+    String secondPart =
+    (totalSeconds % 100).toString().padLeft(2, '0');
+    String finalOrderIdStr = "$yearPart$dayPart$secondPart";
+
+    int newOrderId = int.parse(finalOrderIdStr);
+
+    print("Generated Order ID: $newOrderId");
 
     final localOrder = {
       'order_id': newOrderId,
@@ -1081,55 +1092,35 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
         print("🟢 Added Merchant Discount Product → $discountPid");
       }
-// ---------------------------------------------------------
-// ⭐ COUPON → GENERATED VOUCHERS META
-// ---------------------------------------------------------
-      final List<Map<String, dynamic>> generatedVouchers = [];
 
-      debugPrint("🎟 Checking coupon_response from offline order...");
-
-      if (couponResponse.isEmpty) {
-        debugPrint("ℹ️ No coupon_response found for this order");
-      } else {
-        debugPrint("🧾 coupon_response found → ${jsonEncode(couponResponse)}");
-
-        final coupons = couponResponse["coupons"] as List? ?? [];
-
-        debugPrint("🎫 Total coupons found: ${coupons.length}");
-
-        for (int i = 0; i < coupons.length; i++) {
-          final c = Map<String, dynamic>.from(coupons[i]);
-
-          final String code = c["code"]?.toString() ?? "";
-          final double amount =
-              double.tryParse(c["amount"]?.toString() ?? "0") ?? 0.0;
-          final String type = c["discount_type"]?.toString() ?? "fixed";
-          final String generatedAt =
-              c["created_at"]?.toString() ?? DateTime.now().toIso8601String();
-
-          debugPrint(
-            "➡️ Coupon[$i] → "
-                "Code:$code | "
-                "Amount:$amount | "
-                "Type:$type | "
-                "GeneratedAt:$generatedAt",
-          );
-
-          generatedVouchers.add({
-            "code": code,
-            "amount": amount,
-            "type": type,
-            "source": "pos",
-            "generated_at": generatedAt,
-          });
-        }
-      }
-
-      debugPrint(
-        generatedVouchers.isEmpty
-            ? "❌ No generated vouchers added to meta"
-            : "✅ Generated Vouchers Meta → ${jsonEncode(generatedVouchers)}",
-      );
+// // ---------------------------------------------------------
+// // ⭐ COUPON → PASS TO WOO
+// // ---------------------------------------------------------
+//       final List<Map<String, dynamic>> couponLines = [];
+//
+//       debugPrint("🎟 Checking coupon_response from offline order...");
+//
+//       if (couponResponse.isEmpty) {
+//         debugPrint("ℹ️ No coupon_response found for this order");
+//       } else {
+//         debugPrint("🧾 coupon_response found → ${jsonEncode(couponResponse)}");
+//
+//         final coupons = couponResponse["coupons"] as List? ?? [];
+//
+//         for (final c in coupons) {
+//           final String code = c["code"]?.toString() ?? "";
+//
+//           if (code.isNotEmpty) {
+//             couponLines.add({
+//               "code": code,
+//             });
+//
+//             debugPrint("✅ Passing coupon to Woo → $code");
+//           }
+//         }
+//       }
+//
+//       debugPrint("🎯 Final coupon_lines → ${jsonEncode(couponLines)}");
 
 
       // ---------------------------------------------------------
@@ -1148,6 +1139,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       final userData = await UserDbHelper().getUserData();
       final userId = userData?[AppDBConst.userId] ?? "admin";
 
+
+
       final List<Map<String, dynamic>> metaData = [
         {"key": "pos_device_id", "value": "b31b723b92047f4b"},
         {"key": "pos_placed_by", "value": "$userId"},
@@ -1155,6 +1148,15 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         {"key": "pos_cash_paid", "value": totalAmount.toStringAsFixed(2)},
         {"key": "_pos_client_order_id", "value": clientOrderId},
       ];
+
+      if (couponResponse.isNotEmpty) {
+        metaData.add({
+          "key": "_pos_generated_coupon",
+          "value": couponResponse,
+        });
+
+        debugPrint("✅ Generated coupon stored in meta only");
+      }
 
       if (paymentsPayload.isNotEmpty) {
         metaData.add({
@@ -1177,6 +1179,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         "meta_data": metaData,
         "fee_lines": feeLines,
         "line_items": lineItems,
+       // "coupon_lines": couponLines,
         "tax_lines": [],
       };
 
@@ -1202,42 +1205,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         "🟦 [SYNC] Woo Response → ${jsonEncode(decoded)}",
         wrapWidth: 1024,
       );
-      // if (decoded is Map<String, dynamic> && decoded['id'] != null) {
-      //   final int serverOrderId =
-      //       int.tryParse(decoded['id'].toString()) ?? 0;
-      //
-      //   // ---------------------------------------------------------
-      //   // ⭐ ADD PAYMENT NOTES (VISIBLE IN WOO)
-      //   // ---------------------------------------------------------
-      //   for (final p in paymentsPayload) {
-      //     await _helper.post(
-      //       "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$serverOrderId/notes",
-      //       {
-      //         "note":
-      //         "POS Payment | ${p['method']} | \$${p['amount']} | Status: ${p['status']}",
-      //         "customer_note": false,
-      //       },
-      //       true,
-      //     );
-      //   }
-      //
-      //   // ---------------------------------------------------------
-      //   // ⭐ RETURN RESULT
-      //   // ---------------------------------------------------------
-      //   return {
-      //     "id": serverOrderId,
-      //     "status": wooStatus,
-      //     "payments": paymentsPayload
-      //         .map((p) => {
-      //       "local_id": p["local_id"],
-      //       "server_id": serverOrderId,
-      //     })
-      //         .toList(),
-      //   };
-      // }
-      // ---------------------------------------------------------
-      // ⭐ Extract Cashback Fee (if backend adds it)
-      // ---------------------------------------------------------
       double cashbackFee = 0.0;
       final wooFees = decoded["fee_lines"] as List? ?? [];
       for (final fee in wooFees) {

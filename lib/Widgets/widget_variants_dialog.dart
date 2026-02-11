@@ -49,6 +49,9 @@ class _VariantsDialogState extends State<VariantsDialog> with SingleTickerProvid
       print("VariantsDialog - Initialized with ${widget.variations.length} variations");
     }
   }
+  bool get isAnyVariantSelected {
+    return variantQuantities.values.any((qty) => qty > 0);
+  }
 
   @override
   void dispose() {
@@ -306,32 +309,33 @@ class _VariantsDialogState extends State<VariantsDialog> with SingleTickerProvid
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: ElevatedButton(
-                          onPressed: _isLoading // Build #1.0.80: loader added when tap on variant dialog add button
+                          onPressed: (_isLoading || !isAnyVariantSelected)
                               ? null
                               : () async {
                             setState(() {
                               _isLoading = true;
                             });
-                            // Ensure only one variant is selected
+
                             int? selectedIndex;
-                            //Build 1.1.36: Add all variants with quantities greater than 0
-                            variantQuantities.forEach((index, qty) { //Build #1.0.74: fixed - multiple products adding
+
+                            variantQuantities.forEach((index, qty) {
                               if (qty > 0) {
                                 selectedIndex = index;
                               }
                             });
+
                             if (selectedIndex != null) {
-                              await widget.onAddVariant?.call(widget.variations[selectedIndex!], variantQuantities[selectedIndex!]!);
-                              if (kDebugMode) {
-                                print("VariantsDialog - Added variant: ${widget.variations[selectedIndex!]['name']}, Quantity: ${variantQuantities[selectedIndex!]}");
-                              }
+                              await widget.onAddVariant?.call(
+                                widget.variations[selectedIndex!],
+                                variantQuantities[selectedIndex!]!,
+                              );
                             }
+
                             if (mounted) {
                               setState(() {
                                 _isLoading = false;
                               });
                             }
-                            // closeDialog();
                           },
                           style: ElevatedButton.styleFrom(
                             minimumSize: const Size.fromHeight(50),
@@ -357,7 +361,7 @@ class _VariantsDialogState extends State<VariantsDialog> with SingleTickerProvid
                               color: Colors.white,
                             ),
                           ),
-                        ),
+                        )
                       ),
                     ],
                   ),
