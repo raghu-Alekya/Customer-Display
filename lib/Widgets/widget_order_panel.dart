@@ -303,7 +303,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           .entries
           .map((entry) => {
         "title":
-        "#${entry.value[AppDBConst.orderServerId] ?? entry.value[AppDBConst.orderId]}",
+        "${entry.value[AppDBConst.orderServerId] ?? entry.value[AppDBConst.orderId]}",
         "subtitle": "Tab ${entry.key + 1}",
         "orderId": entry.value[AppDBConst.orderServerId] as Object,
       })
@@ -689,7 +689,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             await orderHelper.createOrder(serverOrderId: response.data!.id);
             setState(() {
               tabs.add({
-                "title": "#${response.data!.id}",
+                "title": "${response.data!.id}",
                 "subtitle": "Tab ${tabs.length + 1}",
                 "orderId": response.data!.id as Object,
               });

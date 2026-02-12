@@ -6682,22 +6682,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           Column(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              const SizedBox(height: 10),
-                        _buildCouponButton(
-                          TextConstants.generatecoupon,
-                          "assets/coupon.png",
-                          onTap: () async {
-                            if (offlineOrder == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text("No offline order found")),
-                              );
-                              return;
-                            }
-
-                            await _syncAndShowCouponPopup();
-                          },
-                        ),
-                        const SizedBox(height: 10),
                               /// ⭐ Redeem Points
                               _buildPaymentOptionButton(
                                 TextConstants.redeemPoints,
@@ -6891,6 +6875,22 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   _openCouponPopup();
                                 },
                               ),
+                              const SizedBox(height: 10),
+                              _buildRedeemCouponButton(
+                                TextConstants.generatecoupon,
+                                "assets/coupon.png",
+                                onTap: () async {
+                                  if (offlineOrder == null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text("No offline order found")),
+                                    );
+                                    return;
+                                  }
+
+                                  await _syncAndShowCouponPopup();
+                                },
+                              ),
+
 
                             ],
                           )
@@ -7125,6 +7125,71 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   width: 18,
                   height: 18,
                   color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+  Widget _buildRedeemCouponButton(
+      String title,
+      String iconPath, {
+        required VoidCallback onTap,
+        bool isActive = true,
+      }) {
+    return InkWell(
+      onTap: isActive ? onTap : null,
+      child: Container(
+        height: 50,
+        width: 368,
+        padding: const EdgeInsets.symmetric(horizontal: 24), // ✅ SAME PADDING
+        decoration: BoxDecoration(
+          color: isActive ? Color(0xFFEB910E) : Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: isActive ? Colors.white : Colors.grey,
+            width: 1,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x3F000000),
+              blurRadius: 4,
+              offset: Offset(2, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // 🔹 LEFT: TEXT
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  color: isActive ? Colors.white : Colors.grey,
+                ),
+              ),
+            ),
+
+            // 🔹 RIGHT: ICON (ALIGNED)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isActive ? Colors.white : Colors.grey,
+                ),
+                child: Image.asset(
+                  iconPath,
+                  width: 18,
+                  height: 18,
+                  color: const Color(0xFFEB910E),
                 ),
               ),
             ),

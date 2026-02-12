@@ -181,7 +181,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String vendorPayoutNotFound  = 'No vendor payouts found';
   static const String invalidCoupon         = "Invalid Coupon";
   static const String coupon                = "Coupon";
-  static const String generatecoupon            = "issue Coupon";
+  static const String generatecoupon            = "Redeem Coupon";
   static const String cashback                = "Cashback";
   static const String servicecharges               = "Service Charges";
   static const String NetTotal              = "NetTotal";
