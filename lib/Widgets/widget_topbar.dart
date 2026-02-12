@@ -105,7 +105,6 @@ class TopBar extends StatefulWidget {
     super.key,
   });
 
-  // 🔥 ADD STATIC METHOD TO CLEAR CACHE (from Code 2)
   static void clearUserCache() {
     _TopBarState.clearUserDataCache();
   }
@@ -139,12 +138,11 @@ class _TopBarState extends State<TopBar> {
 
   bool _dialogOpen = false;
 
-  // 🔥 CACHED USER DATA - LOADED ONCE (from Code 2)
+  // 🔥 CACHED USER DATA - LOADED ONCE
   static Map<String, dynamic>? _cachedUserData;
   static bool _isUserDataLoaded = false;
   static Future<Map<String, dynamic>?>? _initialUserFuture;
 
-  // 🔥 ADD THIS STATIC METHOD TO CLEAR CACHE (from Code 2)
   static void clearUserDataCache() {
     _cachedUserData = null;
     _isUserDataLoaded = false;
@@ -164,7 +162,7 @@ class _TopBarState extends State<TopBar> {
 
     _loadCachedProducts();
 
-    // 🔥 LOAD USER DATA ONLY ONCE (from Code 2)
+    // 🔥 LOAD USER DATA ONLY ONCE
     if (!_isUserDataLoaded) {
       _initialUserFuture = UserDbHelper().getUserData();
       _initialUserFuture!.then((userData) {
@@ -481,7 +479,7 @@ class _TopBarState extends State<TopBar> {
   }
 
   // ──────────────────────────────────────────────────────────────
-  // YOUR EXISTING _handleProductTap METHOD - UNCHANGED
+  // UPDATED _handleProductTap WITH AUTO-ORDER CREATION
   // ──────────────────────────────────────────────────────────────
   Future<void> _handleProductTap(ProductResponse product) async {
     try {
@@ -494,17 +492,20 @@ class _TopBarState extends State<TopBar> {
         return;
       }
 
-      final serverOrderId = orderHelper.activeOrderId;
-      final dbOrderId = orderHelper.activeOrderId;
-      final offlineBox = Hive.box('offlineOrders');
-
-      if (dbOrderId == null) {
-        await OrderPopupHelper.showNoOrderPopup(_context);
+      // 🔥 FIX: Auto-create order if none exists
+      final ensuredOrderId = await orderHelper.ensureOrderExists();
+      if (ensuredOrderId == null) {
+        if (kDebugMode) {
+          print(" Failed to create or restore order");
+        }
         return;
       }
 
-      final activeOrderId = dbOrderId.toString();
-      final Map<String, dynamic> rawOrder = Map<String, dynamic>.from(offlineBox.get(activeOrderId) ?? {});
+      final offlineBox = Hive.box('offlineOrders');
+      final activeOrderId = ensuredOrderId.toString();
+      final Map<String, dynamic> rawOrder = Map<String, dynamic>.from(
+        offlineBox.get(activeOrderId) ?? {},
+      );
 
       print("CATEGORY FLOW ITEMS: ${rawOrder['products']}");
       print("LINE ITEMS: ${rawOrder['line_items']}");
@@ -774,9 +775,7 @@ class _TopBarState extends State<TopBar> {
     _overlayEntry = null;
   }
 
-  // 🔥 REPLACE _fetchUserId WITH CACHED VERSION
   Future<void> _fetchUserId() async {
-    // This method is kept for compatibility but now uses cached data
     if (_isUserDataLoaded && _cachedUserData != null) {
       final userData = _cachedUserData;
       if (userData != null && userData[AppDBConst.userId] != null) {
@@ -789,7 +788,6 @@ class _TopBarState extends State<TopBar> {
       return;
     }
 
-    // Fallback to direct fetch if cache not loaded
     final userData = await UserDbHelper().getUserData();
     if (userData != null && userData[AppDBConst.userId] != null) {
       setState(() {
@@ -941,7 +939,6 @@ class _TopBarState extends State<TopBar> {
               final isAuthorized = await _showCashDrawerPinPopup(context);
               if (!isAuthorized) return;
 
-              /// ✅ ACTUAL CASH DRAWER OPEN
               await PrinterSettings.openDrawer(context: context);
 
               List<int> bytes = [];
