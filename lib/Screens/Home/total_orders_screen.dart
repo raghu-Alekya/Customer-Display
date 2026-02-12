@@ -951,6 +951,9 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                       final isSelected =
                                           OrderHelper().selectedOrderId == order.id;
 
+                                      final double total = double.tryParse(order.total.toString()) ?? 0.0;
+
+
                                       return GestureDetector(
                                         onTap: () => _onOrderRowSelected(order.id),
                                         child: Container(
@@ -996,7 +999,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                                     : '',
                                               ),
                                               _buildDataCell(
-                                                '${order.currencySymbol}${order.total}',
+                                                '${total < 0 ? '-' : ''}${order.currencySymbol}${total.abs().toStringAsFixed(2)}',
                                               ),
                                               _buildDataCell(
                                                 order.status,

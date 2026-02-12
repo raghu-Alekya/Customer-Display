@@ -7133,66 +7133,148 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     );
   }
-
+  //
+  // Future<void> _removeAppliedCoupon() async {
+  //   if (widget.orderId == null || widget.orderId == 0) return;
+  //
+  //   final offlineBox = Hive.box('offlineOrders');
+  //   final localKey = widget.offlineOrderId?.toString(); // 🔥 LOCAL KEY ONLY
+  //
+  //   if (localKey == null) {
+  //     print("❌ No offlineOrderId found");
+  //     return;
+  //   }
+  //
+  //   setState(() => isSummaryLoading = true);
+  //
+  //   try {
+  //     // 🔥 Remove coupon from Woo
+  //     await orderBloc.removeCoupon(
+  //       orderId: widget.orderId!,
+  //       couponCode: "",
+  //     );
+  //
+  //     // 🔥 RESTORE ORIGINAL PAYABLE
+  //     final double restoredPayable =
+  //         grossTotal + oldTax - merchantDiscount + cashbackFee;
+  //
+  //     setState(() {
+  //       discount = 0.0;
+  //       discountValue = 0.0;
+  //       couponDiscount = 0.0;
+  //       NetTotal = grossTotal;
+  //       computedNetPayable = restoredPayable;
+  //       balanceAmount = restoredPayable - tenderAmount;
+  //
+  //       isCouponAppliedFromApi = false;
+  //     });
+  //
+  //     // ----------------- UPDATE HIVE -----------------
+  //     final existing = offlineBox.get(localKey);
+  //     if (existing != null) {
+  //       final data = Map<String, dynamic>.from(existing);
+  //
+  //       // 🧹 CLEAR COUPON DATA
+  //       data.remove("appliedCoupon");
+  //       data.remove("couponCode");
+  //       data.remove("couponDiscount");
+  //       data.remove("orderDiscount");
+  //
+  //       // 🔥 SINGLE SOURCE OF TRUTH
+  //       data["basePayableAmount"] = restoredPayable;
+  //       data["wooTax"] = oldTax;
+  //       data["couponRemoved"] = true;
+  //
+  //       offlineBox.put(localKey, data);
+  //
+  //       print("🗑 Coupon removed | Base payable restored = $restoredPayable");
+  //     }
+  //
+  //     await CustomerDisplayHelper.updateCustomerDisplay(
+  //       widget.offlineOrderId!,
+  //     );
+  //
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(
+  //         content: Text("Coupon removed successfully"),
+  //         backgroundColor: Colors.green,
+  //       ),
+  //     );
+  //   } catch (e) {
+  //     print("❌ Error removing coupon: $e");
+  //   } finally {
+  //     setState(() => isSummaryLoading = false);
+  //   }
+  // }
   Future<void> _removeAppliedCoupon() async {
-    if (widget.orderId == null || widget.orderId == 0) return;
-
-    final offlineBox = Hive.box('offlineOrders');
-    final localKey = widget.offlineOrderId?.toString(); // 🔥 LOCAL KEY ONLY
-
-    if (localKey == null) {
-      print("❌ No offlineOrderId found");
-      return;
-    }
-
-    setState(() => isSummaryLoading = true);
-
     try {
-      // 🔥 Remove coupon from Woo
-      await orderBloc.removeCoupon(
-        orderId: widget.orderId!,
-        couponCode: "",
+      final box = Hive.box('offlineOrders');
+
+      final String orderKey =
+          widget.orderId?.toString() ??
+              widget.offlineOrderId?.toString() ??
+              "";
+
+      if (orderKey.isEmpty) return;
+
+      final offlineOrder = Map<String, dynamic>.from(
+        box.get(orderKey) ?? {},
       );
 
-      // 🔥 RESTORE ORIGINAL PAYABLE
-      final double restoredPayable =
-          grossTotal + oldTax - merchantDiscount + cashbackFee;
+      if (offlineOrder.isEmpty) return;
 
+      setState(() => isSummaryLoading = true);
+
+      // 🔥 CLEAR COUPON BEFORE SYNC
+      offlineOrder["coupon_response"] = {
+        "coupons": []
+      };
+
+      await box.put(orderKey, offlineOrder);
+
+      // 🔥 CALL SAME SYNC METHOD
+      final result =
+      await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+
+      if (result == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Unable to remove coupon"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // ⭐ Extract values from Woo response
+      final double newDiscount =
+          double.tryParse(result["discount_total"].toString()) ?? 0.0;
+
+      final double newTax =
+          double.tryParse(result["tax"].toString()) ?? 0.0;
+
+      final double newTotal =
+          double.tryParse(result["total"].toString()) ?? 0.0;
+
+      // ⭐ UPDATE UI (Same as Apply)
       setState(() {
-        discount = 0.0;
-        discountValue = 0.0;
-        couponDiscount = 0.0;
-        NetTotal = grossTotal;
-        computedNetPayable = restoredPayable;
-        balanceAmount = restoredPayable - tenderAmount;
+        discount = newDiscount; // should become 0
+        tax = newTax;
+
+        NetTotal = grossTotal - discount;
+        computedNetPayable =
+            NetTotal + tax - merchantDiscount + cashbackFee;
+
+        orderTotal = newTotal;
+        balanceAmount = newTotal - tenderAmount;
 
         isCouponAppliedFromApi = false;
       });
 
-      // ----------------- UPDATE HIVE -----------------
-      final existing = offlineBox.get(localKey);
-      if (existing != null) {
-        final data = Map<String, dynamic>.from(existing);
-
-        // 🧹 CLEAR COUPON DATA
-        data.remove("appliedCoupon");
-        data.remove("couponCode");
-        data.remove("couponDiscount");
-        data.remove("orderDiscount");
-
-        // 🔥 SINGLE SOURCE OF TRUTH
-        data["basePayableAmount"] = restoredPayable;
-        data["wooTax"] = oldTax;
-        data["couponRemoved"] = true;
-
-        offlineBox.put(localKey, data);
-
-        print("🗑 Coupon removed | Base payable restored = $restoredPayable");
-      }
-
-      await CustomerDisplayHelper.updateCustomerDisplay(
-        widget.offlineOrderId!,
-      );
+      print("🗑 Coupon Removed");
+      print("➡ Discount: $newDiscount");
+      print("➡ Tax: $newTax");
+      print("➡ Total: $newTotal");
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -7200,8 +7282,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           backgroundColor: Colors.green,
         ),
       );
+
     } catch (e) {
-      print("❌ Error removing coupon: $e");
+      print("❌ Remove coupon error: $e");
     } finally {
       setState(() => isSummaryLoading = false);
     }
@@ -7371,88 +7454,164 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ScannerGuard.isCouponPopupOpen = false;   // 🔓 Ensure scanner re-enables
     });
   }
-
-
   Future<void> _applyCoupon(String code) async {
-    if (widget.orderId == null || widget.orderId == 0) return;
-
-    setState(() => isSummaryLoading = true);
-
     try {
-      final response = await orderBloc.applyCouponToOrder(
-        orderId: widget.orderId!,
-        couponCode: code,
+      final box = Hive.box('offlineOrders');
+
+      final String orderKey =
+          widget.orderId?.toString() ??
+              widget.offlineOrderId?.toString() ??
+              "";
+
+      if (orderKey.isEmpty) return;
+
+      final offlineOrder = Map<String, dynamic>.from(
+        box.get(orderKey) ?? {},
       );
 
-      // ----------- SHOW REPOSITORY ERROR MESSAGE -----------
-      if (response == null) {
-        final errorMessage = orderBloc.lastApplyCouponError.isNotEmpty
-            ? orderBloc.lastApplyCouponError
-            : "Invalid coupon or unable to apply coupon";
+      if (offlineOrder.isEmpty) return;
 
+      // Store coupon locally
+      offlineOrder["coupon_response"] = {
+        "coupons": [
+          {"code": code}
+        ]
+      };
+
+      await box.put(orderKey, offlineOrder);
+
+      setState(() => isSummaryLoading = true);
+
+      final result =
+      await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+
+      if (result == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
+          const SnackBar(
+            content: Text("Invalid coupon or unable to apply"),
             backgroundColor: Colors.red,
           ),
         );
         return;
       }
 
-      // ---------------- SUCCESS FLOW ----------------
-      oldTax = tax;
+      // ⭐ EXTRACT VALUES FROM REPOSITORY RESPONSE
+      final double newDiscount =
+          double.tryParse(result["discount_total"].toString()) ?? 0.0;
 
-      final appliedDiscount = double.tryParse(response.discountTotal) ?? 0.0;
-      final updatedTax = double.tryParse(response.totalTax) ?? tax;
+      final double newTax =
+          double.tryParse(result["tax"].toString()) ?? tax;
+
+      final double newTotal =
+          double.tryParse(result["total"].toString()) ?? 0.0;
+
+      // ⭐ UPDATE UI LIKE YOUR OLD CODE
       setState(() {
-        discount = appliedDiscount;
-        tax = updatedTax;
+        discount = newDiscount;
+        tax = newTax;
+
         NetTotal = grossTotal - discount;
         computedNetPayable =
             NetTotal + tax - merchantDiscount + cashbackFee;
-        orderTotal = computedNetPayable;
-        balanceAmount = computedNetPayable;
-        isCouponAppliedFromApi = true; // 🔥 IMPORTANT
-        if (loyaltyData != null) {
-          loyaltyData = {
-            ...loyaltyData!,
-            "existing_net_payable": computedNetPayable,
-            "new_payable_amount": computedNetPayable - redeemedValue,
-          };
-        }
+
+        orderTotal = newTotal;
+        balanceAmount = newTotal;
+
+        isCouponAppliedFromApi = true;
       });
 
-      final offlineBox = Hive.box('offlineOrders');
-      final localKey = widget.offlineOrderId?.toString();
-
-      if (localKey != null) {
-        final existing = offlineBox.get(localKey);
-        if (existing != null) {
-          final data = Map<String, dynamic>.from(existing);
-          data["orderDiscount"] = appliedDiscount;
-          data["wooTax"] = updatedTax;
-          offlineBox.put(localKey, data);
-        }
-      }
-
-      // Customer Display
-      final localOrderId = widget.offlineOrderId;
-      if (localOrderId != null) {
-        await CustomerDisplayHelper.updateCustomerDisplay(localOrderId);
-      }
+      print("✅ Coupon Applied:");
+      print("➡ Discount: $newDiscount");
+      print("➡ Tax: $newTax");
+      print("➡ Total: $newTotal");
 
     } catch (e) {
-      print("❌ ERROR applying coupon: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Something went wrong"),
-          backgroundColor: Colors.red,
-        ),
-      );
+      print("❌ Apply coupon error: $e");
     } finally {
       setState(() => isSummaryLoading = false);
     }
   }
+
+  // Future<void> _applyCoupon(String code) async {
+  //   if (widget.orderId == null || widget.orderId == 0) return;
+  //
+  //   setState(() => isSummaryLoading = true);
+  //
+  //   try {
+  //     final response = await orderBloc.applyCouponToOrder(
+  //       orderId: widget.orderId!,
+  //       couponCode: code,
+  //     );
+  //
+  //     // ----------- SHOW REPOSITORY ERROR MESSAGE -----------
+  //     if (response == null) {
+  //       final errorMessage = orderBloc.lastApplyCouponError.isNotEmpty
+  //           ? orderBloc.lastApplyCouponError
+  //           : "Invalid coupon or unable to apply coupon";
+  //
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(
+  //           content: Text(errorMessage),
+  //           backgroundColor: Colors.red,
+  //         ),
+  //       );
+  //       return;
+  //     }
+  //
+  //     // ---------------- SUCCESS FLOW ----------------
+  //     oldTax = tax;
+  //
+  //     final appliedDiscount = double.tryParse(response.discountTotal) ?? 0.0;
+  //     final updatedTax = double.tryParse(response.totalTax) ?? tax;
+  //     setState(() {
+  //       discount = appliedDiscount;
+  //       tax = updatedTax;
+  //       NetTotal = grossTotal - discount;
+  //       computedNetPayable =
+  //           NetTotal + tax - merchantDiscount + cashbackFee;
+  //       orderTotal = computedNetPayable;
+  //       balanceAmount = computedNetPayable;
+  //       isCouponAppliedFromApi = true; // 🔥 IMPORTANT
+  //       if (loyaltyData != null) {
+  //         loyaltyData = {
+  //           ...loyaltyData!,
+  //           "existing_net_payable": computedNetPayable,
+  //           "new_payable_amount": computedNetPayable - redeemedValue,
+  //         };
+  //       }
+  //     });
+  //
+  //     final offlineBox = Hive.box('offlineOrders');
+  //     final localKey = widget.offlineOrderId?.toString();
+  //
+  //     if (localKey != null) {
+  //       final existing = offlineBox.get(localKey);
+  //       if (existing != null) {
+  //         final data = Map<String, dynamic>.from(existing);
+  //         data["orderDiscount"] = appliedDiscount;
+  //         data["wooTax"] = updatedTax;
+  //         offlineBox.put(localKey, data);
+  //       }
+  //     }
+  //
+  //     // Customer Display
+  //     final localOrderId = widget.offlineOrderId;
+  //     if (localOrderId != null) {
+  //       await CustomerDisplayHelper.updateCustomerDisplay(localOrderId);
+  //     }
+  //
+  //   } catch (e) {
+  //     print("❌ ERROR applying coupon: $e");
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(
+  //         content: Text("Something went wrong"),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //   } finally {
+  //     setState(() => isSummaryLoading = false);
+  //   }
+  // }
   Widget _buildAmountDisplay(
       String label,
       String amount, {
@@ -8237,6 +8396,65 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //   );
   // }
 
+  Future<void> _syncCurrentOfflineOrder() async {
+    try {
+      final box = Hive.box('offlineOrders');
+
+      final String orderKey =
+          widget.orderId?.toString() ??
+              widget.offlineOrderId?.toString() ??
+              orderId?.toString() ??
+              "";
+
+      if (orderKey.isEmpty) {
+        print("❌ No order key found for sync");
+        return;
+      }
+
+      final raw = box.get(orderKey);
+      if (raw is! Map) return;
+
+      final order = Map<String, dynamic>.from(raw);
+
+      final int? localOrderId =
+      int.tryParse(orderKey);
+
+      if (localOrderId == null) return;
+      final payments =
+      (await LocalPaymentDBHelper.instance
+          .getPaymentsByOrderId(localOrderId))
+          .where((p) => !p.isSynced)
+          .toList();
+
+      order['payments'] = payments.map((p) => {
+        'local_id': p.id,
+        'orderId': p.orderId,
+        'paymentMethod': p.paymentMethod,
+        'amount': p.amount,
+        'remainingBalance':
+        p.remainingBalance < 0 ? 0 : p.remainingBalance,
+        'status': p.status?.name ?? 'pending',
+        'createdAt': p.createdAt.toIso8601String(),
+      }).toList();
+
+      print("💰 Single sync payments attached → ${payments.length}");
+
+      final result =
+      await OrderRepository().syncSingleOfflineOrder(order);
+
+      if (result != null) {
+        print("✅ Single order synced successfully");
+        for (final p in payments) {
+          await LocalPaymentDBHelper.instance
+              .markAsSynced(p.id, result['id']);
+        }
+      }
+
+    } catch (e) {
+      print("❌ Single order sync error: $e");
+    }
+  }
+
 
   void _showPaymentDialog(
       BuildContext context,
@@ -8349,11 +8567,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     ).then((_) {
       _isShowingPaymentDialog = false;
       print("Payment dialog closed → guard reset");
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        print("🔁 Triggering offline order sync after payment dialog");
-        OfflineOrderSyncService.syncPendingOrders();
+
+      SchedulerBinding.instance.addPostFrameCallback((_) async {
+        print("🔁 Triggering SINGLE offline order sync after payment dialog");
+        await _syncCurrentOfflineOrder();
       });
     });
+
   }
 
   void showVoidExitConfirmation(BuildContext context, bool isPartial) {
@@ -8442,7 +8662,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           );
         },
       ),
-    );
+    ).then((_) async {
+      /// 🔥 EXACT SAME BEHAVIOUR AS PAYMENT DIALOG
+      SchedulerBinding.instance.addPostFrameCallback((_) async {
+        print("🔁 Triggering SINGLE offline order sync after EXIT dialog");
+        await _syncCurrentOfflineOrder();
+      });
+    });
   }
 
   Future<Map<String, dynamic>?> loadPrinterData() async {

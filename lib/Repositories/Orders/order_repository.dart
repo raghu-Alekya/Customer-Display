@@ -1169,6 +1169,32 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       }
 
       // ---------------------------------------------------------
+// ⭐ COUPON → PASS TO WOO
+// ---------------------------------------------------------
+      final List<Map<String, dynamic>> couponLines = [];
+
+      debugPrint("🎟 Checking coupon_response from offline order...");
+
+      if (couponResponse.isNotEmpty) {
+        final coupons = couponResponse["coupons"] as List? ?? [];
+
+        for (final c in coupons) {
+          final String code = c["code"]?.toString() ?? "";
+
+          if (code.isNotEmpty) {
+            couponLines.add({
+              "code": code,
+            });
+
+            debugPrint("✅ Passing coupon to Woo → $code");
+          }
+        }
+      }
+
+      debugPrint("🎯 Final coupon_lines → ${jsonEncode(couponLines)}");
+
+
+      // ---------------------------------------------------------
       // ⭐ FINAL PAYLOAD
       // ---------------------------------------------------------
       final payload = {
@@ -1179,7 +1205,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         "meta_data": metaData,
         "fee_lines": feeLines,
         "line_items": lineItems,
-       // "coupon_lines": couponLines,
+        "coupon_lines": couponLines,
         "tax_lines": [],
       };
 
@@ -1217,13 +1243,21 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
 
       if (decoded is Map<String, dynamic> && decoded['id'] != null) {
+
         final int serverOrderId =
             int.tryParse(decoded['id'].toString()) ?? 0;
+
         final double wooTax =
-            double.tryParse(decoded['total_tax']?.toString() ?? "0") ??
-                0.0;
+            double.tryParse(decoded['total_tax']?.toString() ?? "0") ?? 0.0;
+
         final double wooTotal =
             double.tryParse(decoded['total']?.toString() ?? "0") ?? 0.0;
+
+        final double wooDiscount =
+            double.tryParse(decoded['discount_total']?.toString() ?? "0") ?? 0.0;
+
+        final double wooDiscountTax =
+            double.tryParse(decoded['discount_tax']?.toString() ?? "0") ?? 0.0;
 
         final box = Hive.box('offlineOrders');
 
@@ -1231,56 +1265,44 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             offlineOrder['order_id']?.toString() ??
             serverOrderId.toString();
 
+        // ⭐ SAVE ALL UPDATED VALUES INTO HIVE
         offlineOrder['wooOrderId'] = serverOrderId;
         offlineOrder['wooTax'] = wooTax;
         offlineOrder['wooTotal'] = wooTotal;
         offlineOrder['wooStatus'] = wooStatus;
 
+        // 🔥 IMPORTANT FIX
+        offlineOrder['orderDiscount'] = wooDiscount;
+        offlineOrder['tax_discount'] = wooDiscountTax;
+        offlineOrder['order_tax'] = wooTax;
+        offlineOrder['net_total'] = wooTotal;
+        offlineOrder['net_payable'] = wooTotal;
+        offlineOrder['remainingBalance'] = wooTotal;
+
+        // Optional: store coupon lines also
+        offlineOrder['coupon_lines'] = decoded['coupon_lines'];
+
         await box.put(localOrderId, offlineOrder);
         await box.put(serverOrderId.toString(), {"map_to_local": localOrderId});
 
-        CustomerDisplayHelper.updateCustomerDisplay(
+        // Update Customer Display AFTER saving correct values
+        await CustomerDisplayHelper.updateCustomerDisplay(
             int.tryParse(localOrderId) ?? serverOrderId);
-// ---------------------------------------------------------
-// ⭐ Extract values from Woo meta (EBT + Discount)
-// ---------------------------------------------------------
-        double ebtTotal = 0.0;
-        double discountAmount = 0.0;
 
-        final List metaList = decoded["meta_data"] as List? ?? [];
-
-        for (final meta in metaList) {
-          final key = meta["key"]?.toString();
-
-          if (key == "_pinaka_ebt_eligible_total") {
-            ebtTotal = double.tryParse(meta["value"]?.toString() ?? "0") ?? 0.0;
-          }
-
-          if (key == "_discount_amount") {
-            discountAmount = double.tryParse(meta["value"]?.toString() ?? "0") ?? 0.0;
-          }
-        }
-
-        print("🔵 EBT extracted from Woo → $ebtTotal");
-        print("🏷 Discount extracted from Woo → $discountAmount");
-
-
-// ---------------------------------------------------------
-// ⭐ Return all values including EBT
-// ---------------------------------------------------------
+        // ⭐ RETURN VALUES TO UI
         return {
           "id": serverOrderId,
           "status": wooStatus,
           "total": wooTotal,
+          "tax": wooTax,
+          "discount_total": wooDiscount,
+          "discount_tax": wooDiscountTax,
           "cashback_fee": cashbackFee,
-
-          "ebt_total": ebtTotal,       // ✅ ADD THIS
-          "discount_amount": discountAmount,
           "line_items": decoded["line_items"],
         };
-
       }
-    } catch (e, s) {
+
+  } catch (e, s) {
       print("❌ Failed to sync offline order: $e");
       print("Stack: $s");
     }

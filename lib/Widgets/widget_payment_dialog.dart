@@ -615,6 +615,11 @@ class _PaymentDialogState extends State<PaymentDialog> {
     // ===================================================
     final List coupons =
         widget.couponResponse?["coupons"] as List? ?? [];
+
+    final validCoupons = coupons
+        .where((c) =>
+    (double.tryParse(c["amount"]?.toString() ?? "0") ?? 0.0) > 0)
+        .toList();
     if (widget.status == PaymentStatus.receipt) {
       return Row(
         mainAxisAlignment: MainAxisAlignment.center, // Center the receipt options
@@ -741,7 +746,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
           // ===================================================
           // 🎁 COUPON SECTION (FULL LINE)
           // ===================================================
-          if (coupons.isNotEmpty) ...[
+          if (validCoupons.isNotEmpty) ...[
             const SizedBox(height: 24),
 
             Align(
@@ -758,10 +763,9 @@ class _PaymentDialogState extends State<PaymentDialog> {
               ),
             ),
 
-
             const SizedBox(height: 8),
 
-            ...coupons.map((c) {
+            ...validCoupons.map((c) {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 0),
                 child: _buildCouponCard(c, themeHelper),
