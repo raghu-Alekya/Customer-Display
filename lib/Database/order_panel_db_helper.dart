@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:pinaka_pos/Blocs/Orders/order_bloc.dart';
 import 'package:pinaka_pos/Database/user_db_helper.dart';
 import 'package:pinaka_pos/Models/Orders/orders_model.dart';
@@ -143,13 +143,15 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     orders = [];
 
     // Always offline
-    if (kDebugMode) print("📴 Loading offline orders from Hive");
+    if (kDebugMode) print("📴 Loading offline orders");
 
-    final box = Hive.box('offlineOrders');
-    final allOfflineOrders = box.toMap();
+    final box = StorageProvider.offlineOrders;
+    final allOfflineOrders = await box.toMap();
 
     final validEntries = allOfflineOrders.entries
-        .where((entry) => entry.value is Map)
+        .where((entry) =>
+            entry.value is Map &&
+            !(entry.value as Map).containsKey('map_to_local'))
         .map((entry) {
       // ✅ Normalize the root map
       final normalized = Map<String, dynamic>.from(entry.value as Map);
@@ -918,24 +920,24 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           orders[orderIndex][fieldKey] = value;
         }
 
-        // ✅ Update Hive (only JSON-safe data)
-        final hiveBox = Hive.box('offlineOrders');
+        // ✅ Update storage (only JSON-safe data)
+        final box = StorageProvider.offlineOrders;
         final orderKey = orderId.toString();
-        final existingHiveOrder = hiveBox.get(orderKey);
+        final existingOrder = await box.get(orderKey);
 
-        if (existingHiveOrder != null) {
-          final updatedOrder = Map<String, dynamic>.from(existingHiveOrder);
+        if (existingOrder != null && existingOrder is Map) {
+          final updatedOrder = Map<String, dynamic>.from(existingOrder);
 
           // ✅ Convert any complex types to JSON-safe before saving
           updatedOrder[fieldKey] = _convertToJsonSafe(value);
 
-          await hiveBox.put(orderKey, updatedOrder);
+          await box.put(orderKey, updatedOrder);
 
           if (kDebugMode) {
-            print("💾 Hive updated safely → $fieldKey = $value for Order #$orderId");
+            print("💾 Order updated → $fieldKey = $value for Order #$orderId");
           }
         } else {
-          if (kDebugMode) print("⚠ Hive order #$orderId not found");
+          if (kDebugMode) print("⚠ Order #$orderId not found");
         }
 
         // ✅ Refresh in-memory orders
@@ -1076,12 +1078,14 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     // 1️⃣ If already active
     if (activeOrderId != null) return activeOrderId;
 
-    // 2️⃣ Load orders list
-    await loadProcessingData();
+    // 2️⃣ Load orders from offline storage
+    await loadData();
 
     // 3️⃣ Try reuse unpaid order
     for (final order in orders) {
-      final int orderId = order[AppDBConst.orderServerId];
+      final oid = order[AppDBConst.orderServerId] ?? order['order_id'] ?? order['id'];
+      final int? orderId = oid is int ? oid : int.tryParse(oid?.toString() ?? '');
+      if (orderId == null) continue;
       final payments =
       await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
 
@@ -1104,8 +1108,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     // 5b. Persist new order to SQLite so order panel and addItemToOrder see it (Hive already filled by repo)
     await createOrder(serverOrderId: newOrderId);
 
-    // 6️⃣ Reload orders from SQLite so panel can show the new order
-    await loadProcessingData();
+    // 6️⃣ Reload orders from offline storage so panel has full order data
+    await loadData();
 
     // 🔥 CRITICAL: RESTORE ACTIVE ORDER
     await restoreActiveOrderId();
@@ -1137,8 +1141,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         activeOrderId = serverOrderId;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt('activeOrderId', activeOrderId!);
-        final box = Hive.box('offlineOrders');
-        if (!box.containsKey(serverOrderId.toString())) {
+        final box = StorageProvider.offlineOrders;
+        if (!(await box.containsKey(serverOrderId.toString()))) {
           final minimalOrder = {
             'order_id': serverOrderId,
             'id': serverOrderId,
@@ -1171,10 +1175,10 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     WHERE ${AppDBConst.userId} = ?
     ''', [activeUserId ?? 1]);
 
-    // When order was created on server/offline, ensure Hive has it (only if not already - e.g. OrderRepository already put full order)
+    // When order was created on server/offline, ensure storage has it (only if not already)
     if (serverOrderId != null) {
-      final box = Hive.box('offlineOrders');
-      if (!box.containsKey(serverOrderId.toString())) {
+      final box = StorageProvider.offlineOrders;
+      if (!(await box.containsKey(serverOrderId.toString()))) {
         final minimalOrder = {
           'order_id': serverOrderId,
           'id': serverOrderId,
@@ -1184,7 +1188,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         await box.put(serverOrderId.toString(), minimalOrder);
         _upsertOfflineOrderInMemory(serverOrderId, minimalOrder);
         if (kDebugMode) {
-          print("#### Order $serverOrderId added to Hive for order panel & addItemToOrder");
+          print("#### Order $serverOrderId added for order panel & addItemToOrder");
         }
       }
     }
@@ -1200,8 +1204,12 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
     return activeOrderId!;
   }
-  // Deletes an order from the database and updates local storage
+  // Deletes an order from the database and offline storage
   Future<void> deleteOrder(int orderId) async {
+    // Remove from offline storage (Isar) - required for orders to disappear from UI
+    final offlineBox = StorageProvider.offlineOrders;
+    await offlineBox.delete(orderId.toString());
+
     final db = await DBHelper.instance.database;
     await db.delete( //Build #1.0.78 : delete from db -> purchasedItemsTable
       AppDBConst.purchasedItemsTable,
@@ -1214,7 +1222,6 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       whereArgs: [orderId],
     );
 
-    //  orders.removeWhere((order) => order[AppDBConst.orderServerId] == orderId); // read-only property
     // Build #1.0.189: Remove the orderId from orderIds list
     orderIds.remove(orderId);
 
@@ -1311,6 +1318,74 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     );
   }
 
+  /// Gets order items from offline storage (products, payouts, cashbacks).
+  /// Returns empty list if order not found.
+  /// Items are converted to display format (item_name, item_price, items_count, etc.).
+  Future<List<Map<String, dynamic>>> getOrderItemsFromOffline(int orderID) async {
+    final box = StorageProvider.offlineOrders;
+    final raw = await box.get(orderID.toString());
+    if (raw == null || raw is! Map) return [];
+    final order = Map<String, dynamic>.from(raw);
+
+    final List<Map<String, dynamic>> items = [];
+
+    // 1️⃣ Products
+    final products = (order['products'] as List?) ?? [];
+    for (final p in products) {
+      final map = Map<String, dynamic>.from(p is Map ? p : {});
+      final itemType = (map['item_type'] ?? map['type'] ?? 'product').toString().toLowerCase();
+      final name = map['name'] ?? map['product_name'] ?? '';
+      final price = (map['price'] as num?)?.toDouble() ?? 0.0;
+      final qty = (map['quantity'] as num?)?.toInt() ?? 1;
+      final sumPrice = price * qty;
+
+      items.add({
+        AppDBConst.itemName: name,
+        AppDBConst.itemPrice: price,
+        AppDBConst.itemCount: qty,
+        AppDBConst.itemSumPrice: sumPrice,
+        AppDBConst.itemImage: map['image'] ?? '',
+        AppDBConst.itemType: map['item_type'] ?? map['type'] ?? 'product',
+        'is_ebt_eligible': map['is_ebt_eligible'] == true,
+        'product_id': (map['product_id'] as num?)?.toInt() ?? 0,
+        'variation_id': int.tryParse((map['variation_id'] ?? map['variationId'] ?? 0).toString()) ?? 0,
+        'sku': map['sku'] ?? '',
+      });
+    }
+
+    // 2️⃣ Payouts
+    final payouts = (order['payouts'] as List?) ?? [];
+    for (final p in payouts) {
+      final map = Map<String, dynamic>.from(p is Map ? p : {});
+      final price = (map['amount'] as num?)?.toDouble() ?? 0.0;
+      items.add({
+        AppDBConst.itemName: 'Payout',
+        AppDBConst.itemPrice: price,
+        AppDBConst.itemCount: 1,
+        AppDBConst.itemSumPrice: price,
+        AppDBConst.itemImage: 'assets/svg/payout.svg',
+        AppDBConst.itemType: 'payout',
+      });
+    }
+
+    // 3️⃣ Cashbacks
+    final cashbacks = (order['cashbacks'] as List?) ?? [];
+    for (final c in cashbacks) {
+      final map = Map<String, dynamic>.from(c is Map ? c : {});
+      final price = (map['amount'] as num?)?.toDouble() ?? 0.0;
+      items.add({
+        AppDBConst.itemName: 'Cashback',
+        AppDBConst.itemPrice: price,
+        AppDBConst.itemCount: 1,
+        AppDBConst.itemSumPrice: price,
+        AppDBConst.itemImage: map['product_image'] ?? map['item_image'] ?? map['image'] ?? '',
+        AppDBConst.itemType: 'cashback',
+      });
+    }
+
+    return items;
+  }
+
 // Delete an item from an order
   Future<void> deleteItem(int itemServerId) async { // delete the item/product based on serverID not item id
     final db = await DBHelper.instance.database;
@@ -1376,12 +1451,13 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     _activeAdds.add(key);
 
     try {
-      final box = Hive.box('offlineOrders');
-      final order = box.get(orderId.toString());
-      if (order == null) {
+      final box = StorageProvider.offlineOrders;
+      final rawOrder = await box.get(orderId.toString());
+      if (rawOrder == null || rawOrder is! Map) {
         print("⚠ No offline order found for $orderId");
         return;
       }
+      final order = Map<String, dynamic>.from(rawOrder);
 
       // Clone products
       final List<Map<String, dynamic>> products = (order['products'] ?? [])
@@ -1452,15 +1528,16 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         });
       }
 
-      final updatedOrder = {...order, 'products': products};
+      final updatedOrder = <String, dynamic>{...order, 'products': products};
       await box.put(orderId.toString(), updatedOrder);
-      _upsertOfflineOrderInMemory(orderId, Map<String, dynamic>.from(updatedOrder as Map));
+      _upsertOfflineOrderInMemory(orderId, updatedOrder);
 
       print("💾 ORDER UPDATED → Product Count: ${products.length}");
       for (var p in products) {
         print("   ▶ ${p['name']} | Qty: ${p['quantity']} | EBT: ${p['is_ebt_eligible']}");
       }
 
+      notifyOrderPanelToRefresh();
       if (onItemAdded != null) onItemAdded();
 
     } finally {
@@ -1502,9 +1579,9 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     }
   }
 
-  static bool existsInOrderBySku(int orderId, String sku) {
-    final box = Hive.box('offlineOrders');
-    final order = box.get(orderId.toString());
+  static Future<bool> existsInOrderBySku(int orderId, String sku) async {
+    final box = StorageProvider.offlineOrders;
+    final order = await box.get(orderId.toString());
 
     if (order == null || order["products"] == null) return false;
 

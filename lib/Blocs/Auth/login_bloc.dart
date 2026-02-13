@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import '../../Constants/text.dart';
 import '../../Database/db_helper.dart';
 import '../../Database/user_db_helper.dart';
@@ -41,8 +41,8 @@ class LoginBloc { // Build #1.0.8
         // ✅ 1) Existing logic: Save to SQLite (keep this if you still use it)
         await _userDbHelper.saveUserData(loginResponse);
 
-        // ✅ 2) NEW: Save fresh token into Hive (this is what Cashback + APIs will use)
-        final userBox = Hive.box('user');
+        // ✅ 2) Save fresh token (used by Cashback + APIs)
+        final userBox = StorageProvider.user;
         await userBox.put('token', loginResponse.token);
 
         // (Optional) Save extra user info if you want

@@ -197,7 +197,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:isar/isar.dart';
@@ -819,9 +819,9 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
 
     // 3️⃣ 🔥 CHECK VARIATION CACHE (THIS WAS MISSING)
     try {
-      final box = Hive.box('productCache');
+      final box = StorageProvider.productCache;
       final variationKey = "product_${productId}_variations";
-      final variationData = box.get(variationKey);
+      final variationData = await box.get(variationKey);
 
       if (variationData is Map &&
           variationData["variations"] is List &&
@@ -1092,13 +1092,13 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
       print("🧾 Selected → id:$productId | name:$productName | price:$productPrice | variant:$hasVariants | age:$minAge");
 
       // 🧠 Determine order type
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
       final isOfflineOrder = box.containsKey(orderHelper.activeOrderId.toString());
-      final activeOrderId = orderHelper.activeOrderId ?? box.get('lastOrderId', defaultValue: 1000);
+      final activeOrderId = orderHelper.activeOrderId ?? (await box.get('lastOrderId')) ?? 1000;
 
       if (orderHelper.activeOrderId == null) {
         orderHelper.activeOrderId = activeOrderId;
-        box.put('lastOrderId', activeOrderId);
+        await box.put('lastOrderId', activeOrderId);
       }
 
       // // 🔞 Age restriction
@@ -1121,9 +1121,9 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
         List<Map<String, dynamic>> offlineVariations = [];
 
         try {
-          final productBox = Hive.box('productCache');
+          final productBox = StorageProvider.productCache;
           final cacheKey = "product_${productId}_variations";
-          final cachedData = productBox.get(cacheKey);
+          final cachedData = await productBox.get(cacheKey);
           List rawVariations = [];
 
           if (cachedData != null) {
@@ -1143,7 +1143,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
           // fallback from item["variations"]
           if (rawVariations.isEmpty && item["variations"] != null) {
             for (var id in item["variations"]) {
-              var variantData = productBox.get("product_$id");
+              var variantData = await productBox.get("product_$id");
               if (variantData is String) {
                 try {
                   variantData = jsonDecode(variantData);

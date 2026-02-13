@@ -5,7 +5,7 @@ import 'package:dotted_line/dotted_line.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:image/image.dart' as img;
 import 'package:pinaka_pos/Helper/Extentions/extensions.dart';
 import 'package:shimmer/shimmer.dart';
@@ -319,13 +319,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       orderServerId = _order[AppDBConst.orderServerId] as int?;
     } else {
       // 2️⃣ FALLBACK → CHECK HIVE DELETED ORDERS
-      final deletedBox = Hive.box('deletedOrders');
+      final deletedBox = StorageProvider.deletedOrders;
 
-      dynamic deleted = deletedBox.get(widget.activeOrderId);
+      dynamic deleted = await deletedBox.get(widget.activeOrderId.toString());
 
 // 🔥 FIX: If not found by int → try string key
       if (deleted == null) {
-        deleted = deletedBox.get(widget.activeOrderId.toString());
+        deleted = await deletedBox.get(widget.activeOrderId.toString());
       }
 
       if (deleted != null) {
@@ -377,7 +377,15 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       return;
     }
 
-    // 1️⃣ Try SQLite items
+    // 1️⃣ Prefer offline storage (products added via addItemToOrder)
+    final offlineItems = await orderHelper.getOrderItemsFromOffline(widget.activeOrderId!);
+    if (offlineItems.isNotEmpty) {
+      print("🟦 Offline Order Items Loaded: ${offlineItems.length} items");
+      setState(() => orderItems = offlineItems);
+      return;
+    }
+
+    // 2️⃣ Fallback to SQLite items
     try {
       List<Map<String, dynamic>> items =
       await orderHelper.getOrderItems(widget.activeOrderId!);
@@ -391,9 +399,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     } catch (_) {}
 
     // 2️⃣ FALLBACK → Load deleted offline order items
-    final deletedBox = Hive.box('deletedOrders');
+    final deletedBox = StorageProvider.deletedOrders;
 
-    dynamic deleted = deletedBox.get(widget.activeOrderId);
+    dynamic deleted = await deletedBox.get(widget.activeOrderId.toString());
 
     if (deleted == null) {
       deleted = deletedBox.get(widget.activeOrderId.toString());
@@ -725,20 +733,20 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       }
     }
   }
-  double loadCashbackFee({
+  Future<double> loadCashbackFee({
     required String offlineOrderId,
-  }) {
+  }) async {
     // 🟢 1️⃣ orderExtras (persistent, survives sync & delete)
-    final extras = Hive.box('orderExtras').get(offlineOrderId);
-    if (extras != null && extras["cashback_fee"] != null) {
+    final extras = await StorageProvider.orderExtras.get(offlineOrderId);
+    if (extras != null && extras is Map && extras["cashback_fee"] != null) {
       final cashback = (extras["cashback_fee"] as num).toDouble();
       debugPrint("💰 Cashback from orderExtras (local) → $cashback");
       return cashback;
     }
 
     // 🟡 2️⃣ offlineOrders (while order exists)
-    final offline = Hive.box('offlineOrders').get(offlineOrderId);
-    if (offline != null && offline["cashback_fee"] != null) {
+    final offline = await StorageProvider.offlineOrders.get(offlineOrderId);
+    if (offline != null && offline is Map && offline["cashback_fee"] != null) {
       final cashback = (offline["cashback_fee"] as num).toDouble();
       debugPrint("💰 Cashback from offlineOrders → $cashback");
       return cashback;
@@ -872,29 +880,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     final wooOrderId =
         order['wooOrderId']?.toString() ?? widget.activeOrderId?.toString() ?? "";
 
-    // Load Hive Redeem Data
-    if (wooOrderId.isNotEmpty) {
-      final box = Hive.box('offlineOrders');
-      final cached = box.get(wooOrderId);
-
-      if (cached != null) {
-        if (cached["redeemed_value"] != null) {
-          hiveRedeemedValue = (cached["redeemed_value"] as num).toDouble();
-        }
-
-        if (cached["redeemed_points"] != null) {
-          hiveRedeemedPoints = (cached["redeemed_points"] as num).toInt();
-        }
-
-        if (cached["available_points_after_redeem"] != null) {
-          hiveAvailablePoints =
-              (cached["available_points_after_redeem"] as num).toInt();
-        }
-
-        print("💠 Hive Redeem Loaded → Value: $hiveRedeemedValue | Points: $hiveRedeemedPoints | Left: $hiveAvailablePoints");
-      } else {
-        print("⚠️ No redeem data in Hive for WooID = $wooOrderId");
-      }
+    // Load Redeem Data from order (pre-loaded from storage by parent)
+    if (wooOrderId.isNotEmpty && order["redeemed_value"] != null) {
+      hiveRedeemedValue = (order["redeemed_value"] as num).toDouble();
+      hiveRedeemedPoints = (order["redeemed_points"] as num?)?.toInt() ?? 0;
+      hiveAvailablePoints = (order["available_points_after_redeem"] as num?)?.toInt() ?? 0;
+      print("💠 Redeem from order → Value: $hiveRedeemedValue | Points: $hiveRedeemedPoints");
     }
 
     int totalItems = 0;
@@ -923,12 +914,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
 
 
-    final String offlineOrderId = orderHelper.activeOrderId.toString();
-
-    cashbackFee = loadCashbackFee(
-      // wooOrderId: wooOrderId,
-      offlineOrderId: offlineOrderId,
-    );
+    final cf = order["cashbackFee"] ?? order["cashback_fee"] ?? 0.0;
+    cashbackFee = (cf is num) ? (cf as num).toDouble() : 0.0;
 
 
 
@@ -2337,13 +2324,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                 return !isNonProduct;
                               }).toList();
                             }
-                            final box = Hive.box('offlineOrders');
+                            final box = StorageProvider.offlineOrders;
 
 // Prefer server order id if exists, else offline id
                             final hiveKey = orderHelper.activeOrderId.toString();
 
+                            final boxData = await box.get(hiveKey);
                             final double discountAmount =
-                            (box.get(hiveKey)?["discount_amount"] ?? 0.0).toDouble();
+                            ((boxData is Map ? boxData["discount_amount"] : null) ?? 0.0).toDouble();
 
                             if (kDebugMode) {
                               print("🏷 Passing Discount Amount = $discountAmount");

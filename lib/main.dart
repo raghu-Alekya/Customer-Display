@@ -12,6 +12,7 @@ import 'Constants/misc_features.dart';
 import 'Database/db_helper.dart';
 import 'Database/discount_rule_isar.dart';
 import 'Database/isar_service.dart';
+import 'Database/storage/hive_to_isar_migration.dart';
 import 'Database/user_db_helper.dart';
 import 'Helper/Extentions/theme_notifier.dart';
 import 'Helper/cashbackhelper.dart';
@@ -58,17 +59,13 @@ import 'Widgets/offline_order_sync_service.dart';
 void main() async {
 
   WidgetsFlutterBinding.ensureInitialized(); // Ensure Flutter services are ready
-  await Hive.initFlutter();
+
+  // Initialize Isar first
   await IsarService.init();
 
-  await Hive.openBox('categoryCache');
-  await Hive.openBox('productCache');
-  await Hive.openBox('offlineOrders');
-  await Hive.openBox('fastKeysBox');
-  await Hive.openBox('deletedOrders');
-  await Hive.openBox('cashbackConfig');
-  await Hive.openBox('orderExtras');
-  await Hive.openBox('user');
+  // One-time migration from Hive to Isar (if upgrading from older version)
+  await Hive.initFlutter();
+  await migrateHiveToIsarIfNeeded();
   AppDB.isar = await Isar.open(
     [DiscountRuleIsarSchema],
     directory: (await getApplicationDocumentsDirectory()).path,

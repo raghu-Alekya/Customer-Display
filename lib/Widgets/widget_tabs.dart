@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:isar/isar.dart';
 import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import 'package:provider/provider.dart';
@@ -212,8 +212,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     _skuController.dispose();
     super.dispose();
   }
-  void _loadCashbackLimit() {
-    final config = CashbackHelper.getCashbackConfig();
+  void _loadCashbackLimit() async {
+    final config = await CashbackHelper.getCashbackConfig();
 
     if (config != null &&
         config["cash_back_service"] != null &&
@@ -231,22 +231,26 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   }
 
 
-  // Fetch order ID and total from OrderHelper
+  // Fetch order ID and total from OrderHelper (use loadData for offline orders)
   Future<void> _loadOrderData() async {
-    await _orderHelper.loadProcessingData();
+    await _orderHelper.loadData();
     setState(() {
       orderId = _orderHelper.activeOrderId;
       if (kDebugMode) {
         print("####_loadOrderData, orderId: $orderId");
       }
       if (orderId != null) {
-        _orderHelper.getOrderById(orderId!).then((order) {
-          if (order.isNotEmpty) {
-            setState(() {
-              orderTotal = order.first[AppDBConst.orderTotal] as double? ?? 0.0;
-            });
-          }
-        });
+        final order = _orderHelper.orders.cast<Map<String, dynamic>>()
+            .where((o) {
+          final oid = o['order_id'] ?? o['id'] ?? o[AppDBConst.orderServerId];
+          return oid != null && (oid == orderId || oid.toString() == orderId.toString());
+        }).toList();
+        if (order.isNotEmpty) {
+          final o = order.first;
+          orderTotal = (o['gross_total'] ?? o['net_payable'] ?? o['net_total'] ?? o[AppDBConst.orderTotal] ?? 0.0) is num
+              ? ((o['gross_total'] ?? o['net_payable'] ?? o['net_total'] ?? o[AppDBConst.orderTotal]) as num).toDouble()
+              : 0.0;
+        }
       }
     });
   }
@@ -2005,7 +2009,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   //   setState(() => _isDiscountLoading = true);
   //
   //   try {
-  //     final offlineBox = Hive.box('offlineOrders');
+  //     final offlineBox = StorageProvider.offlineOrders;
   //     final orderHelper = OrderHelper();
   //
   //     int? orderId = orderHelper.activeOrderId;
@@ -2288,7 +2292,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     setState(() => _isDiscountLoading = true);
 
     try {
-      final offlineBox = Hive.box('offlineOrders');
+      final offlineBox = StorageProvider.offlineOrders;
       final orderHelper = OrderHelper();
 
       final orderId = orderHelper.activeOrderId;
@@ -2305,7 +2309,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       }
 
       final key = orderId.toString();
-      final rawOrder = offlineBox.get(key);
+      final rawOrder = await offlineBox.get(key);
       if (rawOrder == null) {
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
@@ -2475,10 +2479,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         _isDiscountLoading = false;
       });
 
+      await _orderHelper.loadData();
       await _loadOrderData();
       widget.refreshOrderList?.call();
-
-
 
       print(" [DISCOUNT] DONE ---- _handleAddDiscount() ----");
 
@@ -2689,8 +2692,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     setState(() => _isCashbackLoading = true);
 
     try {
-      final offlineBox = Hive.box('offlineOrders');
-      final productBox = Hive.box('productCache');
+      final offlineBox = StorageProvider.offlineOrders;
+      final productBox = StorageProvider.productCache;
       final cashbackAmount = double.parse(_cashbackAmount);
       // 🔥 MAX CASHBACK VALIDATION
       if (_maxCashbackLimit > 0 && cashbackAmount > _maxCashbackLimit) {
@@ -2725,8 +2728,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       }
 
       final key = orderId.toString();
+      final rawKey = await offlineBox.get(key);
       final existingOrder =
-      Map<String, dynamic>.from(offlineBox.get(key) ?? {});
+      Map<String, dynamic>.from(rawKey is Map ? rawKey : {});
 
       // -------------------------------------------------------
 // 🚫 STOP Cashback if order panel has EBT eligible product
@@ -2891,8 +2895,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       }
 
       // Cashback reduces total
-      // 1️⃣ Calculate cashback fee from Hive config
-      final double fee = CashbackHelper.getCashbackFee(cashbackAmount);
+      // 1️⃣ Calculate cashback fee from config
+      final double fee = await CashbackHelper.getCashbackFee(cashbackAmount);
 
       print("💰 CashbackAmount = $cashbackAmount → Fee = $fee");
 
@@ -2913,10 +2917,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       await offlineBox.put(key, updatedOrder);
       print("🟩 SAVED ORDER → $updatedOrder");
 
-      final extrasBox = Hive.box('orderExtras');
+      final extrasBox = StorageProvider.orderExtras;
 
 // 🔒 NEVER overwrite an existing cashback
-      final existingExtras = extrasBox.get(orderId.toString());
+      final existingExtras = await extrasBox.get(orderId.toString());
 
       final double finalCashbackFee =
       existingExtras != null && existingExtras['cashback_fee'] != null
@@ -2956,6 +2960,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         _isCashbackLoading = false;
       });
 
+      await _orderHelper.loadData();
       await _loadOrderData();
       widget.refreshOrderList?.call();
 
@@ -3092,10 +3097,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       orderHelper.activeOrderId ??= serverOrderId;
 
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
       final orderKey = serverOrderId.toString();
 
-      if (!box.containsKey(orderKey)) {
+      if (!(await box.containsKey(orderKey))) {
         if (kDebugMode) {
           print("   • No existing offline order for $orderKey, creating new...");
         }
@@ -3113,7 +3118,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         }
       }
 
-      final rawOrder = box.get(orderKey);
+      final rawOrder = await box.get(orderKey);
       if (kDebugMode) {
         print("   • rawOrder from Hive: $rawOrder");
       }
@@ -3285,7 +3290,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       await box.put(orderKey, orderData);
 
       if (kDebugMode) {
-        final debugOrder = box.get(orderKey);
+        final debugOrder = await box.get(orderKey);
         print("   • Saved order snapshot: $debugOrder");
       }
 
@@ -3294,7 +3299,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       // -----------------------------
       if (kDebugMode) print("🟡 [STEP 7] UPDATE productCache");
 
-      final productBox = Hive.box('productCache');
+      final productBox = StorageProvider.productCache;
       final cacheKey = "sku_$normalizedSku";
       final cacheItem = {
         // "id": normalizedSku.hashCode,
@@ -3326,7 +3331,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       await productBox.put(cacheKey, {"products": [cacheItem]});
 
       if (kDebugMode) {
-        print("   • productCache[$cacheKey] = ${productBox.get(cacheKey)}");
+        print("   • productCache[$cacheKey] = ${await productBox.get(cacheKey)}");
       }
 
       // -----------------------------
@@ -3491,8 +3496,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     setState(() => _isPayoutLoading = true);
 
     try {
-      final offlineBox = Hive.box('offlineOrders');
-      final productBox = Hive.box('productCache');
+      final offlineBox = StorageProvider.offlineOrders;
+      final productBox = StorageProvider.productCache;
       final payoutAmount = double.parse(_payoutAmount);
 
       final orderHelper = OrderHelper();
@@ -3519,7 +3524,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       orderHelper.activeOrderId = orderId;
 
       final key = orderId.toString();
-      final existingOrder = Map<String, dynamic>.from(offlineBox.get(key));
+      final rawExisting = await offlineBox.get(key);
+      final existingOrder = Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
 
       final payouts = (existingOrder["payouts"] as List? ?? [])
           .map((e) => Map<String, dynamic>.from(e as Map))
@@ -3590,6 +3596,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         _isPayoutLoading = false;
       });
 
+      await _orderHelper.loadData();
       await _loadOrderData();
       widget.refreshOrderList?.call();
 

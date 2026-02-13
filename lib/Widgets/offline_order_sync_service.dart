@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:hive/hive.dart';
 
+import '../Database/storage/storage_provider.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 
@@ -34,15 +34,15 @@ class OfflineOrderSyncService {
     _isSyncing = true;
 
     try {
-      final box = Hive.box('offlineOrders');
-      final keys = box.keys.toList();
+      final box = StorageProvider.offlineOrders;
+      final keys = await box.getKeys();
 
       if (kDebugMode) {
         print("🔍 Checking offline orders → ${keys.length}");
       }
 
       for (final key in keys) {
-        final raw = box.get(key);
+        final raw = await box.get(key);
         if (raw is! Map) continue;
 
         final order = Map<String, dynamic>.from(raw);
@@ -56,8 +56,7 @@ class OfflineOrderSyncService {
         }
 
         // ✅ Parse local orderId safely
-        final int? orderId =
-        key is int ? key : int.tryParse(key.toString());
+        final int? orderId = int.tryParse(key.toString());
 
         if (orderId == null) {
           if (kDebugMode) print("⛔ Invalid order key → $key");
@@ -76,7 +75,7 @@ class OfflineOrderSyncService {
 
           // 🔥 Auto-migrate legacy orders
           order['products'] = products;
-          await box.put(key, order);
+          await box.put(key.toString(), order);
         }
 
         if (products.isEmpty) {
@@ -141,7 +140,7 @@ class OfflineOrderSyncService {
 
         // 🗑️ DELETE IMMEDIATELY if Woo says COMPLETED
         if (wooStatus == 'completed') {
-          await box.delete(key);
+          await box.delete(key.toString());
           await box.delete(wooOrderId.toString());
 
           if (kDebugMode) {
@@ -159,7 +158,7 @@ class OfflineOrderSyncService {
         order['synced'] = true;
         order['sync_at'] = DateTime.now().toIso8601String();
 
-        await box.put(key, order);
+        await box.put(key.toString(), order);
 
         if (kDebugMode) {
           print(

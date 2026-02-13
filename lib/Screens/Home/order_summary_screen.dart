@@ -9,7 +9,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:intl/intl.dart'; // Added for date formatting
 import 'package:pinaka_pos/Database/assets_db_helper.dart';
 import 'package:pinaka_pos/Helper/Extentions/extensions.dart';
@@ -489,20 +489,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     LocalPayment? localPayment,
   }) async {
     try {
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
 
       print(" [SAVE] Starting for order: $key");
       print(" [SAVE] Amount: $amount, Method: $paymentMethod");
 
       // 1. Make sure the order exists in Hive
-      if (!box.containsKey(key)) {
+      if (!(await box.containsKey(key))) {
         print(" Order not found → creating new entry: $key");
         await _createOfflineOrderEntry(key);
       }
 
       // 2. Read current data (FRESH COPY)
-      final existingOrder = box.get(key);
+      final existingOrder = await box.get(key);
       if (existingOrder == null) {
         print(" Failed to read order after creation");
         return;
@@ -680,11 +680,12 @@ Previous Remaining: \$${remaining.toStringAsFixed(2)}
         print(" Order fully paid! Showing success popup...");
 
         // Small delay to ensure state is updated
-        Future.delayed(Duration(milliseconds: 100), () {
+        Future.delayed(Duration(milliseconds: 100), () async {
           if (mounted && !_successPopupShown) {
             _successPopupShown = true;
-            final couponResponse = (box.get(key)?["coupon_response"] as Map?)
-                ?.cast<String, dynamic>() ?? {};
+            final boxData = await box.get(key);
+            final cr = boxData is Map ? (boxData as Map)["coupon_response"] : null;
+            final couponResponse = cr is Map ? Map<String, dynamic>.from(cr as Map) : <String, dynamic>{};
 
             // _showPaymentDialog(
             //   context,
@@ -728,7 +729,7 @@ Previous Remaining: \$${remaining.toStringAsFixed(2)}
 
   Future<void> _saveLocalPaymentToHive(LocalPayment payment) async {
     try {
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
 
       if (kDebugMode) {
@@ -739,13 +740,13 @@ Previous Remaining: \$${remaining.toStringAsFixed(2)}
       }
 
       // 1. Make sure the order exists in Hive
-      if (!box.containsKey(key)) {
+      if (!(await box.containsKey(key))) {
         print("Order not found → creating new entry: $key");
         await _createOfflineOrderEntry(key);
       }
 
       // 2. Read current data (FRESH COPY)
-      final existingOrder = box.get(key);
+      final existingOrder = await box.get(key);
       if (existingOrder == null) {
         print("Failed to read order after creation");
         return;
@@ -855,7 +856,7 @@ Previous Remaining: \$${remaining.toStringAsFixed(2)}
       print(" [SAVE] Written to Hive successfully");
 
       // 10. Verify it was saved
-      final verification = box.get(key);
+      final verification = await box.get(key);
       if (verification != null) {
         final verifyPayments = verification['payments'] as List?;
         print(" [VERIFY] Payments in Hive now: ${verifyPayments?.length ?? 0}");
@@ -984,7 +985,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       _updateLocalPaymentState(amount, savedPayment);
 
       // Show success popup
-      _showPaymentSuccessPopup(amount, savedPayment);
+      await _showPaymentSuccessPopup(amount, savedPayment);
 
       // Schedule sync
       _schedulePaymentSync(savedPayment);
@@ -1013,7 +1014,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 //  NEW: Create complete offline order entry structure
   Future<void> _createOfflineOrderEntry(String key) async {
     try {
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
       final now = DateTime.now();
       final timestamp = now.toIso8601String();
 
@@ -1094,12 +1095,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       );
 
       // 🔁 Re-read updated order from Hive (source of truth)
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
 
-      if (!box.containsKey(key)) return;
+      if (!(await box.containsKey(key))) return;
 
-      final updatedOrder = Map<String, dynamic>.from(box.get(key));
+      final rawUpdated = await box.get(key);
+      final updatedOrder = Map<String, dynamic>.from(rawUpdated is Map ? rawUpdated : {});
 
       //  Extract updated values
       final double updatedPaid =
@@ -1162,17 +1164,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   Future<Map<String, dynamic>?> _loadOfflineOrderData() async {
     try {
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
 
-      if (!box.containsKey(key)) {
+      if (!(await box.containsKey(key))) {
         if (kDebugMode) {
           print(" No offline order found for ID: $key");
         }
         return null;
       }
 
-      final data = Map<String, dynamic>.from(box.get(key));
+      final rawData = await box.get(key);
+      final data = Map<String, dynamic>.from(rawData is Map ? rawData : {});
 
       if (kDebugMode) {
         print("\n" + "📂" * 30);
@@ -1198,14 +1201,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 //  NEW: Get payment history from Hive
   Future<List<Map<String, dynamic>>> _getPaymentHistoryFromHive() async {
     try {
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
 
-      if (!box.containsKey(key)) {
+      if (!(await box.containsKey(key))) {
         return [];
       }
 
-      final existing = Map<String, dynamic>.from(box.get(key));
+      final rawExisting = await box.get(key);
+      final existing = Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
       final payments = existing['payments'] as List<dynamic>? ?? [];
 
       return payments.map((p) => Map<String, dynamic>.from(p)).toList();
@@ -1220,10 +1224,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 //  NEW: Clear offline order after completion
   Future<void> _clearOfflineOrder() async {
     try {
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
 
-      if (box.containsKey(key)) {
+      if (await box.containsKey(key)) {
         await box.delete(key);
 
         if (kDebugMode) {
@@ -1413,7 +1417,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
 // Show success popup
-  void _showPaymentSuccessPopup(double amount, LocalPayment payment) {
+  Future<void> _showPaymentSuccessPopup(double amount, LocalPayment payment) async {
     final bool isPaymentComplete = balanceAmount <= 0;
 
     //  Clear the payment-specific balance display when order is fully paid
@@ -1434,10 +1438,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     if (isPaymentComplete && !_successPopupShown) {
       _successPopupShown = true;
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
-      final couponResponse = (box.get(key)?["coupon_response"] as Map?)
-          ?.cast<String, dynamic>() ?? {};
+      final boxDataKey = await box.get(key);
+      final cr = boxDataKey is Map ? (boxDataKey as Map)["coupon_response"] : null;
+      final couponResponse = cr is Map ? Map<String, dynamic>.from(cr as Map) : <String, dynamic>{};
 
       _showPaymentDialog(
         context,
@@ -1525,16 +1530,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             sunmiTxnId: null,
           );
 
-          final box = Hive.box('offlineOrders');
+          final box = StorageProvider.offlineOrders;
           final key = (orderId ?? 0).toString();
-          final existing = box.containsKey(key)
-              ? Map<String, dynamic>.from(box.get(key))
-              : <String, dynamic>{};
+          final hasKey = await box.containsKey(key);
+          final raw = hasKey ? await box.get(key) : null;
+          final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
 
           existing["lastPayment"] = _lastPayment!.toJson();
           existing["serverPaymentId"] = serverPaymentId;
           existing["localPaymentSynced"] = true;
-          box.put(key, existing);
+          await box.put(key, existing);
 
           // Print updated payment
           await LocalPaymentDBHelper.instance.getLastPaymentForOrder(payment.orderId);
@@ -1721,7 +1726,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //     _successPopupShown = true;
   //
   //     // Coupon data for popup
-  //     final box = Hive.box('offlineOrders');
+  //     final box = StorageProvider.offlineOrders;
   //     final key = (orderId ?? 0).toString();
   //     final couponResponse = (box.get(key)?["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
   //
@@ -1832,10 +1837,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //  UPDATED - Add Payment to Offline Order with Success Message
   Future<void> _addPaymentToOfflineOrder(LocalPayment payment) async {
     try {
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
 
-      if (!box.containsKey(key)) {
+      if (!(await box.containsKey(key))) {
         if (kDebugMode) {
           print(" Offline order not found for key: $key");
         }
@@ -1854,7 +1859,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
 
       // Get existing order
-      final existing = Map<String, dynamic>.from(box.get(key));
+      final rawExisting = await box.get(key);
+      final existing = Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
 
       // Get existing payments array or create new one
       List<dynamic> payments = existing['payments'] ?? [];
@@ -2064,14 +2070,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   // OPTIONAL HELPER - Get Payments from Offline Order
   Future<List<Map<String, dynamic>>> _getPaymentsFromOfflineOrder() async {
     try {
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
 
-      if (!box.containsKey(key)) {
+      if (!(await box.containsKey(key))) {
         return [];
       }
 
-      final existing = Map<String, dynamic>.from(box.get(key));
+      final rawExisting = await box.get(key);
+      final existing = Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
       final payments = existing['payments'] as List<dynamic>? ?? [];
 
       return payments.map((p) => Map<String, dynamic>.from(p)).toList();
@@ -2095,91 +2102,80 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     tax = widget.orderTax;
     orderId = widget.orderId;
     ebtTotal = widget.ebtAmount;
-    final box = Hive.box('offlineOrders');
-    final key = (orderId ?? 0).toString();
-
-    if (box.containsKey(key)) {
-      final existing = Map<String, dynamic>.from(box.get(key));
-
-      // 🔥 FORCE FIX OLD WRONG DATA
-      if (existing["originalEbt"] != widget.ebtAmount) {
-        existing["originalEbt"] = widget.ebtAmount;
-        existing["remainingEbt"] = widget.ebtAmount;
-
-        box.put(key, existing);
-
-        if (kDebugMode) {
-          print("🛠 MIGRATED EBT → ${widget.ebtAmount}");
-        }
-      }
-    }
-
 
     _displayDate = widget.formattedDate;
     _displayTime = widget.formattedTime;
     cashbackFee = widget.cashbackFee;
     discountValue = widget.discountAmount;
+
     Future.delayed(Duration.zero, () async {
-      // Calculate balance from payment history first
-      await _calculateBalanceFromPaymentHistory();
-
-      // Print payment history summary
-      await _printPaymentHistorySummary();
-
-      // Show current session status
-      if (_currentPaymentRemainingBalance != null) {
-        print("\n ACTIVE PAYMENT SESSION DETECTED");
-        print("Remaining Balance: \$${_currentPaymentRemainingBalance!.toStringAsFixed(2)}");
-        if (_lastPaymentDetails != null) {
-          print("Last Payment: ${_lastPaymentDetails!['method']} - \$${_lastPaymentDetails!['amount']}");
+      final box = StorageProvider.offlineOrders;
+      final key = (orderId ?? 0).toString();
+      if (await box.containsKey(key)) {
+        final rawExisting = await box.get(key);
+        final existing = Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+        if (existing["originalEbt"] != widget.ebtAmount) {
+          existing["originalEbt"] = widget.ebtAmount;
+          existing["remainingEbt"] = widget.ebtAmount;
+          await box.put(key, existing);
+          if (kDebugMode) print("🛠 MIGRATED EBT → ${widget.ebtAmount}");
         }
-      } else {
-        print("\n NO ACTIVE PAYMENT SESSION");
-        print("Starting fresh from balance: \$${balanceAmount.toStringAsFixed(2)}");
       }
 
-      await retrySyncUnsyncedPayments();
-    });
+      final offlineBox = StorageProvider.offlineOrders;
+      final orderIdKey = (orderId ?? 0).toString();
+      if (await offlineBox.containsKey(orderIdKey)) {
+        final raw = await offlineBox.get(orderIdKey);
+        offlineOrder = raw is Map ? Map<String, dynamic>.from(raw) : null;
 
-    final offlineBox = Hive.box('offlineOrders');
-    final orderIdKey = (orderId ?? 0).toString();
+        if (offlineOrder != null && offlineOrder!['tenderAmount'] != null &&
+            offlineOrder!['balanceAmount'] != null) {
+          tenderAmount = (offlineOrder!['tenderAmount'] as num).toDouble();
+          balanceAmount = (offlineOrder!['balanceAmount'] as num).toDouble();
+          payByCash = (offlineOrder!['payByCash'] as num?)?.toDouble() ?? 0.0;
+          payByOther = (offlineOrder!['payByOther'] as num?)?.toDouble() ?? 0.0;
 
-    if (offlineBox.containsKey(orderIdKey)) {
-      offlineOrder = Map<String, dynamic>.from(offlineBox.get(orderIdKey));
-
-      if (offlineOrder!['tenderAmount'] != null &&
-          offlineOrder!['balanceAmount'] != null) {
-        tenderAmount = (offlineOrder!['tenderAmount'] as num).toDouble();
-        balanceAmount = (offlineOrder!['balanceAmount'] as num).toDouble();
-        payByCash = (offlineOrder!['payByCash'] as num?)?.toDouble() ?? 0.0;
-        payByOther = (offlineOrder!['payByOther'] as num?)?.toDouble() ?? 0.0;
-
-        //  FIX: Only set current payment remaining if balance > 0
-        if (balanceAmount > 0) {
-          _currentPaymentRemainingBalance = balanceAmount;
-          _lastPaymentDetails = {
-            'amount': tenderAmount,
-            'method': 'Cash', // Default
-            'remainingBalance': balanceAmount,
-            'datetime': DateTime.now().toIso8601String(),
-          };
+          if (offlineOrder!.containsKey("lastPayment")) {
+            _lastPayment = LastPaymentInfo.fromJson(
+              Map<String, dynamic>.from(offlineOrder!["lastPayment"]),
+            );
+          }
+          if (balanceAmount > 0) {
+            _currentPaymentRemainingBalance = balanceAmount;
+            _lastPaymentDetails = {
+              'amount': tenderAmount,
+              'method': 'Cash',
+              'remainingBalance': balanceAmount,
+              'datetime': DateTime.now().toIso8601String(),
+            };
+          } else {
+            _currentPaymentRemainingBalance = null;
+            _lastPaymentDetails = null;
+          }
         } else {
-          // Balance is 0 - payment complete
+          balanceAmount = orderTotal;
           _currentPaymentRemainingBalance = null;
           _lastPaymentDetails = null;
         }
       } else {
         balanceAmount = orderTotal;
-        // Fresh order - no current payment remaining
         _currentPaymentRemainingBalance = null;
         _lastPaymentDetails = null;
       }
-    } else {
-      balanceAmount = orderTotal;
-      // Fresh order - no current payment remaining
-      _currentPaymentRemainingBalance = null;
-      _lastPaymentDetails = null;
-    }
+
+      if (mounted) setState(() {});
+
+      await _calculateBalanceFromPaymentHistory();
+      await _printPaymentHistorySummary();
+      if (_currentPaymentRemainingBalance != null) {
+        print("\n ACTIVE PAYMENT SESSION DETECTED");
+        print("Remaining Balance: \$${_currentPaymentRemainingBalance!.toStringAsFixed(2)}");
+      } else {
+        print("\n NO ACTIVE PAYMENT SESSION");
+        print("Starting fresh from balance: \$${balanceAmount.toStringAsFixed(2)}");
+      }
+      await retrySyncUnsyncedPayments();
+    });
 
     Future.delayed(Duration.zero, () async {
       if (kDebugMode) {
@@ -2218,9 +2214,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     Future.delayed(Duration.zero, () async {
       final key = (orderId ?? 0).toString();
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
 
-      if (!box.containsKey(key)) {
+      if (!(await box.containsKey(key))) {
         await _createOfflineOrderEntry(key);
       } else {
         // Load existing data
@@ -2258,41 +2254,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     orderTotal = computedNetPayable;
 
     print(" Computed Net Payable (Order Total) = $orderTotal");
-// ================================
-//  RESTORE PAYMENT FROM HIVE
-// ================================
-        ;
-
-    if (offlineBox.containsKey(orderIdKey)) {
-      offlineOrder =
-      Map<String, dynamic>.from(offlineBox.get(orderIdKey));
-
-      if (offlineOrder!['tenderAmount'] != null &&
-          offlineOrder!['balanceAmount'] != null) {
-
-        tenderAmount = (offlineOrder!['tenderAmount'] as num).toDouble();
-        balanceAmount = orderTotal; // always start fresh
-
-        payByCash =
-            (offlineOrder!['payByCash'] as num?)?.toDouble() ?? 0.0;
-        payByOther =
-            (offlineOrder!['payByOther'] as num?)?.toDouble() ?? 0.0;
-      } else {
-        balanceAmount = orderTotal;
-      }
-    } else {
-      balanceAmount = orderTotal;
-    }
-
-//  Restore last payment (VOID support)
-    if (offlineOrder != null &&
-        offlineOrder!.containsKey("lastPayment")) {
-
-      _lastPayment = LastPaymentInfo.fromJson(
-        Map<String, dynamic>.from(offlineOrder!["lastPayment"]),
-      );
-    }
-
+    // Payment restoration is done in Future.delayed above (async storage)
 
     // Show restored payment state
     print("💵 Current Payment Breakdown:");
@@ -2428,9 +2390,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     if (widget.isOfflineSynced && widget.offlineOrderId != null) {
       try {
         final offlineId = widget.offlineOrderId!;
-        final box = Hive.box('offlineOrders');
+        final box = StorageProvider.offlineOrders;
 
-        if (box.containsKey(offlineId.toString())) {
+        if (await box.containsKey(offlineId.toString())) {
           await box.delete(offlineId.toString());
         }
 
@@ -2511,9 +2473,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (widget.isOfflineSynced && widget.offlineOrderId != null) {
         try {
           final offlineId = widget.offlineOrderId!;
-          final box = Hive.box('offlineOrders');
+          final box = StorageProvider.offlineOrders;
 
-          if (box.containsKey(offlineId.toString())) {
+          if (await box.containsKey(offlineId.toString())) {
             await box.delete(offlineId.toString());
           }
 
@@ -2527,21 +2489,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // 6 SAVE TO HIVE (balance + tender + ebt)
       // --------------------------------------------------
       try {
-        final offlineBox = Hive.box('offlineOrders');
+        final offlineBox = StorageProvider.offlineOrders;
         final key = (this.orderId ?? 0).toString();
 
-        if (offlineBox.containsKey(key)) {
-          final updated =
-          Map<String, dynamic>.from(offlineBox.get(key));
+        if (await offlineBox.containsKey(key)) {
+          final raw = await offlineBox.get(key);
+          final updated = Map<String, dynamic>.from(raw is Map ? raw : {});
 
           updated["balanceAmount"] = balanceAmount;
           updated["paidAmount"] = tenderAmount;
           updated["tenderAmount"] = tenderAmount;
           updated["ebtTotal"] = ebtTotal;
 
-          offlineBox.put(key, updated);
+          await offlineBox.put(key, updated);
         } else {
-          offlineBox.put(key, {
+          await offlineBox.put(key, {
             "balanceAmount": balanceAmount,
             "paidAmount": tenderAmount,
             "tenderAmount": tenderAmount,
@@ -2623,7 +2585,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     paymentBloc.createPayment(paymentRequest);
 
     StreamSubscription? subscription;
-    subscription = paymentBloc.createPaymentStream.listen((paymentResponse) {
+    subscription = paymentBloc.createPaymentStream.listen((paymentResponse) async {
       print("");
       print(" ================= SUNMI PAYMENT FULL RESPONSE =================");
 
@@ -2670,15 +2632,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         //  SAVE TO HIVE (SURVIVES APP RESTART)
         // =====================================================
         try {
-          final box = Hive.box('offlineOrders');
+          final box = StorageProvider.offlineOrders;
           final key = (orderId ?? 0).toString();
 
-          final existing = box.containsKey(key)
-              ? Map<String, dynamic>.from(box.get(key))
-              : <String, dynamic>{};
+          final hasKey = await box.containsKey(key);
+          final raw = hasKey ? await box.get(key) : null;
+          final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
 
           existing["lastPayment"] = _lastPayment!.toJson();
-          box.put(key, existing);
+          await box.put(key, existing);
 
           print("💾 LAST PAYMENT SAVED TO HIVE");
           print("   → method = ${_lastPayment!.method}");
@@ -2713,8 +2675,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       int redeemedPoints,
       int updatedAvailablePoints,
       ) async {
-    final box = Hive.box('offlineOrders');
-    final existing = box.get(orderId);
+    final box = StorageProvider.offlineOrders;
+    final existing = await box.get(orderId);
 
     if (existing == null) {
       print("[Hive] Cannot update redeem → Order not found: $orderId");
@@ -2775,8 +2737,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Future<void> removeOfflineOrderRedeem(String orderId) async {
-    final box = Hive.box('offlineOrders');
-    final existing = box.get(orderId);
+    final box = StorageProvider.offlineOrders;
+    final existing = await box.get(orderId);
 
     if (existing == null) return;
 
@@ -2792,20 +2754,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       print("🗑 [Hive] Redeem REMOVED → OrderId: $orderId");
     }
   }
-  void _fetchPaymentsByOrderId() {
+  Future<void> _fetchPaymentsByOrderId() async {
     if (kDebugMode) print("###### _fetchPaymentsByOrderId");
 
     if (orderId == null) return;
 
-    final box = Hive.box('offlineOrders');
+    final box = StorageProvider.offlineOrders;
     final key = orderId.toString();
 
     // ================================
     //  RESTORE REDEEM
     // ================================
     try {
-      if (box.containsKey(key)) {
-        final stored = Map<String, dynamic>.from(box.get(key));
+      if (await box.containsKey(key)) {
+        final rawStored = await box.get(key);
+        final stored = Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
         redeemedValue =
             (stored["redeemed_value"] as num?)?.toDouble() ?? 0.0;
       }
@@ -2817,8 +2780,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     //  RESTORE ORIGINAL EBT
     // ================================
     try {
-      if (box.containsKey(key)) {
-        final stored = Map<String, dynamic>.from(box.get(key));
+      if (await box.containsKey(key)) {
+        final rawStored = await box.get(key);
+        final stored = Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
         if (stored["originalEbt"] != null) {
           ebtTotal = (stored["originalEbt"] as num).toDouble();
         }
@@ -2831,14 +2795,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     _paymentListSubscription?.cancel();
     _paymentListSubscription =
-        paymentBloc.paymentsListStream.listen((response) {
+        paymentBloc.paymentsListStream.listen((response) async {
           if (response.status == Status.COMPLETED) {
-            _processPaymentList(response.data!);
+            await _processPaymentList(response.data!);
           }
-          setState(() => isSummaryLoading = false);
+          if (mounted) setState(() => isSummaryLoading = false);
         });
   }
-  void _processPaymentList(List<PaymentListModel> payments) {
+  Future<void> _processPaymentList(List<PaymentListModel> payments) async {
     double cashTotal = 0.0;
     double otherTotal = 0.0;
     double ebtPaid = 0.0;
@@ -2861,12 +2825,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
 
-    final box = Hive.box('offlineOrders');
+    final box = StorageProvider.offlineOrders;
     final key = orderId.toString();
 
-    final existing = box.containsKey(key)
-        ? Map<String, dynamic>.from(box.get(key))
-        : <String, dynamic>{};
+    final hasKey = await box.containsKey(key);
+    final raw = hasKey ? await box.get(key) : null;
+    final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
 
     // ===================================================
     //  SINGLE SOURCE OF TRUTH
@@ -2960,7 +2924,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     existing["redeemed_value"] = redeemedValue;
     existing["remainingBalance"] = finalBalance;
 
-    box.put(key, existing);
+    await box.put(key, existing);
 
     if (kDebugMode) {
       print(" PAYMENT SUMMARY");
@@ -3132,7 +3096,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 //               paymentData.orderStatus ?? TextConstants.processing;
 //
 //           try {
-//             final box = Hive.box('offlineOrders');
+//             final box = StorageProvider.offlineOrders;
 //             final key = (orderId ?? 0).toString();
 //
 //             final existing = box.containsKey(key)
@@ -3146,7 +3110,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 //                   .toList(),
 //             };
 //
-//             box.put(key, existing);
+//             await box.put(key, existing);
 //
 //             if (kDebugMode) {
 //               print("🎁 FULL COUPON RESPONSE SAVED");
@@ -3162,9 +3126,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 //           if (widget.isOfflineSynced && widget.offlineOrderId != null) {
 //             try {
 //               final offlineId = widget.offlineOrderId!;
-//               final box = Hive.box('offlineOrders');
+//               final box = StorageProvider.offlineOrders;
 //
-//               if (box.containsKey(offlineId.toString())) {
+//               if (await box.containsKey(offlineId.toString())) {
 //                 await box.delete(offlineId.toString());
 //               }
 //
@@ -3186,7 +3150,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 //
 // // Save to Hive
 //           try {
-//             final box = Hive.box('offlineOrders');
+//             final box = StorageProvider.offlineOrders;
 //             final key = (orderId ?? 0).toString();
 //
 //             final existing = box.containsKey(key)
@@ -3194,7 +3158,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 //                 : <String, dynamic>{};
 //
 //             existing["lastPayment"] = _lastPayment!.toJson();
-//             box.put(key, existing);
+//             await box.put(key, existing);
 //
 //             if (kDebugMode) {
 //               print("💾 LAST PAYMENT SAVED (NON-CARD)");
@@ -3246,7 +3210,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 //           // ⭐ SAVE BALANCE + TENDER AMOUNT TO ORDER + HIVE
 //           // ------------------------------------------------------
 //           try {
-//             final offlineBox = Hive.box('offlineOrders');
+//             final offlineBox = StorageProvider.offlineOrders;
 //             final key = (orderId ?? 0).toString();
 //
 //             if (offlineBox.containsKey(key)) {
@@ -3308,7 +3272,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 //             _successPopupShown = true;
 //             _hidePaymentProgressDialog();
 //
-//             final box = Hive.box('offlineOrders');
+//             final box = StorageProvider.offlineOrders;
 //             final key = (orderId ?? 0).toString();
 //
 //             final couponResponse =
@@ -3409,10 +3373,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         // ✅ FULL PAYMENT
         _successPopupShown = true;
 
-        final box = Hive.box('offlineOrders');
+        final box = StorageProvider.offlineOrders;
         final key = (orderId ?? 0).toString();
-        final couponResponse =
-            (box.get(key)?["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
+        final d = await box.get(key);
+        final cr = d is Map ? d["coupon_response"] : null;
+        final couponResponse = cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
 
         _showPaymentDialog(
           context,
@@ -3581,15 +3546,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         );
 
         try {
-          final box = Hive.box('offlineOrders');
+          final box = StorageProvider.offlineOrders;
           final key = (orderId ?? 0).toString();
-          final existing = box.containsKey(key) ? Map<String, dynamic>.from(box.get(key)) : <String, dynamic>{};
+          final hasKey = await box.containsKey(key);
+          final raw = hasKey ? await box.get(key) : null;
+          final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
           existing["lastPayment"] = _lastPayment!.toJson();
           existing["balanceAmount"] = balanceAmount;
           existing["paidAmount"] = tenderAmount;
           existing["tenderAmount"] = tenderAmount;
           existing["ebtTotal"] = ebtTotal;
-          box.put(key, existing);
+          await box.put(key, existing);
         } catch (e) {
           print("⚠ Hive update error: $e");
         }
@@ -3604,9 +3571,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         if (isFullPayment && !_successPopupShown) {
           _successPopupShown = true;
 
-          final box = Hive.box('offlineOrders');
+          final box = StorageProvider.offlineOrders;
           final key = (orderId ?? 0).toString();
-          final couponResponse = (box.get(key)?["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
+          final rawBox = await box.get(key);
+          final cr = rawBox is Map ? rawBox["coupon_response"] : null;
+          final couponResponse = cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
 
           _showPaymentDialog(
             context,
@@ -4336,15 +4305,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         isRedeemActive = false;
                       });
 
-                      final offlineBox = Hive.box('offlineOrders');
+                      final offlineBox = StorageProvider.offlineOrders;
                       final localKey = widget.offlineOrderId?.toString();
 
                       if (localKey != null) {
-                        final existing = offlineBox.get(localKey);
+                        final existing = await offlineBox.get(localKey);
                         if (existing != null) {
-                          final d = Map<String, dynamic>.from(existing);
+                          final d = Map<String, dynamic>.from(existing is Map ? existing : {});
                           d["loyaltyContact"] = "";
-                          offlineBox.put(localKey, d);
+                          await offlineBox.put(localKey, d);
                         }
                       }
 
@@ -4380,15 +4349,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         showCustomerInput = true;
                       });
 
-                      final offlineBox = Hive.box('offlineOrders');
+                      final offlineBox = StorageProvider.offlineOrders;
                       final localKey = widget.offlineOrderId?.toString();
 
                       if (localKey != null) {
-                        final existing = offlineBox.get(localKey);
+                        final existing = await offlineBox.get(localKey);
                         if (existing != null) {
-                          final d = Map<String, dynamic>.from(existing);
+                          final d = Map<String, dynamic>.from(existing is Map ? existing : {});
                           d["loyaltyContact"] = contact;
-                          offlineBox.put(localKey, d);
+                          await offlineBox.put(localKey, d);
                         }
                       }
 
@@ -6295,10 +6264,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                     _showPartialPaymentDialog(context, amount);
                                                   } else {
                                                     _successPopupShown = true;
-                                                    final box = Hive.box('offlineOrders');
+                                                    final box = StorageProvider.offlineOrders;
                                                     final key = (orderId ?? 0).toString();
-                                                    final couponResponse = (box.get(key)?["coupon_response"] as Map?)
-                                                        ?.cast<String, dynamic>() ?? {};
+                                                    final boxData = await box.get(key);
+                                                    final cr = boxData is Map ? (boxData as Map)["coupon_response"] : null;
+                                                    final couponResponse = cr is Map ? Map<String, dynamic>.from(cr as Map) : <String, dynamic>{};
 
                                                     _showPaymentDialog(
                                                       context,
@@ -6859,7 +6829,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                               const SizedBox(height: 10),
                               _buildCouponButton(
-                                TextConstants.Issuecoupon,
+                                TextConstants.coupon,
                                 "assets/coupon.png",
                                 isActive: redeemedValue == 0 &&
                                     !isPaymentStarted &&
@@ -6879,7 +6849,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               _buildRedeemCouponButton(
                                 TextConstants.generatecoupon,
                                 "assets/coupon.png",
-                                //isActive: offlineOrder?["coupon_applied"] != true,
                                 onTap: () async {
                                   if (offlineOrder == null) {
                                     ScaffoldMessenger.of(context).showSnackBar(
@@ -6953,7 +6922,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       _showCouponResponsePopup(response);
 
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
 
 // 🔑 always resolve order key safely
       final String key =
@@ -6963,20 +6932,20 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               "";
 
 // 🧠 merge with existing order
+      final hasKey = await box.containsKey(key);
+      final raw = hasKey ? await box.get(key) : null;
       final Map<String, dynamic> existing =
-      box.containsKey(key)
-          ? Map<String, dynamic>.from(box.get(key))
+      raw is Map
+          ? Map<String, dynamic>.from(raw)
           : Map<String, dynamic>.from(offlineOrder!);
-      existing["coupon_response"] = response;
+
+// ✅ STORE coupon data for later payment success
+      existing["coupon_response"] = response;      // decoded Map
       existing["coupon_applied"] = true;
       existing["coupon_applied_at"] = DateTime.now().toIso8601String();
       existing["coupon_amount"] = discountAmount;
 
       await box.put(key, existing);
-
-      setState(() {
-        offlineOrder = existing;
-      });
 
       debugPrint("✅ Coupon saved in Hive for order $key");
 
@@ -7015,182 +6984,62 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final coupons = response["coupons"] as List? ?? [];
     final coupon = coupons.isNotEmpty ? coupons.first : null;
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final dialogBg = isDark ? const Color(0xFF1A1C2A) : Colors.white;
-    final cardBg = isDark ? const Color(0xFF2B2D3C) : const Color(0xFFF2F4F7);
-    final textPrimary = isDark ? Colors.white : const Color(0xFF1A1A1A);
-    final textSecondary = isDark ? Colors.white70 : Colors.grey;
-    const success = Color(0xFF1ABC9C);
-
     showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (_) {
-        return Dialog(
-          backgroundColor: dialogBg,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Stack(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
+        return AlertDialog(
+          title: const Text("Coupon Generated – Can Be Redeemed After Payment 🎉"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              //_row("Order Total", "\$${response["order_total"]}"),
 
-                      /// HEADER
-                      Row(
-                        children: [
-                          const Icon(Icons.card_giftcard, color: success, size: 30),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              "Coupon Generated",
-                              style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w700,
-                                  color: textPrimary),
-                            ),
-                          ),
-                        ],
-                      ),
+              if (coupon != null) ...[
+                _row("Coupon Code", coupon["code"]),
+                //_row("Discount Type", coupon["discount_type"]),
+                _row("Discount Amount", "\$${coupon["amount"]}"),
 
-                      const SizedBox(height: 4),
-
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          "Can be redeemed after payment",
-                          style: TextStyle(fontSize: 13, color: textSecondary),
-                        ),
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      /// COUPON CARD
-                      if (coupon != null)
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: cardBg,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            children: [
-
-                              /// CODE BOX
-                              Container(
-                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-                                decoration: BoxDecoration(
-                                  color: success.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.local_offer, color: success),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        coupon["code"].toString(),
-                                        style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                            letterSpacing: 1,
-                                            color: textPrimary),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              const SizedBox(height: 14),
-
-                              _couponRow("Discount Amount", "₹${coupon["amount"]}", textPrimary),
-
-                              _couponRow(
-                                "Min Order Amount",
-                                coupon["min_amount"] == null
-                                    ? "No minimum"
-                                    : "₹${coupon["min_amount"]}",
-                                textPrimary,
-                              ),
-
-                              _couponRow(
-                                "Max order Amount",
-                                coupon["max_amount"] == null
-                                    ? "No maximum"
-                                    : "₹${coupon["max_amount"]}",
-                                textPrimary,
-                              ),
-                            ],
-                          ),
-                        ),
-
-                      const SizedBox(height: 18),
-
-                      /// OK BUTTON
-                      SizedBox(
-                        width: double.infinity,
-                        height: 42,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xCC5454FF),                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text(
-                            "OK",
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                _row(
+                  "Min Order Amount",
+                  coupon["min_amount"] == null
+                      ? "No minimum"
+                      : "\$${coupon["min_amount"]}",
                 ),
 
-                /// CLOSE BUTTON
-                Positioned(
-                  right: 12,
-                  top: 12,
-                  child: GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: const CircleAvatar(
-                      radius: 14,
-                      backgroundColor: Colors.red,
-                      child: Icon(Icons.close, color: Colors.white, size: 16),
-                    ),
-                  ),
+                _row(
+                  "Max Discount Amount",
+                  coupon["max_amount"] == null
+                      ? "No maximum"
+                      : "\$${coupon["max_amount"]}",
                 ),
               ],
-            ),
+            ],
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("OK"),
+            ),
+          ],
         );
       },
     );
   }
 
-  Widget _couponRow(String label, String value, Color color) {
+
+  Widget _row(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(
-            child: Text(label,
-                style: const TextStyle(fontSize: 13, color: Colors.grey)),
-          ),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w600, color: color)),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(value),
         ],
       ),
     );
   }
-
 
 
   Widget _buildCouponButton(
@@ -7325,7 +7174,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   // Future<void> _removeAppliedCoupon() async {
   //   if (widget.orderId == null || widget.orderId == 0) return;
   //
-  //   final offlineBox = Hive.box('offlineOrders');
+  //   final offlineBox = StorageProvider.offlineOrders;
   //   final localKey = widget.offlineOrderId?.toString(); // 🔥 LOCAL KEY ONLY
   //
   //   if (localKey == null) {
@@ -7396,7 +7245,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   // }
   Future<void> _removeAppliedCoupon() async {
     try {
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
 
       final String orderKey =
           widget.orderId?.toString() ??
@@ -7405,8 +7254,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       if (orderKey.isEmpty) return;
 
+      final rawOrder = await box.get(orderKey);
       final offlineOrder = Map<String, dynamic>.from(
-        box.get(orderKey) ?? {},
+        rawOrder is Map ? rawOrder : {},
       );
 
       if (offlineOrder.isEmpty) return;
@@ -7644,7 +7494,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
   Future<void> _applyCoupon(String code) async {
     try {
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
 
       final String orderKey =
           widget.orderId?.toString() ??
@@ -7653,8 +7503,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       if (orderKey.isEmpty) return;
 
+      final rawOrder = await box.get(orderKey);
       final offlineOrder = Map<String, dynamic>.from(
-        box.get(orderKey) ?? {},
+        rawOrder is Map ? rawOrder : {},
       );
 
       if (offlineOrder.isEmpty) return;
@@ -7769,7 +7620,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //       }
   //     });
   //
-  //     final offlineBox = Hive.box('offlineOrders');
+  //     final offlineBox = StorageProvider.offlineOrders;
   //     final localKey = widget.offlineOrderId?.toString();
   //
   //     if (localKey != null) {
@@ -8586,7 +8437,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   Future<void> _syncCurrentOfflineOrder() async {
     try {
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
 
       final String orderKey =
           widget.orderId?.toString() ??
@@ -8599,7 +8450,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return;
       }
 
-      final raw = box.get(orderKey);
+      final raw = await box.get(orderKey);
       if (raw is! Map) return;
 
       final order = Map<String, dynamic>.from(raw);

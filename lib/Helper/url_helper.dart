@@ -22,8 +22,8 @@ class UrlHelper {
   ///
   /// Note: change _uat to _prod in release build
 
-  //  static const String pinakaBaseUrl = kDebugMode ? _dev : _uat  ;  ////release
-  static const String pinakaBaseUrl = kDebugMode ? _uat : _dev  ;  //debug
+  static const String pinakaBaseUrl = kDebugMode ? _prod : _uat  ;  ////release
+  //static const String pinakaBaseUrl = kDebugMode ? _uat : _dev  ;  //debug
 
   static const String validateMerchant =  "$pinakaBaseUrl/wp-json/custom/v1/validate-merchant";  //Build #1.0.42
 

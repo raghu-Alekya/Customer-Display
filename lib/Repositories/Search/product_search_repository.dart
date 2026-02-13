@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:http/http.dart' as http;
 import '../../Helper/api_helper.dart';
 import '../../Helper/url_helper.dart';
@@ -31,7 +31,7 @@ class ProductRepository { // Build #1.0.13 : added product search repository
   }
 
   Future<List<ProductResponse>> fetchProducts(  {String? searchQuery}) async {
-    final box = await Hive.openBox('productCache');
+    final box = StorageProvider.productCache;
     String url = "${UrlHelper.wooCommerceV3}${UrlMethodConstants.products}";
 
     if (searchQuery != null && searchQuery.isNotEmpty) {
@@ -68,9 +68,9 @@ class ProductRepository { // Build #1.0.13 : added product search repository
       final List<ProductResponse> products =
       data.map((e) => ProductResponse.fromJson(e)).toList();
 
-      // ✅ Cache in Hive
+      // ✅ Cache
       for (var product in products) {
-        box.put(product.id.toString(), deepConvertToStringKeys(product.toJson()));
+        await box.put(product.id.toString(), deepConvertToStringKeys(product.toJson()));
       }
 
       if (kDebugMode) {
@@ -85,9 +85,10 @@ class ProductRepository { // Build #1.0.13 : added product search repository
         debugPrintStack(stackTrace: st);
       }
 
-      if (box.isNotEmpty) {
+      final cacheMap = await box.toMap();
+      if (cacheMap.isNotEmpty) {
         try {
-          final cachedProducts = box.values.map((e) {
+          final cachedProducts = cacheMap.values.map((e) {
             try {
               dynamic jsonData;
               if (e is String) {
@@ -157,7 +158,7 @@ class ProductRepository { // Build #1.0.13 : added product search repository
 
     // ✅ Also store a normalized version in Hive for offline use
     try {
-      final productBox = Hive.box('productCache');
+      final productBox = StorageProvider.productCache;
       final cacheKey = "product_${productId}_variations";
 
       // Normalize variations for easier offline use
@@ -233,7 +234,7 @@ class ProductRepository { // Build #1.0.13 : added product search repository
 
     // ✅ Store in Hive cache for offline lookup
     try {
-      final productBox = Hive.box('productCache');
+      final productBox = StorageProvider.productCache;
       final cacheKey = "sku_${sku.toLowerCase()}";
 
       // Normalize the structure to match what onBarcodeScanned expects
@@ -298,7 +299,7 @@ class ProductRepository { // Build #1.0.13 : added product search repository
 
     // ✅ Store custom product in Hive for offline access
     try {
-      final productBox = Hive.box('productCache');
+      final productBox = StorageProvider.productCache;
       final cacheKey = "sku_${(addCustomItem.sku ?? request.sku ?? '').toLowerCase()}";
 
       final normalized = [

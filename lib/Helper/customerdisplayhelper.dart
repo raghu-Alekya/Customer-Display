@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../services/CustomerDisplayService.dart';
 
@@ -57,8 +57,8 @@ class CustomerDisplayHelper {
 
       print("🟡 [CD] START updateCustomerDisplay → serverOrderId=$serverOrderId");
 
-      final offlineBox = Hive.box('offlineOrders');
-      final raw = offlineBox.get(serverOrderId.toString());
+      final offlineBox = StorageProvider.offlineOrders;
+      final raw = await offlineBox.get(serverOrderId.toString());
 
       print("🗃 [CD] Checking Hive for key=$serverOrderId → found=${raw != null}");
 
@@ -78,26 +78,34 @@ class CustomerDisplayHelper {
       print("🟣 [CD] Woo Order ID fetched from Hive → $wooOrderId");
 
 
-      double _getAutoDiscountPerUnit(int productId, int qty) {
+      Future<double> _getAutoDiscountPerUnit(int productId, int qty) async {
         try {
-          final box = Hive.box('productCache');
+          final box = StorageProvider.productCache;
+          final allEntries = await box.toMap();
 
-          for (var key in box.keys) {
+          for (var key in allEntries.keys) {
             if (!key.toString().startsWith("products_")) continue;
 
-            final cached = box.get(key);
+            final cached = allEntries[key];
             if (cached == null) continue;
 
-            final List products = json.decode(cached['data']);
+            List products;
+            if (cached is List) {
+              products = cached;
+            } else if (cached is Map && cached['data'] != null) {
+              products = json.decode(cached['data'].toString());
+            } else {
+              continue;
+            }
 
-            final product = products.firstWhere(
+            final product = products.cast<Map>().firstWhere(
                   (p) =>
               p['fast_key_product_id'] == productId ||
                   p['id'] == productId,
-              orElse: () => null,
+              orElse: () => <String, dynamic>{},
             );
 
-            if (product == null) continue;
+            if (product.isEmpty) continue;
 
             final bool enabled = product['auto_discount_enabled'] == true;
             final double discount =

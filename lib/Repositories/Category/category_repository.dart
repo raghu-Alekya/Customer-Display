@@ -2,7 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 
 import 'package:isar/isar.dart';
 
@@ -291,7 +291,7 @@ class CategoryRepository {
 
     final productRepo = ProductRepository();
     // NOTE: keeping variations cache in Hive for now; only category/product list caching moved to Isar.
-    final productCacheBox = Hive.box('productCache');
+    final productCacheBox = StorageProvider.productCache;
 
     for (final product in productList) {
       final productId = product['id'];

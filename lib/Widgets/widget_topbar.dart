@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:isar/isar.dart';
 import 'package:pinaka_pos/Widgets/widget_variants_dialog.dart';
 import 'package:provider/provider.dart';
@@ -501,10 +501,11 @@ class _TopBarState extends State<TopBar> {
         return;
       }
 
-      final offlineBox = Hive.box('offlineOrders');
+      final offlineBox = StorageProvider.offlineOrders;
       final activeOrderId = ensuredOrderId.toString();
+      final raw = await offlineBox.get(activeOrderId);
       final Map<String, dynamic> rawOrder = Map<String, dynamic>.from(
-        offlineBox.get(activeOrderId) ?? {},
+        raw is Map ? raw : {},
       );
 
       print("CATEGORY FLOW ITEMS: ${rawOrder['products']}");
@@ -555,7 +556,7 @@ class _TopBarState extends State<TopBar> {
         }
 
         rawOrder["age_verified"] = true;
-        await offlineBox.put(activeOrderId, rawOrder);
+        await offlineBox.put(activeOrderId.toString(), rawOrder);
 
         print("💾 Saved age_verified = true for search flow");
       }
@@ -722,7 +723,7 @@ class _TopBarState extends State<TopBar> {
         finalPrice = enteredPrice;
         rawOrder[variableKey] = true;
         rawOrder[savedPriceKey] = finalPrice;
-        await offlineBox.put(activeOrderId, rawOrder);
+        await offlineBox.put(activeOrderId.toString(), rawOrder);
       }
 
       setState(() => isAddingItemLoading = true);

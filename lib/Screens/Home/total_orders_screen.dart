@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:pinaka_pos/Database/db_helper.dart';
 import 'package:pinaka_pos/Models/Assets/asset_model.dart';
@@ -175,12 +175,15 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     debugPrint("OrdersScreen: Initiating fetch orders");
     _fetchOrdersSubscription?.cancel();
     _fetchOrdersSubscription =
-        _orderBloc.fetchTotalOrdersStream.listen((response) {
+        _orderBloc.fetchTotalOrdersStream.listen((response) async {
           if (!mounted) return;
 
           if (response.status == Status.COMPLETED) {
             debugPrint(
                 "OrdersScreen: Successfully fetched ${response.data!.ordersData.length} orders, Total Count: ${response.data!.orderTotalCount}");
+
+            final deletedBox = StorageProvider.deletedOrders;
+            final deletedMap = await deletedBox.toMap();
 
             setState(() {
               _pageOrders = response.data!.ordersData;
@@ -195,9 +198,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
               isLoading = false;
 
             // -------------------------------------------------------------
-              // ⭐ MERGE OFFLINE DELETED ORDERS (Hive) WITH USER FILTER LOGIC
+              // ⭐ MERGE OFFLINE DELETED ORDERS WITH USER FILTER LOGIC
               // -------------------------------------------------------------
-              final deletedBox = Hive.box('deletedOrders');
 
               // Get selected user filter
               final String selectedUserId = _filterUsers
@@ -205,10 +207,10 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                   .iD ??
                   "";
 
-              if (deletedBox.isNotEmpty) {
-                debugPrint("Merging ${deletedBox.length} deleted offline orders...");
+              if (deletedMap.isNotEmpty) {
+                debugPrint("Merging ${deletedMap.length} deleted offline orders...");
 
-                final deletedOrderModels = deletedBox.values.map((json) {
+                final deletedOrderModels = deletedMap.values.map((json) {
                   final map = Map<String, dynamic>.from(json);
 
                   // ⭐ FIX 1: Convert order_id → id

@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:http/http.dart' as _apiHelper;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -96,7 +96,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     final request = CreateOrderRequestModel(metaData: metaData);
 
     // ---------- OFFLINE MODE ONLY ----------
-    final box = Hive.box('offlineOrders');
+    final box = StorageProvider.offlineOrders;
     // ---------- SMART 6-DIGIT ORDER ID ----------
 
     final now = DateTime.now();
@@ -154,8 +154,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     );
   }
   Future<void> saveOfflineOrderTotals(int orderId) async {
-    final box = Hive.box('offlineOrders');
-    final raw = box.get(orderId.toString());
+    final box = StorageProvider.offlineOrders;
+    final raw = await box.get(orderId.toString());
 
     if (raw == null) return;
 
@@ -191,15 +191,15 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     order['net_payable'] = netPayable;
 
     await box.put(orderId.toString(), order);
-    print("💾 (Helper) Saved totals into Hive for order $orderId");
+    print("💾 (Helper) Saved totals for order $orderId");
   }
 
   Future<void> addProductToOfflineOrder({
     required int orderId,
     required Map<String, dynamic> product,
   }) async {
-    final box = Hive.box('offlineOrders');
-    final order = box.get(orderId.toString());
+    final box = StorageProvider.offlineOrders;
+    final order = await box.get(orderId.toString());
 
     if (order == null) {
       throw Exception("Offline order $orderId not found");
@@ -1259,7 +1259,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         final double wooDiscountTax =
             double.tryParse(decoded['discount_tax']?.toString() ?? "0") ?? 0.0;
 
-        final box = Hive.box('offlineOrders');
+        final box = StorageProvider.offlineOrders;
 
         final localOrderId = offlineOrder['id']?.toString() ??
             offlineOrder['order_id']?.toString() ??
@@ -1920,8 +1920,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     required int orderId,
     required UpdateOrderRequestModel request,
   }) async {
-    final box = Hive.box('offlineOrders');
-    final order = box.get(orderId.toString());
+    final box = StorageProvider.offlineOrders;
+    final order = await box.get(orderId.toString());
 
     if (order == null) {
       throw Exception("Offline order $orderId not found for deletion");
@@ -2003,8 +2003,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     required int orderId,
     required OrderStatusRequest request,
   }) async {
-    final box = Hive.box('offlineOrders');
-    final order = box.get(orderId.toString());
+    final box = StorageProvider.offlineOrders;
+    final order = await box.get(orderId.toString());
 
     if (order == null) {
       throw Exception("Offline order $orderId not found for status update");
@@ -2143,12 +2143,12 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     required AddPayoutAsProductRequestModel request,
   }) async {
     try {
-      final box = Hive.box('offlineOrders');
+      final box = StorageProvider.offlineOrders;
       final key = orderId.toString();
 
       // 🟡 Fetch existing offline order
-      final existingOrder = box.get(key);
-      if (existingOrder == null) {
+      final existingOrder = await box.get(key);
+      if (existingOrder == null || existingOrder is! Map) {
         throw Exception("Offline order not found for ID $orderId");
       }
 

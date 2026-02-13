@@ -746,7 +746,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:isar/isar.dart';
 import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import 'package:pinaka_pos/Helper/auto_search.dart';
@@ -876,9 +876,9 @@ class NestedGridWidget extends StatelessWidget {
 
     // 3️⃣ 🔥 CHECK VARIATION CACHE (THIS WAS MISSING)
     try {
-      final box = Hive.box('productCache');
+      final box = StorageProvider.productCache;
       final variationKey = "product_${productId}_variations";
-      final variationData = box.get(variationKey);
+      final variationData = await box.get(variationKey);
 
       if (variationData is Map &&
           variationData["variations"] is List &&
@@ -1226,13 +1226,13 @@ class NestedGridWidget extends StatelessWidget {
                                 "🔍 Product details: id=$productId, name=$productName, price=$productPrice, hasVariants=$hasVariants, hasAgeRestriction=$hasAgeRestriction, minAge=$minAge");
 
                             // 🧠 Init or restore offline order
-                            final box = Hive.box('offlineOrders');
+                            final box = StorageProvider.offlineOrders;
                             int activeOrderId =
-                                orderHelper?.activeOrderId ?? box.get('lastOrderId', defaultValue: 1000);
+                                orderHelper?.activeOrderId ?? (await box.get('lastOrderId')) ?? 1000;
 
                             if (orderHelper?.activeOrderId == null) {
                               orderHelper?.activeOrderId = activeOrderId;
-                              box.put('lastOrderId', activeOrderId);
+                              await box.put('lastOrderId', activeOrderId);
                             }
 
                             print("🆔 Active Order ID: $activeOrderId");
@@ -1243,8 +1243,9 @@ class NestedGridWidget extends StatelessWidget {
                               // Use SAME age key as barcode scan flow
                               // Use SAME age key as barcode scan flow
                               final orderKey = activeOrderId.toString();
+                              final rawOrder = await box.get(orderKey);
                               final hiveOrder = Map<String, dynamic>.from(
-                                box.get(orderKey, defaultValue: {}),
+                                rawOrder is Map ? rawOrder : {},
                               );
 
                               final alreadyVerified =
@@ -1288,8 +1289,9 @@ class NestedGridWidget extends StatelessWidget {
                               print("💰 Variable price product detected → Checking global first-add status…");
 
                               final orderKey = activeOrderId.toString();
+                              final rawOrder = await box.get(orderKey);
                               final hiveOrder = Map<String, dynamic>.from(
-                                box.get(orderKey, defaultValue: {}),
+                                rawOrder is Map ? rawOrder : {},
                               );
 
                               final variableKey = "variable_price_added_$productId";
@@ -1376,9 +1378,9 @@ class NestedGridWidget extends StatelessWidget {
                               List<Map<String, dynamic>> offlineVariations = [];
 
                               try {
-                                final productBox = Hive.box('productCache');
+                                final productBox = StorageProvider.productCache;
                                 final cacheKey = "product_${productId}_variations";
-                                final cachedData = productBox.get(cacheKey);
+                                final cachedData = await productBox.get(cacheKey);
                                 print("📦 Checking cachedData for key=$cacheKey");
 
                                 List rawVariations = [];
@@ -1403,7 +1405,7 @@ class NestedGridWidget extends StatelessWidget {
                                 // 🩵 Fallback: Try item["variations"] if cache is empty
                                 if (rawVariations.isEmpty && item["variations"] != null) {
                                   for (var id in item["variations"]) {
-                                    var variantData = productBox.get("product_$id");
+                                    var variantData = await productBox.get("product_$id");
 
                                     if (variantData == null) {
                                       print("⚠️ No cache found for variant id=$id, using fallback");
@@ -1490,7 +1492,7 @@ class NestedGridWidget extends StatelessWidget {
                                   print("🔁 Cached variants incomplete → Refetching from API...");
                                   await ProductRepository().fetchProductVariations(productId);
 
-                                  final refreshed = productBox.get(cacheKey);
+                                  final refreshed = await productBox.get(cacheKey);
                                   if (refreshed is Map && refreshed["variations"] is List) {
                                     offlineVariations = (refreshed["variations"] as List)
                                         .map((v) => Map<String, dynamic>.from(v as Map))

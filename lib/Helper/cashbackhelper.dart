@@ -1,29 +1,29 @@
 import 'dart:convert';
-import 'package:hive/hive.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/Helper/url_helper.dart';
 
 class CashbackHelper {
 
   // ---------------------------------------------------------
-  // SAFE READ from Hive (ALWAYS returns Map<String, dynamic>)
+  // SAFE READ from storage (ALWAYS returns Map<String, dynamic>)
   // ---------------------------------------------------------
-  static Map<String, dynamic>? getCashbackConfig() {
-    final box = Hive.box('cashbackConfig');
-    final raw = box.get("config");
+  static Future<Map<String, dynamic>?> getCashbackConfig() async {
+    final box = StorageProvider.cashbackConfig;
+    final raw = await box.get("config");
 
     if (raw == null) return null;
 
     try {
       // Normal case
-      return Map<String, dynamic>.from(raw);
+      return Map<String, dynamic>.from(raw is Map ? raw : {});
     } catch (_) {
       // Fallback → deep convert
       try {
         final converted = deepConvert(raw);
-        return Map<String, dynamic>.from(converted);
+        return Map<String, dynamic>.from(converted as Map);
       } catch (_) {
-        print("❌ CashbackHelper: Failed to convert Hive config");
+        print("❌ CashbackHelper: Failed to convert config");
         return null;
       }
     }
@@ -52,15 +52,16 @@ class CashbackHelper {
   // FETCH API → SAVE CLEAN JSON INTO HIVE
   // ---------------------------------------------------------
   static Future<Map<String, dynamic>?> fetchCashbackConfig() async {
-    final userBox = Hive.box('user');
-    final token = userBox.get('token');
+    final userBox = StorageProvider.user;
+    final tokenRaw = await userBox.get('token');
+    final token = tokenRaw?.toString();
 
     if (token == null || token.isEmpty) {
       print("❌ No token found");
       return getCashbackConfig();
     }
 
-    final box = Hive.box('cashbackConfig');
+    final box = StorageProvider.cashbackConfig;
     final url =
         "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.cashbackservices}";
 
@@ -90,9 +91,10 @@ class CashbackHelper {
   // STARTUP LOADER
   // ---------------------------------------------------------
   static Future<void> loadCashbackOnStartup() async {
-    // ⭐ Always read the fresh token from Hive
-    final userBox = Hive.box('user');
-    final token = userBox.get('token');
+    // ⭐ Always read the fresh token
+    final userBox = StorageProvider.user;
+    final tokenRaw = await userBox.get('token');
+    final token = tokenRaw?.toString();
 
     if (token == null || token.isEmpty) {
       print("❌ No valid token found — skipping cashback API");
@@ -101,9 +103,9 @@ class CashbackHelper {
 
     print("🔐 Using token for Cashback Startup → $token");
 
-    final box = Hive.box('cashbackConfig');
-    final lastFetch = box.get("lastFetchTime");
-    final cached = box.get("config");
+    final box = StorageProvider.cashbackConfig;
+    final lastFetch = await box.get("lastFetchTime");
+    final cached = await box.get("config");
     final now = DateTime.now();
 
     print("🕒 Cashback lastFetch = $lastFetch");
@@ -139,8 +141,8 @@ class CashbackHelper {
   // ---------------------------------------------------------
   // FINAL FEE CALCULATOR (NO CRASH POSSIBLE)
   // ---------------------------------------------------------
-  static double getCashbackFee(double cashbackAmount) {
-    final config = getCashbackConfig();
+  static Future<double> getCashbackFee(double cashbackAmount) async {
+    final config = await getCashbackConfig();
 
     if (config == null) {
       print("⚠ No cashback config");
