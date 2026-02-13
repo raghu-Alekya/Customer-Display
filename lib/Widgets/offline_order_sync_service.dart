@@ -11,7 +11,7 @@ class OfflineOrderSyncService {
    static bool _isSyncing = false;
   static void start() {
     _timer ??= Timer.periodic(
-      const Duration(minutes: 30),
+      const Duration(hours: 2),
           (_) => syncPendingOrders(),
     );
 

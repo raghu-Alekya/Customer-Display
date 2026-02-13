@@ -5,6 +5,7 @@ import 'package:dotted_line/dotted_line.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:hive/hive.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:image/image.dart' as img;
 import 'package:pinaka_pos/Helper/Extentions/extensions.dart';
@@ -369,23 +370,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
   }
 
-
-  // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
     if (widget.activeOrderId == null) {
       orderItems.clear();
       return;
     }
 
-    // 1️⃣ Prefer offline storage (products added via addItemToOrder)
-    final offlineItems = await orderHelper.getOrderItemsFromOffline(widget.activeOrderId!);
-    if (offlineItems.isNotEmpty) {
-      print("🟦 Offline Order Items Loaded: ${offlineItems.length} items");
-      setState(() => orderItems = offlineItems);
-      return;
-    }
-
-    // 2️⃣ Fallback to SQLite items
+    // 1️⃣ Try SQLite items
     try {
       List<Map<String, dynamic>> items =
       await orderHelper.getOrderItems(widget.activeOrderId!);
@@ -400,7 +391,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
     // 2️⃣ FALLBACK → Load deleted offline order items
     final deletedBox = StorageProvider.deletedOrders;
-
     dynamic deleted = await deletedBox.get(widget.activeOrderId.toString());
 
     if (deleted == null) {

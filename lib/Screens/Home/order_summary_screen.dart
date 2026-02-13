@@ -5185,12 +5185,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final bool isVariant =
         (orderItem['is_variant'] == true) ||
-            (itemType == 'variant') ||
-            (orderItem['variation_name']
-                ?.toString()
-                .trim()
-                .isNotEmpty ?? false) ||
-            ((orderItem['variation_id'] ?? 0) != 0);
+            (itemType == 'variant');
 
     final bool isEbtEligible = orderItem['is_ebt_eligible'] == true;
 
