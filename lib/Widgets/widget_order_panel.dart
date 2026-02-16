@@ -1387,9 +1387,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // ------------------------------------------------------------
             final bool exists = activeOrderId != null
                 ? await OrderHelper.existsInOrderBySku(
-                    activeOrderId!,
-                    productSku,
-                  )
+              activeOrderId!,
+              productSku,
+            )
                 : false;
 
             // ---------------------------------------------------------------------------
@@ -2511,7 +2511,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       // 1️⃣ Calculate current total amount (price * quantity)
       double productsTotal = ((offlineOrder['products'] as List?) ?? []).fold(
           0.0,
-          (sum, p) {
+              (sum, p) {
             final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
             final qty = int.tryParse(p['quantity']?.toString() ?? p['items_count']?.toString() ?? '1') ?? 1;
             return sum + (price * qty);
@@ -2519,7 +2519,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
       double customTotal = ((offlineOrder['custom_items'] as List?) ?? []).fold(
           0.0,
-          (sum, c) {
+              (sum, c) {
             final price = double.tryParse(c['custom_item_price']?.toString() ?? c['amount']?.toString() ?? c['price']?.toString() ?? '0') ?? 0;
             final qty = int.tryParse(c['quantity']?.toString() ?? c['items_count']?.toString() ?? '1') ?? 1;
             return sum + (price * qty);
@@ -2527,12 +2527,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
       double payoutsTotal = ((offlineOrder['payouts'] as List?) ?? []).fold(
           0.0,
-          (sum, p) =>
+              (sum, p) =>
           sum + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0));
 
       double cashbacksTotal = ((offlineOrder['cashbacks'] as List?) ?? []).fold(
           0.0,
-          (sum, c) =>
+              (sum, c) =>
           sum + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0));
 
       double currentTotal = productsTotal + customTotal + payoutsTotal + cashbacksTotal;
@@ -3326,7 +3326,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               'item_price': price,
               'items_count': qty,
               'item_sum_price': price * qty,
-              'item_image': OrderHelper.resolveProductImage(item),
+              'item_image': resolveProductImageFromMap(item),
               'item_type': 'custom',
               'sku': item['sku'],
               'auto_discount': 0.0,
@@ -3359,7 +3359,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               'item_price': price,
               'items_count': qty,
               'item_sum_price': price * qty,
-              'item_image': OrderHelper.resolveProductImage(item),
+              'item_image': resolveProductImageFromMap(item),
               'item_type': itemType,
               'item_tax': 0.0,
             };
@@ -3402,7 +3402,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             'item_price': price,
             'items_count': qty,
             'item_sum_price': price * qty,
-            'item_image': OrderHelper.resolveProductImage(item),
+            'item_image': resolveProductImageFromMap(item),
             'item_type': itemType,
             'item_tax': itemTax,
             'is_ebt_eligible': item['is_ebt_eligible'] == true,
@@ -3422,7 +3422,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           final name = item['custom_item_name'] ?? item['item_name'] ?? item['name'] ?? "Item";
           final price = double.tryParse(item['custom_item_price']?.toString() ?? item['amount']?.toString() ?? item['price']?.toString() ?? '0') ?? 0.0;
           final qty = int.tryParse(item['quantity']?.toString() ?? item['items_count']?.toString() ?? '1') ?? 1;
-          final img = OrderHelper.resolveProductImage(item);
+          final img = resolveProductImageFromMap(item);
           return {
             'item_name': name,
             'item_price': price,
@@ -3962,7 +3962,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             orderHelper.activeOrderId
                                                 .toString();
                                             final offlineBox =
-                                            StorageProvider.offlineOrders;
+                                                StorageProvider.offlineOrders;
                                             final rawOfflineOrder =
                                             await offlineBox.get(orderKey);
 
@@ -4102,7 +4102,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                     'item_type':
                                                     'product',
                                                     'item_image':
-                                                    OrderHelper.resolveProductImage(item),
+                                                    resolveProductImageFromMap(item),
                                                   };
                                                 }).toList();
 
@@ -4136,7 +4136,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                     'item_type':
                                                     'custom item',
                                                     'item_image': () {
-                                                      final img = OrderHelper.resolveProductImage(item);
+                                                      final img = resolveProductImageFromMap(item);
                                                       return img.isNotEmpty ? img : 'assets/custom.png';
                                                     }(),
                                                   };
@@ -5320,13 +5320,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             orderHelper.activeOrderId.toString();
                             final existingLocal = await box.get(localKey);
                             final Map<String, dynamic> updated =
-                                existingLocal != null
-                                    ? Map<String, dynamic>.from(existingLocal)
-                                    : <String, dynamic>{
-                                        'order_id': orderHelper.activeOrderId,
-                                        'id': orderHelper.activeOrderId,
-                                        'products': <Map<String, dynamic>>[],
-                                      };
+                            existingLocal != null
+                                ? Map<String, dynamic>.from(existingLocal)
+                                : <String, dynamic>{
+                              'order_id': orderHelper.activeOrderId,
+                              'id': orderHelper.activeOrderId,
+                              'products': <Map<String, dynamic>>[],
+                            };
 
                             // Items with discount_meta (used by sync API)
                             updated['items'] = orderItems.map((item) {
@@ -5361,31 +5361,31 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                   : int.tryParse(vid.toString()) ?? 0;
 
                               Map<String, dynamic> matchedItem =
-                                  orderItems.cast<Map<String, dynamic>>().firstWhere(
+                              orderItems.cast<Map<String, dynamic>>().firstWhere(
                                     (i) {
-                                      final iId = int.tryParse(
-                                              i['product_id']?.toString() ??
-                                                  '') ??
-                                          0;
-                                      final iVid =
-                                          i['variation_id'] ?? i['variationId'] ?? 0;
-                                      final iVidInt = iVid is int
-                                          ? iVid
-                                          : int.tryParse(iVid.toString()) ?? 0;
-                                      final pidInt = pid is int
-                                          ? pid
-                                          : int.tryParse(pid?.toString() ?? '');
-                                      return (i['product_id'] == pid ||
-                                              (pidInt != null && iId == pidInt)) &&
-                                          iVidInt == vidInt;
-                                    },
-                                    orElse: () => <String, dynamic>{},
-                                  );
+                                  final iId = int.tryParse(
+                                      i['product_id']?.toString() ??
+                                          '') ??
+                                      0;
+                                  final iVid =
+                                      i['variation_id'] ?? i['variationId'] ?? 0;
+                                  final iVidInt = iVid is int
+                                      ? iVid
+                                      : int.tryParse(iVid.toString()) ?? 0;
+                                  final pidInt = pid is int
+                                      ? pid
+                                      : int.tryParse(pid?.toString() ?? '');
+                                  return (i['product_id'] == pid ||
+                                      (pidInt != null && iId == pidInt)) &&
+                                      iVidInt == vidInt;
+                                },
+                                orElse: () => <String, dynamic>{},
+                              );
 
                               if (matchedItem.isEmpty) return raw;
                               final autoDisc = (matchedItem['auto_discount']
-                                          as num?)
-                                      ?.toDouble() ??
+                              as num?)
+                                  ?.toDouble() ??
                                   0.0;
                               return {
                                 ...raw,
@@ -5395,7 +5395,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                   "amount": autoDisc,
                                   "type": matchedItem['discount_type'] ?? "",
                                   "source":
-                                      matchedItem['discount_source'] ?? "",
+                                  matchedItem['discount_source'] ?? "",
                                   "rule_id": matchedItem['rule_id'] ?? "",
                                 },
                               };

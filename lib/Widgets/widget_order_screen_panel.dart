@@ -338,62 +338,62 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       await fetchOrder();
       // Enrich _order from offline storage (SQLite may not have cashback, discounts)
       if (widget.activeOrderId != null && _order != null && _order is Map) {
-      final existingFee = (_order["cashbackFee"] as num?)?.toDouble() ??
-          (_order["cashback_fee"] as num?)?.toDouble() ??
-          (_order[AppDBConst.orderCashbackFee] as num?)?.toDouble() ??
-          0.0;
-      if (existingFee <= 0) {
-        final fee = await loadCashbackFee(offlineOrderId: widget.activeOrderId.toString());
-        if (fee > 0) {
-          _order["cashbackFee"] = fee;
-          _order["cashback_fee"] = fee;
-          _order[AppDBConst.orderCashbackFee] = fee;
+        final existingFee = (_order["cashbackFee"] as num?)?.toDouble() ??
+            (_order["cashback_fee"] as num?)?.toDouble() ??
+            (_order[AppDBConst.orderCashbackFee] as num?)?.toDouble() ??
+            0.0;
+        if (existingFee <= 0) {
+          final fee = await loadCashbackFee(offlineOrderId: widget.activeOrderId.toString());
+          if (fee > 0) {
+            _order["cashbackFee"] = fee;
+            _order["cashback_fee"] = fee;
+            _order[AppDBConst.orderCashbackFee] = fee;
+          }
         }
-      }
 
-      // Enrich from offline order (discount, balance for pending orders)
-      final sqliteOrderDiscount =
-          (_order[AppDBConst.orderDiscount] as num?)?.toDouble() ?? 0.0;
-      final sqliteMerchantDiscount =
-          (_order[AppDBConst.merchantDiscount] as num?)?.toDouble() ??
-              (_order["merchantDiscount"] as num?)?.toDouble() ??
-              0.0;
-      final raw = await StorageProvider.offlineOrders.get(widget.activeOrderId.toString());
-      if (raw != null && raw is Map) {
-        final offline = Map<String, dynamic>.from(raw);
-        if (sqliteOrderDiscount <= 0) {
-          final od = (offline['orderDiscount'] ?? offline['order_discount'] ?? 0).toString();
-          final odVal = double.tryParse(od) ?? 0.0;
-          if (odVal > 0) {
-            _order[AppDBConst.orderDiscount] = odVal;
+        // Enrich from offline order (discount, balance for pending orders)
+        final sqliteOrderDiscount =
+            (_order[AppDBConst.orderDiscount] as num?)?.toDouble() ?? 0.0;
+        final sqliteMerchantDiscount =
+            (_order[AppDBConst.merchantDiscount] as num?)?.toDouble() ??
+                (_order["merchantDiscount"] as num?)?.toDouble() ??
+                0.0;
+        final raw = await StorageProvider.offlineOrders.get(widget.activeOrderId.toString());
+        if (raw != null && raw is Map) {
+          final offline = Map<String, dynamic>.from(raw);
+          if (sqliteOrderDiscount <= 0) {
+            final od = (offline['orderDiscount'] ?? offline['order_discount'] ?? 0).toString();
+            final odVal = double.tryParse(od) ?? 0.0;
+            if (odVal > 0) {
+              _order[AppDBConst.orderDiscount] = odVal;
+            }
           }
-        }
-        if (sqliteMerchantDiscount <= 0) {
-          final md = (offline['merchantDiscount'] ?? offline['merchant_discount'] ?? 0).toString();
-          final mdVal = double.tryParse(md) ?? 0.0;
-          if (mdVal > 0) {
-            _order[AppDBConst.merchantDiscount] = mdVal;
-            _order["merchantDiscount"] = mdVal;
+          if (sqliteMerchantDiscount <= 0) {
+            final md = (offline['merchantDiscount'] ?? offline['merchant_discount'] ?? 0).toString();
+            final mdVal = double.tryParse(md) ?? 0.0;
+            if (mdVal > 0) {
+              _order[AppDBConst.merchantDiscount] = mdVal;
+              _order["merchantDiscount"] = mdVal;
+            }
           }
-        }
-        // Enrich balance from offline storage (for pending orders)
-        final rb = offline['remaining_balance'] ?? offline['balance_amount'] ?? offline['balanceAmount'];
-        if (rb != null) {
-          final balanceVal = (rb as num?)?.toDouble();
-          if (balanceVal != null && balanceVal >= 0) {
-            balanceAmount = balanceVal;
+          // Enrich balance from offline storage (for pending orders)
+          final rb = offline['remaining_balance'] ?? offline['balance_amount'] ?? offline['balanceAmount'];
+          if (rb != null) {
+            final balanceVal = (rb as num?)?.toDouble();
+            if (balanceVal != null && balanceVal >= 0) {
+              balanceAmount = balanceVal;
+            }
+            _order["remaining_balance"] = rb;
+            _order["balance_amount"] = rb;
+            _order["balanceAmount"] = rb;
           }
-          _order["remaining_balance"] = rb;
-          _order["balance_amount"] = rb;
-          _order["balanceAmount"] = rb;
+          final tender = offline['tender_amount'] ?? offline['tenderAmount'];
+          if (tender != null) {
+            tenderAmount = (tender as num).toDouble();
+          }
+          setState(() {});
         }
-        final tender = offline['tender_amount'] ?? offline['tenderAmount'];
-        if (tender != null) {
-          tenderAmount = (tender as num).toDouble();
-        }
-        setState(() {});
       }
-    }
       // Load balance from local payments for pending/offline orders
       if (widget.activeOrderId != null && mounted && tenderAmount == 0) {
         try {
@@ -608,7 +608,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
           AppDBConst.itemPrice: p["price"],
           AppDBConst.itemCount: p["quantity"],
           AppDBConst.itemSumPrice: (p["price"] ?? 0) * (p["quantity"] ?? 1),
-          AppDBConst.itemImage: OrderHelper.resolveProductImage(p),
+          AppDBConst.itemImage: resolveProductImageFromMap(p),
           AppDBConst.itemType: "product",
         });
       }
@@ -2279,12 +2279,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                     fontWeight: FontWeight.bold)),
                                             Text(
                                                 "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
-                                            style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                    ? ThemeNotifier.textDark
-                                                    : ThemeNotifier.textLight)),
+                                                style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: themeHelper.themeMode ==
+                                                        ThemeMode.dark
+                                                        ? ThemeNotifier.textDark
+                                                        : ThemeNotifier.textLight)),
                                           ],
                                         );
                                       },

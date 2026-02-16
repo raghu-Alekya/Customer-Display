@@ -15,6 +15,38 @@ import '../Models/Orders/get_orders_model.dart' as model;
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import 'db_helper.dart';
 
+/// Resolves product image URL from various possible keys (image, product_image, images array, etc.)
+/// Top-level function for use across the app; OrderHelper.resolveProductImage delegates to this.
+String resolveProductImageFromMap(dynamic map) {
+  if (map == null || map is! Map) return '';
+  final m = map;
+
+  final image = m['image'];
+  if (image is String && image.trim().isNotEmpty) return image;
+  final productImage = m['product_image'];
+  if (productImage is String && productImage.trim().isNotEmpty) return productImage;
+  final itemImage = m['item_image'];
+  if (itemImage is String && itemImage.trim().isNotEmpty) return itemImage;
+  final customItemImage = m['custom_item_image'];
+  if (customItemImage is String && customItemImage.trim().isNotEmpty) return customItemImage;
+  final fastKeyImage = m['fast_key_item_image'];
+  if (fastKeyImage is String && fastKeyImage.trim().isNotEmpty) return fastKeyImage;
+
+  if (image is Map && image['src'] != null) {
+    final src = image['src'].toString();
+    if (src.isNotEmpty) return src;
+  }
+
+  final images = m['images'];
+  if (images is List && images.isNotEmpty) {
+    final first = images.first;
+    if (first is String && first.isNotEmpty) return first;
+    if (first is Map && first['src'] != null) return first['src'].toString();
+  }
+
+  return '';
+}
+
 // Build #1.0.64: Add ItemType enum
 enum ItemType {
   customProduct(TextConstants.customItem),
@@ -156,8 +188,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
     final validEntries = allOfflineOrders.entries
         .where((entry) =>
-            entry.value is Map &&
-            !(entry.value as Map).containsKey('map_to_local'))
+    entry.value is Map &&
+        !(entry.value as Map).containsKey('map_to_local'))
         .map((entry) {
       // ✅ Normalize the root map
       final normalized = Map<String, dynamic>.from(entry.value as Map);
@@ -1368,36 +1400,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     return double.tryParse(value.toString()) ?? 0.0;
   }
 
-  /// Resolves product image URL from various possible keys (image, product_image, images array, etc.)
-  static String resolveProductImage(dynamic map) {
-    if (map == null || map is! Map) return '';
-    final m = map;
-
-    final image = m['image'];
-    if (image is String && image.trim().isNotEmpty) return image;
-    final productImage = m['product_image'];
-    if (productImage is String && productImage.trim().isNotEmpty) return productImage;
-    final itemImage = m['item_image'];
-    if (itemImage is String && itemImage.trim().isNotEmpty) return itemImage;
-    final customItemImage = m['custom_item_image'];
-    if (customItemImage is String && customItemImage.trim().isNotEmpty) return customItemImage;
-    final fastKeyImage = m['fast_key_item_image'];
-    if (fastKeyImage is String && fastKeyImage.trim().isNotEmpty) return fastKeyImage;
-
-    if (image is Map && image['src'] != null) {
-      final src = image['src'].toString();
-      if (src.isNotEmpty) return src;
-    }
-
-    final images = m['images'];
-    if (images is List && images.isNotEmpty) {
-      final first = images.first;
-      if (first is String && first.isNotEmpty) return first;
-      if (first is Map && first['src'] != null) return first['src'].toString();
-    }
-
-    return '';
-  }
+  /// Resolves product image URL from various possible keys. Delegates to top-level [resolveProductImageFromMap].
+  static String resolveProductImage(dynamic map) => resolveProductImageFromMap(map);
 
   /// Gets order items from offline storage (products, order_items, payouts, cashbacks, discounts).
   /// Returns empty list if order not found.
@@ -1431,7 +1435,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           AppDBConst.itemPrice: price,
           AppDBConst.itemCount: qty,
           AppDBConst.itemSumPrice: price * qty,
-          AppDBConst.itemImage: OrderHelper.resolveProductImage(map),
+          AppDBConst.itemImage: resolveProductImageFromMap(map),
           AppDBConst.itemType: itemType,
           'is_ebt_eligible': map['is_ebt_eligible'] == true,
           'product_id': (map['product_id'] as num?)?.toInt() ?? 0,
@@ -1462,7 +1466,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           AppDBConst.itemPrice: price,
           AppDBConst.itemCount: qty,
           AppDBConst.itemSumPrice: sumPrice,
-          AppDBConst.itemImage: OrderHelper.resolveProductImage(map),
+          AppDBConst.itemImage: resolveProductImageFromMap(map),
           AppDBConst.itemType: map['item_type'] ?? map['type'] ?? 'product',
           'is_ebt_eligible': map['is_ebt_eligible'] == true,
           'product_id': (map['product_id'] as num?)?.toInt() ?? 0,
@@ -1617,7 +1621,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
       // Find existing item to merge quantity (scan/search/selection)
       final existingIndex = products.indexWhere((p) =>
-          (p['product_id'] ?? -1) == normProductId &&
+      (p['product_id'] ?? -1) == normProductId &&
           (p['variation_id'] ?? 0) == normVariationId);
 
       if (existingIndex != -1) {
