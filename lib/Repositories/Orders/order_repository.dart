@@ -82,7 +82,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     final deviceDetails = await GlobalUtility.getDeviceDetails();
     final deviceId = deviceDetails['device_id'] ?? 'unknown';
     final userData = await UserDbHelper().getUserData();
-    final userId = userData?[AppDBConst.userId] as int;
+    if (userData == null || userData[AppDBConst.userId] == null) {
+      throw Exception("User not logged in or user data not available. Please log in again.");
+    }
+    final userId = userData[AppDBConst.userId] as int;
 
     final metaData = [
       OrderMetaData(key: OrderMetaData.posDeviceId, value: deviceId),
@@ -97,22 +100,43 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
     // ---------- OFFLINE MODE ONLY ----------
     final box = StorageProvider.offlineOrders;
-    // ---------- SMART 6-DIGIT ORDER ID ----------
+    // ---------- UNIQUE ORDER ID: YYDD + secondBucket + milliseconds (avoids collisions) ----------
 
-    final now = DateTime.now();
-    String yearPart = (now.year % 100).toString().padLeft(2, '0');
-    int dayOfYear =
-        now.difference(DateTime(now.year, 1, 1)).inDays + 1;
-    String dayPart = dayOfYear.toString().padLeft(2, '0');
-    int totalSeconds =
-        now.hour * 3600 + now.minute * 60 + now.second;
-    String secondPart =
-    (totalSeconds % 100).toString().padLeft(2, '0');
-    String finalOrderIdStr = "$yearPart$dayPart$secondPart";
+    int newOrderId = 0;
+    for (int attempt = 0; attempt < 10; attempt++) {
+      final now = DateTime.now();
+      String yearPart = (now.year % 100).toString().padLeft(2, '0');
+      int dayOfYear =
+          now.difference(DateTime(now.year, 1, 1)).inDays + 1;
+      String dayPart = dayOfYear.toString().padLeft(2, '0');
+      int totalSeconds =
+          now.hour * 3600 + now.minute * 60 + now.second;
+      String secondPart =
+          (totalSeconds % 100).toString().padLeft(2, '0');
+      String msPart = (now.millisecond % 100).toString().padLeft(2, '0');
+      String suffix = attempt > 0 ? attempt.toString() : '';
+      String finalOrderIdStr = "$yearPart$dayPart$secondPart$msPart$suffix";
 
-    int newOrderId = int.parse(finalOrderIdStr);
+      final candidate = int.tryParse(finalOrderIdStr) ?? 0;
+      if (candidate <= 0) continue;
 
-    print("Generated Order ID: $newOrderId");
+      final key = candidate.toString();
+      if (!(await box.containsKey(key))) {
+        newOrderId = candidate;
+        break;
+      }
+      if (kDebugMode) {
+        print("Order ID collision detected for $candidate, retrying...");
+      }
+    }
+
+    if (newOrderId <= 0) {
+      newOrderId = DateTime.now().millisecondsSinceEpoch % 100000000;
+    }
+
+    if (kDebugMode) {
+      print("Generated Order ID: $newOrderId");
+    }
 
     final localOrder = {
       'order_id': newOrderId,
@@ -215,14 +239,11 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     final existingIndex = products.indexWhere((p) {
       final storedProductId = p['product_id'] ?? -1;
       final storedVariationId = p['variation_id'] ?? 0;
-
-      // ✅ Only match if both product_id and variation_id match exactly
       return storedProductId == newProductId &&
           storedVariationId == newVariationId;
     });
 
     if (existingIndex != -1) {
-      // 🧮 Increase quantity if exact match found
       final existing = products[existingIndex];
       final oldQty = (existing['quantity'] ?? 0).toInt();
       final newQty = oldQty + (product['quantity'] ?? 1);
@@ -236,7 +257,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         print("🔁 Updated existing offline product: ${product['name']} (Qty: $oldQty → $newQty)");
       }
     } else {
-      // 🆕 Add as new product
       products.add(Map<String, dynamic>.from(product));
 
       if (kDebugMode) {

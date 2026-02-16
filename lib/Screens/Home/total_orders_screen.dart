@@ -61,6 +61,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   bool _isAscending = true;
   StreamSubscription? _fetchOrdersSubscription;
   int _totalOrdersCount = 0;
+  bool _fetchInProgress = false;
+  Timer? _loadingDelayTimer;
 
   ///Filters
   // List<String> _availableStatuses = ["All"];
@@ -110,6 +112,12 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     super.initState();
     _selectedSidebarIndex = widget.lastSelectedIndex ?? 3;
     _orderBloc = OrderBloc(OrderRepository());
+    // Preserve POS context so when navigating back to Fast Keys/Categories/Add,
+    // the order panel shows the order we were working on, not the order viewed here
+    final oh = OrderHelper();
+    if (oh.activeOrderId != null) {
+      oh.saveLastActiveOrderId(oh.activeOrderId!);
+    }
     _minSalesAmount = 0.0;
     _maxSalesAmount = 10000.0; // Default max, will be updated from API
     _salesAmountRange = RangeValues(_minSalesAmount, _maxSalesAmount);
@@ -174,11 +182,18 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   void _fetchOrders() {
     debugPrint("OrdersScreen: Initiating fetch orders");
     _fetchOrdersSubscription?.cancel();
+    _loadingDelayTimer?.cancel();
+    _loadingDelayTimer = null;
+    _fetchInProgress = false;
     _fetchOrdersSubscription =
         _orderBloc.fetchTotalOrdersStream.listen((response) async {
           if (!mounted) return;
 
           if (response.status == Status.COMPLETED) {
+            _fetchInProgress = false;
+            _loadingDelayTimer?.cancel();
+            _loadingDelayTimer = null;
+
             debugPrint(
                 "OrdersScreen: Successfully fetched ${response.data!.ordersData.length} orders, Total Count: ${response.data!.orderTotalCount}");
 
@@ -310,6 +325,10 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
           // ---------------- ERROR HANDLING ----------------
           else if (response.status == Status.ERROR) {
+            _fetchInProgress = false;
+            _loadingDelayTimer?.cancel();
+            _loadingDelayTimer = null;
+
             if (response.message!.contains('Unauthorised')) {
               Navigator.pushReplacement(context,
                   MaterialPageRoute(builder: (context) => LoginScreen()));
@@ -335,9 +354,15 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
             }
           }
 
-          // ---------------- LOADING STATE ----------------
+          // ---------------- LOADING STATE (delayed to avoid flash for quick loads) ----------------
           else if (response.status == Status.LOADING) {
-            setState(() => isLoading = true);
+            _fetchInProgress = true;
+            _loadingDelayTimer?.cancel();
+            _loadingDelayTimer = Timer(const Duration(milliseconds: 300), () {
+              if (mounted && _fetchInProgress) {
+                setState(() => isLoading = true);
+              }
+            });
           }
         });
 
@@ -586,6 +611,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   @override
   void dispose() {
     _fetchOrdersSubscription?.cancel();
+    _loadingDelayTimer?.cancel();
     OrderHelper().selectedOrderId =
         null; // Build #1.0.248: remove selected order when leave the screen !
     _orderBloc.dispose();
@@ -611,9 +637,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   // Build #1.0.143: Fixed Issue : After return from order summary screen , total order screen not refreshing with updated response
   void _refreshOrderList() {
     if (kDebugMode) print("_refreshOrderList called");
-    //  setState(() {
+    OrderHelper.notifyOrderPanelToRefresh();
     _fetchOrders();
-    //  });
   }
 
   @override
@@ -651,7 +676,9 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
               } else if (sidebarPosition == SidebarPosition.right) {
                 newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
               } else {
-                newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                newLayout = orderPanelPosition == OrderPanelPosition.left
+                    ? SharedPreferenceTextConstants.navBottomOrderRight
+                    : SharedPreferenceTextConstants.navLeftOrderRight;
               }
 
               // Update the notifier which will trigger _onLayoutChanged

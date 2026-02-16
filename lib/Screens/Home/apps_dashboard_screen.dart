@@ -86,7 +86,9 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
               } else if (sidebarPosition == SidebarPosition.right) {
                 newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
               } else {
-                newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                newLayout = orderPanelPosition == OrderPanelPosition.left
+                    ? SharedPreferenceTextConstants.navBottomOrderRight
+                    : SharedPreferenceTextConstants.navLeftOrderRight;
               }
 
               //Update the notifier which will trigger _onLayoutChanged

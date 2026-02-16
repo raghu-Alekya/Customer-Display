@@ -5,7 +5,6 @@ import 'package:dotted_line/dotted_line.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:hive/hive.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:image/image.dart' as img;
 import 'package:pinaka_pos/Helper/Extentions/extensions.dart';
@@ -42,6 +41,7 @@ import '../Repositories/Search/product_search_repository.dart';
 import '../Screens/Home/Settings/image_utils.dart';
 import '../Screens/Home/Settings/printer_setup_screen.dart';
 import '../Screens/Home/edit_product_screen.dart';
+import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import '../Utilities/printer_settings.dart';
 import '../Utilities/responsive_layout.dart';
 import '../Utilities/result_utility.dart';
@@ -129,15 +129,21 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     });
   }
 
+  VoidCallback? _orderPanelRefreshListener;
+
   @override
   void initState() {
+    super.initState();
     if (kDebugMode) {
       print("##### OrderPanel initState");
     }
+    _orderPanelRefreshListener = () {
+      if (mounted) fetchOrdersData();
+    };
+    OrderHelper.orderPanelRefreshNotifier.addListener(_orderPanelRefreshListener!);
     //  orderBloc = OrderBloc(OrderRepository()); // Build #1.0.143: no need
     fetchOrdersData(); // Build #1.0.104
     _initialFetchDone = true; // Build #1.0.143: Track initial fetch of fetchOrdersData, after return from order summary screen we are updating order screen panel in didUpdateWidget, added this flag for multiple re-calls of fetchOrdersData()
-    super.initState();
     // _getOrderTabs(); //Build #1.0.40: Load existing orders into tabs
     //_fetchOrders(); //Build #1.0.40: Fetch orders on initialization
     loadPrinterData();
@@ -156,21 +162,26 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       paymentBloc.getPaymentsByOrderId(orderServerId!);
 
       _paymentListSubscription?.cancel();
-      _paymentListSubscription = paymentBloc.paymentsListStream.listen((response) {
+      _paymentListSubscription = paymentBloc.paymentsListStream.listen((response) async {
         if (response.status == Status.COMPLETED) {
           if (kDebugMode) {
             print("###### _fetchPaymentsByOrderId Api call COMPLETED - OrderScreenPanel");
             print("###### Response data: ${response.data}");
           }
 
-          if (response.data!.isNotEmpty) {
-            orderStatus = response.data?.first.orderStatus ?? TextConstants.processing;
+          final data = response.data ?? [];
+
+          if (data.isNotEmpty) {
+            orderStatus = data.first.orderStatus ?? TextConstants.processing;
             if (kDebugMode) {
               print("###### Order status updated to: $orderStatus");
             }
+            _processPaymentList(data);
+          } else {
+            // API returned empty - use LocalPayment as source of truth
+            // (fixes balance showing net payable when payments exist locally but not yet synced)
+            await _loadBalanceFromLocalPayment();
           }
-
-          _processPaymentList(response.data!);
         } else if (response.status == Status.ERROR) {
           if (kDebugMode) {
             print("Error fetching payments: ${response.message}");
@@ -225,10 +236,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       }
 
       // -------------------------------
-      // ⭐ EFFECTIVE ORDER TOTAL (REAL NET TOTAL)
+      // ⭐ EFFECTIVE ORDER TOTAL (USE NET PAYABLE, NOT GROSS)
       // -------------------------------
-      double effectiveOrderTotal = grossTotal;
-
+      double effectiveOrderTotal = (_order["payable"] as num?)?.toDouble() ??
+          (_order["net_payable"] as num?)?.toDouble() ??
+          grossTotal;
 
       // -------------------------------
       // ⭐ REMAINING BALANCE
@@ -260,6 +272,49 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
   }
 
+  /// Load balance from LocalPayment when API returns empty (payments not yet synced).
+  /// Prevents balance from incorrectly showing full net payable instead of remaining amount.
+  Future<void> _loadBalanceFromLocalPayment() async {
+    if (widget.activeOrderId == null || !mounted) return;
+    try {
+      final summary = await LocalPaymentDBHelper.instance.getPaymentSummaryForOrder(widget.activeOrderId!);
+      final paymentCount = (summary['paymentCount'] ?? 0.0).toDouble();
+      if (paymentCount > 0) {
+        final totalPaid = (summary['totalPaid'] ?? 0.0).toDouble();
+        final remaining = summary['remainingBalance'];
+        if (!mounted) return;
+        setState(() {
+          tenderAmount = totalPaid;
+          payByOther = totalPaid;
+          payByCash = 0.0;
+          if (remaining != null) {
+            balanceAmount = (remaining as num).toDouble();
+          } else {
+            final netPay = (_order["payable"] ?? _order["net_payable"]) as num?;
+            if (netPay != null) {
+              balanceAmount = (netPay.toDouble() - tenderAmount).clamp(0.0, double.infinity);
+            }
+          }
+          if (balanceAmount <= 0) {
+            if (orderStatus != TextConstants.processing) {
+              changeAmount = balanceAmount.abs();
+              balanceAmount = 0;
+            } else {
+              changeAmount = 0;
+            }
+          } else {
+            changeAmount = 0;
+          }
+        });
+        if (kDebugMode) {
+          print("##### _loadBalanceFromLocalPayment — tenderAmount: $tenderAmount, balanceAmount: $balanceAmount");
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print("##### _loadBalanceFromLocalPayment error: $e");
+    }
+  }
+
   Future<void> loadPrinterData() async {
     var printerDB = await PrinterDBHelper().getPrinterFromDB();
     if(printerDB.isEmpty){
@@ -279,11 +334,98 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     if (kDebugMode) {
       print("##### fetchOrdersData called for activeOrderId: ${widget.activeOrderId}");
     }
-    await fetchOrder();
-    await fetchOrderItems();
+    try {
+      await fetchOrder();
+      // Enrich _order from offline storage (SQLite may not have cashback, discounts)
+      if (widget.activeOrderId != null && _order != null && _order is Map) {
+      final existingFee = (_order["cashbackFee"] as num?)?.toDouble() ??
+          (_order["cashback_fee"] as num?)?.toDouble() ??
+          (_order[AppDBConst.orderCashbackFee] as num?)?.toDouble() ??
+          0.0;
+      if (existingFee <= 0) {
+        final fee = await loadCashbackFee(offlineOrderId: widget.activeOrderId.toString());
+        if (fee > 0) {
+          _order["cashbackFee"] = fee;
+          _order["cashback_fee"] = fee;
+          _order[AppDBConst.orderCashbackFee] = fee;
+        }
+      }
 
-    if (!mounted) return; // Added this check first
-    setState(() => _isLoading = false); // Hide loader
+      // Enrich from offline order (discount, balance for pending orders)
+      final sqliteOrderDiscount =
+          (_order[AppDBConst.orderDiscount] as num?)?.toDouble() ?? 0.0;
+      final sqliteMerchantDiscount =
+          (_order[AppDBConst.merchantDiscount] as num?)?.toDouble() ??
+              (_order["merchantDiscount"] as num?)?.toDouble() ??
+              0.0;
+      final raw = await StorageProvider.offlineOrders.get(widget.activeOrderId.toString());
+      if (raw != null && raw is Map) {
+        final offline = Map<String, dynamic>.from(raw);
+        if (sqliteOrderDiscount <= 0) {
+          final od = (offline['orderDiscount'] ?? offline['order_discount'] ?? 0).toString();
+          final odVal = double.tryParse(od) ?? 0.0;
+          if (odVal > 0) {
+            _order[AppDBConst.orderDiscount] = odVal;
+          }
+        }
+        if (sqliteMerchantDiscount <= 0) {
+          final md = (offline['merchantDiscount'] ?? offline['merchant_discount'] ?? 0).toString();
+          final mdVal = double.tryParse(md) ?? 0.0;
+          if (mdVal > 0) {
+            _order[AppDBConst.merchantDiscount] = mdVal;
+            _order["merchantDiscount"] = mdVal;
+          }
+        }
+        // Enrich balance from offline storage (for pending orders)
+        final rb = offline['remaining_balance'] ?? offline['balance_amount'] ?? offline['balanceAmount'];
+        if (rb != null) {
+          final balanceVal = (rb as num?)?.toDouble();
+          if (balanceVal != null && balanceVal >= 0) {
+            balanceAmount = balanceVal;
+          }
+          _order["remaining_balance"] = rb;
+          _order["balance_amount"] = rb;
+          _order["balanceAmount"] = rb;
+        }
+        final tender = offline['tender_amount'] ?? offline['tenderAmount'];
+        if (tender != null) {
+          tenderAmount = (tender as num).toDouble();
+        }
+        setState(() {});
+      }
+    }
+      // Load balance from local payments for pending/offline orders
+      if (widget.activeOrderId != null && mounted && tenderAmount == 0) {
+        try {
+          final summary = await LocalPaymentDBHelper.instance.getPaymentSummaryForOrder(widget.activeOrderId!);
+          final paymentCount = (summary['paymentCount'] ?? 0.0).toDouble();
+          if (paymentCount > 0) {
+            tenderAmount = summary['totalPaid'] ?? 0.0;
+            final remaining = summary['remainingBalance'];
+            if (remaining != null) {
+              balanceAmount = remaining;
+            } else {
+              final netPay = (_order["payable"] ?? _order["net_payable"]) as num?;
+              if (netPay != null) {
+                balanceAmount = (netPay.toDouble() - tenderAmount).clamp(0.0, double.infinity);
+              }
+            }
+            setState(() {});
+          }
+        } catch (e) {
+          if (kDebugMode) print("##### LocalPaymentDBHelper error: $e");
+        }
+      }
+      await fetchOrderItems();
+    } catch (e, st) {
+      if (kDebugMode) {
+        print("##### fetchOrdersData error: $e\n$st");
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   // Updated didUpdateWidget to check activeOrderId
@@ -359,6 +501,47 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         return;
       }
 
+      // 3️⃣ FALLBACK → CHECK HIVE OFFLINE ORDERS (active orders with payouts/cashback)
+      final offlineRaw = await StorageProvider.offlineOrders.get(widget.activeOrderId.toString());
+      if (offlineRaw != null && offlineRaw is Map) {
+        final map = Map<String, dynamic>.from(offlineRaw);
+        final orderId = map["order_id"] ?? map["id"] ?? widget.activeOrderId;
+        final od = map["orderDiscount"] ?? map["order_discount"];
+        final md = map["merchantDiscount"] ?? map["merchant_discount"];
+        final cf = map["cashbackFee"] ?? map["cashback_fee"];
+        _order = {
+          "id": orderId,
+          AppDBConst.orderServerId: orderId,
+          AppDBConst.orderStatus: map["order_status"]?.toString() ?? "processing",
+          AppDBConst.orderTotal: (map["gross_total"] as num?)?.toDouble() ?? 0.0,
+          AppDBConst.orderDiscount: od != null ? (double.tryParse(od.toString()) ?? 0.0) : 0.0,
+          "merchantDiscount": md != null ? (double.tryParse(md.toString()) ?? 0.0) : 0.0,
+          AppDBConst.orderTax: (map["order_tax"] as num?)?.toDouble() ?? 0.0,
+          "netTotal": (map["net_total"] as num?)?.toDouble() ?? 0.0,
+          "payable": (map["net_payable"] as num?)?.toDouble() ?? 0.0,
+          "remaining_balance": (map["remaining_balance"] ?? map["balance_amount"] ?? map["balanceAmount"]) as num?,
+          "balance_amount": (map["balance_amount"] ?? map["remaining_balance"] ?? map["balanceAmount"]) as num?,
+          "balanceAmount": (map["balanceAmount"] ?? map["remaining_balance"] ?? map["balance_amount"]) as num?,
+          "cashbackFee": cf != null ? (double.tryParse(cf.toString()) ?? 0.0) : 0.0,
+          "cashback_fee": cf != null ? (double.tryParse(cf.toString()) ?? 0.0) : 0.0,
+          AppDBConst.orderCashbackFee: cf != null ? (double.tryParse(cf.toString()) ?? 0.0) : 0.0,
+          AppDBConst.orderDate: map["created_at"]?.toString() ?? DateTime.now().toString(),
+          "offline": true,
+        };
+        orderServerId = _order[AppDBConst.orderServerId] as int?;
+        final rb = map["remaining_balance"] ?? map["balance_amount"] ?? map["balanceAmount"];
+        if (rb != null) {
+          final v = (rb as num?)?.toDouble();
+          if (v != null && v >= 0) balanceAmount = v;
+        }
+        final tender = map["tender_amount"] ?? map["tenderAmount"];
+        if (tender != null) tenderAmount = (tender as num).toDouble();
+        if (kDebugMode) {
+          print("🟦 Loaded offline order from Hive (payouts/cashback): $_order");
+        }
+        return;
+      }
+
       //  No order found at all
       _order = {AppDBConst.orderStatus: ''};
       orderServerId = null;
@@ -370,13 +553,23 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
   }
 
+
+  // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
     if (widget.activeOrderId == null) {
       orderItems.clear();
       return;
     }
 
-    // 1️⃣ Try SQLite items
+    // 1️⃣ Prefer offline storage (products added via addItemToOrder)
+    final offlineItems = await orderHelper.getOrderItemsFromOffline(widget.activeOrderId!);
+    if (offlineItems.isNotEmpty) {
+      print("🟦 Offline Order Items Loaded: ${offlineItems.length} items");
+      setState(() => orderItems = offlineItems);
+      return;
+    }
+
+    // 2️⃣ Fallback to SQLite items
     try {
       List<Map<String, dynamic>> items =
       await orderHelper.getOrderItems(widget.activeOrderId!);
@@ -391,6 +584,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
     // 2️⃣ FALLBACK → Load deleted offline order items
     final deletedBox = StorageProvider.deletedOrders;
+
     dynamic deleted = await deletedBox.get(widget.activeOrderId.toString());
 
     if (deleted == null) {
@@ -414,7 +608,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
           AppDBConst.itemPrice: p["price"],
           AppDBConst.itemCount: p["quantity"],
           AppDBConst.itemSumPrice: (p["price"] ?? 0) * (p["quantity"] ?? 1),
-          AppDBConst.itemImage: p["image"] ?? "",
+          AppDBConst.itemImage: OrderHelper.resolveProductImage(p),
           AppDBConst.itemType: "product",
         });
       }
@@ -465,7 +659,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
   }
 
   @override
+  @override
   void dispose() {
+    if (_orderPanelRefreshListener != null) {
+      OrderHelper.orderPanelRefreshNotifier.removeListener(_orderPanelRefreshListener!);
+    }
     _updateOrderSubscription?.cancel(); // Cancel the subscription
     // orderBloc.dispose(); // Dispose the bloc if needed // Build #1.0.143: No need
     _fetchOrdersSubscription?.cancel();
@@ -774,15 +972,17 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         (order[AppDBConst.orderDiscount] as num?)?.toDouble() ?? 0.0;
     double merchantDiscount = 0.0;
 
-    // MERCHANT DISCOUNT FROM ITEMS
+    // MERCHANT DISCOUNT FROM ITEMS (accept both positive and negative; discount items store as negative)
     for (var item in orderItems) {
-      if (item['item_name'] != null &&
-          item['item_name'].toString().toLowerCase() == "discount") {
-        double? discountValue =
-        double.tryParse(item['item_sum_price'].toString());
-        if (discountValue != null && discountValue < 0) {
+      final nameLower = item['item_name']?.toString().toLowerCase() ?? '';
+      if (nameLower == 'discount' || nameLower.contains('merchant discount')) {
+        final discountValue =
+            double.tryParse(item['item_sum_price']?.toString() ?? '') ?? 0.0;
+        if (discountValue != 0) {
           merchantDiscount = discountValue.abs();
-          print("### Merchant Discount Found in Items: $merchantDiscount");
+          if (kDebugMode) {
+            print("### Merchant Discount Found in Items: $merchantDiscount");
+          }
         }
       }
     }
@@ -2067,24 +2267,27 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                     SizedBox(
                                       height: 2,
                                     ),
-                                    Row(
-                                      mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                      crossAxisAlignment: CrossAxisAlignment.center,
-                                      children: [
-                                        Text(TextConstants.netPayable,
-                                            style: TextStyle(
-                                                fontWeight: FontWeight.bold)),
-                                        Text(
-                                            "${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
+                                    Builder(
+                                      builder: (context) {
+                                        return Row(
+                                          mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                          children: [
+                                            Text(TextConstants.amountTendered,
+                                                style: TextStyle(
+                                                    fontWeight: FontWeight.bold)),
+                                            Text(
+                                                "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
                                             style: TextStyle(
                                                 fontWeight: FontWeight.bold,
                                                 color: themeHelper.themeMode ==
                                                     ThemeMode.dark
                                                     ? ThemeNotifier.textDark
                                                     : ThemeNotifier.textLight)),
-                                      ],
-
+                                          ],
+                                        );
+                                      },
                                     ),
                                     SizedBox(
                                       height: 2,
@@ -2154,11 +2357,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                             Row(
                               children: [
-                                Text(
-                                    _showFullSummary
-                                        ? 'Net Payable : ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}'
-                                        : 'Net Payable : ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}',
-                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                Builder(
+                                  builder: (context) {
+                                    final displayAmount = (netPayable - tenderAmount).clamp(0.0, double.infinity);
+                                    return Text(
+                                        _showFullSummary
+                                            ? '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}'
+                                            : '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}',
+                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold));
+                                  },
+                                ),
                                 const SizedBox(width: 8),
                                 Icon(_showFullSummary ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up),
                               ],

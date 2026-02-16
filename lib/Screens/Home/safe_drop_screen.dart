@@ -818,7 +818,9 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
                     newLayout =
                         SharedPreferenceTextConstants.navBottomOrderLeft;
                   } else {
-                    newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                    newLayout = orderPanelPosition == OrderPanelPosition.left
+                        ? SharedPreferenceTextConstants.navBottomOrderRight
+                        : SharedPreferenceTextConstants.navLeftOrderRight;
                   }
 
                   PinakaPreferences.layoutSelectionNotifier.value = newLayout;

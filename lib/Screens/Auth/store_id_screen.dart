@@ -17,7 +17,7 @@ import '../../Repositories/Auth/login_repository.dart';
 import '../../Repositories/Auth/store_validation_repository.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_loading.dart';
-import '../Home/fast_key_screen.dart';
+import '../Home/pos_home_screen.dart';
 import '../../Widgets/widget_error.dart';
 
 class StoreIdScreen extends StatefulWidget { // Build #1.0.16
@@ -74,7 +74,7 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
     if (isLoggedIn && mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const FastKeyScreen()),
+        MaterialPageRoute(builder: (context) => const POSHomeScreen()),
       );
     }
   }

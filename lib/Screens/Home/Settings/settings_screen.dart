@@ -798,6 +798,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildLayoutOption(TextConstants.layoutNavLeftOrderRight, SharedPreferenceTextConstants.navLeftOrderRight),
             _buildLayoutOption(TextConstants.layoutNavRightOrderLeft, SharedPreferenceTextConstants.navRightOrderLeft),
             _buildLayoutOption(TextConstants.layoutNavBottomOrderLeft, SharedPreferenceTextConstants.navBottomOrderLeft),
+            _buildLayoutOption(TextConstants.layoutNavBottomOrderRight, SharedPreferenceTextConstants.navBottomOrderRight),
           ],
         ),
         // Text(TextConstants.selectKeyboardText, // Build #1.0.15 : removed Keyboard type UI

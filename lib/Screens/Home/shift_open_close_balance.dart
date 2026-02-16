@@ -30,8 +30,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../Widgets/widget_navigation_bar.dart' as custom_widgets;
 import '../Auth/login_screen.dart';
-import 'categories_screen.dart';
-import 'fast_key_screen.dart';
+import 'pos_home_screen.dart';
 
 class ShiftOpenCloseBalanceScreen extends StatefulWidget {
   final int? lastSelectedIndex;
@@ -375,7 +374,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
               _resetState();
               Navigator.pushAndRemoveUntil(
                 context,
-                MaterialPageRoute(builder: (_) => CategoriesScreen()),
+                MaterialPageRoute(builder: (_) => POSHomeScreen()),
                     (_) => false,
               );
             }
@@ -413,13 +412,15 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
 
           _shiftSubscription = _shiftBloc.shiftStream.listen((closeResponse) async {
             if (closeResponse.status == Status.COMPLETED) {
-              Navigator.of(context).pop(); // close loader
+              if (mounted) Navigator.of(context).pop(); // close loader
               await UserDbHelper().updateUserShiftId(null);
 
               logoutBloc.performLogout();
 
-              logoutBloc.logoutStream.listen((logoutResponse) {
-                if (logoutResponse.status == Status.COMPLETED) {
+              StreamSubscription? logoutSub;
+              logoutSub = logoutBloc.logoutStream.listen((logoutResponse) {
+                if (logoutResponse.status == Status.COMPLETED && mounted) {
+                  logoutSub?.cancel();
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(builder: (_) => LoginScreen()),
@@ -550,7 +551,9 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                 } else if (sidebarPosition == SidebarPosition.right) {
                   newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
                 } else {
-                  newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                  newLayout = orderPanelPosition == OrderPanelPosition.left
+                      ? SharedPreferenceTextConstants.navBottomOrderRight
+                      : SharedPreferenceTextConstants.navLeftOrderRight;
                 }
 
                 // Update the notifier which will trigger _onLayoutChanged
@@ -641,7 +644,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                                       Future.delayed(Duration(milliseconds: 100), () {
                                                         Navigator.push(
                                                           context,
-                                                          MaterialPageRoute(builder: (context) => FastKeyScreen(lastSelectedIndex: 0)),
+                                                          MaterialPageRoute(builder: (context) => POSHomeScreen(lastSelectedIndex: 0)),
                                                         );
                                                       });
                                                     },

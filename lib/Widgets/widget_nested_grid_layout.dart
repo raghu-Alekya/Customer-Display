@@ -794,7 +794,7 @@ class NestedGridWidget extends StatelessWidget {
   final Function(int)? onLongPress; // Added this
   final ProductBloc? productBloc; //Build 1.1.36
   final OrderBloc? orderBloc;
-  final OrderHelper? orderHelper;
+  final OrderHelper orderHelper;
   final bool isPaginating;
 
 
@@ -821,7 +821,7 @@ class NestedGridWidget extends StatelessWidget {
     this.onLongPress,
     this.productBloc,
     this.orderBloc,
-    this.orderHelper,
+    required this.orderHelper,
     required this.isPaginating,
   });
   Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
@@ -1098,10 +1098,16 @@ class NestedGridWidget extends StatelessWidget {
                           // }
 
                           try {
-                            final orderId = await orderHelper?.ensureOrderExists();
+                            final orderId = await orderHelper.ensureOrderExists();
 
                             if (orderId == null) {
-                              print("❌ Failed to create or restore order");
+                              final msg = OrderHelper.lastEnsureOrderError ??
+                                  "Failed to create or restore order. Please try again.";
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(msg)),
+                                );
+                              }
                               return;
                             }
 
@@ -1211,6 +1217,8 @@ class NestedGridWidget extends StatelessWidget {
                                     minAge = parsedAge;
                                     break;
                                   }
+                                  minAge = 18;
+                                  break;
                                 }
                               }
                             }
@@ -1228,10 +1236,10 @@ class NestedGridWidget extends StatelessWidget {
                             // 🧠 Init or restore offline order
                             final box = StorageProvider.offlineOrders;
                             int activeOrderId =
-                                orderHelper?.activeOrderId ?? (await box.get('lastOrderId')) ?? 1000;
+                                orderHelper.activeOrderId ?? (await box.get('lastOrderId')) ?? 1000;
 
-                            if (orderHelper?.activeOrderId == null) {
-                              orderHelper?.activeOrderId = activeOrderId;
+                            if (orderHelper.activeOrderId == null) {
+                              orderHelper.activeOrderId = activeOrderId;
                               await box.put('lastOrderId', activeOrderId);
                             }
 
@@ -1319,7 +1327,7 @@ class NestedGridWidget extends StatelessWidget {
                                 final savedPrice = hiveOrder[savedPriceKey];
                                 finalPrice = savedPrice ?? productPrice;
 
-                                await orderHelper?.addItemToOrder(
+                                await orderHelper.addItemToOrder(
                                   null,
                                   productName,
                                   productImage,
@@ -1335,7 +1343,7 @@ class NestedGridWidget extends StatelessWidget {
                                   unitPrice: finalPrice,
                                   isEbtEligible: isEbtEligible,
                                   onItemAdded: () async {
-                                    //await orderHelper?.loadData();
+                                    //await orderHelper.loadData();
                                   },
                                 );
 
@@ -1374,14 +1382,34 @@ class NestedGridWidget extends StatelessWidget {
 
                             // 🧩 Variant Handling
                             if (hasVariants) {
-                              print("🧩 Product has variants → Loading offline variants...");
+                              if (kDebugMode) {
+                                print("🧩 Product has variants → Loading offline variants...");
+                              }
+                              // Show loading immediately for instant feedback
+                              bool loadingDialogShown = false;
+                              if (context.mounted) {
+                                showDialog(
+                                  context: context,
+                                  barrierDismissible: false,
+                                  builder: (_) => PopScope(
+                                    canPop: false,
+                                    child: const Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  ),
+                                );
+                                loadingDialogShown = true;
+                              }
+
                               List<Map<String, dynamic>> offlineVariations = [];
 
                               try {
                                 final productBox = StorageProvider.productCache;
                                 final cacheKey = "product_${productId}_variations";
                                 final cachedData = await productBox.get(cacheKey);
-                                print("📦 Checking cachedData for key=$cacheKey");
+                                if (kDebugMode) {
+                                  print("📦 Checking cachedData for key=$cacheKey");
+                                }
 
                                 List rawVariations = [];
 
@@ -1397,18 +1425,27 @@ class NestedGridWidget extends StatelessWidget {
                                       rawVariations =
                                       decoded is Map ? decoded["variations"] ?? [] : decoded;
                                     } catch (_) {
-                                      print("⚠️ Error decoding cachedData string");
+                                      if (kDebugMode) {
+                                        print("⚠️ Error decoding cachedData string");
+                                      }
                                     }
                                   }
                                 }
 
-                                // 🩵 Fallback: Try item["variations"] if cache is empty
+                                // 🩵 Fallback: Try item["variations"] if cache is empty (parallel lookups)
                                 if (rawVariations.isEmpty && item["variations"] != null) {
-                                  for (var id in item["variations"]) {
-                                    var variantData = await productBox.get("product_$id");
+                                  final variationIds = item["variations"] as List;
+                                  final results = await Future.wait(
+                                    variationIds.map((id) => productBox.get("product_$id")),
+                                  );
+                                  for (var i = 0; i < variationIds.length; i++) {
+                                    final id = variationIds[i];
+                                    var variantData = results[i];
 
                                     if (variantData == null) {
-                                      print("⚠️ No cache found for variant id=$id, using fallback");
+                                      if (kDebugMode) {
+                                        print("⚠️ No cache found for variant id=$id, using fallback");
+                                      }
                                       continue;
                                     }
 
@@ -1452,7 +1489,9 @@ class NestedGridWidget extends StatelessWidget {
                                     });
                                   }
 
-                                  print("📥 Built ${rawVariations.length} variant objects manually.");
+                                  if (kDebugMode) {
+                                    print("📥 Built ${rawVariations.length} variant objects manually.");
+                                  }
                                 }
 
                                 // 🧠 Normalize all variants
@@ -1481,7 +1520,9 @@ class NestedGridWidget extends StatelessWidget {
                                   return <String, dynamic>{};
                                 }).where((v) => v.isNotEmpty).toList();
 
-                                print("✅ Found ${offlineVariations.length} offline variants.");
+                                if (kDebugMode) {
+                                  print("✅ Found ${offlineVariations.length} offline variants.");
+                                }
 
                                 // 🧩 Auto-refetch if variants are incomplete
                                 final allSameAsParent = offlineVariations.isEmpty ||
@@ -1500,12 +1541,21 @@ class NestedGridWidget extends StatelessWidget {
                                   }
                                 }
                               } catch (e, st) {
-                                print("⚠️ Error decoding offline variations: $e");
-                                print(st);
+                                if (kDebugMode) {
+                                  print("⚠️ Error decoding offline variations: $e");
+                                  print(st);
+                                }
+                              }
+
+                              // Dismiss loading dialog before showing VariantsDialog
+                              if (context.mounted && loadingDialogShown) {
+                                Navigator.of(context, rootNavigator: true).pop();
                               }
 
                               // 🪟 Show VariantsDialog
-                              print("🪟 Showing VariantsDialog for $productName...");
+                              if (kDebugMode) {
+                                print("🪟 Showing VariantsDialog for $productName...");
+                              }
                               await showDialog(
                                 context: context,
                                 builder: (ctx) => VariantsDialog(
@@ -1527,7 +1577,7 @@ class NestedGridWidget extends StatelessWidget {
                                     print(
                                         "🧾 Adding variant → id:$variantId, name:$variantName, price:$variantPrice, qty:$qty");
 
-                                    await orderHelper?.addItemToOrder(
+                                    await orderHelper.addItemToOrder(
                                       0,
                                       "$variantName",
                                       variantImage,
@@ -1549,7 +1599,7 @@ class NestedGridWidget extends StatelessWidget {
                                       onItemAdded: () async {
                                         print("✅ Variant item added successfully!");
                                         onItemTapped(index, variantAdded: true);
-                                        //await orderHelper?.loadData();
+                                        //await orderHelper.loadData();
                                       },
                                     );
 
@@ -1560,7 +1610,7 @@ class NestedGridWidget extends StatelessWidget {
                             } else {
                               // 🟩 Simple Product
                               print("🟩 Simple product, adding directly...");
-                              await orderHelper?.addItemToOrder(
+                              await orderHelper.addItemToOrder(
                                 null,               // ✅ serverItemId
                                 productName,        // ✅ name
                                 productImage,       // ✅ image
@@ -1578,7 +1628,7 @@ class NestedGridWidget extends StatelessWidget {
                                 onItemAdded: () async {
                                   print("✅ Simple product added successfully!");
                                   onItemTapped(index, variantAdded: false);
-                                  //await orderHelper?.loadData();
+                                  //await orderHelper.loadData();
                                 },
                               );
                             }

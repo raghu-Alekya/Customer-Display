@@ -58,6 +58,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String layoutNavLeftOrderRight    = "Navigation at left & Orders at right";
   static const String layoutNavRightOrderLeft    = "Navigation at right & Orders at left";
   static const String layoutNavBottomOrderLeft   = "Navigation at bottom & Orders at left";
+  static const String layoutNavBottomOrderRight  = "Navigation at bottom & Orders at right";
 
   static const String printerSettText       = "Printer Settings";
   static const String selectPrintText       = "Select a printer";
@@ -145,7 +146,8 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String payByOther           = "Pay By Other";
   static const String tenderAmount         = "Tender Amount.";
   static const String change               = "Change";
-  static const String balanceAmount        = "Balance Amount.";
+  static const String balanceAmount        = "Balance Amount";
+  static const String amountTendered       = "Amount tendered";
   static const String EBTAmount            = "EBT Amount.";
   static const String cashPayment          = "Cash Payment";
   static const String cardPayment          = "Card Payment";
@@ -427,5 +429,6 @@ class SharedPreferenceTextConstants {
   static const String navLeftOrderRight = 'NavLeftOrderRight'; //Build #1.0.54: added
   static const String navRightOrderLeft = 'NavRightOrderLeft';
   static const String navBottomOrderLeft = 'NavBottomOrderLeft';
+  static const String navBottomOrderRight = 'NavBottomOrderRight';
 
 }

@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:pinaka_pos/Constants/text.dart';
-import 'package:pinaka_pos/Screens/Home/fast_key_screen.dart';
+import 'package:pinaka_pos/Screens/Home/pos_home_screen.dart';
 import 'package:provider/provider.dart';
 
 import '../Helper/Extentions/theme_notifier.dart';
@@ -97,7 +97,7 @@ class CustomDialog {
         Navigator.of(context).pop();
         // Navigate to FastKeyScreen - adjust the route name as per your app
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => FastKeyScreen()),
+          MaterialPageRoute(builder: (context) => POSHomeScreen()),
             (route) => false,
         );
       },
@@ -481,9 +481,14 @@ class CustomDialog {
                   Expanded(
                     child: _buildPrimaryButton(
                         confirmText,
-                            () {
-                          confirmCallBack?.call();
-                          Navigator.of(dialogContext).pop(true);
+                            () async {
+                          final result = confirmCallBack?.call();
+                          if (result is Future) {
+                            await result;
+                          }
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop(true);
+                          }
                         },
                         isDeleting:isDeleting
                     ),

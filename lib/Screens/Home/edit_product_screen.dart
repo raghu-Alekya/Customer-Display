@@ -98,7 +98,9 @@ class _EditProductScreenState extends State<EditProductScreen> with SingleTicker
                 } else if (sidebarPosition == SidebarPosition.right) {
                   newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
                 } else {
-                  newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                  newLayout = orderPanelPosition == OrderPanelPosition.left
+                      ? SharedPreferenceTextConstants.navBottomOrderRight
+                      : SharedPreferenceTextConstants.navLeftOrderRight;
                 }
 
                 //Update the notifier which will trigger _onLayoutChanged
@@ -136,6 +138,7 @@ class _EditProductScreenState extends State<EditProductScreen> with SingleTicker
                 if (sidebarPosition == SidebarPosition.right ||
                     (sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
                   RightOrderPanel(
+                    key: const ValueKey('order_panel'),
                     quantities: quantities,
                     refreshOrderList: _refreshOrderList, // Pass the callback
                     refreshKey: _refreshCounter, //Build #1.0.170: Pass counter as refreshKey
@@ -156,6 +159,7 @@ class _EditProductScreenState extends State<EditProductScreen> with SingleTicker
                 if (sidebarPosition != SidebarPosition.right &&
                     !(sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
                   RightOrderPanel(
+                    key: const ValueKey('order_panel'),
                     quantities: quantities,
                     refreshOrderList: _refreshOrderList, // Pass the callback
                     refreshKey: _refreshCounter, //Build #1.0.170: Pass counter as refreshKey

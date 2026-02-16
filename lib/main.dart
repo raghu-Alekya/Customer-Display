@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:hive/hive.dart';
-import 'package:hive_flutter/adapters.dart';
 import 'package:http/http.dart' as http;
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
@@ -12,7 +10,6 @@ import 'Constants/misc_features.dart';
 import 'Database/db_helper.dart';
 import 'Database/discount_rule_isar.dart';
 import 'Database/isar_service.dart';
-import 'Database/storage/hive_to_isar_migration.dart';
 import 'Database/user_db_helper.dart';
 import 'Helper/Extentions/theme_notifier.dart';
 import 'Helper/cashbackhelper.dart';
@@ -63,9 +60,6 @@ void main() async {
   // Initialize Isar first
   await IsarService.init();
 
-  // One-time migration from Hive to Isar (if upgrading from older version)
-  await Hive.initFlutter();
-  await migrateHiveToIsarIfNeeded();
   AppDB.isar = await Isar.open(
     [DiscountRuleIsarSchema],
     directory: (await getApplicationDocumentsDirectory()).path,

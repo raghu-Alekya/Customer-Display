@@ -249,8 +249,11 @@ import '../Auth/login_screen.dart';
 
 class FastKeyScreen extends StatefulWidget {
   final int? lastSelectedIndex;
+  /// When true, only the center content is shown (no TopBar, NavBar, RightOrderPanel).
+  /// Used by POSHomeScreen to embed in IndexedStack.
+  final bool embedInShell;
 
-  const FastKeyScreen({super.key, this.lastSelectedIndex});
+  const FastKeyScreen({super.key, this.lastSelectedIndex, this.embedInShell = false});
 
   @override
   State<FastKeyScreen> createState() => _FastKeyScreenState();
@@ -2520,6 +2523,104 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
     // Define showAddButton here to match the value passed to NestedGridWidget
     const bool showAddButton = true;
 
+    if (widget.embedInShell) {
+      return Column(
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          CategoryList(
+            scrollController: _scrollController,
+            isHorizontal: true,
+            isLoading: isTabsLoading,
+            isAddButtonEnabled: true,
+            categories: categories,
+            selectedIndex: _selectedCategoryIndex,
+            editingIndex: _editingCategoryIndex,
+            onAddButtonPressed: () => _showCategoryDialog(context: context),
+            onCategoryTapped: (index) async {
+              if (_selectedCategoryIndex == index) return;
+              if (_editingCategoryIndex != index) {
+                setState(() {
+                  _selectedCategoryIndex = index;
+                  _editingCategoryIndex = null;
+                  _fastKeyTabId = fastKeyTabs[index].fastkeyServerId;
+                  fastKeyTabIdNotifier.value = _fastKeyTabId;
+                });
+                await fastKeyDBHelper.saveActiveFastKeyTab(fastKeyTabs[index].fastkeyServerId);
+              } else {
+                setState(() => _editingCategoryIndex = null);
+              }
+            },
+            onReorder: (oldIndex, newIndex) async {
+              setState(() {
+                final item = fastKeyTabs.removeAt(oldIndex);
+                fastKeyTabs.insert(newIndex, item);
+                if (_selectedCategoryIndex == oldIndex) {
+                  _selectedCategoryIndex = newIndex;
+                } else if (oldIndex < _selectedCategoryIndex! && newIndex >= _selectedCategoryIndex!) {
+                  _selectedCategoryIndex = _selectedCategoryIndex! - 1;
+                } else if (oldIndex > _selectedCategoryIndex! && newIndex <= _selectedCategoryIndex!) {
+                  _selectedCategoryIndex = _selectedCategoryIndex! + 1;
+                }
+                if (_editingCategoryIndex == oldIndex) _editingCategoryIndex = newIndex;
+                _fastKeyBloc.updateFastKey(title: item.fastkeyTitle, index: newIndex+1, imageUrl: item.fastkeyImage, fastKeyServerId: item.fastkeyServerId, userId: item.userId);
+              });
+              for (int i = 0; i < fastKeyTabs.length; i++) {
+                await fastKeyDBHelper.updateFastKeyTab(fastKeyTabs[i].fastkeyServerId, {AppDBConst.fastKeyTabIndex: i.toString()});
+              }
+            },
+            onReorderStarted: (index) => setState(() => _editingCategoryIndex = index),
+            onEditButtonPressed: (index) {
+              setState(() => _editingCategoryIndex = index);
+              _showCategoryDialog(context: context, index: index);
+            },
+            onDismissEditMode: () => setState(() => _editingCategoryIndex = null),
+          ),
+          Expanded(
+            child: ValueListenableBuilder<int?>(
+              valueListenable: fastKeyTabIdNotifier,
+              builder: (context, fastKeyTabId, child) {
+                return fastKeyTabId != null
+                    ? NestedGridWidget(
+                        productBloc: productBloc,
+                        orderHelper: orderHelper,
+                        isPaginating: _isPaginating,
+                        isHorizontal: true,
+                        isLoading: isTabsLoading || isItemsLoading,
+                        showAddButton: showAddButton,
+                        items: fastKeyProductItems,
+                        selectedItemIndex: selectedItemIndex,
+                        reorderedIndices: reorderedIndices,
+                        onAddButtonPressed: () => _showAddItemDialog(),
+                        onItemTapped: (index, {bool? variantAdded}) => _onItemSelected(index, showAddButton, variantAdded ?? false),
+                        onReorder: (oldIndex, newIndex) {
+                          if (oldIndex == 0 || newIndex == 0) return;
+                          final adjustedOldIndex = oldIndex - 1;
+                          final adjustedNewIndex = newIndex - 1;
+                          if (adjustedOldIndex < 0 || adjustedNewIndex < 0 || adjustedOldIndex >= fastKeyProductItems.length || adjustedNewIndex >= fastKeyProductItems.length) return;
+                          setState(() {
+                            fastKeyProductItems = List<Map<String, dynamic>>.from(fastKeyProductItems);
+                            final item = fastKeyProductItems.removeAt(adjustedOldIndex);
+                            fastKeyProductItems.insert(adjustedNewIndex, item);
+                            reorderedIndices = List.filled(fastKeyProductItems.length, null);
+                            reorderedIndices[adjustedNewIndex] = adjustedNewIndex;
+                            selectedItemIndex = adjustedNewIndex;
+                          });
+                          fastKeyDBHelper.updateFastKeyItemOrder(_fastKeyTabId!, fastKeyProductItems);
+                        },
+                        onDeleteItem: (index) => _showDeleteConfirmationDialog(itemIndex: index),
+                        onCancelReorder: _onCancelReorder,
+                        showBackButton: false,
+                        enableIcons: enableIcons,
+                        onLongPress: _onLongPress,
+                      )
+                    : Container();
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
     return Scaffold(
       body: Column(
         children: [
@@ -2532,7 +2633,9 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
               } else if (sidebarPosition == SidebarPosition.right) {
                 newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
               } else {
-                newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                newLayout = orderPanelPosition == OrderPanelPosition.left
+                    ? SharedPreferenceTextConstants.navBottomOrderRight
+                    : SharedPreferenceTextConstants.navLeftOrderRight;
               }
 
               // Update the notifier which will trigger _onLayoutChanged
@@ -2632,6 +2735,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                 if (sidebarPosition == SidebarPosition.right ||
                     (sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
                   RightOrderPanel(
+                    key: const ValueKey('order_panel'),
                     quantities: quantities,
                     refreshOrderList: _refreshOrderList,
                     refreshKey: _refreshCounter, //Build #1.0.170: Pass counter as refreshKey
@@ -2796,6 +2900,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                 if (sidebarPosition != SidebarPosition.right &&
                     !(sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
                   RightOrderPanel(
+                    key: const ValueKey('order_panel'),
                     quantities: quantities,
                     refreshOrderList: _refreshOrderList,
                     refreshKey: _refreshCounter, //Build #1.0.170: Pass counter as refreshKey

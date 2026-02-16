@@ -40,8 +40,10 @@ import '../Auth/login_screen.dart';
 
 class CategoriesScreen extends StatefulWidget {
   final int? lastSelectedIndex;
+  /// When true, only the center content is shown (no TopBar, NavBar, RightOrderPanel).
+  final bool embedInShell;
 
-  const CategoriesScreen({super.key, this.lastSelectedIndex});
+  const CategoriesScreen({super.key, this.lastSelectedIndex, this.embedInShell = false});
 
   @override
   State<CategoriesScreen> createState() => _CategoriesScreenState();
@@ -493,12 +495,18 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           })
               .toList();
 
+          final ageRestrictedLower = TextConstants.age_restricted.toLowerCase();
           final ageTag = tags.firstWhere(
-                (t) => t["name"] == TextConstants.age_restricted || t["slug"] == TextConstants.age_restricted,
-            orElse: () => {},
+            (t) =>
+                (t["name"]?.toString() ?? "").toLowerCase() == ageRestrictedLower ||
+                (t["slug"]?.toString() ?? "").toLowerCase() == ageRestrictedLower,
+            orElse: () => <String, dynamic>{},
           );
 
-          final int minAge = int.tryParse(ageTag["slug"]?.toString() ?? "0") ?? 0;
+          int minAge = int.tryParse(ageTag["slug"]?.toString() ?? "0") ?? 0;
+          if (minAge == 0 && ageTag.isNotEmpty) {
+            minAge = 18;
+          }
 
           uniqueProducts[product.id] = {
             'fast_key_product_id': product.id,
@@ -818,6 +826,183 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       );
     }
 
+    if (widget.embedInShell) {
+      return Column(
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          CategoryList(
+            isHorizontal: true,
+            isLoading: isLoading,
+            isAddButtonEnabled: false,
+            categories: categoryListItems,
+            selectedIndex: _selectedCategoryIndex == null ? null : visibleCategories.indexWhere((c) => c.id == categories[_selectedCategoryIndex!].id),
+            editingIndex: _editingCategoryIndex,
+            scrollController: _categoryScrollController,
+            onAddButtonPressed: null,
+            onCategoryTapped: (uiIndex) {
+              final selectedCategory = visibleCategories[uiIndex];
+              final realIndex = categories.indexWhere((c) => c.id == selectedCategory.id);
+              if (realIndex != -1) _onCategoryTapped(realIndex);
+            },
+            onReorder: (oldIndex, newIndex) {
+              setState(() {
+                final List<CategoryModel> tempCategories = List.from(categories);
+                final item = tempCategories.removeAt(oldIndex);
+                tempCategories.insert(newIndex, item);
+                categories = tempCategories;
+                if (_selectedCategoryIndex == oldIndex) {
+                  _selectedCategoryIndex = newIndex;
+                } else if (oldIndex < _selectedCategoryIndex! && newIndex >= _selectedCategoryIndex!) {
+                  _selectedCategoryIndex = _selectedCategoryIndex! - 1;
+                } else if (oldIndex > _selectedCategoryIndex! && newIndex <= _selectedCategoryIndex!) {
+                  _selectedCategoryIndex = _selectedCategoryIndex! + 1;
+                }
+              });
+            },
+          ),
+          if (currentCategoryLevel > 0)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
+                child: Container(
+                  margin: const EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 0),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1D1C2C) : Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withOpacity(0.3) : Colors.black.withOpacity(0.05),
+                        blurRadius: 6,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (navigationPath.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 5, 10, 4),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: List.generate(navigationPath.length, (index) {
+                                final isDark = Theme.of(context).brightness == Brightness.dark;
+                                return GestureDetector(
+                                  onTap: () => _onNavigationPathTapped(index),
+                                  child: Row(
+                                    children: [
+                                      Text(navigationPath[index], style: TextStyle(fontSize: 16, fontFamily: 'poppins', fontWeight: FontWeight.w800, color: isDark ? const Color(0xFFE0E0E0) : const Color(0xFF4C5F7D))),
+                                      if (index < navigationPath.length - 1)
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                          child: Icon(Icons.arrow_forward_ios_rounded, size: 16, color: isDark ? const Color(0xFFB0B0B0) : Colors.blue),
+                                        ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                            ),
+                          ),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                        child: Divider(thickness: 3, color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF2C2C2E) : const Color(0xFFF1F1F3)),
+                      ),
+                      Expanded(
+                        child: Misc.enableCategoryProductWithSubCategoryList
+                            ? Column(
+                          children: [
+                            SizedBox(
+                              height: 140,
+                              child: SubCategoryGridWidget(
+                                isLoading: isLoadingNestedContent,
+                                subCategories: subCategoryListItems,
+                                selectedSubCategoryIndex: _selectedSubCategoryIndex,
+                                onSubCategoryTapped: _onSubCategoryTapped,
+                              ),
+                            ),
+                            Expanded(
+                              child: buildProductsWidget(
+                                NestedGridWidget(
+                                  isPaginating: _isPaginating,
+                                  productBloc: productBloc,
+                                  orderHelper: orderHelper,
+                                  isHorizontal: true,
+                                  isLoading: isLoadingNestedContent,
+                                  showAddButton: false,
+                                  showBackButton: showBackButton,
+                                  items: categoryProducts,
+                                  selectedItemIndex: selectedItemIndex,
+                                  reorderedIndices: reorderedIndices,
+                                  onAddButtonPressed: null,
+                                  onBackButtonPressed: _onBackToCategories,
+                                  onItemTapped: (index, {bool? variantAdded}) => _onItemSelected(index, variantAdded ?? false),
+                                  onReorder: (oldIndex, newIndex) {
+                                    if (oldIndex == 0 || newIndex == 0) return;
+                                    final adjustedOldIndex = oldIndex - (showBackButton ? 1 : 0);
+                                    final adjustedNewIndex = newIndex - (showBackButton ? 1 : 0);
+                                    if (adjustedOldIndex < 0 || adjustedNewIndex < 0 || adjustedOldIndex >= categoryProducts.length || adjustedNewIndex >= categoryProducts.length) return;
+                                    setState(() {
+                                      categoryProducts = List<Map<String, dynamic>>.from(categoryProducts);
+                                      final item = categoryProducts.removeAt(adjustedOldIndex);
+                                      categoryProducts.insert(adjustedNewIndex, item);
+                                      reorderedIndices = List.filled(categoryProducts.length, null);
+                                      reorderedIndices[adjustedNewIndex] = adjustedNewIndex;
+                                      selectedItemIndex = adjustedNewIndex;
+                                    });
+                                  },
+                                  onDeleteItem: (index) {},
+                                  onCancelReorder: () => setState(() => reorderedIndices = List.filled(categoryProducts.length, null)),
+                                  showDeleteButton: false,
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                            : buildProductsWidget(
+                          NestedGridWidget(
+                            isPaginating: _isPaginating,
+                            productBloc: productBloc,
+                            orderHelper: orderHelper,
+                            isHorizontal: true,
+                            isLoading: isLoadingNestedContent,
+                            showAddButton: false,
+                            showBackButton: showBackButton,
+                            items: categoryProducts,
+                            selectedItemIndex: selectedItemIndex,
+                            reorderedIndices: reorderedIndices,
+                            onAddButtonPressed: null,
+                            onBackButtonPressed: _onBackToCategories,
+                            onItemTapped: (index, {bool? variantAdded}) => _onItemSelected(index, variantAdded ?? false),
+                            onReorder: (oldIndex, newIndex) {
+                              if (oldIndex == 0 || newIndex == 0) return;
+                              final adjustedOldIndex = oldIndex - (showBackButton ? 1 : 0);
+                              final adjustedNewIndex = newIndex - (showBackButton ? 1 : 0);
+                              if (adjustedOldIndex < 0 || adjustedNewIndex < 0 || adjustedOldIndex >= categoryProducts.length || adjustedNewIndex >= categoryProducts.length) return;
+                              setState(() {
+                                categoryProducts = List<Map<String, dynamic>>.from(categoryProducts);
+                                final item = categoryProducts.removeAt(adjustedOldIndex);
+                                categoryProducts.insert(adjustedNewIndex, item);
+                                reorderedIndices = List.filled(categoryProducts.length, null);
+                                reorderedIndices[adjustedNewIndex] = adjustedNewIndex;
+                                selectedItemIndex = adjustedNewIndex;
+                              });
+                            },
+                            onDeleteItem: (index) {},
+                            onCancelReorder: () => setState(() => reorderedIndices = List.filled(categoryProducts.length, null)),
+                            showDeleteButton: false,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
 
     // Widget buildProductsWidget(Widget child) {
     //   // Wrap the products area to detect scrolling and lazy load more
@@ -875,7 +1060,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               } else if (sidebarPosition == SidebarPosition.right) {
                 newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
               } else {
-                newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                newLayout = orderPanelPosition == OrderPanelPosition.left
+                    ? SharedPreferenceTextConstants.navBottomOrderRight
+                    : SharedPreferenceTextConstants.navLeftOrderRight;
               }
 
               PinakaPreferences.layoutSelectionNotifier.value = newLayout;
@@ -917,6 +1104,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                 if (sidebarPosition == SidebarPosition.right ||
                     (sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
                   RightOrderPanel(
+                    key: const ValueKey('order_panel'),
                     quantities: quantities,
                     refreshOrderList: _refreshOrderList,
                     refreshKey: _refreshCounter,
@@ -1146,6 +1334,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                 if (sidebarPosition != SidebarPosition.right &&
                     !(sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
                   RightOrderPanel(
+                    key: const ValueKey('order_panel'),
                     quantities: quantities,
                     refreshOrderList: _refreshOrderList,
                     refreshKey: _refreshCounter,

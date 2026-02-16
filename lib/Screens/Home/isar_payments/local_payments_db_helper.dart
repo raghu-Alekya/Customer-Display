@@ -195,7 +195,13 @@ class LocalPaymentDBHelper {
     final payments = await getPaymentsByOrderId(orderId);
 
     final totalPaid = payments.fold(0.0, (sum, p) => sum + p.amount);
-    final remainingBalance = payments.isEmpty ? null : payments.last.remainingBalance;
+    // Sort by createdAt descending (newest first) so we get the current remaining balance
+    // from the most recent payment, not an arbitrary payment
+    if (payments.isNotEmpty) {
+      payments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    }
+    final remainingBalance =
+        payments.isEmpty ? null : payments.first.remainingBalance;
 
     return {
       'totalPaid': totalPaid,

@@ -22,7 +22,9 @@ class AddScreen extends StatefulWidget { // Build #1.0.6 - Updated Horizontal & 
   final int? lastSelectedIndex; // Make it nullable
   int selectedTabIndex = 0;
   String barcode = "";
-  AddScreen({super.key, this.lastSelectedIndex, this.selectedTabIndex = 0, this.barcode = "",}); // Optional, no default value
+  /// When true, only the center content is shown (no TopBar, NavBar, RightOrderPanel).
+  final bool embedInShell;
+  AddScreen({super.key, this.lastSelectedIndex, this.selectedTabIndex = 0, this.barcode = "", this.embedInShell = false}); // Optional, no default value
 
 
   @override
@@ -66,6 +68,14 @@ class _AddScreenState extends State<AddScreen> with LayoutSelectionMixin {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.embedInShell) {
+      return AppScreenTabWidget(
+        selectedTabIndex: widget.selectedTabIndex,
+        barcode: widget.barcode,
+        scaffoldMessengerContext: context,
+        refreshOrderList: _refreshOrderList,
+      );
+    }
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -82,7 +92,9 @@ class _AddScreenState extends State<AddScreen> with LayoutSelectionMixin {
                 } else if (sidebarPosition == SidebarPosition.right) {
                   newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
                 } else {
-                  newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                  newLayout = orderPanelPosition == OrderPanelPosition.left
+                      ? SharedPreferenceTextConstants.navBottomOrderRight
+                      : SharedPreferenceTextConstants.navLeftOrderRight;
                 }
 
                 //Update the notifier which will trigger _onLayoutChanged
@@ -147,6 +159,7 @@ class _AddScreenState extends State<AddScreen> with LayoutSelectionMixin {
                   if (sidebarPosition == SidebarPosition.right ||
                       (sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
                     RightOrderPanel(
+                      key: const ValueKey('order_panel'),
                       quantities: quantities,
                       refreshOrderList: _refreshOrderList, // Pass the callback
                       refreshKey: _refreshCounter, //Build #1.0.170: Pass counter as refreshKey
@@ -158,6 +171,7 @@ class _AddScreenState extends State<AddScreen> with LayoutSelectionMixin {
                   if (sidebarPosition != SidebarPosition.right &&
                       !(sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
                     RightOrderPanel(
+                      key: const ValueKey('order_panel'),
                       quantities: quantities,
                       refreshOrderList: _refreshOrderList, // Pass the callback
                       refreshKey: _refreshCounter, //Build #1.0.170: Pass counter as refreshKey

@@ -986,7 +986,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                     newLayout =
                         SharedPreferenceTextConstants.navBottomOrderLeft;
                   } else {
-                    newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                    newLayout = orderPanelPosition == OrderPanelPosition.left
+                        ? SharedPreferenceTextConstants.navBottomOrderRight
+                        : SharedPreferenceTextConstants.navLeftOrderRight;
                   }
                   PinakaPreferences.layoutSelectionNotifier.value = newLayout;
                   await UserDbHelper().saveUserSettings(

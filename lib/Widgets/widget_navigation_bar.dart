@@ -5,6 +5,7 @@ import 'package:pinaka_pos/Screens/Auth/login_screen.dart';
 import 'package:pinaka_pos/Screens/Home/apps_dashboard_screen.dart';
 import 'package:pinaka_pos/Screens/Home/categories_screen.dart';
 import 'package:pinaka_pos/Screens/Home/fast_key_screen.dart';
+import 'package:pinaka_pos/Screens/Home/pos_home_screen.dart';
 import 'package:pinaka_pos/Widgets/scanner_guard.dart';
 import 'package:pinaka_pos/Widgets/widget_topbar.dart';
 import 'package:provider/provider.dart';
@@ -37,12 +38,16 @@ class NavigationBar extends StatelessWidget {
   final Function(int) onSidebarItemSelected;
   final bool isVertical;
   final bool isShiftScreen; // ✅ ADD THIS
+  /// When non-null, tapping these indices only calls onSidebarItemSelected (no Navigator push).
+  /// Used by POSHomeScreen to switch tabs without replacing route.
+  final Set<int>? callbackOnlyIndices;
 
   const NavigationBar({
     required this.selectedSidebarIndex,
     required this.onSidebarItemSelected,
     this.isVertical = true,
     this.isShiftScreen = false, // default
+    this.callbackOnlyIndices,
     Key? key,
   }) : super(key: key);
 
@@ -126,11 +131,14 @@ class NavigationBar extends StatelessWidget {
               }
               lastSelectedIndex = 0; // Store last selection
               onSidebarItemSelected(0);
+              if (callbackOnlyIndices?.contains(0) == true) return;
 
-              /// FastKeyScreen
+              OrderHelper.isOrderPanelLoaded = false;
+              OrderHelper.notifyOrderPanelToRefresh();
+              /// POSHomeScreen (Fast Keys tab)
               Navigator.of(context).pushAndRemoveUntil( // Build #1.0.254 : Fixed - Push and replace is showing jump animation for nav bar
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex),
+                  pageBuilder: (context, animation, secondaryAnimation) => POSHomeScreen(lastSelectedIndex: 0),
                   transitionsBuilder: (context, animation, secondaryAnimation, child) {
                     return child; // No transition animation
                   },
@@ -164,11 +172,14 @@ class NavigationBar extends StatelessWidget {
               }
               lastSelectedIndex = 1; //Build #1.0.7: Store last selection
               onSidebarItemSelected(1);
+              if (callbackOnlyIndices?.contains(1) == true) return;
 
-              /// CategoriesScreen
+              OrderHelper.isOrderPanelLoaded = false;
+              OrderHelper.notifyOrderPanelToRefresh();
+              /// POSHomeScreen (Categories tab)
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) => CategoriesScreen(lastSelectedIndex: lastSelectedIndex),
+                  pageBuilder: (context, animation, secondaryAnimation) => POSHomeScreen(lastSelectedIndex: 1),
                   transitionsBuilder: (context, animation, secondaryAnimation, child) {
                     return child; // No transition animation
                   },
@@ -201,10 +212,13 @@ class NavigationBar extends StatelessWidget {
               }
               lastSelectedIndex = 2;
               onSidebarItemSelected(2);
-              /// AddScreen
+              if (callbackOnlyIndices?.contains(2) == true) return;
+              OrderHelper.isOrderPanelLoaded = false;
+              OrderHelper.notifyOrderPanelToRefresh();
+              /// POSHomeScreen (Add tab)
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) => AddScreen(lastSelectedIndex: lastSelectedIndex),
+                  pageBuilder: (context, animation, secondaryAnimation) => POSHomeScreen(lastSelectedIndex: 2),
                   transitionsBuilder: (context, animation, secondaryAnimation, child) {
                     return child; // No transition animation
                   },
@@ -236,6 +250,13 @@ class NavigationBar extends StatelessWidget {
               lastSelectedIndex = 3;
               onSidebarItemSelected(3);
 
+              OrderHelper.isOrderPanelLoaded = false;
+              OrderHelper.notifyOrderPanelToRefresh();
+              // Save current POS order before switching to Orders tab
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                oh.saveLastActiveOrderId(oh.activeOrderId!);
+              }
               /// OrdersScreen
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
@@ -415,11 +436,14 @@ class NavigationBar extends StatelessWidget {
               }
               lastSelectedIndex = 0; // Store last selection
               onSidebarItemSelected(0);
+              if (callbackOnlyIndices?.contains(0) == true) return;
 
-              /// FastKeyScreen
+              OrderHelper.isOrderPanelLoaded = false;
+              OrderHelper.notifyOrderPanelToRefresh();
+              /// POSHomeScreen (Fast Keys tab)
               Navigator.of(context).pushAndRemoveUntil( // Build #1.0.254 : Fixed - Push and replace is showing jump animation for nav bar
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex),
+                  pageBuilder: (context, animation, secondaryAnimation) => POSHomeScreen(lastSelectedIndex: 0),
                   transitionsBuilder: (context, animation, secondaryAnimation, child) {
                     return child; // No transition animation
                   },
@@ -452,6 +476,7 @@ class NavigationBar extends StatelessWidget {
               }
               lastSelectedIndex = 1; // Store last selection
               onSidebarItemSelected(1);
+              if (callbackOnlyIndices?.contains(1) == true) return;
               /// CategoriesScreen
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
@@ -490,10 +515,13 @@ class NavigationBar extends StatelessWidget {
               }
               lastSelectedIndex = 2;
               onSidebarItemSelected(2);
-              /// AddScreen
+              if (callbackOnlyIndices?.contains(2) == true) return;
+              OrderHelper.isOrderPanelLoaded = false;
+              OrderHelper.notifyOrderPanelToRefresh();
+              /// POSHomeScreen (Add tab)
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) => AddScreen(lastSelectedIndex: lastSelectedIndex),
+                  pageBuilder: (context, animation, secondaryAnimation) => POSHomeScreen(lastSelectedIndex: 2),
                   transitionsBuilder: (context, animation, secondaryAnimation, child) {
                     return child; // No transition animation
                   },
@@ -527,6 +555,13 @@ class NavigationBar extends StatelessWidget {
               lastSelectedIndex = 3;
               onSidebarItemSelected(3);
 
+              OrderHelper.isOrderPanelLoaded = false;
+              OrderHelper.notifyOrderPanelToRefresh();
+              // Save current POS order before switching to Orders tab
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                oh.saveLastActiveOrderId(oh.activeOrderId!);
+              }
               /// OrdersScreen
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
@@ -679,6 +714,89 @@ class NavigationBar extends StatelessWidget {
     );
   }
 
+  /// Handles swipe-to-close-shift: checks for open orders, then navigates to close shift screen or shows warning.
+  void _handleSwipeToCloseShift(BuildContext context, NavigatorState navigator, bool isDarkMode) async {
+    final orderHelper = OrderHelper();
+    // Use loadData (Hive) - app's primary order storage - not loadProcessingData (SQLite)
+    await orderHelper.loadData();
+
+    if (orderHelper.orders.isNotEmpty) {
+      if (kDebugMode) {
+        print("Processing Orders > 0 -> orders length: ${orderHelper.orders.length}");
+      }
+      navigator.pop(); // close logout dialog
+      // Show Close Shift Warning popup (use navigator.context - dialog context may be invalid after pop)
+      showDialog(
+        context: navigator.context,
+        barrierDismissible: false,
+        builder: (BuildContext dialogContext) {
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            backgroundColor: isDarkMode ? Colors.grey[900] : Colors.white,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 60),
+            child: SizedBox(
+              width: 500,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 40),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Close Shift Warning",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: isDarkMode ? Colors.white : Colors.black87,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Please close all open orders before closing shift",
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isDarkMode ? Colors.white : Colors.black87,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 45,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: () {
+                          ScannerGuard.isCouponPopupOpen = false;
+                          Navigator.of(dialogContext).pop();
+                        },
+                        child: const Text("OK", style: TextStyle(fontSize: 16, color: Colors.white)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } else {
+      if (kDebugMode) print("No open orders -> navigating to close shift");
+      navigator.pop(); // close logout dialog
+      ScannerGuard.isCouponPopupOpen = false;
+      navigator.push(
+        MaterialPageRoute(
+          builder: (context) => ShiftOpenCloseBalanceScreen(),
+          settings: const RouteSettings(arguments: TextConstants.navLogout),
+        ),
+      );
+    }
+  }
+
   void _showLogoutDialog(BuildContext context,LogoutBloc logoutBloc, ThemeNotifier themeHelper){
     ScannerGuard.isCouponPopupOpen = true;
     showDialog(
@@ -804,112 +922,10 @@ class NavigationBar extends StatelessWidget {
                               style: const TextStyle(color: Colors.white, fontSize: 13),
                             ),
                           ),
-                          onSwipe: () async {
-                            final orderHelper = OrderHelper();
-                            await orderHelper.loadProcessingData();
-
-                            if (orderHelper.orders.isNotEmpty) {
-                              if (kDebugMode) {
-                                print("Processing Orders > 0 -> orders length: ${orderHelper.orders.length}");
-                              }
-                              Navigator.of(context).pop(); // close current dialog
-
-                              // 🔹 Show Close Shift Warning popup
-                              showDialog(
-                                context: context,
-                                barrierDismissible: false,
-                                builder: (BuildContext dialogContext) {
-                                  return Dialog(
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(15),
-                                    ),
-                                    backgroundColor: isDarkMode ? Colors.grey[900] : Colors.white,
-                                    insetPadding: const EdgeInsets.symmetric(horizontal: 60), // controls width
-                                    child: SizedBox(
-                                      width: 500, // fixed width for the popup
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(20),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            // 🔴 Warning Icon
-                                            const Icon(
-                                              Icons.error_outline,
-                                              color: Colors.red,
-                                              size: 40,
-                                            ),
-                                            const SizedBox(height: 12),
-
-                                            // Title
-                                            Text(
-                                              "Close Shift Warning",
-                                              style: TextStyle(
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.bold,
-                                                color: isDarkMode ? Colors.white : Colors.black87,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                            const SizedBox(height: 8),
-
-                                            // Subtitle
-                                            Text(
-                                              "Please close all open orders before closing shift",
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                color: isDarkMode ? Colors.white : Colors.black87,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                            const SizedBox(height: 20),
-
-                                            // 🔴 OK Button
-                                            SizedBox(
-                                              width: double.infinity,
-                                              height: 45,
-                                              child: ElevatedButton(
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: Colors.red,
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius: BorderRadius.circular(8),
-                                                  ),
-                                                ),
-                                                onPressed: () {
-                                                  ScannerGuard.isCouponPopupOpen = false;
-                                                  Navigator.of(dialogContext).pop(); // ✅ closes only this popup
-                                                },
-                                                child: const Text(
-                                                  "OK",
-                                                  style: TextStyle(
-                                                    fontSize: 16,
-                                                    color: Colors.white,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              );
-
-
-                            } else {
-                              if (kDebugMode) {
-                                print("Shift closed");
-                              }
-                              Navigator.of(context).pop();
-                              ScannerGuard.isCouponPopupOpen = false;
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => ShiftOpenCloseBalanceScreen(),
-                                  settings: const RouteSettings(arguments: TextConstants.navLogout),
-                                ),
-                              );
-                            }
+                          onSwipe: () {
+                            // Capture navigator before any async work - context may be invalid after pop
+                            final navigator = Navigator.of(context);
+                            _handleSwipeToCloseShift(context, navigator, isDarkMode);
                           },
                         ),
                       ),

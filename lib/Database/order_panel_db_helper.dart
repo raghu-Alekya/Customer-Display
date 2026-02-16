@@ -37,6 +37,9 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     orderPanelRefreshNotifier.value++;
   }
 
+  /// When ensureOrderExists fails, this holds the error message for UI feedback.
+  static String? lastEnsureOrderError;
+
   Map<int, bool> orderAgeVerifiedFlags={};
   int? activeOrderId; // Stores the currently active order ID
   int? activeUserId; // Stores the active user ID
@@ -47,6 +50,9 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   /// Build 1.0.171: Concurrency Control: _syncFuture ensures only one sync operation runs at a time by checking if a sync is in progress; if so, it waits for completion, preventing data corruption or race conditions.
   /// Reliable Sync Process: Using a Completer, _syncFuture manages the sync, clears and updates the database with API orders, handles errors, and resets to allow new syncs, maintaining data consistency.
   static Future<void>? _syncFuture;
+
+  /// Ensures only one ensureOrderExists runs at a time to avoid race conditions.
+  static Future<int?>? _ensureOrderInProgress;
 
   OrderHelper._internal() {
     if (kDebugMode) {
@@ -193,12 +199,22 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       // ⚡ Ensure mutable list (not fixed-length)
       orders = List<Map<String, dynamic>>.from(validEntries.map((e) => e.value));
 
-      // ✅ Extract order IDs safely
-      orderIds = validEntries.map((e) {
-        final map = e.value;
+      // ✅ Sort by created_at descending (newest first) for stable tab order on navbar navigation
+      orders.sort((a, b) {
+        final aTime = a['created_at']?.toString() ?? '';
+        final bTime = b['created_at']?.toString() ?? '';
+        final cmp = bTime.compareTo(aTime);
+        if (cmp != 0) return cmp;
+        final aId = a['order_id'] ?? a['id'] ?? 0;
+        final bId = b['order_id'] ?? b['id'] ?? 0;
+        return ((bId as num).toDouble()).compareTo((aId as num).toDouble());
+      });
+
+      // ✅ Extract order IDs from sorted orders (keeps orderIds in sync)
+      orderIds = orders.map((map) {
         if (map.containsKey('order_id')) return map['order_id'] as int?;
         if (map.containsKey('id')) return map['id'] as int?;
-        return int.tryParse(e.key.toString());
+        return int.tryParse(map['order_id']?.toString() ?? map['id']?.toString() ?? '');
       }).whereType<int>().toList();
 
       // ✅ Set active order ID if not found
@@ -1075,6 +1091,25 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     }
   }
   Future<int?> ensureOrderExists() async {
+    // Concurrency: if another ensureOrderExists is in progress, wait for it
+    if (_ensureOrderInProgress != null) {
+      final result = await _ensureOrderInProgress!;
+      if (activeOrderId != null) return activeOrderId;
+      return result;
+    }
+
+    _ensureOrderInProgress = _doEnsureOrderExists();
+    try {
+      final result = await _ensureOrderInProgress!;
+      return result;
+    } finally {
+      _ensureOrderInProgress = null;
+    }
+  }
+
+  Future<int?> _doEnsureOrderExists() async {
+    lastEnsureOrderError = null;
+
     // 1️⃣ If already active
     if (activeOrderId != null) return activeOrderId;
 
@@ -1096,34 +1131,43 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       }
     }
 
-    // 4️⃣ Create new order
-    final repo = OrderRepository();
-    final response = await repo.createOrder();
-    final int newOrderId = response.id!;
+    // 4️⃣ Create new order (with error handling)
+    try {
+      final repo = OrderRepository();
+      final response = await repo.createOrder();
+      final int newOrderId = response.id!;
 
-    // 5️⃣ Activate + persist
-    await setActiveOrder(newOrderId);
-    await saveLastActiveOrderId(newOrderId);
+      // 5️⃣ Activate + persist
+      await setActiveOrder(newOrderId);
+      await saveLastActiveOrderId(newOrderId);
 
-    // 5b. Persist new order to SQLite so order panel and addItemToOrder see it (Hive already filled by repo)
-    await createOrder(serverOrderId: newOrderId);
+      // 5b. Persist new order to SQLite so order panel and addItemToOrder see it
+      await createOrder(serverOrderId: newOrderId);
 
-    // 6️⃣ Reload orders from offline storage so panel has full order data
-    await loadData();
+      // 6️⃣ Reload orders from offline storage so panel has full order data
+      await loadData();
 
-    // 🔥 CRITICAL: RESTORE ACTIVE ORDER
-    await restoreActiveOrderId();
+      // Restore active order
+      await restoreActiveOrderId();
 
-    // Force order panel to refresh so new order tab appears
-    OrderHelper.isOrderPanelLoaded = false;
-    OrderHelper.notifyOrderPanelToRefresh();
+      // Force order panel to refresh so new order tab appears
+      OrderHelper.isOrderPanelLoaded = false;
+      OrderHelper.notifyOrderPanelToRefresh();
 
-    if (kDebugMode) {
-      print("🆕 ensureOrderExists → $newOrderId");
-      print("🎯 ActiveOrderId → $activeOrderId");
+      if (kDebugMode) {
+        print("🆕 ensureOrderExists → $newOrderId");
+        print("🎯 ActiveOrderId → $activeOrderId");
+      }
+
+      return newOrderId;
+    } catch (e, s) {
+      lastEnsureOrderError = e is Exception ? e.toString().replaceFirst('Exception: ', '') : e.toString();
+      if (kDebugMode) {
+        print("❌ ensureOrderExists failed: $e");
+        print("Stack: $s");
+      }
+      return null;
     }
-
-    return newOrderId;
   }
 
 
@@ -1318,9 +1362,47 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     );
   }
 
-  /// Gets order items from offline storage (products, payouts, cashbacks).
+  static double _toDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0.0;
+  }
+
+  /// Resolves product image URL from various possible keys (image, product_image, images array, etc.)
+  static String resolveProductImage(dynamic map) {
+    if (map == null || map is! Map) return '';
+    final m = map;
+
+    final image = m['image'];
+    if (image is String && image.trim().isNotEmpty) return image;
+    final productImage = m['product_image'];
+    if (productImage is String && productImage.trim().isNotEmpty) return productImage;
+    final itemImage = m['item_image'];
+    if (itemImage is String && itemImage.trim().isNotEmpty) return itemImage;
+    final customItemImage = m['custom_item_image'];
+    if (customItemImage is String && customItemImage.trim().isNotEmpty) return customItemImage;
+    final fastKeyImage = m['fast_key_item_image'];
+    if (fastKeyImage is String && fastKeyImage.trim().isNotEmpty) return fastKeyImage;
+
+    if (image is Map && image['src'] != null) {
+      final src = image['src'].toString();
+      if (src.isNotEmpty) return src;
+    }
+
+    final images = m['images'];
+    if (images is List && images.isNotEmpty) {
+      final first = images.first;
+      if (first is String && first.isNotEmpty) return first;
+      if (first is Map && first['src'] != null) return first['src'].toString();
+    }
+
+    return '';
+  }
+
+  /// Gets order items from offline storage (products, order_items, payouts, cashbacks, discounts).
   /// Returns empty list if order not found.
   /// Items are converted to display format (item_name, item_price, items_count, etc.).
+  /// Supports both "products" (Categories/Fast Keys) and "order_items" (Order Summary) structures.
   Future<List<Map<String, dynamic>>> getOrderItemsFromOffline(int orderID) async {
     final box = StorageProvider.offlineOrders;
     final raw = await box.get(orderID.toString());
@@ -1329,28 +1411,68 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
     final List<Map<String, dynamic>> items = [];
 
-    // 1️⃣ Products
-    final products = (order['products'] as List?) ?? [];
-    for (final p in products) {
-      final map = Map<String, dynamic>.from(p is Map ? p : {});
-      final itemType = (map['item_type'] ?? map['type'] ?? 'product').toString().toLowerCase();
-      final name = map['name'] ?? map['product_name'] ?? '';
-      final price = (map['price'] as num?)?.toDouble() ?? 0.0;
-      final qty = (map['quantity'] as num?)?.toInt() ?? 1;
-      final sumPrice = price * qty;
+    // 1️⃣ Products (primary) or order_items fallback (from Order Summary screen)
+    var products = (order['products'] as List?) ?? [];
+    if (products.isEmpty) {
+      final orderItems = (order['order_items'] as List?) ?? [];
+      for (final oi in orderItems) {
+        final map = Map<String, dynamic>.from(oi is Map ? oi : {});
+        final name = map['item_name'] ?? map['name'] ?? '';
+        final price = (map['item_price'] ?? map['price'] ?? 0).toDouble();
+        final qty = (map['items_count'] ?? map['quantity'] ?? 1).toInt();
+        final itemType = (map['item_type'] ?? map['type'] ?? 'product').toString();
+        // Skip discount type - we add from discounts list separately
+        if (itemType.toLowerCase().contains('discount')) continue;
+        final multipack = _toDouble(map['multipack_discount_total'] ?? map['multipackDiscount'] ?? 0);
+        final auto = _toDouble(map['auto_discount_total'] ?? map['autoDiscountTotal'] ?? map['auto_discount'] ?? 0);
+        final combo = _toDouble(map['combo_discount_total'] ?? map['comboDiscountTotal'] ?? 0);
+        items.add({
+          AppDBConst.itemName: name,
+          AppDBConst.itemPrice: price,
+          AppDBConst.itemCount: qty,
+          AppDBConst.itemSumPrice: price * qty,
+          AppDBConst.itemImage: OrderHelper.resolveProductImage(map),
+          AppDBConst.itemType: itemType,
+          'is_ebt_eligible': map['is_ebt_eligible'] == true,
+          'product_id': (map['product_id'] as num?)?.toInt() ?? 0,
+          'variation_id': int.tryParse((map['variation_id'] ?? map['variationId'] ?? 0).toString()) ?? 0,
+          'sku': map['sku'] ?? map['item_sku'] ?? '',
+          AppDBConst.multipackDiscount: multipack,
+          AppDBConst.autoDiscountTotal: auto,
+          AppDBConst.comboDiscountTotal: combo,
+        });
+      }
+    } else {
+      for (final p in products) {
+        final map = Map<String, dynamic>.from(p is Map ? p : {});
+        final itemType = (map['item_type'] ?? map['type'] ?? 'product').toString().toLowerCase();
+        // Skip discount type - we add from discounts list separately
+        if (itemType.contains('discount')) continue;
+        final name = map['name'] ?? map['product_name'] ?? '';
+        final price = (map['price'] as num?)?.toDouble() ?? 0.0;
+        final qty = (map['quantity'] as num?)?.toInt() ?? 1;
+        final sumPrice = price * qty;
 
-      items.add({
-        AppDBConst.itemName: name,
-        AppDBConst.itemPrice: price,
-        AppDBConst.itemCount: qty,
-        AppDBConst.itemSumPrice: sumPrice,
-        AppDBConst.itemImage: map['image'] ?? '',
-        AppDBConst.itemType: map['item_type'] ?? map['type'] ?? 'product',
-        'is_ebt_eligible': map['is_ebt_eligible'] == true,
-        'product_id': (map['product_id'] as num?)?.toInt() ?? 0,
-        'variation_id': int.tryParse((map['variation_id'] ?? map['variationId'] ?? 0).toString()) ?? 0,
-        'sku': map['sku'] ?? '',
-      });
+        final multipack = _toDouble(map['multipack_discount_total'] ?? map['multipackDiscount'] ?? 0);
+        final auto = _toDouble(map['auto_discount_total'] ?? map['autoDiscountTotal'] ?? map['auto_discount'] ?? 0);
+        final combo = _toDouble(map['combo_discount_total'] ?? map['comboDiscountTotal'] ?? 0);
+
+        items.add({
+          AppDBConst.itemName: name,
+          AppDBConst.itemPrice: price,
+          AppDBConst.itemCount: qty,
+          AppDBConst.itemSumPrice: sumPrice,
+          AppDBConst.itemImage: OrderHelper.resolveProductImage(map),
+          AppDBConst.itemType: map['item_type'] ?? map['type'] ?? 'product',
+          'is_ebt_eligible': map['is_ebt_eligible'] == true,
+          'product_id': (map['product_id'] as num?)?.toInt() ?? 0,
+          'variation_id': int.tryParse((map['variation_id'] ?? map['variationId'] ?? 0).toString()) ?? 0,
+          'sku': map['sku'] ?? '',
+          AppDBConst.multipackDiscount: multipack,
+          AppDBConst.autoDiscountTotal: auto,
+          AppDBConst.comboDiscountTotal: combo,
+        });
+      }
     }
 
     // 2️⃣ Payouts
@@ -1380,6 +1502,23 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         AppDBConst.itemSumPrice: price,
         AppDBConst.itemImage: map['product_image'] ?? map['item_image'] ?? map['image'] ?? '',
         AppDBConst.itemType: 'cashback',
+      });
+    }
+
+    // 4️⃣ Merchant discounts (from discounts list)
+    // Use negative item_sum_price so _computeOrderData extraction (discountValue < 0) finds it
+    final discounts = (order['discounts'] as List?) ?? [];
+    for (final d in discounts) {
+      final map = Map<String, dynamic>.from(d is Map ? d : {});
+      final amount = (map[AppDBConst.itemPrice] ?? map['discount_amount'] ?? map['display_amount'] ?? 0).toDouble().abs();
+      final name = map[AppDBConst.itemName] ?? map['name'] ?? 'Merchant Discount';
+      items.add({
+        AppDBConst.itemName: name,
+        AppDBConst.itemPrice: -amount,
+        AppDBConst.itemCount: 1,
+        AppDBConst.itemSumPrice: -amount,
+        AppDBConst.itemImage: map['product_image'] ?? '',
+        AppDBConst.itemType: 'discount',
       });
     }
 
@@ -1451,6 +1590,15 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     _activeAdds.add(key);
 
     try {
+      // Block adding items to orders that have payments (pending orders)
+      final payments = await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+      if (payments.isNotEmpty) {
+        if (kDebugMode) {
+          print("⚠ addItemToOrder blocked: order $orderId has payments (pending) - cannot add line items");
+        }
+        return;
+      }
+
       final box = StorageProvider.offlineOrders;
       final rawOrder = await box.get(orderId.toString());
       if (rawOrder == null || rawOrder is! Map) {
@@ -1467,9 +1615,9 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       final normProductId = (productId ?? -1).toInt();
       final normVariationId = (variationId ?? 0).toInt();
 
-      // Find existing item
+      // Find existing item to merge quantity (scan/search/selection)
       final existingIndex = products.indexWhere((p) =>
-      (p['product_id'] ?? -1) == normProductId &&
+          (p['product_id'] ?? -1) == normProductId &&
           (p['variation_id'] ?? 0) == normVariationId);
 
       if (existingIndex != -1) {
@@ -1480,7 +1628,6 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         final mergedEbt =
             (existing['is_ebt_eligible'] == true) || (isEbtEligible == true);
 
-
         print("🔁 EXISTING ITEM FOUND → $name");
         print("   Old Qty: $oldQty → New Qty: $newQty");
         print("   EBT (existing or new): $mergedEbt");
@@ -1489,14 +1636,10 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           ...existing,
           'quantity': newQty,
           'is_ebt_eligible': mergedEbt,
-          // ⭐ DO NOT override price unless needed
           'price': existing['price'],
         };
 
-// ⭐ Very important: STOP popup flow completely
-        print("🔁 SAME PRODUCT → Qty incremented. SKIPPING POPUP.");
-
-
+        print("🔁 SAME PRODUCT → Qty incremented.");
       } else {
         print("🆕 ADDING NEW PRODUCT → $name");
         print("   EBT Eligible: $isEbtEligible");
@@ -1525,6 +1668,12 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
           /// ⭐ NOW SAVED CORRECTLY
           'is_ebt_eligible': isEbtEligible,
+
+          // Discount fields (0 for new items; preserve when merged from existing)
+          'auto_discount': 0.0,
+          'auto_discount_total': 0.0,
+          'multipack_discount_total': 0.0,
+          'combo_discount_total': 0.0,
         });
       }
 

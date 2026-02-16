@@ -12,6 +12,7 @@ import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:focus_detector/focus_detector.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:isar/isar.dart';
 import 'package:isar/isar.dart';
@@ -43,7 +44,6 @@ import '../Database/assets_db_helper.dart';
 import '../Database/db_helper.dart';
 import '../Database/isar_service.dart';
 import '../Database/order_panel_db_helper.dart';
-import '../Database/storage/storage_provider.dart';
 import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/api_response.dart';
@@ -98,7 +98,7 @@ class RightOrderPanel extends StatefulWidget {
 }
 
 class _RightOrderPanelState extends State<RightOrderPanel>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   List<Map<String, Object>> tabs = []; // List of order tabs
   TabController? _tabController; // Controller for tab switching
   final ScrollController _scrollController =
@@ -131,11 +131,19 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   Map<String, dynamic>? resolvedProductMap;
   VoidCallback? _orderPanelRefreshListener;
   bool _isNewTabDisabled = false;
+  /// True only after restore + fetch complete; prevents showing stale order items when switching from Orders/Apps.
+  bool _initialRestoreDone = false;
 
   void _toggleSummary() {
     setState(() {
       _showFullSummary = !_showFullSummary;
     });
+  }
+
+  static double _toDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0.0;
   }
 
   String normalizeSku(String sku) {
@@ -145,11 +153,18 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     orderBloc = OrderBloc(OrderRepository());
+    // Force full refresh when panel mounts (e.g. navigating from Orders tab) so we show
+    // the active processing order, not the order viewed in Orders tab
+    OrderHelper.isOrderPanelLoaded = false;
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await orderHelper.restoreActiveOrderId(); // ✅ WAIT
-      fetchOrdersData(); // load after restore
+      await orderHelper.restoreActiveOrderId(); // ✅ WAIT - restores lastActiveOrderId for POS context
+      await fetchOrdersData(); // load after restore
+      if (mounted) {
+        setState(() => _initialRestoreDone = true); // Safe to derive from orderHelper in build
+      }
     });
     _orderPanelRefreshListener = () {
       if (mounted) {
@@ -160,6 +175,15 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     OrderHelper.orderPanelRefreshNotifier
         .addListener(_orderPanelRefreshListener!);
   }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      OrderHelper.isOrderPanelLoaded = false;
+      fetchOrdersData();
+    }
+  }
+
   double getCurrentMerchantDiscount(Map<String, dynamic> order) {
     final products = (order['products'] as List?) ?? [];
 
@@ -181,7 +205,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
   }
   // Build #1.0.104: created this function for initial call & while back to this screen
-  void fetchOrdersData() async {
+  Future<void> fetchOrdersData() async {
     if (kDebugMode) {
       print("##### fetchOrdersData called (OFFLINE MODE)");
       print(
@@ -189,7 +213,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
     if (OrderHelper.isOrderPanelLoaded) {
       setState(() => _isFetchingInitialData = false);
-      await orderHelper.loadProcessingData();
+      // Use loadData (Hive) for consistency with offline mode - avoids full reload when data already available
+      await orderHelper.loadData();
       if (mounted) await _getOrderTabs();
       return;
     }
@@ -210,7 +235,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
       // ✅ Mark panel loaded and render
       OrderHelper.isOrderPanelLoaded = true;
-      _getOrderTabs(); // Use offline OrderHelper.orders
+      if (mounted) await _getOrderTabs(); // Use offline OrderHelper.orders
     } catch (e, s) {
       if (kDebugMode) {
         print("❌ Error loading offline orders in fetchOrdersData: $e");
@@ -830,6 +855,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _updateOrderSubscription?.cancel(); // Cancel the subscription
     //orderBloc.dispose(); // Dispose the bloc if needed
     _fetchOrdersSubscription?.cancel();
@@ -1162,35 +1188,19 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                 List<Map<String, dynamic>> orderProducts =
                 List<Map<String, dynamic>>.from(raw["products"] ?? []);
 
-                final int? selectedVariationId =
-                null; // no variant selected yet
+                // Match by SKU (unique per variant) to merge quantity on scan
+                final existingIndex = orderProducts.indexWhere((p) {
+                  final raw = (p["sku"] ?? "").toString();
+                  final stored = normalizeSku(raw);
+                  return stored == trimmedBarcode ||
+                      raw == trimmedBarcode ||
+                      raw.toLowerCase() == trimmedBarcode.toLowerCase();
+                });
 
-                final existingIndex = orderProducts.indexWhere((p) =>
-                normalizeSku(p["sku"]) == trimmedBarcode &&
-                    (p["variation_id"] == null ||
-                        p["variation_id"] == selectedVariationId));
-
-                // 🚫 DO NOT AUTO-INCREMENT IF PRODUCT HAS VARIANTS
                 if (existingIndex != -1) {
-                  final existingItem = orderProducts[existingIndex];
-
-                  // 🔐 Determine if this is a variant product
-                  final bool hasVariantInProduct =
-                  (product?.variations?.isNotEmpty ?? false);
-
-                  final bool hasVariantInOrder =
-                      existingItem["variation_id"] != null;
-
-                  // ❌ STOP auto-increment if ANY variant exists
-                  if (hasVariantInProduct || hasVariantInOrder) {
-                    if (kDebugMode) {
-                      print("🚫 Variant detected — skipping auto increment");
-                    }
-                    return;
-                  }
-
-                  // ✅ SAFE TO AUTO-INCREMENT (simple product only)
-                  orderProducts[existingIndex]["quantity"] += 1;
+                  // Add/update quantity when same product found
+                  orderProducts[existingIndex]["quantity"] =
+                      (orderProducts[existingIndex]["quantity"] ?? 1) + 1;
 
                   await offlineBox.put(activeOrderId.toString(), {
                     ...raw,
@@ -2471,7 +2481,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   }
 
   int totalItems = 0;
-  Future<void> deleteOfflineItem(Map<String, dynamic> orderItem) async {
+  Future<void> deleteOfflineItem(Map<String, dynamic> orderItem,
+      {int? itemIndex}) async {
     if (orderHelper.activeOrderId == null) return;
 
     final offlineBox = StorageProvider.offlineOrders;
@@ -2583,93 +2594,143 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             .toList() ??
             [];
 
+    // Index-based removal: orderItems = [products..., custom_items..., payouts..., cashbacks...]
+    final int productsLen = products.length;
+    final int customLen = customItems.length;
+    final int payoutsLen = payouts.length;
+    final bool useIndex = itemIndex != null && itemIndex >= 0;
+
     // 🟦 DELETE PAYOUT
     if (itemType == 'payout') {
-      payouts.removeWhere((p) {
-        final amt1 = double.tryParse(p['amount']?.toString() ?? '0') ?? 0;
-        final amt2 =
-            double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
-        return amt1 == amt2;
-      });
+      if (useIndex) {
+        if (itemIndex! < productsLen) {
+          products.removeAt(itemIndex);
+          offlineOrder['products'] = products;
+        } else {
+          final payoutsStart = productsLen + customLen;
+          if (itemIndex >= payoutsStart && itemIndex < payoutsStart + payoutsLen) {
+            payouts.removeAt(itemIndex - payoutsStart);
+          }
+        }
+      } else {
+        payouts.removeWhere((p) {
+          final amt1 = double.tryParse(p['amount']?.toString() ?? '0') ?? 0;
+          final amt2 =
+              double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+          return amt1 == amt2;
+        });
+      }
       offlineOrder['payouts'] = payouts;
     }
 
     // 🟪 DELETE CUSTOM ITEM (from custom_items or products with type custom)
     else if (itemType.contains('custom')) {
-      final tappedName = (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '').toString().toLowerCase();
-      final tappedPrice = double.tryParse(orderItem['item_price']?.toString() ?? orderItem[AppDBConst.itemPrice]?.toString() ?? '0') ?? 0;
+      if (useIndex) {
+        if (itemIndex! < productsLen) {
+          products.removeAt(itemIndex);
+        } else if (itemIndex >= productsLen && itemIndex < productsLen + customLen) {
+          customItems.removeAt(itemIndex - productsLen);
+        }
+        offlineOrder['products'] = products;
+        offlineOrder['custom_items'] = customItems;
+      } else {
+        final tappedName = (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '').toString().toLowerCase();
+        final tappedPrice = double.tryParse(orderItem['item_price']?.toString() ?? orderItem[AppDBConst.itemPrice]?.toString() ?? '0') ?? 0;
 
-      // Remove from custom_items
-      customItems.removeWhere((c) {
-        final name = (c['custom_item_name'] ?? c['item_name'] ?? c['name'] ?? '').toString().toLowerCase();
-        final price = double.tryParse(c['custom_item_price']?.toString() ?? c['amount']?.toString() ?? c['price']?.toString() ?? '0') ?? 0;
-        return name == tappedName && (price - tappedPrice).abs() < 0.001;
-      });
-      offlineOrder['custom_items'] = customItems;
+        customItems.removeWhere((c) {
+          final name = (c['custom_item_name'] ?? c['item_name'] ?? c['name'] ?? '').toString().toLowerCase();
+          final price = double.tryParse(c['custom_item_price']?.toString() ?? c['amount']?.toString() ?? c['price']?.toString() ?? '0') ?? 0;
+          return name == tappedName && (price - tappedPrice).abs() < 0.001;
+        });
+        offlineOrder['custom_items'] = customItems;
 
-      // Also remove from products if stored there with type custom
-      products.removeWhere((p) {
-        final type = (p['item_type'] ?? p['type'] ?? '').toString().toLowerCase();
-        if (!type.contains('custom')) return false;
-        final name = (p['name'] ?? p['custom_item_name'] ?? p['product_name'] ?? '').toString().toLowerCase();
-        final price = double.tryParse(p['price']?.toString() ?? p['custom_item_price']?.toString() ?? '0') ?? 0;
-        return name == tappedName && (price - tappedPrice).abs() < 0.001;
-      });
-      offlineOrder['products'] = products;
+        products.removeWhere((p) {
+          final type = (p['item_type'] ?? p['type'] ?? '').toString().toLowerCase();
+          if (!type.contains('custom')) return false;
+          final name = (p['name'] ?? p['custom_item_name'] ?? p['product_name'] ?? '').toString().toLowerCase();
+          final price = double.tryParse(p['price']?.toString() ?? p['custom_item_price']?.toString() ?? '0') ?? 0;
+          return name == tappedName && (price - tappedPrice).abs() < 0.001;
+        });
+        offlineOrder['products'] = products;
+      }
     }
 
     // 🟩 DELETE CASHBACK
     else if (itemType == 'cashback') {
-      cashbacks.removeWhere((cb) {
-        final amt1 = double.tryParse(cb['amount']?.toString() ?? '0') ?? 0;
-        final amt2 =
-            double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
-        return amt1 == amt2;
-      });
+      if (useIndex) {
+        if (itemIndex! < productsLen) {
+          products.removeAt(itemIndex);
+          offlineOrder['products'] = products;
+        } else {
+          final cashbacksStart = productsLen + customLen + payoutsLen;
+          if (itemIndex >= cashbacksStart && itemIndex < cashbacksStart + cashbacks.length) {
+            cashbacks.removeAt(itemIndex - cashbacksStart);
+          }
+        }
+      } else {
+        cashbacks.removeWhere((cb) {
+          final amt1 = double.tryParse(cb['amount']?.toString() ?? '0') ?? 0;
+          final amt2 =
+              double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+          return amt1 == amt2;
+        });
+      }
       offlineOrder['cashbacks'] = cashbacks;
     }
 
-    // 🛒 DELETE PRODUCT
+    // 🛒 DELETE PRODUCT (includes variant)
     else {
       int deletedProductId = -1;
       String matchedSku = "";
+      Map<String, dynamic>? removedProduct;
 
-      final orderProductId = (orderItem['product_id'] as num?)?.toInt() ?? -1;
-      final orderVariationId = (orderItem['variation_id'] as num?)?.toInt() ?? 0;
-      final orderSku = (orderItem['sku'] ?? '').toString().toLowerCase().trim();
-
-      bool matchProduct(Map<String, dynamic> p) {
-        if (orderProductId >= 0) {
-          final pid = (p['product_id'] ?? p['id'] ?? -1) is num
-              ? ((p['product_id'] ?? p['id'] ?? -1) as num).toInt()
+      if (useIndex && itemIndex! < productsLen) {
+        removedProduct = products.removeAt(itemIndex);
+        if (removedProduct != null) {
+          deletedProductId = (removedProduct['product_id'] ?? removedProduct['id'] ?? removedProduct['fast_key_product_id'] ?? removedProduct['serverItemId'] ?? -1) is num
+              ? ((removedProduct['product_id'] ?? removedProduct['id'] ?? removedProduct['fast_key_product_id'] ?? removedProduct['serverItemId'] ?? -1) as num).toInt()
               : -1;
-          final vid = (p['variation_id'] ?? p['variationId'] ?? p['item_variation'] ?? 0) is num
-              ? ((p['variation_id'] ?? p['variationId'] ?? p['item_variation']) as num).toInt()
-              : 0;
-          if (pid == orderProductId && vid == orderVariationId) return true;
-        }
-        if (orderSku.isNotEmpty) {
-          final pSku = (p['sku'] ?? p['item_sku'] ?? '').toString().toLowerCase().trim();
-          if (pSku == orderSku) return true;
-        }
-        final name1 = (p['name'] ?? p['product_name'] ?? p['fast_key_item_name'] ?? '').toString().toLowerCase();
-        final name2 = (orderItem['item_name'] ?? '').toString().toLowerCase();
-        final price1 = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
-        final price2 = double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
-        return name1 == name2 && (price1 - price2).abs() < 0.001;
-      }
-
-      products.removeWhere((p) {
-        final match = matchProduct(p);
-        if (match) {
-          deletedProductId = (p['product_id'] ?? p['id'] ?? p['fast_key_product_id'] ?? p['serverItemId'] ?? -1) is num
-              ? ((p['product_id'] ?? p['id'] ?? p['fast_key_product_id'] ?? p['serverItemId'] ?? -1) as num).toInt()
-              : -1;
-          matchedSku = (p['sku'] ?? p['item_sku'] ?? p['product_sku'] ?? p['fast_key_item_sku'] ?? '')
+          matchedSku = (removedProduct['sku'] ?? removedProduct['item_sku'] ?? removedProduct['product_sku'] ?? removedProduct['fast_key_item_sku'] ?? '')
               .toString().toLowerCase().trim();
         }
-        return match;
-      });
+      } else {
+        final orderProductId = (orderItem['product_id'] as num?)?.toInt() ?? -1;
+        final orderVariationId = (orderItem['variation_id'] as num?)?.toInt() ?? 0;
+        final orderSku = (orderItem['sku'] ?? '').toString().toLowerCase().trim();
+
+        bool matchProduct(Map<String, dynamic> p) {
+          if (orderProductId >= 0) {
+            final pid = (p['product_id'] ?? p['id'] ?? -1) is num
+                ? ((p['product_id'] ?? p['id'] ?? -1) as num).toInt()
+                : -1;
+            final vid = (p['variation_id'] ?? p['variationId'] ?? p['item_variation'] ?? 0) is num
+                ? ((p['variation_id'] ?? p['variationId'] ?? p['item_variation']) as num).toInt()
+                : 0;
+            if (pid == orderProductId && vid == orderVariationId) return true;
+          }
+          if (orderSku.isNotEmpty) {
+            final pSku = (p['sku'] ?? p['item_sku'] ?? '').toString().toLowerCase().trim();
+            if (pSku == orderSku) return true;
+          }
+          final name1 = (p['name'] ?? p['product_name'] ?? p['fast_key_item_name'] ?? '').toString().toLowerCase();
+          final name2 = (orderItem['item_name'] ?? '').toString().toLowerCase();
+          final price1 = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
+          final price2 = double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+          return name1 == name2 && (price1 - price2).abs() < 0.001;
+        }
+
+        products.removeWhere((p) {
+          final match = matchProduct(p);
+          if (match) {
+            deletedProductId = (p['product_id'] ?? p['id'] ?? p['fast_key_product_id'] ?? p['serverItemId'] ?? -1) is num
+                ? ((p['product_id'] ?? p['id'] ?? p['fast_key_product_id'] ?? p['serverItemId'] ?? -1) as num).toInt()
+                : -1;
+            matchedSku = (p['sku'] ?? p['item_sku'] ?? p['product_sku'] ?? p['fast_key_item_sku'] ?? '')
+                .toString().toLowerCase().trim();
+          }
+          return match;
+        });
+      }
 
       offlineOrder['products'] = products;
 
@@ -3160,7 +3221,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     });
     final rawOfflineOrder = idx >= 0 ? orderHelper.orders[idx] : null;
 
-    if (rawOfflineOrder != null) {
+    // Only derive from orderHelper after restore+fetch; prevents stale items when switching from Orders/Apps.
+    if (rawOfflineOrder != null && _initialRestoreDone) {
       if (kDebugMode) {
         print("📦 Detected offline order (${orderHelper.activeOrderId})");
       }
@@ -3264,7 +3326,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               'item_price': price,
               'items_count': qty,
               'item_sum_price': price * qty,
-              'item_image': item['image'] ?? "",
+              'item_image': OrderHelper.resolveProductImage(item),
               'item_type': 'custom',
               'sku': item['sku'],
               'auto_discount': 0.0,
@@ -3297,7 +3359,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               'item_price': price,
               'items_count': qty,
               'item_sum_price': price * qty,
-              'item_image': item['image'] ?? "",
+              'item_image': OrderHelper.resolveProductImage(item),
               'item_type': itemType,
               'item_tax': 0.0,
             };
@@ -3308,7 +3370,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
 
           double itemTax = 0.0;
-          double itemDiscount = 0.0;
+          double itemDiscount = _toDouble(item['auto_discount']) +
+              _toDouble(item['auto_discount_total']) +
+              _toDouble(item['multipack_discount_total']) +
+              _toDouble(item['combo_discount_total']);
 
           final String productIdStr =
               (item['product_id'] ?? item['id'])?.toString() ?? '';
@@ -3337,11 +3402,14 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             'item_price': price,
             'items_count': qty,
             'item_sum_price': price * qty,
-            'item_image': item['image'] ?? '',
+            'item_image': OrderHelper.resolveProductImage(item),
             'item_type': itemType,
             'item_tax': itemTax,
             'is_ebt_eligible': item['is_ebt_eligible'] == true,
             'auto_discount': itemDiscount,
+            AppDBConst.multipackDiscount: _toDouble(item['multipack_discount_total']),
+            AppDBConst.autoDiscountTotal: itemDiscount,
+            AppDBConst.comboDiscountTotal: _toDouble(item['combo_discount_total']),
             'original_total': price * qty,
             'product_id': productId,
             'variation_id': variationId,
@@ -3354,12 +3422,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           final name = item['custom_item_name'] ?? item['item_name'] ?? item['name'] ?? "Item";
           final price = double.tryParse(item['custom_item_price']?.toString() ?? item['amount']?.toString() ?? item['price']?.toString() ?? '0') ?? 0.0;
           final qty = int.tryParse(item['quantity']?.toString() ?? item['items_count']?.toString() ?? '1') ?? 1;
+          final img = OrderHelper.resolveProductImage(item);
           return {
             'item_name': name,
             'item_price': price,
             'items_count': qty,
             'item_sum_price': price * qty,
-            'item_image': item['item_image'] ?? item['custom_item_image'] ?? item['image'] ?? 'assets/custom.png',
+            'item_image': img.isNotEmpty ? img : 'assets/custom.png',
             'item_type': 'custom',
             'sku': item['sku'],
           };
@@ -3419,7 +3488,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         final bool isCustom = itemType.contains("custom");
         final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
         final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-        double itemDiscount = 0.0;
+        final double itemDiscount = _toDouble(item['auto_discount']) +
+            _toDouble(item['auto_discount_total']) +
+            _toDouble(item['multipack_discount_total']) +
+            _toDouble(item['combo_discount_total']);
 
         if (!isCustom) {
           final String productIdStr =
@@ -3450,11 +3522,15 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
       orderDiscount = (offlineOrder['orderDiscount'] is num)
           ? (offlineOrder['orderDiscount'] as num).toDouble()
-          : 0.0;
+          : _toDouble(offlineOrder['order_discount']);
 
       if (offlineOrder.containsKey('merchantDiscountType')) {
         merchantDiscount = getCurrentMerchantDiscount(offlineOrder);
         offlineOrder['merchantDiscount'] = merchantDiscount;
+      } else {
+        merchantDiscount = (offlineOrder['merchantDiscount'] is num)
+            ? (offlineOrder['merchantDiscount'] as num).toDouble()
+            : _toDouble(offlineOrder['merchant_discount']);
       }
 
       final isPercentageDiscount =
@@ -3812,7 +3888,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                   .activeOrderId
                                                   .toString()));
 
-                                      await deleteOfflineItem(orderItem);
+                                      await deleteOfflineItem(
+                                          orderItem, itemIndex: index);
 
                                       if (kDebugMode) {
                                         print(isOffline
@@ -3922,67 +3999,32 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                     .toList() ??
                                                     [];
 
-                                            final tappedItemName =
-                                            (orderItem['item_name'] ??
-                                                '')
-                                                .toString();
                                             final tappedItemType = (orderItem['item_type'] ?? 'product').toString().toLowerCase();
-                                            final orderProductId = (orderItem['product_id'] as num?)?.toInt() ?? -1;
-                                            final orderVariationId = (orderItem['variation_id'] as num?)?.toInt() ?? 0;
-                                            final orderSku = (orderItem['sku'] ?? '').toString().toLowerCase().trim();
+                                            final productsLen = products.length;
+                                            final customLen = customItems.length;
 
-                                            // Match product: product_id+variation_id → sku → name+price (like deleteOfflineItem)
-                                            bool matchProduct(Map<String, dynamic> p) {
-                                              if (orderProductId >= 0) {
-                                                final pid = (p['product_id'] ?? p['id'] ?? -1) is num
-                                                    ? ((p['product_id'] ?? p['id'] ?? -1) as num).toInt()
-                                                    : -1;
-                                                final vid = (p['variation_id'] ?? p['variationId'] ?? 0) is num
-                                                    ? ((p['variation_id'] ?? p['variationId']) as num).toInt()
-                                                    : 0;
-                                                if (pid == orderProductId && vid == orderVariationId) return true;
+                                            // Index-based update: orderItems = [products..., custom_items..., payouts..., cashbacks...]
+                                            // Update only the tapped line so variants do not impact each other
+                                            if (index < productsLen) {
+                                              final product = products[index];
+                                              final price = double.tryParse(product['price']?.toString() ?? '0') ?? 0.0;
+                                              product['quantity'] = newQuantity;
+                                              product['items_count'] = newQuantity;
+                                              product['subtotal'] = price * newQuantity;
+                                              if (kDebugMode) {
+                                                print("🟢 Updated PRODUCT → ${product['name'] ?? product['product_name']} | Qty: $newQuantity");
                                               }
-                                              if (orderSku.isNotEmpty) {
-                                                final pSku = (p['sku'] ?? p['item_sku'] ?? '').toString().toLowerCase().trim();
-                                                if (pSku == orderSku) return true;
-                                              }
-                                              final name1 = (p['name'] ?? p['product_name'] ?? '').toString().toLowerCase();
-                                              final name2 = tappedItemName.toLowerCase();
-                                              final price1 = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
-                                              final price2 = double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
-                                              return name1 == name2 && (price1 - price2).abs() < 0.001;
-                                            }
-
-                                            // 🔍 UPDATE NORMAL PRODUCTS
-                                            if (!tappedItemType.contains('custom')) {
-                                              for (var product in products) {
-                                                if (matchProduct(product)) {
-                                                  final price = double.tryParse(product['price']?.toString() ?? '0') ?? 0.0;
-                                                  product['quantity'] = newQuantity;
-                                                  product['items_count'] = newQuantity;
-                                                  product['subtotal'] = price * newQuantity;
-                                                  if (kDebugMode) {
-                                                    print("🟢 Updated PRODUCT → ${product['name'] ?? product['product_name']} | Qty: $newQuantity");
-                                                  }
-                                                  break;
-                                                }
-                                              }
-                                            }
-
-                                            // 🔍 UPDATE CUSTOM ITEMS
-                                            if (tappedItemType.contains('custom')) {
-                                              for (var custom in customItems) {
+                                            } else if (tappedItemType.contains('custom') &&
+                                                index >= productsLen &&
+                                                index < productsLen + customLen) {
+                                              final custom = customItems[index - productsLen];
+                                              final price = double.tryParse(custom['custom_item_price']?.toString() ?? custom['amount']?.toString() ?? custom['price']?.toString() ?? '0') ?? 0.0;
+                                              custom['quantity'] = newQuantity;
+                                              custom['items_count'] = newQuantity;
+                                              custom['subtotal'] = price * newQuantity;
+                                              if (kDebugMode) {
                                                 final customName = (custom['custom_item_name'] ?? custom['item_name'] ?? '').toString();
-                                                if (customName == tappedItemName) {
-                                                  final price = double.tryParse(custom['custom_item_price']?.toString() ?? custom['amount']?.toString() ?? '0') ?? 0.0;
-                                                  custom['quantity'] = newQuantity;
-                                                  custom['items_count'] = newQuantity;
-                                                  custom['subtotal'] = price * newQuantity;
-                                                  if (kDebugMode) {
-                                                    print("🟣 Updated CUSTOM ITEM → $customName | Qty: $newQuantity");
-                                                  }
-                                                  break;
-                                                }
+                                                print("🟣 Updated CUSTOM ITEM → $customName | Qty: $newQuantity");
                                               }
                                             }
 
@@ -4060,8 +4102,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                     'item_type':
                                                     'product',
                                                     'item_image':
-                                                    item['image'] ??
-                                                        '',
+                                                    OrderHelper.resolveProductImage(item),
                                                   };
                                                 }).toList();
 
@@ -4094,12 +4135,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                     price * qty,
                                                     'item_type':
                                                     'custom item',
-                                                    'item_image': item[
-                                                    'item_image'] ??
-                                                        item[
-                                                        'custom_item_image'] ??
-                                                        item['image'] ??
-                                                        'assets/custom.png',
+                                                    'item_image': () {
+                                                      final img = OrderHelper.resolveProductImage(item);
+                                                      return img.isNotEmpty ? img : 'assets/custom.png';
+                                                    }(),
                                                   };
                                                 }).toList();
 
@@ -5280,56 +5319,89 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             final localKey =
                             orderHelper.activeOrderId.toString();
                             final existingLocal = await box.get(localKey);
-                            if (existingLocal != null) {
-                              final updated = Map<String, dynamic>.from(
-                                  existingLocal);
-                              updated['items'] = orderItems.map((item) {
-                                return {
-                                  ...item,
-                                  "discount_meta": {
-                                    "amount":
-                                    (item['auto_discount'] as num?)
-                                        ?.toDouble() ??
-                                        0.0,
-                                    "type": item['discount_type'] ?? "",
-                                    "source":
-                                    item['discount_source'] ?? "",
-                                    "rule_id": item['rule_id'] ?? "",
-                                  },
-                                };
-                              }).toList();
+                            final Map<String, dynamic> updated =
+                                existingLocal != null
+                                    ? Map<String, dynamic>.from(existingLocal)
+                                    : <String, dynamic>{
+                                        'order_id': orderHelper.activeOrderId,
+                                        'id': orderHelper.activeOrderId,
+                                        'products': <Map<String, dynamic>>[],
+                                      };
 
-                              updated['products'] =
-                                  (updated['products'] as List)
-                                      .map((product) {
-                                    final pid = product['product_id'];
-                                    final matchedItem = orderItems.firstWhere(
-                                          (i) => i['product_id'] == pid,
-                                      orElse: () => {},
-                                    );
-                                    if (matchedItem.isEmpty) return product;
-                                    return {
-                                      ...product,
-                                      "discount_meta": {
-                                        "amount":
-                                        (matchedItem['auto_discount']
-                                        as num?)
-                                            ?.toDouble() ??
-                                            0.0,
-                                        "type":
-                                        matchedItem['discount_type'] ??
-                                            "",
-                                        "source":
-                                        matchedItem['discount_source'] ??
-                                            "",
-                                        "rule_id":
-                                        matchedItem['rule_id'] ?? "",
-                                      },
-                                    };
-                                  }).toList();
+                            // Items with discount_meta (used by sync API)
+                            updated['items'] = orderItems.map((item) {
+                              final autoDisc =
+                                  (item['auto_discount'] as num?)?.toDouble() ??
+                                      0.0;
+                              return {
+                                ...item,
+                                "discount_meta": {
+                                  "amount": autoDisc,
+                                  "type": item['discount_type'] ?? "",
+                                  "source": item['discount_source'] ?? "",
+                                  "rule_id": item['rule_id'] ?? "",
+                                },
+                              };
+                            }).toList();
 
-                              await box.put(localKey, updated);
-                            }
+                            // Products: match by product_id AND variation_id,
+                            // add auto_discount for getOrderItemsFromOffline
+                            final productsList =
+                                (updated['products'] as List?) ?? [];
+                            updated['products'] = productsList.map((product) {
+                              final raw = product is Map
+                                  ? Map<String, dynamic>.from(product)
+                                  : <String, dynamic>{};
+                              final pid = raw['product_id'];
+                              final vid = raw['variation_id'] ??
+                                  raw['variationId'] ??
+                                  0;
+                              final vidInt = vid is int
+                                  ? vid
+                                  : int.tryParse(vid.toString()) ?? 0;
+
+                              Map<String, dynamic> matchedItem =
+                                  orderItems.cast<Map<String, dynamic>>().firstWhere(
+                                    (i) {
+                                      final iId = int.tryParse(
+                                              i['product_id']?.toString() ??
+                                                  '') ??
+                                          0;
+                                      final iVid =
+                                          i['variation_id'] ?? i['variationId'] ?? 0;
+                                      final iVidInt = iVid is int
+                                          ? iVid
+                                          : int.tryParse(iVid.toString()) ?? 0;
+                                      final pidInt = pid is int
+                                          ? pid
+                                          : int.tryParse(pid?.toString() ?? '');
+                                      return (i['product_id'] == pid ||
+                                              (pidInt != null && iId == pidInt)) &&
+                                          iVidInt == vidInt;
+                                    },
+                                    orElse: () => <String, dynamic>{},
+                                  );
+
+                              if (matchedItem.isEmpty) return raw;
+                              final autoDisc = (matchedItem['auto_discount']
+                                          as num?)
+                                      ?.toDouble() ??
+                                  0.0;
+                              return {
+                                ...raw,
+                                "auto_discount": autoDisc,
+                                "auto_discount_total": autoDisc,
+                                "discount_meta": {
+                                  "amount": autoDisc,
+                                  "type": matchedItem['discount_type'] ?? "",
+                                  "source":
+                                      matchedItem['discount_source'] ?? "",
+                                  "rule_id": matchedItem['rule_id'] ?? "",
+                                },
+                              };
+                            }).toList();
+
+                            await box.put(localKey, updated);
 
                             // =======================================================
                             // 🔹 UPDATE OFFLINE TAX & CUSTOMER DISPLAY
@@ -5372,10 +5444,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             );
 
                             if (result == TextConstants.refresh) {
-                              setState(() {
-                                OrderHelper.isOrderPanelLoaded = false;
-                                fetchOrdersData();
-                              });
+                              OrderHelper.isOrderPanelLoaded = false;
+                              OrderHelper.notifyOrderPanelToRefresh();
+                              fetchOrdersData();
                             }
                           } catch (e, s) {
                             debugPrint("❌ Error syncing order: $e");

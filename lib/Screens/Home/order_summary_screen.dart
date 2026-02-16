@@ -59,7 +59,7 @@ import 'package:android_intent_plus/android_intent.dart';
 
 import 'package:thermal_printer/thermal_printer.dart';
 
-import 'fast_key_screen.dart';
+import 'pos_home_screen.dart';
 import 'isar_payments/local_payments_db_helper.dart';
 import 'isar_payments/local_payments_model.dart';
 class LastPaymentInfo {
@@ -2797,12 +2797,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     _paymentListSubscription =
         paymentBloc.paymentsListStream.listen((response) async {
           if (response.status == Status.COMPLETED) {
-            await _processPaymentList(response.data!);
+            final data = response.data ?? [];
+            if (data.isNotEmpty) {
+              await _processPaymentList(data);
+            } else {
+              // API returned empty - use LocalPayment as source of truth
+              // (fixes balance showing net payable when payments exist locally but not yet synced)
+              await _calculateBalanceFromPaymentHistory();
+            }
           }
           if (mounted) setState(() => isSummaryLoading = false);
         });
   }
   Future<void> _processPaymentList(List<PaymentListModel> payments) async {
+    // When API returns empty but we may have local payments, prefer LocalPayment
+    if (payments.isEmpty) {
+      await _calculateBalanceFromPaymentHistory();
+      return;
+    }
+
     double cashTotal = 0.0;
     double otherTotal = 0.0;
     double ebtPaid = 0.0;
@@ -5183,9 +5196,28 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final String itemType =
         orderItem['item_type']?.toString().toLowerCase() ?? '';
 
-    final bool isVariant =
-        (orderItem['is_variant'] == true) ||
-            (itemType == 'variant');
+    final bool isPayout = itemType.contains(TextConstants.payoutText);
+    final bool isCoupon = itemType.contains(TextConstants.couponText);
+    final bool isCashback = itemType.contains("cashback");
+    final bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+
+    // Parse variation_id robustly - string "0" must not be treated as variant
+    final varIdRaw = orderItem['variation_id'] ?? orderItem['variationId'] ?? 0;
+    final int varId = varIdRaw is num
+        ? varIdRaw.toInt()
+        : int.tryParse(varIdRaw.toString()) ?? 0;
+    final bool hasVariationId = varId > 0;
+
+    final bool hasVariationName =
+        (orderItem['variation_name']?.toString().trim() ?? '').isNotEmpty;
+
+    // Only show variant icon for actual product line items (not payout/coupon/custom/cashback)
+    final bool isProductItem = !isPayoutOrCoupon;
+    final bool isVariant = isProductItem &&
+        ((orderItem['is_variant'] == true) ||
+            (itemType == 'variant' || itemType == 'variation') ||
+            hasVariationName ||
+            hasVariationId);
 
     final bool isEbtEligible = orderItem['is_ebt_eligible'] == true;
 
@@ -5227,11 +5259,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // --------------------------------------------------
     final double finalItemTotal =
         originalTotal - autoDiscount - comboDiscount - multipackDiscount;
-
-    final bool isPayout = itemType.contains(TextConstants.payoutText);
-    final bool isCoupon = itemType.contains(TextConstants.couponText);
-    final bool isCashback = itemType.contains("cashback");
-    final bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
 
     return Column(
       children: [
@@ -8178,7 +8205,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         ///Update! on 9-Sep-25: asked by Shravan, void button click will result in cancelling of payment only, no need to change order status to cancelled now. If balance amount is changed then order will be pending else it will be processing
         // Navigator.pushReplacement(result: TextConstants.refresh,
         //   context,
-        //   MaterialPageRoute(builder: (_) => FastKeyScreen()),
+        //   MaterialPageRoute(builder: (_) => POSHomeScreen()),
         // );
       } else if (response.status == Status.ERROR) {
         if (kDebugMode) {
@@ -8688,10 +8715,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           Navigator.of(dialogCtx, rootNavigator: false).pop();
 
           OrderHelper.isOrderPanelLoaded = false;
+          OrderHelper.notifyOrderPanelToRefresh();
 
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => FastKeyScreen()),
+            MaterialPageRoute(builder: (_) => POSHomeScreen()),
             result: TextConstants.refresh,
           );
         },
@@ -9347,10 +9375,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     ///Completed order
     OrderHelper.isOrderPanelLoaded = false;
+    OrderHelper.notifyOrderPanelToRefresh();
     Navigator.pushReplacement(
       result: TextConstants.refresh,
       context,
-      MaterialPageRoute(builder: (_) => FastKeyScreen()),
+      MaterialPageRoute(builder: (_) => POSHomeScreen()),
     );
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -9476,7 +9505,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //
   //         Navigator.pushReplacement(
   //           context,
-  //           MaterialPageRoute(builder: (_) => FastKeyScreen()),
+  //           MaterialPageRoute(builder: (_) => POSHomeScreen()),
   //           result: TextConstants.refresh,
   //         );
   //

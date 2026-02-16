@@ -2362,10 +2362,30 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       // ────────────────────────────────────────
       // 4. Calculate current gross total (before discount)
+      // Support both "products" (Categories/Fast Keys) and "order_items" (Order Summary)
       // ────────────────────────────────────────
-      final products = (existingOrder["products"] as List? ?? [])
+      var products = (existingOrder["products"] as List? ?? [])
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
+
+      // Fallback: order may have order_items from Order Summary screen
+      if (products.isEmpty) {
+        final orderItems = (existingOrder["order_items"] as List? ?? []);
+        for (final oi in orderItems) {
+          final map = Map<String, dynamic>.from(oi is Map ? oi : {});
+          final itemType = (map['item_type'] ?? map['type'] ?? '').toString().toLowerCase();
+          if (itemType.contains('discount')) continue;
+          products.add({
+            ...map,
+            'name': map['item_name'] ?? map['name'] ?? '',
+            'price': (map['item_price'] ?? map['price'] ?? 0).toDouble(),
+            'quantity': (map['items_count'] ?? map['quantity'] ?? 1).toInt(),
+            'product_id': map['product_id'],
+            'sku': map['sku'] ?? map['item_sku'],
+            'type': map['item_type'] ?? map['type'] ?? 'product',
+          });
+        }
+      }
 
       if (products.isEmpty) {
         setState(() => _isDiscountLoading = false);
@@ -2481,6 +2501,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       await _orderHelper.loadData();
       await _loadOrderData();
+      OrderHelper.notifyOrderPanelToRefresh();
       widget.refreshOrderList?.call();
 
       print(" [DISCOUNT] DONE ---- _handleAddDiscount() ----");
@@ -2711,20 +2732,19 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         return; // ❗ STOP here → Do NOT add cashback
       }
 
-      int? orderId = OrderHelper().activeOrderId;
-
-      // Create new order if none exists
+      final orderHelper = OrderHelper();
+      int? orderId = await orderHelper.ensureOrderExists();
       if (orderId == null) {
-        orderId = DateTime.now().millisecondsSinceEpoch;
-        await offlineBox.put(orderId.toString(), {
-          "order_id": orderId,
-          "created_at": DateTime.now().toIso8601String(),
-          "products": [],
-          "payouts": [],
-          "cashbacks": [],
-          "gross_total": 0.0,
-        });
-        OrderHelper().activeOrderId = orderId;
+        setState(() => _isCashbackLoading = false);
+        final msg = OrderHelper.lastEnsureOrderError ??
+            "Could not create or find an order. Please try again.";
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
       }
 
       final key = orderId.toString();
@@ -2962,6 +2982,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       await _orderHelper.loadData();
       await _loadOrderData();
+      OrderHelper.notifyOrderPanelToRefresh();
       widget.refreshOrderList?.call();
 
     } catch (e, s) {
@@ -2997,9 +3018,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         print("❌ Failed to create or restore order");
       }
 
+      final msg = OrderHelper.lastEnsureOrderError ??
+          "Unable to create order. Please try again.";
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        const SnackBar(
-          content: Text("Unable to create order. Please try again."),
+        SnackBar(
+          content: Text(msg),
           backgroundColor: Colors.red,
         ),
       );
@@ -3378,6 +3401,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       await _orderHelper.loadData();
       await _loadOrderData();
+      OrderHelper.notifyOrderPanelToRefresh();
       widget.refreshOrderList?.call();
 
       if (kDebugMode) print("✅ [STEP 10] Custom item added successfully!");
@@ -3507,9 +3531,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       if (ensuredOrderId == null) {
         setState(() => _isPayoutLoading = false);
 
+        final msg = OrderHelper.lastEnsureOrderError ??
+            "Unable to create order. Please try again.";
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-          const SnackBar(
-            content: Text("Unable to create order. Please try again."),
+          SnackBar(
+            content: Text(msg),
             backgroundColor: Colors.red,
           ),
         );
@@ -3598,6 +3624,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       await _orderHelper.loadData();
       await _loadOrderData();
+      OrderHelper.notifyOrderPanelToRefresh();
       widget.refreshOrderList?.call();
 
       print("✅ [PAYOUT] DONE ---- _handleAddPayout() ----");

@@ -943,6 +943,8 @@ class _OrdersScreenState extends State<OrdersScreen> with LayoutSelectionMixin {
   bool _isAscending = true;
   StreamSubscription? _fetchOrdersSubscription;
   late OrderScreenPanel _orderScreenPanel;
+  bool _fetchInProgress = false;
+  Timer? _loadingDelayTimer;
 
   ///Filters
   // List<String> _availableStatuses = ["All"];
@@ -998,10 +1000,18 @@ class _OrdersScreenState extends State<OrdersScreen> with LayoutSelectionMixin {
   //Build #1.0.54: added Fetch orders from API
   void _fetchOrders() {
     debugPrint("OrdersScreen: Initiating fetch orders");
+    _fetchOrdersSubscription?.cancel();
+    _loadingDelayTimer?.cancel();
+    _loadingDelayTimer = null;
+    _fetchInProgress = false;
     _fetchOrdersSubscription = _orderBloc.fetchOrdersStream.listen((response) {
       if (!mounted) return;
 
       if (response.status == Status.COMPLETED) {
+        _fetchInProgress = false;
+        _loadingDelayTimer?.cancel();
+        _loadingDelayTimer = null;
+
         debugPrint("OrdersScreen: Successfully fetched ${response.data!.orders.length} orders");
         setState(() {
           _orders = response.data!.orders;
@@ -1032,6 +1042,10 @@ class _OrdersScreenState extends State<OrdersScreen> with LayoutSelectionMixin {
           // }
         });
       } else if (response.status == Status.ERROR) {
+        _fetchInProgress = false;
+        _loadingDelayTimer?.cancel();
+        _loadingDelayTimer = null;
+
         debugPrint("OrdersScreen: Error fetching orders - ${response.message}");
         setState(() {
           isLoading = false;
@@ -1042,8 +1056,14 @@ class _OrdersScreenState extends State<OrdersScreen> with LayoutSelectionMixin {
             duration: const Duration(seconds: 2)
           ),
         );
-      } else if (response.status == Status.LOADING){
-        setState(() => isLoading = true); // Build #1.0.104
+      } else if (response.status == Status.LOADING) {
+        _fetchInProgress = true;
+        _loadingDelayTimer?.cancel();
+        _loadingDelayTimer = Timer(const Duration(milliseconds: 300), () {
+          if (mounted && _fetchInProgress) {
+            setState(() => isLoading = true);
+          }
+        });
       }
     });
 
@@ -1218,6 +1238,7 @@ class _OrdersScreenState extends State<OrdersScreen> with LayoutSelectionMixin {
   @override
   void dispose() {
     _fetchOrdersSubscription?.cancel();
+    _loadingDelayTimer?.cancel();
     _orderBloc.dispose();
     debugPrint("OrdersScreen: Disposed");
     super.dispose();
@@ -1281,7 +1302,9 @@ class _OrdersScreenState extends State<OrdersScreen> with LayoutSelectionMixin {
                 } else if (sidebarPosition == SidebarPosition.right) {
                   newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
                 } else {
-                  newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                  newLayout = orderPanelPosition == OrderPanelPosition.left
+                      ? SharedPreferenceTextConstants.navBottomOrderRight
+                      : SharedPreferenceTextConstants.navLeftOrderRight;
                 }
 
                 // Update the notifier which will trigger _onLayoutChanged
