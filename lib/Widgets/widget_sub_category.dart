@@ -17,7 +17,7 @@ class SubCategoryGridWidget extends StatelessWidget {
     required this.isLoading,
     required this.subCategories,
     required this.onSubCategoryTapped,
-    this.selectedSubCategoryIndex, 
+    this.selectedSubCategoryIndex,
   });
 
   Widget _buildImage(String imagePath) {

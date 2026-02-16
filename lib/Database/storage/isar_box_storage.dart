@@ -34,13 +34,23 @@ class IsarBoxStorage implements BoxStorage {
   Future<void> put(String key, dynamic value) async {
     final isar = await _db;
     final jsonStr = value is String ? value : jsonEncode(value);
+    final fullKey = _fullKey(key);
+
     await isar.writeTxn(() async {
-      await isar.isarCacheEntrys.put(IsarCacheEntry()
-        ..key = _fullKey(key)
-        ..json = jsonStr
-        ..timestamp = DateTime.now());
+      final existing = await isar.isarCacheEntrys
+          .where()
+          .keyEqualTo(fullKey)
+          .findFirst();
+
+      final entry = existing ?? IsarCacheEntry();
+      entry.key = fullKey;
+      entry.json = jsonStr;
+      entry.timestamp = DateTime.now();
+
+      await isar.isarCacheEntrys.put(entry);
     });
   }
+
 
   @override
   Future<bool> containsKey(String key) async {

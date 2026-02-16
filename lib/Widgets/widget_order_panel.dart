@@ -5146,6 +5146,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                           setState(() => _isPayBtnLoading = true);
 
                           try {
+                            final List<Map<String, dynamic>> workingItems =
+                            orderItems.map((e) => Map<String, dynamic>.from(e)).toList();
+
                             int? serverOrderId;
 
                             // =======================================================
@@ -5182,9 +5185,18 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             // =======================================================
                             // 🔥 CALL DISCOUNT ENGINE
                             // =======================================================
-                            final engineDiscounts =
-                            await DiscountEngine.applyAll(
-                                AppDB.isar, cartItems);
+                            final rawEngineDiscounts =
+                            await DiscountEngine.applyAll(AppDB.isar, cartItems);
+
+// 🔧 Normalize keys to int (CRITICAL FIX)
+                            final Map<int, EngineDiscountResult> engineDiscounts = {
+                              for (final entry in rawEngineDiscounts.entries)
+                                int.tryParse(entry.key.toString()) ?? -1: entry.value
+                            };
+
+                            if (kDebugMode) {
+                              print("🔥 NORMALIZED ENGINE MAP = $engineDiscounts");
+                            }
 
                             if (kDebugMode) {
                               print(
@@ -5194,30 +5206,16 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             // =======================================================
                             // 🔥 APPLY + NORMALIZE ENGINE RESULTS (ONCE)
                             // =======================================================
-                            setState(() {
-                              orderItems = orderItems.map((item) {
-                                final dynamic rawPid = item['product_id'];
-                                final int? pid = rawPid != null
-                                    ? int.tryParse(rawPid.toString())
-                                    : null;
+                            for (final item in workingItems) {
+                              final pid = int.tryParse(item['product_id']?.toString() ?? '');
+                              final engineResult = pid != null ? engineDiscounts[pid] : null;
 
-                                final engineResult = pid != null
-                                    ? engineDiscounts[pid]
-                                    : null;
+                              item['auto_discount'] = engineResult?.amount ?? 0.0;
+                              item['discount_type'] = engineResult?.ruleType ?? '';
+                              item['discount_source'] = engineResult != null ? 'engine' : '';
+                              item['rule_id'] = engineResult?.ruleId ?? '';
+                            }
 
-                                return {
-                                  ...item,
-                                  'auto_discount':
-                                  engineResult?.amount ?? 0.0,
-                                  'discount_type':
-                                  engineResult?.ruleType ?? '',
-                                  'discount_source': engineResult != null
-                                      ? 'engine'
-                                      : '',
-                                  'rule_id': engineResult?.ruleId ?? '',
-                                };
-                              }).toList();
-                            });
 
                             // =======================================================
                             // 🔹 CALCULATE TAX & TOTALS
@@ -5226,7 +5224,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             final List<Tax> taxList =
                             await _assetDBHelper.getTaxList();
 
-                            for (final item in orderItems) {
+                            for (final item in workingItems)
+                            {
                               final int productId = int.tryParse(
                                   item['product_id']?.toString() ??
                                       '0') ??
@@ -5265,7 +5264,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               item['tax_after_discount'] = itemTax;
                             }
 
-                            for (final item in orderItems) {
+                            for (final item in workingItems)
+                            {
                               final double price =
                                   (item['item_price'] as num?)
                                       ?.toDouble() ??
@@ -5289,7 +5289,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             }
 
                             double grossAfterDiscount =
-                            orderItems.fold(0.0, (sum, item) {
+                            workingItems.fold(0.0, (sum, item) {
                               final double price =
                                   (item['item_price'] as num?)
                                       ?.toDouble() ??
@@ -5308,7 +5308,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             // 🔒 FREEZE SNAPSHOT FOR SUMMARY
                             // =======================================================
                             final List<Map<String, dynamic>>
-                            summaryItems = orderItems
+                            summaryItems = workingItems
                                 .map((e) =>
                             Map<String, dynamic>.from(e))
                                 .toList();
@@ -5329,7 +5329,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             };
 
                             // Items with discount_meta (used by sync API)
-                            updated['items'] = orderItems.map((item) {
+                            updated['items'] = workingItems.map((item) {
                               final autoDisc =
                                   (item['auto_discount'] as num?)?.toDouble() ??
                                       0.0;
@@ -5361,7 +5361,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                   : int.tryParse(vid.toString()) ?? 0;
 
                               Map<String, dynamic> matchedItem =
-                              orderItems.cast<Map<String, dynamic>>().firstWhere(
+                              workingItems.cast<Map<String, dynamic>>().firstWhere(
                                     (i) {
                                   final iId = int.tryParse(
                                       i['product_id']?.toString() ??
@@ -5400,16 +5400,31 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                 },
                               };
                             }).toList();
+                            updated["tax_discount"] =
+                                double.parse(totalTaxAfterDiscount.toStringAsFixed(2));
 
+                            updated["cashback_fee"] =
+                                double.parse(cashbackFee.toStringAsFixed(2));
+
+// 🔥 ONLY WRITE IN WHOLE CHECKOUT
                             await box.put(localKey, updated);
 
-                            // =======================================================
-                            // 🔹 UPDATE OFFLINE TAX & CUSTOMER DISPLAY
-                            // =======================================================
-                            await updateOfflineOrderTaxAndCashback(
-                                orderHelper.activeOrderId.toString(),
-                                totalTaxAfterDiscount,
-                                cashbackFee);
+// DEBUG
+                            final finalStored = await box.get(localKey);
+                            debugPrint("🧠 FINAL STORED HIVE ORDER =====================");
+                            debugPrint(const JsonEncoder.withIndent('  ').convert(finalStored));
+                            debugPrint("===============================================");
+
+                            if (mounted) {
+                              setState(() {
+                                orderItems = workingItems;
+                              });
+                            }
+
+// DEBUG
+                            final verify = await box.get(localKey);
+                            debugPrint("🧠 STORED ORDER AFTER SAVE:");
+                            debugPrint(jsonEncode(verify));
                             await CustomerDisplayHelper
                                 .updateCustomerDisplay(
                                 orderHelper.activeOrderId!,
@@ -5446,7 +5461,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             if (result == TextConstants.refresh) {
                               OrderHelper.isOrderPanelLoaded = false;
                               OrderHelper.notifyOrderPanelToRefresh();
-                              fetchOrdersData();
+                              //fetchOrdersData();
                             }
                           } catch (e, s) {
                             debugPrint("❌ Error syncing order: $e");
@@ -5496,59 +5511,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         ),
       ],
     );
-  }
-
-  /// //Build #1.0.2 : Added showNumPadDialog if user tap on order layout list item
-// ========================
-// HIVE HELPER FUNCTIONS
-// ========================
-
-  Future<Map<String, dynamic>?> getOfflineOrder(String orderId) async {
-    final box = StorageProvider.offlineOrders;
-    final data = await box.get(orderId);
-
-    if (kDebugMode) {
-      print("📥 [Hive] Fetched offline order → ID: $orderId | Data: $data");
-    }
-
-    if (data == null) return null;
-
-    return Map<String, dynamic>.from(data);
-  }
-
-  Future<void> updateOfflineOrderTaxAndCashback(
-      String orderId,
-      double finalTaxAfterDiscount,
-      double cashback,
-      ) async {
-    final box = StorageProvider.offlineOrders;
-    final existing = await box.get(orderId);
-
-    if (existing == null) {
-      if (kDebugMode) {
-        print("⚠ [Hive] Order not found → $orderId");
-      }
-      return;
-    }
-
-    final updatedOrder = Map<String, dynamic>.from(existing);
-
-    // 🔒 FINAL VALUES — DO NOT TOUCH AFTER CHECKOUT
-    updatedOrder["tax_discount"] =
-        double.parse(finalTaxAfterDiscount.toStringAsFixed(2));
-
-    updatedOrder["cashback_fee"] = double.parse(cashback.toStringAsFixed(2));
-
-    await box.put(orderId, updatedOrder);
-
-    if (kDebugMode) {
-      print("""
-💾 [Hive] FINAL CHECKOUT SAVE
-  orderId : $orderId
-  tax     : ${updatedOrder["tax"]}
-  cashback: ${updatedOrder["cashback_fee"]}
-""");
-    }
   }
 
 /// //Build #1.0.2 : Added showNumPadDialog if user tap on order layout list item

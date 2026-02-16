@@ -553,7 +553,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
   }
 
-
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
     if (widget.activeOrderId == null) {
@@ -561,15 +560,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       return;
     }
 
-    // 1️⃣ Prefer offline storage (products added via addItemToOrder)
-    final offlineItems = await orderHelper.getOrderItemsFromOffline(widget.activeOrderId!);
-    if (offlineItems.isNotEmpty) {
-      print("🟦 Offline Order Items Loaded: ${offlineItems.length} items");
-      setState(() => orderItems = offlineItems);
-      return;
-    }
-
-    // 2️⃣ Fallback to SQLite items
+    // 1️⃣ Try SQLite items
     try {
       List<Map<String, dynamic>> items =
       await orderHelper.getOrderItems(widget.activeOrderId!);
@@ -581,12 +572,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         return;
       }
     } catch (_) {}
-
-    // 2️⃣ FALLBACK → Load deleted offline order items
     final deletedBox = StorageProvider.deletedOrders;
 
     dynamic deleted = await deletedBox.get(widget.activeOrderId.toString());
-
     if (deleted == null) {
       deleted = deletedBox.get(widget.activeOrderId.toString());
     }
@@ -608,7 +596,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
           AppDBConst.itemPrice: p["price"],
           AppDBConst.itemCount: p["quantity"],
           AppDBConst.itemSumPrice: (p["price"] ?? 0) * (p["quantity"] ?? 1),
-          AppDBConst.itemImage: resolveProductImageFromMap(p),
+          AppDBConst.itemImage: p["image"] ?? "",
           AppDBConst.itemType: "product",
         });
       }
@@ -648,6 +636,102 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     // 3️⃣ Nothing found
     orderItems.clear();
   }
+
+  //
+  // // Build #1.0.10: Fetches order items for the active order
+  // Future<void> fetchOrderItems() async {
+  //   if (widget.activeOrderId == null) {
+  //     orderItems.clear();
+  //     return;
+  //   }
+  //
+  //   // 1️⃣ Prefer offline storage (products added via addItemToOrder)
+  //   final offlineItems = await orderHelper.getOrderItemsFromOffline(widget.activeOrderId!);
+  //   if (offlineItems.isNotEmpty) {
+  //     print("🟦 Offline Order Items Loaded: ${offlineItems.length} items");
+  //     setState(() => orderItems = offlineItems);
+  //     return;
+  //   }
+  //
+  //   // 2️⃣ Fallback to SQLite items
+  //   try {
+  //     List<Map<String, dynamic>> items =
+  //     await orderHelper.getOrderItems(widget.activeOrderId!);
+  //
+  //     if (items.isNotEmpty) {
+  //       print("🟦 SQLite Order Items Loaded: $items");
+  //
+  //       setState(() => orderItems = items);
+  //       return;
+  //     }
+  //   } catch (_) {}
+  //
+  //   // 2️⃣ FALLBACK → Load deleted offline order items
+  //   final deletedBox = StorageProvider.deletedOrders;
+  //
+  //   dynamic deleted = await deletedBox.get(widget.activeOrderId.toString());
+  //
+  //   if (deleted == null) {
+  //     deleted = deletedBox.get(widget.activeOrderId.toString());
+  //   }
+  //
+  //   if (deleted != null) {
+  //     print("🔥 Loading DELETED ORDER ITEMS for ID = ${widget.activeOrderId}");
+  //     _order[AppDBConst.orderStatus] = "cancelled";
+  //
+  //     final List productList = deleted["products"] ?? [];
+  //     final List cashbackList = deleted["cashbacks"] ?? [];
+  //     final List payoutList = deleted["payouts"] ?? [];
+  //
+  //     List<Map<String, dynamic>> mergedItems = [];
+  //
+  //     // 🔵 PRODUCTS
+  //     for (var p in productList) {
+  //       mergedItems.add({
+  //         AppDBConst.itemName: p["name"],
+  //         AppDBConst.itemPrice: p["price"],
+  //         AppDBConst.itemCount: p["quantity"],
+  //         AppDBConst.itemSumPrice: (p["price"] ?? 0) * (p["quantity"] ?? 1),
+  //         AppDBConst.itemImage: resolveProductImageFromMap(p),
+  //         AppDBConst.itemType: "product",
+  //       });
+  //     }
+  //
+  //     // 🟢 CASHBACKS
+  //     for (var c in cashbackList) {
+  //       mergedItems.add({
+  //         AppDBConst.itemName: c["item_name"] ?? "Cashback",
+  //         AppDBConst.itemPrice: c["item_price"] ?? c["amount"],
+  //         AppDBConst.itemCount: c["items_count"] ?? 1,
+  //         AppDBConst.itemSumPrice: c["item_sum_price"] ?? c["amount"],
+  //         AppDBConst.itemImage: c["product_image"] ?? "",
+  //         AppDBConst.itemType: "cashback",
+  //       });
+  //     }
+  //
+  //     // 🔴 PAYOUTS
+  //     for (var p in payoutList) {
+  //       mergedItems.add({
+  //         AppDBConst.itemName: p["product_name"] ?? "Payout",
+  //         AppDBConst.itemPrice: p["amount"],
+  //         AppDBConst.itemCount: 1,
+  //         AppDBConst.itemSumPrice: p["amount"],
+  //         AppDBConst.itemImage: p["product_image"] ?? "",
+  //         AppDBConst.itemType: "payout",
+  //       });
+  //     }
+  //
+  //     orderItems = mergedItems;
+  //
+  //     print("🔥 Final Loaded Deleted OrderItems = $orderItems");
+  //
+  //     setState(() {});
+  //     return;
+  //   }
+  //
+  //   // 3️⃣ Nothing found
+  //   orderItems.clear();
+  // }
 
 
   @override

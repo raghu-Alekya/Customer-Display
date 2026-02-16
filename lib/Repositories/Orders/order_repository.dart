@@ -757,6 +757,22 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   Future<Map<String, dynamic>?> syncSingleOfflineOrder(
       Map<String, dynamic> offlineOrder) async {
     try {
+      final box = StorageProvider.offlineOrders;
+
+      final localOrderId =
+          offlineOrder['id']?.toString() ??
+              offlineOrder['order_id']?.toString();
+
+      if (localOrderId != null) {
+        final fresh = await box.get(localOrderId);
+        if (fresh != null) {
+          offlineOrder = Map<String, dynamic>.from(fresh);
+          debugPrint("🟢 SYNC USING FRESH HIVE ORDER");
+        } else {
+          debugPrint("🔴 HIVE ORDER NOT FOUND, USING PASSED OBJECT");
+        }
+      }
+
       final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
       final int? existingWooOrderId =
       wooOrderIdRaw != null ? int.tryParse(wooOrderIdRaw.toString()) : null;
@@ -807,25 +823,34 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
               offlineOrder['local_order_id']?.toString() ??
               "";
 
+      final List productsRaw = (offlineOrder['products'] ?? []) as List;
 
-      // ---------------------------------------------------------
-      // ⭐ HANDLE PRODUCTS
-      // ---------------------------------------------------------
-      final productsRaw =
-      (offlineOrder['items'] ??
-          offlineOrder['products'] ??
-          []) as List;
-
-      final List<Map<String, dynamic>> lineItems = [];
+      List<Map<String, dynamic>> lineItems = [];
       final List<Map<String, dynamic>> feeLines = [];
 
       // ---------------------------------------------------------
       // ⭐ HANDLE PRODUCTS (Woo items + Custom items)
       // ---------------------------------------------------------
       for (var raw in productsRaw) {
+
+        debugPrint("\n================ ITEM RAW =================");
+        debugPrint("TYPE raw: ${raw.runtimeType}");
+        debugPrint("RAW MAP: $raw");
+
         final item = Map<String, dynamic>.from(raw);
-        final discountMeta =
-        Map<String, dynamic>.from(item['discount_meta'] ?? {});
+
+        debugPrint("TYPE discount_meta: ${item['discount_meta']?.runtimeType}");
+        debugPrint("discount_meta RAW: ${item['discount_meta']}");
+
+        final rawDiscountMeta = item['discount_meta'];
+
+        final Map<String, dynamic> discountMeta =
+        rawDiscountMeta is Map
+            ? rawDiscountMeta.map((k, v) => MapEntry(k.toString(), v))
+            : {};
+
+        debugPrint("discountMeta PARSED: $discountMeta");
+
 
         final double autoDiscount =
             double.tryParse(discountMeta['amount']?.toString() ?? '0') ?? 0.0;
@@ -833,14 +858,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         final String discountType = discountMeta['type']?.toString() ?? '';
         final String discountSource = discountMeta['source']?.toString() ?? '';
         final String ruleId = discountMeta['rule_id']?.toString() ?? '';
-
-        // final double price =
-        //     double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-        // final double qty =
-        //     double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
-        // final double lineTotal = price * qty;
-
-        // ✅ NORMALIZE ITEM FIELDS (POS + API)
+        debugPrint("🧾 DISCOUNT READ → amount:$autoDiscount type:$discountType source:$discountSource rule:$ruleId");
         final String name =
             item['item_name'] ??
                 item['name'] ??
