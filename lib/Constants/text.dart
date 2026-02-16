@@ -41,7 +41,6 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String addBtnText            = "+ ADD";
   static const String enableGSTText         = "Enable GST";
   static const String languageText          = "Language";
-  static const String amountTendered          ="amount tendered";
 
   static const String chooseLanText         = "Choose language";
   static const String appearanceText        = "Appearance";
