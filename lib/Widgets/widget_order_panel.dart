@@ -23,6 +23,7 @@ import 'package:pinaka_pos/Models/Search/product_search_model.dart';
 import 'package:pinaka_pos/Providers/Auth/product_variation_provider.dart';
 import 'package:pinaka_pos/Screens/Home/order_summary_screen.dart';
 import 'package:pinaka_pos/Widgets/scanner_guard.dart';
+import 'package:pinaka_pos/Widgets/weighing_scale_widget.dart';
 import 'package:pinaka_pos/Widgets/widget_age_verification_popup_dialog.dart';
 import 'package:pinaka_pos/Widgets/widget_alert_popup_dialogs.dart';
 import 'package:pinaka_pos/Widgets/widget_custom_num_pad.dart';
@@ -1543,6 +1544,71 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             if (kDebugMode) {
               print("\n---------------- AGE CHECK START ----------------");
               print("Product Scanned: ID=${product.id}, Name=${product.name}");
+            }
+
+            // PRODUCE (WEIGHED ITEMS) HANDLING
+            final bool hasProduceTag = (product?.tags ?? []).any((t) {
+              final name = (t.name  ?? "").toString().toLowerCase().trim();
+              final slug = (t.slug ?? "").toString().toLowerCase().trim();
+              return name.contains("produce") || slug.contains("produce");
+            });
+
+            if (hasProduceTag) {
+              print("🏷 Produce tag detected on product → Showing AutoWeightPriceDialog");
+
+              // Stop loader before showing dialog
+              _isLoading = false;
+              if (mounted) setState(() {});
+
+              final result = await showDialog<Map<String, dynamic>>(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => AutoWeightPriceDialog(
+                  productName: productName,
+                  unitPrice: productPrice,
+                ),
+              );
+
+              if (result == null) {
+                print("Auto weight cancelled by user");
+                return;
+              }
+
+              final double finalPrice = result["finalPrice"] as double;
+              final double weight     = result["weight"]    as double;
+
+              print("Weight: ${weight}kg, Final Price: ₹${finalPrice.toStringAsFixed(2)}");
+
+              await orderHelper.addItemToOrder(
+                null,               // or productId if you want to keep reference
+                productName,
+                image,
+                finalPrice,
+                1,                  // quantity = 1 (weight-based item)
+                productSku,
+                activeOrderId,
+                type: 'weighted',
+                productId: productId,
+                variationId: -1,
+                salesPrice: finalPrice,
+                regularPrice: productPrice,
+                unitPrice: productPrice,
+                isEbtEligible: isEbtEligible,
+                // Optional: store weight in meta_data
+                // metaData: [
+                //   {"key": "weight",   "value": weight.toString()},
+                //   {"key": "unit",     "value": "kg"},
+                //   {"key": "_weighed", "value": "true"},
+                // ],
+                onItemAdded: () async {
+                  print("Weighted produce item added successfully!");
+                },
+              );
+
+              await fetchOrderItems();
+              await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+
+              return; // critical: prevent normal quantity=1 addition below
             }
 
 // ------------------------------------------------------

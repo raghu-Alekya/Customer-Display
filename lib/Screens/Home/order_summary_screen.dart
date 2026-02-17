@@ -6851,7 +6851,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                               const SizedBox(height: 10),
                               _buildCouponButton(
-                                TextConstants.coupon,
+                                TextConstants.Issuecoupon,
                                 "assets/coupon.png",
                                 isActive: redeemedValue == 0 &&
                                     !isPaymentStarted &&
@@ -6871,6 +6871,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               _buildRedeemCouponButton(
                                 TextConstants.generatecoupon,
                                 "assets/coupon.png",
+                                //isActive: offlineOrder?["coupon_applied"] != true,
                                 onTap: () async {
                                   if (offlineOrder == null) {
                                     ScaffoldMessenger.of(context).showSnackBar(
@@ -6882,7 +6883,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   await _syncAndShowCouponPopup();
                                 },
                               ),
-
 
                             ],
                           )
@@ -7006,48 +7006,183 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final coupons = response["coupons"] as List? ?? [];
     final coupon = coupons.isNotEmpty ? coupons.first : null;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final dialogBg = isDark ? const Color(0xFF1A1C2A) : Colors.white;
+    final cardBg = isDark ? const Color(0xFF2B2D3C) : const Color(0xFFF2F4F7);
+    final textPrimary = isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final textSecondary = isDark ? Colors.white70 : Colors.grey;
+    const success = Color(0xFF1ABC9C);
+
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (_) {
-        return AlertDialog(
-          title: const Text("Coupon Generated – Can Be Redeemed After Payment 🎉"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              //_row("Order Total", "\$${response["order_total"]}"),
+        return Dialog(
+          backgroundColor: dialogBg,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
 
-              if (coupon != null) ...[
-                _row("Coupon Code", coupon["code"]),
-                //_row("Discount Type", coupon["discount_type"]),
-                _row("Discount Amount", "\$${coupon["amount"]}"),
+                      /// HEADER
+                      Row(
+                        children: [
+                          const Icon(Icons.card_giftcard, color: success, size: 30),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              "Coupon Generated",
+                              style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                  color: textPrimary),
+                            ),
+                          ),
+                        ],
+                      ),
 
-                _row(
-                  "Min Order Amount",
-                  coupon["min_amount"] == null
-                      ? "No minimum"
-                      : "\$${coupon["min_amount"]}",
+                      const SizedBox(height: 4),
+
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          "Can be redeemed after payment",
+                          style: TextStyle(fontSize: 13, color: textSecondary),
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      /// COUPON CARD
+                      if (coupon != null)
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: cardBg,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            children: [
+
+                              /// CODE BOX
+                              Container(
+                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                                decoration: BoxDecoration(
+                                  color: success.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.local_offer, color: success),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        coupon["code"].toString(),
+                                        style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 1,
+                                            color: textPrimary),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 14),
+
+                              _couponRow("Discount Amount", "₹${coupon["amount"]}", textPrimary),
+
+                              _couponRow(
+                                "Min Order Amount",
+                                coupon["min_amount"] == null
+                                    ? "No minimum"
+                                    : "₹${coupon["min_amount"]}",
+                                textPrimary,
+                              ),
+
+                              _couponRow(
+                                "Max order Amount",
+                                coupon["max_amount"] == null
+                                    ? "No maximum"
+                                    : "₹${coupon["max_amount"]}",
+                                textPrimary,
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      const SizedBox(height: 18),
+
+                      /// OK BUTTON
+                      SizedBox(
+                        width: double.infinity,
+                        height: 42,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text(
+                            "OK",
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
 
-                _row(
-                  "Max Discount Amount",
-                  coupon["max_amount"] == null
-                      ? "No maximum"
-                      : "\$${coupon["max_amount"]}",
+                /// CLOSE BUTTON
+                Positioned(
+                  right: 12,
+                  top: 12,
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const CircleAvatar(
+                      radius: 14,
+                      backgroundColor: Colors.red,
+                      child: Icon(Icons.close, color: Colors.white, size: 16),
+                    ),
+                  ),
                 ),
               ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("OK"),
             ),
-          ],
+          ),
         );
       },
     );
   }
+
+  Widget _couponRow(String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label,
+                style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          ),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w600, color: color)),
+        ],
+      ),
+    );
+  }
+
 
 
   Widget _row(String label, String value) {
@@ -7062,7 +7197,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     );
   }
-
 
   Widget _buildCouponButton(
       String title,
@@ -7098,7 +7232,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               child: Text(
                 title,
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 12,
                   fontWeight: FontWeight.w900,
                   color: isActive ? const Color(0xFFEB910E) : Colors.grey,
                 ),
@@ -7127,7 +7261,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     );
   }
-
 
   Widget _buildRedeemCouponButton(
       String title,
@@ -7163,7 +7296,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               child: Text(
                 title,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: FontWeight.w900,
                   color: isActive ? Colors.white : Colors.grey,
                 ),
@@ -7718,7 +7851,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(12),
+                  fontSize: ResponsiveLayout.getFontSize(11),
                   fontWeight: FontWeight.w500,
                   color: themeHelper.themeMode == ThemeMode.dark
                       ? Colors.white
@@ -7729,7 +7862,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Text(
                 amount,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(15),
+                  fontSize: ResponsiveLayout.getFontSize(12),
                   fontWeight: FontWeight.w700,
                   color: amountColor ??
                       (themeHelper.themeMode == ThemeMode.dark
@@ -7981,7 +8114,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               child: Text(
                 title,
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: FontWeight.w900,
                   color: isActive ? const Color(0xFF817ACC) : Colors.grey,
                 ),
@@ -9549,7 +9682,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(12),
+                  fontSize: ResponsiveLayout.getFontSize(11),
                   fontWeight: FontWeight.w500,
                   color: themeHelper.themeMode == ThemeMode.dark
                       ? Colors.white
@@ -9560,7 +9693,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Text(
                 amount,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(15),
+                  fontSize: ResponsiveLayout.getFontSize(12),
                   fontWeight: FontWeight.w700,
                   color: amountColor ??
                       (themeHelper.themeMode == ThemeMode.dark

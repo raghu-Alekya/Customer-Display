@@ -15,6 +15,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String personalInfoSubText   = "Change your personal information";
   static const String userText              = "user";
   static const String administratorText     = "ADMINISTRATOR";
+  static const String Issuecoupon                = "Issue Coupon";
   static const String fullNameText          = "Full Name";
   static const String contactNoText         = "Contact No";
   static const String emailText             = "Email Address";

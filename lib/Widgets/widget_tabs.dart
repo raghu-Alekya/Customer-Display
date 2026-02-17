@@ -323,8 +323,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                 SvgUtils.addDiscountIcon,
                 "Merchant \nDiscounts",
 
-                const Color(0xFFFFFFFF), // default = white for logo
-                const Color(0xFFFFFFFF),// Foreground text color
+                const Color(0xFF4C5F7D), // default = white for logo
+                const Color(0xFF4C5F7D),// Foreground text color
                 // Color(0xFF007BFF),      // icon color
                 // Color(0xFF007BFF),    // text color
                 // color: isSelected
@@ -340,7 +340,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                 Divider(height: 1, thickness: 1, indent: 1, endIndent: 1,
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? Colors.black
-                        : Color(0xFF2B367F)),
+                        : Color(0xFF8EAAD8)),
 
               _buildTab(
                   1,
@@ -348,8 +348,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   "Cashback",
                   // Color(0xFF55CBCD),    // icon color
                   // Color(0xFF55CBCD),     // text color
-                  const Color(0xFFFFFFFF), // default = white for logo
-                  const Color(0xFFFFFFFF)
+                  const Color(0xFF4C5F7D), // default = white for logo
+                  const Color(0xFF4C5F7D)
 
               ),
 
@@ -359,7 +359,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                 Divider(height: 1, thickness: 1, indent: 10, endIndent: 10,
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? Colors.black
-                        : Color(0xFFB6BFF9)),
+                        : Color(0xFF8EAAD8)),
 
               _buildTab(
                   2,
@@ -367,8 +367,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   "Custom\nItem",
                   // Color(0xFF55709A),    // icon color
                   // Color(0xFF55709A),
-                  const Color(0xFFFFFFFF), // default = white for logo
-                  const Color(0xFFFFFFFF)
+                  const Color(0xFF4C5F7D), // default = white for logo
+                  const Color(0xFF4C5F7D)
 
 
               ),
@@ -378,7 +378,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               if (_selectedTabIndex != 2 && _selectedTabIndex != 3)
                 Divider(height: 1, thickness: 1, indent: 10, endIndent: 10,   color: themeHelper.themeMode == ThemeMode.dark
                     ? Colors.black
-                    : Color(0xFFB6BFF9)),
+                    : Color(0xFF8EAAD8)),
 
               _buildTab(
                   3,
@@ -386,8 +386,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   "Payouts",
                   // Color(0xFFD93535),    // icon color
                   // Color(0xFFD93535),   // text color
-                  const Color(0xFFFFFFFF), // default = white for logo
-                  const Color(0xFFFFFFFF)
+                  const Color(0xFF4C5F7D), // default = white for logo
+                  const Color(0xFF4C5F7D)
               ),
             ],
           )
@@ -434,8 +434,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               // ),//**8Raghu modified the code below, with blue cards when selected it shows white
 
               color: isSelected
-                  ? const Color(0xFFB5BCDE)  // selected light color
-                  : const Color(0xFF2E657E),  // unselected blue
+                  ? const Color(0xFFFFFFFF)  // selected light color
+                  : const Color(0xFFECF1FF),  // unselected blue
               //borderRadius: BorderRadius.circular(2.0),
               /// borderRadius: BorderRadius.circular(0), // REMOVE rounded corners for now
             ),

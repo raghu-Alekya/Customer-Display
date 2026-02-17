@@ -52,6 +52,7 @@ import '../../Helper/api_helper.dart';
 
 import 'Widgets/discount_engine_constants.dart';
 import 'Widgets/offline_order_sync_service.dart';
+import 'Widgets/weighing_scale_widget.dart';
 
 void main() async {
 
@@ -198,6 +199,8 @@ void main() async {
 
         // Add Product Bloc
         BlocProvider<AddProductInventoryTaxBloc>(create: (_) => addProductBloc),
+        //ChangeNotifierProvider(create: (_) => WeightProvider())
+        ChangeNotifierProvider(create: (_) => WeightProvider())
 
 
       ],
