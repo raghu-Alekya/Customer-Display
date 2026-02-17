@@ -752,6 +752,23 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
     return null;
   }
+  Map<String, dynamic> _normalizeHiveMap(dynamic data) {
+    if (data is Map) {
+      return data.map((key, value) =>
+          MapEntry(key.toString(), _normalizeHiveValue(value)));
+    }
+    return {};
+  }
+
+  dynamic _normalizeHiveValue(dynamic value) {
+    if (value is Map) {
+      return _normalizeHiveMap(value);
+    }
+    if (value is List) {
+      return value.map((e) => _normalizeHiveValue(e)).toList();
+    }
+    return value;
+  }
 
 
   Future<Map<String, dynamic>?> syncSingleOfflineOrder(
@@ -759,19 +776,21 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     try {
       final box = StorageProvider.offlineOrders;
 
-      final localOrderId =
-          offlineOrder['id']?.toString() ??
-              offlineOrder['order_id']?.toString();
+      // Always trust Hive only
+      final String localOrderId = offlineOrder['order_id'].toString();
 
-      if (localOrderId != null) {
-        final fresh = await box.get(localOrderId);
-        if (fresh != null) {
-          offlineOrder = Map<String, dynamic>.from(fresh);
-          debugPrint("🟢 SYNC USING FRESH HIVE ORDER");
-        } else {
-          debugPrint("🔴 HIVE ORDER NOT FOUND, USING PASSED OBJECT");
-        }
+      final storedOrder = await box.get(localOrderId);
+
+      if (storedOrder == null) {
+        debugPrint("❌ ORDER NOT FOUND IN HIVE: $localOrderId");
+        return null;
       }
+      offlineOrder = _normalizeHiveMap(storedOrder);
+
+
+      debugPrint("🟢 SYNC USING DIRECT HIVE ORDER: $localOrderId");
+      debugPrint("🟢 HAS ITEMS: ${offlineOrder['items'] != null}");
+
 
       final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
       final int? existingWooOrderId =
@@ -823,7 +842,22 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
               offlineOrder['local_order_id']?.toString() ??
               "";
 
-      final List productsRaw = (offlineOrder['products'] ?? []) as List;
+      List productsRaw = [];
+
+      if (offlineOrder['items'] is List && (offlineOrder['items'] as List).isNotEmpty) {
+        productsRaw = List<Map<String, dynamic>>.from(
+            (offlineOrder['items'] as List).map((e) => Map<String, dynamic>.from(e))
+        );
+        debugPrint("🟢 USING ITEMS LIST (FINAL BILL)");
+      }
+      else if (offlineOrder['products'] is List) {
+        productsRaw = List<Map<String, dynamic>>.from(
+            (offlineOrder['products'] as List).map((e) => Map<String, dynamic>.from(e))
+        );
+        debugPrint("🟡 FALLBACK USING PRODUCTS LIST (DRAFT)");
+      }
+
+      debugPrint("🧠 ITEMS COUNT: ${productsRaw.length}");
 
       List<Map<String, dynamic>> lineItems = [];
       final List<Map<String, dynamic>> feeLines = [];
@@ -841,24 +875,20 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
         debugPrint("TYPE discount_meta: ${item['discount_meta']?.runtimeType}");
         debugPrint("discount_meta RAW: ${item['discount_meta']}");
-
-        final rawDiscountMeta = item['discount_meta'];
-
-        final Map<String, dynamic> discountMeta =
-        rawDiscountMeta is Map
-            ? rawDiscountMeta.map((k, v) => MapEntry(k.toString(), v))
-            : {};
-
-        debugPrint("discountMeta PARSED: $discountMeta");
-
-
         final double autoDiscount =
-            double.tryParse(discountMeta['amount']?.toString() ?? '0') ?? 0.0;
+            double.tryParse(item['auto_discount']?.toString() ?? '0') ?? 0.0;
 
-        final String discountType = discountMeta['type']?.toString() ?? '';
-        final String discountSource = discountMeta['source']?.toString() ?? '';
-        final String ruleId = discountMeta['rule_id']?.toString() ?? '';
+        final String discountType =
+            item['discount_type']?.toString() ?? '';
+
+        final String discountSource =
+            item['discount_source']?.toString() ?? '';
+
+        final String ruleId =
+            item['rule_id']?.toString() ?? '';
+
         debugPrint("🧾 DISCOUNT READ → amount:$autoDiscount type:$discountType source:$discountSource rule:$ruleId");
+
         final String name =
             item['item_name'] ??
                 item['name'] ??

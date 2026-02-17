@@ -5407,19 +5407,44 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                 double.parse(cashbackFee.toStringAsFixed(2));
 
 // 🔥 ONLY WRITE IN WHOLE CHECKOUT
-                            await box.put(localKey, updated);
+// 🔒 MARK ORDER FINAL (IMMUTABLE BILL)
+                            updated['is_finalized'] = true;
+                            updated['finalized_at'] = DateTime.now().toIso8601String();
+                            updated['status'] = 'pending_sync';
+
+// 🔥 SAVE FINAL SNAPSHOT
+                            await box.put(localKey, Map<String, dynamic>.from(updated));
 
 // DEBUG
+
+                            // ===== VERIFY HIVE WRITE =====
+                            final verifyWrite = await box.get(localKey);
+
+                            debugPrint("\n🟥🟥🟥 VERIFY AFTER SAVE (CHECKOUT) 🟥🟥🟥");
+                            debugPrint("OrderID: $localKey");
+
+                            final items = verifyWrite?['items'] ?? [];
+                            for (final i in items) {
+                              debugPrint("ITEM → ${i['item_name']} | discount_meta=${i['discount_meta']}");
+                            }
+
+                            final products = verifyWrite?['products'] ?? [];
+                            for (final p in products) {
+                              debugPrint("PRODUCT → ${p['name']} | discount_meta=${p['discount_meta']}");
+                            }
+
+                            debugPrint("🟥🟥🟥 END VERIFY 🟥🟥🟥\n");
+
                             final finalStored = await box.get(localKey);
                             debugPrint("🧠 FINAL STORED HIVE ORDER =====================");
                             debugPrint(const JsonEncoder.withIndent('  ').convert(finalStored));
                             debugPrint("===============================================");
-
-                            if (mounted) {
-                              setState(() {
-                                orderItems = workingItems;
-                              });
-                            }
+                            //
+                            // if (mounted) {
+                            //   setState(() {
+                            //     orderItems = workingItems;
+                            //   });
+                            // }
 
 // DEBUG
                             final verify = await box.get(localKey);
@@ -5457,12 +5482,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                 ),
                               ),
                             );
-
-                            if (result == TextConstants.refresh) {
-                              OrderHelper.isOrderPanelLoaded = false;
-                              OrderHelper.notifyOrderPanelToRefresh();
-                              //fetchOrdersData();
-                            }
                           } catch (e, s) {
                             debugPrint("❌ Error syncing order: $e");
                             debugPrint("$s");
