@@ -94,7 +94,17 @@ class CashbackHelper {
     // ⭐ Always read the fresh token
     final userBox = StorageProvider.user;
     final tokenRaw = await userBox.get('token');
-    final token = tokenRaw?.toString();
+
+    String? token;
+
+    if (tokenRaw is String) {
+      token = tokenRaw;
+    } else if (tokenRaw is Map && tokenRaw['token'] != null) {
+      token = tokenRaw['token'].toString();
+    } else {
+      token = null;
+    }
+
 
     if (token == null || token.isEmpty) {
       print("❌ No valid token found — skipping cashback API");

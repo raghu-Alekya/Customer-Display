@@ -18,6 +18,7 @@ import '../../Models/Orders/apply_discount_model.dart';
 import '../../Models/Orders/get_orders_model.dart';
 import '../../Models/Orders/orders_model.dart';
 import '../../Models/Orders/total_orders_count_model.dart';
+import '../../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import '../../Utilities/global_utility.dart';
 
 class FastKeyImageModel {
@@ -771,25 +772,44 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   }
 
 
+
   Future<Map<String, dynamic>?> syncSingleOfflineOrder(
       Map<String, dynamic> offlineOrder) async {
     try {
+      final int? localOrderIdInt = int.tryParse(
+        offlineOrder['id']?.toString() ??
+            offlineOrder['order_id']?.toString() ??
+            "",
+      );
+
+      if (localOrderIdInt == null) {
+        debugPrint("❌ Cannot load payments → local order id missing");
+      }
+
+      // 🔥 ALWAYS SYNC FRESH HIVE COPY (CRITICAL FIX)
       final box = StorageProvider.offlineOrders;
 
-      // Always trust Hive only
-      final String localOrderId = offlineOrder['order_id'].toString();
+      final localId =
+          offlineOrder['id']?.toString() ??
+              offlineOrder['order_id']?.toString();
 
-      final storedOrder = await box.get(localOrderId);
+      if (localId != null) {
+        final fresh = await box.get(localId);
+        if (fresh != null) {
+          offlineOrder = Map<String, dynamic>.from(fresh);
 
-      if (storedOrder == null) {
-        debugPrint("❌ ORDER NOT FOUND IN HIVE: $localOrderId");
-        return null;
+          debugPrint("🧠 SYNC USING FRESH HIVE ORDER: $localId");
+
+          // 🟢 PRINT COMPLETE ORDER (FORMATTED)
+          const encoder = JsonEncoder.withIndent('  ');
+          debugPrint("🟩🟩🟩 FULL HIVE ORDER START 🟩🟩🟩");
+          debugPrint(encoder.convert(offlineOrder));
+          debugPrint("🟩🟩🟩 FULL HIVE ORDER END 🟩🟩🟩");
+
+        } else {
+          debugPrint("⚠️ Hive order not found, using passed object");
+        }
       }
-      offlineOrder = _normalizeHiveMap(storedOrder);
-
-
-      debugPrint("🟢 SYNC USING DIRECT HIVE ORDER: $localOrderId");
-      debugPrint("🟢 HAS ITEMS: ${offlineOrder['items'] != null}");
 
 
       final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
@@ -798,6 +818,18 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       final Map<String, dynamic> couponResponse =
           (offlineOrder["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
 
+      final Map<int, Map<String, dynamic>> discountLines = {};
+
+      final rawDiscountLines = offlineOrder['discount_lines'];
+      if (rawDiscountLines is Map) {
+        rawDiscountLines.forEach((key, value) {
+          final int? k = int.tryParse(key.toString());
+          if (k != null && value is Map) {
+            discountLines[k] = Map<String, dynamic>.from(value);
+          }
+        });
+      }
+
 
       final bool isUpdate =
           existingWooOrderId != null && existingWooOrderId > 0;
@@ -805,35 +837,37 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       final String url = isUpdate
           ? "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$existingWooOrderId"
           : "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
-// ---------------------------------------------------------
-      // ⭐ BUILD PAYMENTS ARRAY
-      // ---------------------------------------------------------
-      final List paymentsRaw = offlineOrder['payments'] as List? ?? [];
 
-      final List<Map<String, dynamic>> paymentsPayload = paymentsRaw.map((p) {
-        final double remaining =
-            double.tryParse(p['remainingBalance']?.toString() ?? '0') ?? 0.0;
+      List<Map<String, dynamic>> paymentsPayload = [];
 
-        return {
-          "local_id": p['local_id'] ?? p['id'],
-          "method": p['paymentMethod'],
-          "amount": double.tryParse(p['amount'].toString()) ?? 0.0,
-          "remaining": remaining < 0 ? 0.0 : remaining,
-          "status": p['status'] ?? 'pending',
-          "created_at": p['createdAt'],
-        };
-      }).toList();
+      if (localOrderIdInt != null) {
 
-      // ✅ PRINT PAYMENTS CLEARLY
-      debugPrint("\n💰 PAYMENTS ATTACHED (${paymentsPayload.length}):");
-      for (final p in paymentsPayload) {
-        debugPrint(
-          " → LocalID:${p['local_id']} | "
-              "Method:${p['method']} | "
-              "Amount:\$${p['amount']} | "
-              "Remaining:\$${p['remaining']} | "
-              "Status:${p['status']}",
-        );
+        final dbPayments =
+        await LocalPaymentDBHelper.instance.getPaymentsByOrderId(localOrderIdInt);
+
+        debugPrint("\n📊 LIVE PAYMENTS FROM DB (${dbPayments.length})");
+
+        double runningBalance = 0;
+
+        for (final p in dbPayments) {
+
+          final remaining =
+          p.remainingBalance < 0 ? 0.0 : p.remainingBalance;
+
+          paymentsPayload.add({
+            "local_id": p.id,
+            "method": p.paymentMethod,
+            "amount": p.amount,
+            "remaining": remaining,
+            "status": p.status?.name ?? "pending",
+            "created_at": p.createdAt.toIso8601String(),
+          });
+
+          debugPrint(
+              " → ID:${p.id} | ${p.paymentMethod} | "
+                  "Amount:${p.amount} | Remaining:$remaining | ${p.status?.name}"
+          );
+        }
       }
 
       final String clientOrderId =
@@ -842,24 +876,23 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
               offlineOrder['local_order_id']?.toString() ??
               "";
 
+
+      // ---------------------------------------------------------
+      // ⭐ HANDLE PRODUCTS
+      // ---------------------------------------------------------
       List productsRaw = [];
 
-      if (offlineOrder['items'] is List && (offlineOrder['items'] as List).isNotEmpty) {
-        productsRaw = List<Map<String, dynamic>>.from(
-            (offlineOrder['items'] as List).map((e) => Map<String, dynamic>.from(e))
-        );
-        debugPrint("🟢 USING ITEMS LIST (FINAL BILL)");
-      }
-      else if (offlineOrder['products'] is List) {
-        productsRaw = List<Map<String, dynamic>>.from(
-            (offlineOrder['products'] as List).map((e) => Map<String, dynamic>.from(e))
-        );
-        debugPrint("🟡 FALLBACK USING PRODUCTS LIST (DRAFT)");
-      }
+      if ((offlineOrder['products'] as List?)?.isNotEmpty == true) {
+        productsRaw = List.from(offlineOrder['products']);
+        debugPrint("🟢 SYNC USING PRODUCTS (PERSISTED)");
+        debugPrint("\n📦 RAW PRODUCTS FROM HIVE -------------------");
+        for (int i = 0; i < productsRaw.length; i++) {
+          debugPrint("INDEX $i → ${productsRaw[i]}");
+        }
+        debugPrint("📦 END RAW PRODUCTS -------------------\n");
 
-      debugPrint("🧠 ITEMS COUNT: ${productsRaw.length}");
-
-      List<Map<String, dynamic>> lineItems = [];
+      }
+      final List<Map<String, dynamic>> lineItems = [];
       final List<Map<String, dynamic>> feeLines = [];
 
       // ---------------------------------------------------------
@@ -867,28 +900,64 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       // ---------------------------------------------------------
       for (var raw in productsRaw) {
 
-        debugPrint("\n================ ITEM RAW =================");
-        debugPrint("TYPE raw: ${raw.runtimeType}");
-        debugPrint("RAW MAP: $raw");
+
+        debugPrint("\n🧾 RAW ITEM TYPE → ${raw.runtimeType}");
+        debugPrint("🧾 RAW ITEM DATA → $raw");
+        debugPrint("🧾 RAW discount_meta → ${raw['discount_meta']}");
+        debugPrint("🧾 discount_meta TYPE → ${raw['discount_meta']?.runtimeType}");
 
         final item = Map<String, dynamic>.from(raw);
 
-        debugPrint("TYPE discount_meta: ${item['discount_meta']?.runtimeType}");
-        debugPrint("discount_meta RAW: ${item['discount_meta']}");
+        // ---------------------------------------------------------
+// 🔍 DETECT PRODUCT ID FIRST
+// ---------------------------------------------------------
+        final dynamic pidRaw =
+            item['product_id'] ??
+                item['id'] ??
+                item['productId'] ??
+                item['productID'] ??
+                item['product-id'] ??
+                item['meta']?['product_id'] ??
+                item['data']?['id'];
+
+        int? safeParseInt(dynamic v) {
+          if (v == null) return null;
+          if (v is int) return v;
+          if (v is double) return v.toInt();
+          return int.tryParse(v.toString().split('.').first);
+        }
+
+        final int? pid = safeParseInt(pidRaw);
+
+// ---------------------------------------------------------
+// 🔥 FETCH DISCOUNT (SOURCE OF TRUTH)
+// ---------------------------------------------------------
+        final Map<String, dynamic> discountMeta =
+            discountLines[pid] ?? {};
+
+
         final double autoDiscount =
-            double.tryParse(item['auto_discount']?.toString() ?? '0') ?? 0.0;
+            double.tryParse(discountMeta['amount']?.toString() ?? '0') ?? 0.0;
 
         final String discountType =
-            item['discount_type']?.toString() ?? '';
+            discountMeta['type']?.toString() ?? '';
 
         final String discountSource =
-            item['discount_source']?.toString() ?? '';
+            discountMeta['source']?.toString() ?? '';
 
         final String ruleId =
-            item['rule_id']?.toString() ?? '';
+            discountMeta['rule_id']?.toString() ?? '';
+        debugPrint("🎯 MATCH PID = $pid");
+        debugPrint("🎯 FOUND DISCOUNT = $discountMeta");
 
-        debugPrint("🧾 DISCOUNT READ → amount:$autoDiscount type:$discountType source:$discountSource rule:$ruleId");
 
+        // final double price =
+        //     double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+        // final double qty =
+        //     double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
+        // final double lineTotal = price * qty;
+
+        // ✅ NORMALIZE ITEM FIELDS (POS + API)
         final String name =
             item['item_name'] ??
                 item['name'] ??
@@ -928,19 +997,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         final double subtotal = price * qty;
         final double total = subtotal - autoDiscount;
 
-
-
-        final dynamic pidRaw =
-            item['product_id'] ??
-                item['id'] ??
-                item['productId'] ??
-                item['productID'] ??
-                item['product-id'] ??
-                item['meta']?['product_id'] ??
-                item['data']?['id'];
-
-        final int? pid =
-        pidRaw == null ? null : int.tryParse(pidRaw.toString());
         if (pid == null || pid == 0) {
           final int qtyInt = qty.toInt();
 
@@ -1370,7 +1426,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         };
       }
 
-  } catch (e, s) {
+    } catch (e, s) {
       print("❌ Failed to sync offline order: $e");
       print("Stack: $s");
     }

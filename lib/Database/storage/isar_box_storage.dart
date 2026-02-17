@@ -33,21 +33,44 @@ class IsarBoxStorage implements BoxStorage {
   @override
   Future<void> put(String key, dynamic value) async {
     final isar = await _db;
-    final jsonStr = value is String ? value : jsonEncode(value);
     final fullKey = _fullKey(key);
 
+    final String newJson = value is String ? value : jsonEncode(value);
+
     await isar.writeTxn(() async {
+
       final existing = await isar.isarCacheEntrys
           .where()
           .keyEqualTo(fullKey)
           .findFirst();
 
-      final entry = existing ?? IsarCacheEntry();
-      entry.key = fullKey;
-      entry.json = jsonStr;
-      entry.timestamp = DateTime.now();
+      // First save
+      if (existing == null) {
+        final entry = IsarCacheEntry()
+          ..key = fullKey
+          ..json = newJson
+          ..timestamp = DateTime.now();
 
-      await isar.isarCacheEntrys.put(entry);
+        await isar.isarCacheEntrys.put(entry);
+        return;
+      }
+
+      Map<String, dynamic> oldMap = {};
+      Map<String, dynamic> newMap = {};
+
+      try { oldMap = jsonDecode(existing.json); } catch (_) {}
+      try { newMap = jsonDecode(newJson); } catch (_) {}
+
+      final bool isCheckoutUpdate = newMap['_update_source'] == 'checkout';
+      if (!isCheckoutUpdate && oldMap.containsKey('discount_lines')) {
+        newMap['discount_lines'] = oldMap['discount_lines'];
+      }
+      newMap.remove('_update_source');
+
+      existing.json = jsonEncode(newMap);
+      existing.timestamp = DateTime.now();
+
+      await isar.isarCacheEntrys.put(existing);
     });
   }
 

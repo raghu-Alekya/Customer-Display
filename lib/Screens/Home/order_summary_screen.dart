@@ -8487,17 +8487,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           .where((p) => !p.isSynced)
           .toList();
 
-      order['payments'] = payments.map((p) => {
-        'local_id': p.id,
-        'orderId': p.orderId,
-        'paymentMethod': p.paymentMethod,
-        'amount': p.amount,
-        'remainingBalance':
-        p.remainingBalance < 0 ? 0 : p.remainingBalance,
-        'status': p.status?.name ?? 'pending',
-        'createdAt': p.createdAt.toIso8601String(),
-      }).toList();
-
       print("💰 Single sync payments attached → ${payments.length}");
 
       final result =

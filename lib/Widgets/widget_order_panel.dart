@@ -5328,92 +5328,36 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               'products': <Map<String, dynamic>>[],
                             };
 
-                            // Items with discount_meta (used by sync API)
-                            updated['items'] = workingItems.map((item) {
-                              final autoDisc =
-                                  (item['auto_discount'] as num?)?.toDouble() ??
-                                      0.0;
-                              return {
-                                ...item,
-                                "discount_meta": {
-                                  "amount": autoDisc,
-                                  "type": item['discount_type'] ?? "",
-                                  "source": item['discount_source'] ?? "",
-                                  "rule_id": item['rule_id'] ?? "",
-                                },
-                              };
-                            }).toList();
 
-                            // Products: match by product_id AND variation_id,
-                            // add auto_discount for getOrderItemsFromOffline
-                            final productsList =
-                                (updated['products'] as List?) ?? [];
-                            updated['products'] = productsList.map((product) {
-                              final raw = product is Map
-                                  ? Map<String, dynamic>.from(product)
-                                  : <String, dynamic>{};
-                              final pid = raw['product_id'];
-                              final vid = raw['variation_id'] ??
-                                  raw['variationId'] ??
-                                  0;
-                              final vidInt = vid is int
-                                  ? vid
-                                  : int.tryParse(vid.toString()) ?? 0;
-
-                              Map<String, dynamic> matchedItem =
-                              workingItems.cast<Map<String, dynamic>>().firstWhere(
-                                    (i) {
-                                  final iId = int.tryParse(
-                                      i['product_id']?.toString() ??
-                                          '') ??
-                                      0;
-                                  final iVid =
-                                      i['variation_id'] ?? i['variationId'] ?? 0;
-                                  final iVidInt = iVid is int
-                                      ? iVid
-                                      : int.tryParse(iVid.toString()) ?? 0;
-                                  final pidInt = pid is int
-                                      ? pid
-                                      : int.tryParse(pid?.toString() ?? '');
-                                  return (i['product_id'] == pid ||
-                                      (pidInt != null && iId == pidInt)) &&
-                                      iVidInt == vidInt;
-                                },
-                                orElse: () => <String, dynamic>{},
-                              );
-
-                              if (matchedItem.isEmpty) return raw;
-                              final autoDisc = (matchedItem['auto_discount']
-                              as num?)
-                                  ?.toDouble() ??
-                                  0.0;
-                              return {
-                                ...raw,
-                                "auto_discount": autoDisc,
-                                "auto_discount_total": autoDisc,
-                                "discount_meta": {
-                                  "amount": autoDisc,
-                                  "type": matchedItem['discount_type'] ?? "",
-                                  "source":
-                                  matchedItem['discount_source'] ?? "",
-                                  "rule_id": matchedItem['rule_id'] ?? "",
-                                },
-                              };
-                            }).toList();
                             updated["tax_discount"] =
                                 double.parse(totalTaxAfterDiscount.toStringAsFixed(2));
 
                             updated["cashback_fee"] =
                                 double.parse(cashbackFee.toStringAsFixed(2));
+// =======================================================
+// 🔥 BUILD DISCOUNT LINES (SOURCE OF TRUTH)
+// =======================================================
+
+                            final Map<String, dynamic> discountLines = {};
+
+                            for (final item in workingItems) {
+                              final pid = item['product_id']?.toString();
+                              if (pid == null || pid == "0") continue;
+
+                              discountLines[pid] = {
+                                "amount": (item['auto_discount'] ?? 0).toDouble(),
+                                "type": item['discount_type'] ?? "",
+                                "source": item['discount_source'] ?? "",
+                                "rule_id": item['rule_id'] ?? "",
+                              };
+                            }
+
+// SAVE ONLY ONCE HERE
+                            updated['discount_lines'] = discountLines;
+                            updated['_update_source'] = 'checkout';
 
 // 🔥 ONLY WRITE IN WHOLE CHECKOUT
-// 🔒 MARK ORDER FINAL (IMMUTABLE BILL)
-                            updated['is_finalized'] = true;
-                            updated['finalized_at'] = DateTime.now().toIso8601String();
-                            updated['status'] = 'pending_sync';
-
-// 🔥 SAVE FINAL SNAPSHOT
-                            await box.put(localKey, Map<String, dynamic>.from(updated));
+                            await box.put(localKey, updated);
 
 // DEBUG
 
@@ -5439,13 +5383,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             debugPrint("🧠 FINAL STORED HIVE ORDER =====================");
                             debugPrint(const JsonEncoder.withIndent('  ').convert(finalStored));
                             debugPrint("===============================================");
-                            //
-                            // if (mounted) {
-                            //   setState(() {
-                            //     orderItems = workingItems;
-                            //   });
-                            // }
-
 // DEBUG
                             final verify = await box.get(localKey);
                             debugPrint("🧠 STORED ORDER AFTER SAVE:");
