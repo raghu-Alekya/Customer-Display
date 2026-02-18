@@ -7128,7 +7128,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         height: 42,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
+                            backgroundColor: Colors.red.shade400,   // soft light red
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
@@ -7262,6 +7262,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     );
   }
 
+
   Widget _buildRedeemCouponButton(
       String title,
       String iconPath, {
@@ -7273,12 +7274,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       child: Container(
         height: 50,
         width: 368,
-        padding: const EdgeInsets.symmetric(horizontal: 24), // ✅ SAME PADDING
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        // ✅ SAME PADDING
         decoration: BoxDecoration(
-          color: isActive ? Color(0xFFEB910E) : Colors.grey.shade200,
+          color: isActive ? Colors.white : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
-            color: isActive ? Colors.white : Colors.grey,
+            color: isActive ? const Color(0xFF1ABC9C) : Colors.grey,
             width: 1,
           ),
           boxShadow: const [
@@ -7298,7 +7300,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w900,
-                  color: isActive ? Colors.white : Colors.grey,
+                  color: isActive ? const Color(0xFF1ABC9C) : Colors.grey,
                 ),
               ),
             ),
@@ -7310,13 +7312,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isActive ? Colors.white : Colors.grey,
+                  color: isActive ? const Color(0xFF1ABC9C) : Colors.grey,
                 ),
                 child: Image.asset(
                   iconPath,
                   width: 18,
                   height: 18,
-                  color: const Color(0xFFEB910E),
+                  color: Colors.white,
                 ),
               ),
             ),
@@ -7325,6 +7327,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     );
   }
+
   //
   // Future<void> _removeAppliedCoupon() async {
   //   if (widget.orderId == null || widget.orderId == 0) return;
@@ -7438,18 +7441,36 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         );
         return;
       }
+      final List couponLines = result["coupon_lines"] ?? [];
 
-      // ⭐ Extract values from Woo response
-      final double newDiscount =
-          double.tryParse(result["discount_total"].toString()) ?? 0.0;
+      double newDiscount;
+      double newTax;
+      double newTotal;
+      if (couponLines.isEmpty) {
+        print("🟡 No coupons → force discount 0");
+        newDiscount = 0.0;
+      } else {
+        newDiscount =
+            double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
+      }
+      newTax =
+          double.tryParse(result["tax"]?.toString() ?? "0") ?? 0.0;
+      newTotal =
+          double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
 
-      final double newTax =
-          double.tryParse(result["tax"].toString()) ?? 0.0;
 
-      final double newTotal =
-          double.tryParse(result["total"].toString()) ?? 0.0;
+      offlineOrder["orderDiscount"] = couponLines.isEmpty ? 0.0 : newDiscount;
+      offlineOrder["tax_discount"] = newTax;
+      offlineOrder["grand_total"] = newTotal;
+      offlineOrder["coupon_applied"] = false;
+      offlineOrder["applied_coupons"] = [];
+      offlineOrder["coupon_response"] = {"coupons": []};
+      await box.put(orderKey, offlineOrder);
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        int.tryParse(orderKey) ?? 0,
+        summaryEnabled: true,
+      );
 
-      // ⭐ UPDATE UI (Same as Apply)
       setState(() {
         discount = newDiscount; // should become 0
         tax = newTax;
@@ -7698,6 +7719,23 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final double newTotal =
           double.tryParse(result["total"].toString()) ?? 0.0;
+
+
+      offlineOrder["orderDiscount"] = newDiscount;
+      offlineOrder["tax_discount"] = newTax;
+      offlineOrder["grand_total"] = newTotal;
+      offlineOrder["coupon_applied"] = true;
+      offlineOrder["applied_coupons"] = [
+        {"code": code, "amount": newDiscount}
+      ];
+
+      await box.put(orderKey, offlineOrder);
+
+// 🔥 UPDATE DISPLAY
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        int.tryParse(orderKey) ?? 0,
+        summaryEnabled: true,
+      );
 
       // ⭐ UPDATE UI LIKE YOUR OLD CODE
       setState(() {

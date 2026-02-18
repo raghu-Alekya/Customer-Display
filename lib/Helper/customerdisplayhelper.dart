@@ -7,11 +7,11 @@ import '../services/CustomerDisplayService.dart';
 class CustomerDisplayHelper {
   /// 🔹 Show welcome after login success, including optional logo
   static Future<void> updateWelcomeWithStore(
-    String storeId,
-    String storeName, {
-    String? storeLogoUrl,
-    String? storeBaseUrl,
-  }) async {
+      String storeId,
+      String storeName, {
+        String? storeLogoUrl,
+        String? storeBaseUrl,
+      }) async {
     print(
         "🟢 [CustomerDisplayHelper] Updating welcome → storeId: $storeId, storeName: $storeName, logo: $storeLogoUrl, baseUrl: $storeBaseUrl");
 
@@ -71,6 +71,15 @@ class CustomerDisplayHelper {
 
 
       final data = Map<String, dynamic>.from(raw);
+
+      // 🔥 SOURCE OF TRUTH — DISCOUNT LINES
+      final Map<String, dynamic> discountLines =
+      (data["discount_lines"] is Map)
+          ? Map<String, dynamic>.from(data["discount_lines"])
+          : {};
+
+      print("🧠 DISCOUNT LINES FROM HIVE → $discountLines");
+
 
       // 🔥 Fetch WooCommerce Order ID stored earlier after sync
       final wooOrderId = data["wooOrderId"];
@@ -188,19 +197,32 @@ class CustomerDisplayHelper {
       })
           .toList();
 
-      // Helper to get correct unit price
       double _getUnitPrice(Map<String, dynamic> p) {
+
+        final type = (p["type"] ?? "").toString().toLowerCase();
+        if (type == "weighted") {
+          final selling = p["price"];
+          if (selling is num && selling > 0) {
+            return selling.toDouble();
+          }
+        }
         final unit = p["unit_price"];
-        if (unit is num) return unit.toDouble();
+        if (unit is num && unit > 0) {
+          return unit.toDouble();
+        }
 
-        final regular = p["regular_price"];
-        if (regular is num) return regular.toDouble();
-
+        final sales = p["sales_price"];
+        if (sales is num && sales > 0) {
+          return sales.toDouble();
+        }
         final price = p["price"];
-        if (price is num) return price.toDouble();
+        if (price is num) {
+          return price.toDouble();
+        }
 
         return 0.0;
       }
+
 
       print("🟢 [CD] PRODUCTS AFTER FILTER:");
       for (var p in products) {
@@ -233,23 +255,28 @@ class CustomerDisplayHelper {
 
           final unitPrice = _getUnitPrice(item);
 
+          final pid = item["product_id"]?.toString() ?? "";
+
+// read from discount_lines instead of item
           final discountMeta =
-          (item["discount_meta"] is Map)
-              ? Map<String, dynamic>.from(item["discount_meta"])
+          discountLines.containsKey(pid)
+              ? Map<String, dynamic>.from(discountLines[pid])
               : {};
-
-          print("""
-🟠 [CD] PARSED DISCOUNT META
-  product : ${item["name"]}
-  meta    : $discountMeta
-""");
-
 
           final double totalDiscount =
               (discountMeta["amount"] as num?)?.toDouble() ?? 0.0;
 
           final double perUnitDiscount =
           qty > 0 ? totalDiscount / qty : 0.0;
+
+          print("""
+🟠 [CD] RESOLVED DISCOUNT
+ product : ${item["name"]}
+ productId : $pid
+ meta : $discountMeta
+ perUnit : $perUnitDiscount
+""");
+
           print("""
 🔴 [CD] RAW PRODUCT ITEM FROM HIVE
   name        : ${item["name"]}
@@ -264,8 +291,9 @@ class CustomerDisplayHelper {
             "qty": qty.toDouble(),
             "price": unitPrice,
             "original_price": unitPrice,
-            "auto_discount": perUnitDiscount, // ✅ REAL VALUE
+            "auto_discount": totalDiscount,
             "discount_type": discountMeta["type"] ?? "",
+            "unit_discount": perUnitDiscount,
             "discount_source": discountMeta["source"] ?? "",
             "rule_id": discountMeta["rule_id"] ?? "",
             "image": item["image"] ?? "",
@@ -273,7 +301,7 @@ class CustomerDisplayHelper {
         }),
 
 
-    ...payouts.map((p) => {
+        ...payouts.map((p) => {
           "name": "Payout",
           "qty": 1.0,
           "price": (p["amount"] ?? 0).toDouble(),
@@ -295,11 +323,9 @@ class CustomerDisplayHelper {
           .fold(0.0, (sum, i) {
         final qty = (i["qty"] as num?)?.toDouble() ?? 1.0;
         final price = (i["price"] as num?)?.toDouble() ?? 0.0;
-        final autoDiscount = (i["auto_discount"] as num?)?.toDouble() ?? 0.0;
+        final totalDiscount = (i["auto_discount"] as num?)?.toDouble() ?? 0.0;
+        return sum + ((price * qty) - totalDiscount);
 
-        final effectiveUnitPrice = price - autoDiscount;
-
-        return sum + (effectiveUnitPrice * qty);
       });
 
 
@@ -360,8 +386,9 @@ class CustomerDisplayHelper {
 
       final double totalItemDiscount = parsedItems.fold(
         0.0,
-            (sum, i) => sum + ((i["auto_discount"] ?? 0.0) * (i["qty"] ?? 1)),
+            (sum, i) => sum + ((i["auto_discount"] ?? 0.0) as num),
       );
+
 
       final String appliedDiscountType = parsedItems
           .map((i) => i["discount_type"])

@@ -1634,6 +1634,58 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
   }
 
+  Future<OrderModel> getOrderdata({required String orderId}) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}?order_id=$orderId";
+
+    if (kDebugMode) {
+      print("OrderRepository.getOrder - GET URL: $url");
+    }
+
+    try {
+      final response = await _helper.get(url, true);
+
+      if (kDebugMode) {
+        print("OrderRepository - Raw Response Type: ${response.runtimeType}");
+        print("OrderRepository - Raw Response: ${response.toString()}");
+      }
+
+      dynamic decoded;
+
+      // Step 1: Decode
+      if (response is String) {
+        decoded = jsonDecode(response);
+      } else {
+        decoded = response;
+      }
+
+      // Step 2: Handle LIST response (Woo format)
+      if (decoded is List) {
+        if (decoded.isEmpty) {
+          throw Exception("Order not found");
+        }
+
+        return OrderModel.fromJson(
+            Map<String, dynamic>.from(decoded.first));
+      }
+
+      // Step 3: Handle direct MAP response (rare)
+      if (decoded is Map<String, dynamic>) {
+        return OrderModel.fromJson(decoded);
+      }
+
+      throw Exception("Unexpected response format: ${decoded.runtimeType}");
+
+    } catch (e, s) {
+      if (kDebugMode) {
+        print("OrderRepository - Error in getOrder: $e");
+        print("Stack trace: $s");
+      }
+      rethrow;
+    }
+  }
+
+
 
   Future<Map<String, dynamic>> syncOfflineDeletedOrders(
       List<Map<String, dynamic>> orders) async {

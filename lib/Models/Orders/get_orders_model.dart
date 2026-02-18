@@ -13,6 +13,8 @@ class OrdersListModel {
   }
 }
 
+
+
 class OrderModel {
   final int id;
   final int parentId;
@@ -108,6 +110,8 @@ class OrderModel {
       }
     }
 
+
+
     final orderDiscountStr = getOrderMetaValue('_discount_amount');
     final orderLevelAutoDiscountAmount = double.tryParse(orderDiscountStr ?? '0') ?? 0.0;
 
@@ -188,6 +192,19 @@ class OrderModel {
         totalCombinedAutoDiscount +
         totalComboDiscount +
         totalDisplayAutoDiscount;
+  }
+  double get cashbackFee {
+    if (feeLines == null || feeLines!.isEmpty) return 0.0;
+
+    for (final fee in feeLines!) {
+      final name = (fee.name ?? '').toLowerCase();
+
+      if (name.contains('cashback')) {
+        return double.tryParse(fee.total ?? '0') ?? 0.0;
+      }
+    }
+
+    return 0.0;
   }
 
   bool get hasMultipackDiscount => totalMultipackDiscount > 0;
@@ -516,6 +533,7 @@ class LineItem {
       return null;
     }
   }
+
 
   bool get hasMultipackDiscount => multipackApplied && multipackDiscountAmount > 0;
   bool get hasAutoDiscount => autoDiscountApplied && autoDiscountAmount > 0;

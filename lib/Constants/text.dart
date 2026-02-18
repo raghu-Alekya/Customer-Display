@@ -288,8 +288,8 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String orderCompleted        = "Order successfully completed";
   static const String orderOnHold           = "Order changed to \'On Hold\'";
   static const String payout                = "Payout"; // Build #1.0.53
-  static const String discountText          = "Discount/Coupon";
-  static const String discountCoupon          = "Discount/Coupon";
+  static const String discountText          = "Coupon";
+  static const String discountCoupon          = "Coupon";
   static const String none                  = "none";
   // static const String customProductText     = "CustomProduct"; // Build #1.0.64
   static const String couponText            = "coupon"; //Build #1.0.68

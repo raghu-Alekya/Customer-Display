@@ -340,7 +340,7 @@
                         android:paddingStart="8dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Discount/Coupon"
+                        android:text="Coupon"
                         android:textColor="#036A07"
                         android:textSize="20sp" />
 
