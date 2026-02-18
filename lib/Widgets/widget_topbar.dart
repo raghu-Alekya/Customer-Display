@@ -1477,7 +1477,7 @@ class _TopBarState extends State<TopBar> {
               final unitPart = parts.length > 1  ? parts[1] : 'lb';
 
               return GestureDetector(
-                onLongPress: _reconnectScale,
+                // onLongPress: _reconnectScale,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
