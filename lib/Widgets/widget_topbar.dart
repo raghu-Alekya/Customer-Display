@@ -1251,139 +1251,177 @@ class _TopBarState extends State<TopBar> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setState) {
-            final isDark =
-                Theme.of(context).brightness == Brightness.dark;
+            final isDark = Theme.of(context).brightness == Brightness.dark;
 
             return Dialog(
-              insetPadding: const EdgeInsets.symmetric(horizontal: 40),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-              backgroundColor:
-              isDark ? const Color(0xFF2F3241) : Colors.white,
-              child: SizedBox(
-                width: 320,
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.lock_outline,
-                            color: Colors.redAccent, size: 30),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        "Authentication Required",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'Inter',
-                          color: isDark ? Colors.white : Colors.black,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        "Enter PIN to open cash drawer",
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontFamily: 'Inter',
-                          color: isDark
-                              ? Colors.white60
-                              : Colors.grey[600],
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 18),
-                      _PinBoxField(
-                          controller: pinController,
-                          hasError: isError),
-                      if (isError) ...[
-                        const SizedBox(height: 8),
-                        const Text(
-                          "You are not authorized to access this feature.",
-                          style: TextStyle(
-                              fontSize: 11, color: Colors.red),
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: isDark
-                                    ? const Color(0xFF50535F)
-                                    : const Color(0xFFE0E0E0),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 10),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius:
-                                    BorderRadius.circular(8)),
-                              ),
-                              onPressed: () =>
-                                  Navigator.pop(ctx, false),
-                              child: Text(
-                                "Cancel",
-                                style: TextStyle(
-                                  color: isDark
-                                      ? Colors.white70
-                                      : Colors.black87,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
+                insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                backgroundColor: isDark
+                    ? const Color(0xFF2F3241)
+                    : Colors.white,
+                child: SizedBox(
+                  width: 320,
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 🔐 Icon
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.15),
+                            shape: BoxShape.circle,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.redAccent,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 10),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius:
-                                    BorderRadius.circular(8)),
-                              ),
-                              onPressed: () async {
-                                final pin =
-                                pinController.text.trim();
-                                if (pin.length != 6) {
-                                  setState(() => isError = true);
-                                  return;
-                                }
-                                setState(() => isError = false);
-                                Navigator.pop(ctx, true);
-                              },
-                              child: const Text(
-                                "Confirm",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                          child: const Icon(
+                            Icons.lock_outline,
+                            color: Colors.redAccent,
+                            size: 30,
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        Text(
+                          "Authentication Required ",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'Inter',
+                            color: isDark ? Colors.white : Colors.black,
+                          ),
+                        ),
+
+                        const SizedBox(height: 6),
+
+                        Text(
+                          "Enter PIN to open cash drawer",
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Inter',
+                            color: isDark
+                                ? Colors.white60
+                                : Colors.grey[600],
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        // 🔢 PIN BOXES
+                        _PinBoxField(
+                          controller: pinController,
+                          hasError: isError,
+                        ),
+
+                        if (isError) ...[
+                          const SizedBox(height: 8),
+                          const Text(
+                            "You are not authorized to access this feature.",
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.red,
                             ),
                           ),
                         ],
-                      ),
-                    ],
+
+                        const SizedBox(height: 20),
+
+                        // 🔘 ACTION BUTTONS
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isDark
+                                      ? const Color(0xFF50535F)
+                                      : const Color(0xFFE0E0E0),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 10,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: Text(
+                                  "Cancel",
+                                  style: TextStyle(
+                                    color: isDark ? Colors.white70 : Colors.black87,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.redAccent,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 10,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                onPressed: () async {
+                                  final pin = pinController.text.trim();
+
+                                  if (pin.length != 6) {
+                                    setState(() => isError = true);
+                                    return;
+                                  }
+
+                                  setState(() => isError = false);
+
+                                  try {
+                                    final response =
+                                    await OrderRepository().validateLoginPin(pin); // ✅ positional
+
+                                    final decoded = json.decode(response);
+
+                                    if (decoded["success"] == true) {
+                                      Navigator.pop(ctx, true);
+                                    } else {
+                                      setState(() => isError = true);
+                                      pinController.clear();
+                                    }
+                                  } catch (e) {
+                                    setState(() => isError = true);
+                                    pinController.clear();
+                                  }
+                                },
+
+
+                                child: const Text(
+                                  "Confirm",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                      ],
+                    ),
                   ),
-                ),
-              ),
-            );
+                ));
           },
         );
       },
     ) ??
         false;
   }
-
   // ══════════════════════════════════════════════════════════════════════
   // BUILD
   // ══════════════════════════════════════════════════════════════════════
