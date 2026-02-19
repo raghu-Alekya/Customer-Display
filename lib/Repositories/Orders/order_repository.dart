@@ -113,7 +113,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       int totalSeconds =
           now.hour * 3600 + now.minute * 60 + now.second;
       String secondPart =
-          (totalSeconds % 100).toString().padLeft(2, '0');
+      (totalSeconds % 100).toString().padLeft(2, '0');
       String msPart = (now.millisecond % 100).toString().padLeft(2, '0');
       String suffix = attempt > 0 ? attempt.toString() : '';
       String finalOrderIdStr = "$yearPart$dayPart$secondPart$msPart$suffix";
@@ -786,32 +786,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         debugPrint("❌ Cannot load payments → local order id missing");
       }
 
-      // 🔥 ALWAYS SYNC FRESH HIVE COPY (CRITICAL FIX)
-      final box = StorageProvider.offlineOrders;
-
-      final localId =
-          offlineOrder['id']?.toString() ??
-              offlineOrder['order_id']?.toString();
-
-      if (localId != null) {
-        final fresh = await box.get(localId);
-        if (fresh != null) {
-          offlineOrder = Map<String, dynamic>.from(fresh);
-
-          debugPrint("🧠 SYNC USING FRESH HIVE ORDER: $localId");
-
-          // 🟢 PRINT COMPLETE ORDER (FORMATTED)
-          const encoder = JsonEncoder.withIndent('  ');
-          debugPrint("🟩🟩🟩 FULL HIVE ORDER START 🟩🟩🟩");
-          debugPrint(encoder.convert(offlineOrder));
-          debugPrint("🟩🟩🟩 FULL HIVE ORDER END 🟩🟩🟩");
-
-        } else {
-          debugPrint("⚠️ Hive order not found, using passed object");
-        }
-      }
-
-
       final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
       final int? existingWooOrderId =
       wooOrderIdRaw != null ? int.tryParse(wooOrderIdRaw.toString()) : null;
@@ -829,7 +803,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           }
         });
       }
-
 
       final bool isUpdate =
           existingWooOrderId != null && existingWooOrderId > 0;

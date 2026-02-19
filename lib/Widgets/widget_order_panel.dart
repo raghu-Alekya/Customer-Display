@@ -1133,7 +1133,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // ---------------------------------------------------------------------------
             try {
               if (product == null) {
-                final cached = await productBox.get(cacheKey);
+                final cached = await productBox.get(cacheKey); // <-- await here
 
                 if (cached != null) {
                   if (kDebugMode) {
@@ -1148,7 +1148,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                   List<dynamic> items = [];
 
                   if (cached is Map && cached["products"] is List) {
-                    items = cached["products"];
+                    items = List<dynamic>.from(cached["products"]); // safe copy
                   }
 
                   if (items.isNotEmpty) {
@@ -1178,30 +1178,47 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               print("📌 STACKTRACE → $s");
             }
 
+
             // ---------------------------------------------------------------------------
             // 3️⃣ CUSTOM ITEM → Increment quantity if already in order
             // ---------------------------------------------------------------------------
             try {
-              final offlineBox = StorageProvider.offlineOrders;
+              final offlineBox =   StorageProvider.offlineOrders;
               final raw = await offlineBox.get(activeOrderId.toString());
 
               if (raw != null) {
                 List<Map<String, dynamic>> orderProducts =
                 List<Map<String, dynamic>>.from(raw["products"] ?? []);
 
-                // Match by SKU (unique per variant) to merge quantity on scan
-                final existingIndex = orderProducts.indexWhere((p) {
-                  final raw = (p["sku"] ?? "").toString();
-                  final stored = normalizeSku(raw);
-                  return stored == trimmedBarcode ||
-                      raw == trimmedBarcode ||
-                      raw.toLowerCase() == trimmedBarcode.toLowerCase();
-                });
+                final int? selectedVariationId =
+                null; // no variant selected yet
 
+                final existingIndex = orderProducts.indexWhere((p) =>
+                normalizeSku(p["sku"]) == trimmedBarcode &&
+                    (p["variation_id"] == null ||
+                        p["variation_id"] == selectedVariationId));
+
+                // 🚫 DO NOT AUTO-INCREMENT IF PRODUCT HAS VARIANTS
                 if (existingIndex != -1) {
-                  // Add/update quantity when same product found
-                  orderProducts[existingIndex]["quantity"] =
-                      (orderProducts[existingIndex]["quantity"] ?? 1) + 1;
+                  final existingItem = orderProducts[existingIndex];
+
+                  // 🔐 Determine if this is a variant product
+                  final bool hasVariantInProduct =
+                  (product?.variations?.isNotEmpty ?? false);
+
+                  final bool hasVariantInOrder =
+                      existingItem["variation_id"] != null;
+
+                  // ❌ STOP auto-increment if ANY variant exists
+                  if (hasVariantInProduct || hasVariantInOrder) {
+                    if (kDebugMode) {
+                      print("🚫 Variant detected — skipping auto increment");
+                    }
+                    return;
+                  }
+
+                  // ✅ SAFE TO AUTO-INCREMENT (simple product only)
+                  orderProducts[existingIndex]["quantity"] += 1;
 
                   await offlineBox.put(activeOrderId.toString(), {
                     ...raw,
@@ -1226,10 +1243,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             // ---------------------------------------------------------------------------
             try {
               if (product == null) {
-                final allData = await productBox.get("all_products_list");
+                final allData = productBox.get("all_products_list");
 
                 if (allData is List) {
-                  for (var item in allData) {
+                  for (var item in await allData) {
                     final p = SKU.ProductBySkuResponse.fromJson({
                       "products": [deepCast(item)]
                     });
@@ -1386,12 +1403,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             }
             // SKIP POPUP IF PRODUCT ALREADY EXISTS IN ORDERPANEL
 // ------------------------------------------------------------
-            final bool exists = activeOrderId != null
-                ? await OrderHelper.existsInOrderBySku(
-              activeOrderId!,
+            final bool exists = await OrderHelper.existsInOrderBySku(
+              activeOrderId,
               productSku,
-            )
-                : false;
+            );
 
             // ---------------------------------------------------------------------------
 // ⭐ FINAL EBT ELIGIBILITY CHECK (NOW PRODUCT IS LOADED) ✅
@@ -1498,11 +1513,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                 // / ⭐ FIX: MARK VARIABLE PRICE AS ALREADY ADDED
 // ------------------------------------------------------------
                 // ⭐ FIX: MARK VARIABLE PRICE AS ALREADY ADDED
-                final box = StorageProvider.offlineOrders;
+                final box =  StorageProvider.offlineOrders;
                 final orderKey = activeOrderId.toString();
-                final rawOrder = await box.get(orderKey);
                 final hiveOrder = Map<String, dynamic>.from(
-                  rawOrder is Map ? rawOrder : {},
+                  await box.get(orderKey),
                 );
 
 // Mark that popup has been shown once
@@ -1546,7 +1560,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               print("Product Scanned: ID=${product.id}, Name=${product.name}");
             }
 
-            // PRODUCE (WEIGHED ITEMS) HANDLING
+            //PRODUCE (WEIGHED ITEMS) HANDLING
             final bool hasProduceTag = (product?.tags ?? []).any((t) {
               final name = (t.name  ?? "").toString().toLowerCase().trim();
               final slug = (t.slug ?? "").toString().toLowerCase().trim();
@@ -1610,6 +1624,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
               return; // critical: prevent normal quantity=1 addition below
             }
+//
 
 // ------------------------------------------------------
 // 1️⃣ INIT
@@ -1679,19 +1694,19 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // ------------------------------------------------------
 // 4️⃣ LOAD ORDER DATA (Hive)
 // ------------------------------------------------------
-            final hiveBox = StorageProvider.offlineOrders;
+            final hiveBox =  StorageProvider.offlineOrders;
             final orderKey = orderHelper.activeOrderId.toString();
 
-// Ensure order exists
-            if (!(await hiveBox.containsKey(orderKey))) {
+            // Ensure order exists
+            if (!await hiveBox.containsKey(orderKey)) {
               await hiveBox.put(orderKey, {
                 "age_verified": false,
               });
             }
 
-            final rawHive = await hiveBox.get(orderKey);
+
             final Map<String, dynamic> hiveOrder =
-            Map<String, dynamic>.from(rawHive is Map ? rawHive : {});
+            Map<String, dynamic>.from(await hiveBox.get(orderKey));
 
 // ------------------------------------------------------
 // 5️⃣ CHECK IF ALREADY VERIFIED

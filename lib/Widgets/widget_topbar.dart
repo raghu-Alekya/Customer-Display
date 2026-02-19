@@ -38,18 +38,56 @@ import 'OrderPopupHelper.dart';
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 
 // ══════════════════════════════════════════════════════════════════════════════
+// SCALE DEVICE TABLE — Datalogic / Magellan + common serial chips
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// All known VID/PID combos for scales and USB-Serial adapters used with
+/// Datalogic Magellan scanner/scales (and other retail scale brands).
+const _knownScaleVidPids = [
+  // ── Datalogic / Magellan native ─────────────────────────────────────
+  {'vid': 0x05F9, 'pid': 0x1100},
+  {'vid': 0x05F9, 'pid': 0x1101},
+  {'vid': 0x05F9, 'pid': 0x1102},
+  {'vid': 0x05F9, 'pid': 0x1103},
+  {'vid': 0x05F9, 'pid': 0x1104}, // Magellan 800i / 1100i / 9800i
+  {'vid': 0x05F9, 'pid': 0x2202}, // Magellan 9800i / Digimarc
+  {'vid': 0x05F9, 'pid': 0x4204},
+  // ── FTDI FT232R / FT231X (most common Magellan USB-Serial cable) ─────
+  {'vid': 0x0403, 'pid': 0x6001}, // FT232R        (dec: vid=1027, pid=24577)
+  {'vid': 0x0403, 'pid': 0x6010},
+  {'vid': 0x0403, 'pid': 0x6011},
+  {'vid': 0x0403, 'pid': 0xB0C4}, // your detected (dec: vid=1027, pid=45249)
+  // ── Prolific PL2303 ──────────────────────────────────────────────────
+  {'vid': 0x067B, 'pid': 0x2303},
+  {'vid': 0x067B, 'pid': 0x2304},
+  // ── Silicon Labs CP210x ──────────────────────────────────────────────
+  {'vid': 0x10C4, 'pid': 0xEA60},
+  {'vid': 0x10C4, 'pid': 0xEA70},
+  // ── WinChipHead CH340 / CH341 ────────────────────────────────────────
+  {'vid': 0x1A86, 'pid': 0x7523},
+  {'vid': 0x1A86, 'pid': 0x5523},
+];
+
+/// Name keywords that suggest a device is a scale or serial adapter.
+const _scaleKeywords = [
+  'magellan', 'datalogic', 'digimarc', 'scale', 'scanner',
+  'serial', 'converter', 'uart', 'ftdi', 'prolific', 'silabs', 'ch340',
+];
+
+/// Baud rates to try — 9600 is the Magellan/retail standard.
+const _scaleBaudRates = [9600, 4800, 19200, 38400];
+
+/// Hard timeout per open() / create() call so we never hang on a bad port.
+const _connectTimeout = Duration(seconds: 5);
+
+/// How long to wait for the first byte to confirm the correct baud rate.
+/// Prevents locking onto the wrong port in a USB hub with many devices.
+const _dataWaitTimeout = Duration(seconds: 3);
+
+// ══════════════════════════════════════════════════════════════════════════════
 // 7-SEGMENT LCD DISPLAY  — no font file needed, pure CustomPainter
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// Draws a single 7-segment digit.
-/// Segments are labelled:
-///   aaa
-///  f   b
-///  f   b
-///   ggg
-///  e   c
-///  e   c
-///   ddd
 class _SegmentPainter extends CustomPainter {
   final String char;
   final Color onColor;
@@ -63,8 +101,6 @@ class _SegmentPainter extends CustomPainter {
     this.strokeW = 3.0,
   });
 
-  // Which segments are ON for each character
-  // Segments: [a, b, c, d, e, f, g]  (top, top-right, bot-right, bot, bot-left, top-left, mid)
   static const Map<String, List<bool>> _segments = {
     '0': [true,  true,  true,  true,  true,  true,  false],
     '1': [false, true,  true,  false, false, false, false],
@@ -76,14 +112,13 @@ class _SegmentPainter extends CustomPainter {
     '7': [true,  true,  true,  false, false, false, false],
     '8': [true,  true,  true,  true,  true,  true,  true ],
     '9': [true,  true,  true,  true,  false, true,  true ],
-    '.': [false, false, false, false, false, false, false], // dot handled separately
+    '.': [false, false, false, false, false, false, false],
     '-': [false, false, false, false, false, false, true ],
     ' ': [false, false, false, false, false, false, false],
   };
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Dot character — just a filled circle at bottom-right
     if (char == '.') {
       final dotR = strokeW * 1.1;
       canvas.drawCircle(
@@ -98,8 +133,7 @@ class _SegmentPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
     final s = strokeW;
-    final gap = s * 0.55;   // gap between segment ends and corners
-    final cap = StrokeCap.round;
+    final gap = s * 0.55;
 
     void seg(bool on, Offset p1, Offset p2) {
       canvas.drawLine(
@@ -107,26 +141,19 @@ class _SegmentPainter extends CustomPainter {
         Paint()
           ..color       = on ? onColor : offColor
           ..strokeWidth = s
-          ..strokeCap   = cap
+          ..strokeCap   = StrokeCap.round
           ..style       = PaintingStyle.stroke,
       );
     }
 
     final mid = h / 2;
-    // a – top horizontal
-    seg(segs[0], Offset(gap + s * 0.5, s * 0.5),          Offset(w - gap - s * 0.5, s * 0.5));
-    // b – top-right vertical
-    seg(segs[1], Offset(w - s * 0.5, gap + s * 0.5),      Offset(w - s * 0.5, mid - gap));
-    // c – bot-right vertical
-    seg(segs[2], Offset(w - s * 0.5, mid + gap),           Offset(w - s * 0.5, h - gap - s * 0.5));
-    // d – bottom horizontal
-    seg(segs[3], Offset(gap + s * 0.5, h - s * 0.5),       Offset(w - gap - s * 0.5, h - s * 0.5));
-    // e – bot-left vertical
-    seg(segs[4], Offset(s * 0.5, mid + gap),                Offset(s * 0.5, h - gap - s * 0.5));
-    // f – top-left vertical
-    seg(segs[5], Offset(s * 0.5, gap + s * 0.5),           Offset(s * 0.5, mid - gap));
-    // g – middle horizontal
-    seg(segs[6], Offset(gap + s * 0.5, mid),                Offset(w - gap - s * 0.5, mid));
+    seg(segs[0], Offset(gap + s * 0.5, s * 0.5),         Offset(w - gap - s * 0.5, s * 0.5));
+    seg(segs[1], Offset(w - s * 0.5, gap + s * 0.5),     Offset(w - s * 0.5, mid - gap));
+    seg(segs[2], Offset(w - s * 0.5, mid + gap),          Offset(w - s * 0.5, h - gap - s * 0.5));
+    seg(segs[3], Offset(gap + s * 0.5, h - s * 0.5),      Offset(w - gap - s * 0.5, h - s * 0.5));
+    seg(segs[4], Offset(s * 0.5, mid + gap),               Offset(s * 0.5, h - gap - s * 0.5));
+    seg(segs[5], Offset(s * 0.5, gap + s * 0.5),          Offset(s * 0.5, mid - gap));
+    seg(segs[6], Offset(gap + s * 0.5, mid),               Offset(w - gap - s * 0.5, mid));
   }
 
   @override
@@ -134,8 +161,6 @@ class _SegmentPainter extends CustomPainter {
       old.char != char || old.onColor != onColor;
 }
 
-/// Renders a string as a row of 7-segment LCD digits.
-/// Pass any mix of 0-9, '.', '-', ' '.
 class SevenSegmentDisplay extends StatelessWidget {
   final String text;
   final double digitHeight;
@@ -154,7 +179,6 @@ class SevenSegmentDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Dot is narrow; regular digits are ~0.6× height wide
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: text.split('').map((ch) {
@@ -296,18 +320,20 @@ class _TopBarState extends State<TopBar> {
 
   bool _dialogOpen = false;
 
-  // ── SCALE CONNECTION ────────────────────────────────────────────────
+  // ── SCALE CONNECTION ────────────────────────────────────────────────────────
   UsbPort? _port;
-  String _scaleStatus = 'Disconnected';
-  String _rawScaleData = '';
-  final _buffer = <int>[];
   StreamSubscription<Uint8List>? _subscription;
-  bool _isConnecting = false;
+  final _scaleBuffer = <int>[];
 
-  // ✅ FIX: cached provider reference — safe to use in dispose() and async gaps
+  bool _isConnecting = false;
+  String _scaleStatus = 'Disconnected';   // for internal logging / debug
+  String _connectedDeviceName = '';
+
+  /// Cached WeightProvider — safe to use from dispose() and async gaps
+  /// (never call Provider.of after an await gap).
   WeightProvider? _weightProvider;
 
-  // ── CACHED USER DATA ────────────────────────────────────────────────
+  // ── CACHED USER DATA ────────────────────────────────────────────────────────
   static Map<String, dynamic>? _cachedUserData;
   static bool _isUserDataLoaded = false;
   static Future<Map<String, dynamic>?>? _initialUserFuture;
@@ -319,7 +345,8 @@ class _TopBarState extends State<TopBar> {
     if (kDebugMode) print("🧹 TopBar user data cache cleared");
   }
 
-  // ────────────────────────────────────────────────────────────────────
+  // ── LIFECYCLE ───────────────────────────────────────────────────────────────
+
   @override
   void initState() {
     super.initState();
@@ -331,19 +358,18 @@ class _TopBarState extends State<TopBar> {
 
     _loadCachedProducts();
 
-    // ✅ FIX: defer Provider.of until after first build so context is ready
+    // Defer Provider access until after first build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _weightProvider = Provider.of<WeightProvider>(context, listen: false);
       _connectToScale();
     });
 
-    // Load user data only once
     if (!_isUserDataLoaded) {
       _initialUserFuture = UserDbHelper().getUserData();
       _initialUserFuture!.then((userData) {
-        _cachedUserData = userData;
-        _isUserDataLoaded = true;
+        _cachedUserData    = userData;
+        _isUserDataLoaded  = true;
         if (userData != null) {
           userId          = userData[AppDBConst.userId] as int?;
           userDisplayName = userData[AppDBConst.userDisplayName] as String?;
@@ -369,17 +395,16 @@ class _TopBarState extends State<TopBar> {
     _searchFocusNode.dispose();
     _orderBloc.dispose();
     _removeOverlay();
-    _disconnectScaleSafe(); // ✅ FIX: safe — never touches context
+    _disconnectScaleSafe(); // safe: uses cached _weightProvider, not context
     super.dispose();
   }
 
-  // ══════════════════════════════════════════════════════════════════════
-  // SCALE METHODS
-  // ══════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SCALE — CONNECTION
+  // ══════════════════════════════════════════════════════════════════════════════
 
   Future<void> _connectToScale() async {
     if (_isConnecting || _port != null) return;
-
     if (mounted) setState(() {
       _isConnecting = true;
       _scaleStatus  = 'Scanning devices...';
@@ -387,153 +412,238 @@ class _TopBarState extends State<TopBar> {
 
     try {
       final devices = await UsbSerial.listDevices();
-      print('🔍 USB devices found: ${devices.length}');
+      _scaleLog('🔍 Found ${devices.length} USB device(s)');
       for (final d in devices) {
-        print('  • ${d.productName}  VID:${d.vid}  PID:${d.pid}');
+        _scaleLog('  • ${d.productName ?? "unknown"}'
+            '  VID:0x${d.vid?.toRadixString(16).toUpperCase().padLeft(4, "0")}'
+            '  PID:0x${d.pid?.toRadixString(16).toUpperCase().padLeft(4, "0")}');
       }
 
       if (devices.isEmpty) {
+        _scaleLog('❌ No USB devices found.');
         if (mounted) setState(() {
-          _scaleStatus  = 'No USB devices found';
+          _scaleStatus  = 'No USB devices';
           _isConnecting = false;
         });
         return;
       }
 
-      // Prefer scale by name, then VID/PID, then first device
-      UsbDevice? scaleDevice;
+      // ── Rank devices into 3 priority buckets ─────────────────────────────
+      // P1 = exact VID/PID match  (most reliable)
+      // P2 = product-name keyword match
+      // P3 = everything else on the hub (last-resort brute-force)
+
+      final p1 = <UsbDevice>[];
+      final p2 = <UsbDevice>[];
+      final p3 = <UsbDevice>[];
+
       for (final d in devices) {
-        final name = d.productName?.toLowerCase() ?? '';
-        if (name.contains('usb serial') || name.contains('converter')) {
-          scaleDevice = d;
-          break;
+        final isKnown = _knownScaleVidPids
+            .any((e) => e['vid'] == d.vid && e['pid'] == d.pid);
+        final name      = (d.productName ?? '').toLowerCase();
+        final nameMatch = _scaleKeywords.any(name.contains);
+
+        if (isKnown)       p1.add(d);
+        else if (nameMatch) p2.add(d);
+        else                p3.add(d);
+      }
+
+      _scaleLog('📋 Priority — P1:${p1.length} P2:${p2.length} P3(fallback):${p3.length}');
+
+      // ── Try in priority order; stop at first success ──────────────────────
+      for (final d in [...p1, ...p2, ...p3]) {
+        // Unknown devices (P3) only try 9600 to keep scan fast on hubs
+        final bauds = p3.contains(d) ? [9600] : _scaleBaudRates;
+        for (final baud in bauds) {
+          final ok = await _tryConnectDevice(d, baud);
+          if (ok) return; // ✅ connected
         }
       }
-      if (scaleDevice == null) {
-        for (final d in devices) {
-          if (d.vid == 1027 && d.pid == 24577) {
-            scaleDevice = d;
-            break;
-          }
-        }
-      }
-      scaleDevice ??= devices.first;
 
-      _port = await scaleDevice.create();
-      if (_port == null) {
-        if (mounted) setState(() {
-          _scaleStatus  = 'Failed to create port';
-          _isConnecting = false;
-        });
-        return;
-      }
+      _scaleLog('❌ Could not connect to any device.');
+      if (mounted) setState(() => _scaleStatus = 'Not connected');
 
-      final opened = await _port!.open();
-      if (!opened) {
-        if (mounted) setState(() {
-          _scaleStatus  = 'Failed to open port';
-          _isConnecting = false;
-        });
-        return;
-      }
-
-      await _port!.setPortParameters(
-        9600,
-        UsbPort.DATABITS_8,
-        UsbPort.STOPBITS_1,
-        UsbPort.PARITY_NONE,
-      );
-      await _port!.setDTR(true);
-      await _port!.setRTS(true);
-
-      _buffer.clear();
-      _rawScaleData = '';
-
-      // ✅ FIX: use cached _weightProvider — no Provider.of after async gap
-      _weightProvider?.setConnected(true);
-
-      _subscription = _port!.inputStream!.listen(
-            (Uint8List data) {
-          _buffer.addAll(data);
-          while (_buffer.isNotEmpty) {
-            final idx = _buffer.indexOf(0x0A);
-            if (idx == -1) break;
-            final frame = _buffer.sublist(0, idx + 1);
-            _buffer.removeRange(0, idx + 1);
-            final line = String.fromCharCodes(frame).trim();
-            if (line.isNotEmpty) {
-              if (mounted) setState(() => _rawScaleData = line);
-              _parseAndUpdateWeight(line);
-            }
-          }
-        },
-        onError: (e) {
-          print('⚠️ Scale stream error: $e');
-          if (mounted) setState(() => _scaleStatus = 'Stream error: $e');
-          _weightProvider?.setConnected(false);
-        },
-        onDone: () {
-          print('ℹ️ Scale stream closed');
-          if (mounted) setState(() => _scaleStatus = 'Stream closed');
-          _weightProvider?.setConnected(false);
-        },
-      );
-
-      if (mounted) setState(() {
-        _scaleStatus  = 'Connected';
-        _isConnecting = false;
-      });
-      print('✅ Scale connected: ${scaleDevice.productName}');
-
-    } catch (e) {
-      print('❌ Scale connection failed: $e');
-      if (mounted) setState(() {
-        _scaleStatus  = 'Connection failed: $e';
-        _isConnecting = false;
-      });
-      _weightProvider?.setConnected(false);
+    } catch (e, st) {
+      _scaleLog('❌ Scan error: $e');
+      debugPrint('$st');
+      if (mounted) setState(() => _scaleStatus = 'Scan error: $e');
+    } finally {
+      if (mounted) setState(() => _isConnecting = false);
     }
   }
 
-  double _kgToLb(double kg) => kg * 2.20462;
+  /// Try opening [device] at [baud].
+  /// Waits up to [_dataWaitTimeout] for actual bytes before committing.
+  /// Returns true only when data starts flowing (confirms correct device/baud).
+  Future<bool> _tryConnectDevice(UsbDevice device, int baud) async {
+    final label = '${device.productName ?? "device"} @ $baud';
+    _scaleLog('🔌 Trying $label...');
+
+    UsbPort? port;
+    try {
+      // ── Create port ──────────────────────────────────────────────────────
+      port = await device.create().timeout(
+        _connectTimeout,
+        onTimeout: () { _scaleLog('  ⏱ Timeout creating port'); return null; },
+      );
+      if (port == null) { _scaleLog('  ❌ create() returned null'); return false; }
+
+      // ── Open port ────────────────────────────────────────────────────────
+      final opened = await port.open().timeout(
+        _connectTimeout,
+        onTimeout: () { _scaleLog('  ⏱ Timeout opening port'); return false; },
+      );
+      if (!opened) {
+        _scaleLog('  ❌ open() returned false');
+        await _safeClosePort(port);
+        return false;
+      }
+
+      // ── Configure serial params ──────────────────────────────────────────
+      await port.setPortParameters(
+        baud,
+        UsbPort.DATABITS_8,
+        UsbPort.STOPBITS_1,
+        UsbPort.PARITY_NONE,
+      ).timeout(_connectTimeout);
+
+      // DTR + RTS required by many Magellan models to start sending weight data
+      await port.setDTR(true);
+      await port.setRTS(true);
+
+      _scaleBuffer.clear();
+
+      // ── Wait for first byte — confirms correct device + baud ─────────────
+      // This is the key fix for USB hubs: we don't commit until data flows.
+      final dataCompleter = Completer<bool>();
+      final probeSub = port.inputStream?.listen((data) {
+        if (!dataCompleter.isCompleted && data.isNotEmpty) {
+          dataCompleter.complete(true);
+        }
+      });
+
+      final gotData = await dataCompleter.future
+          .timeout(_dataWaitTimeout, onTimeout: () => false);
+
+      await probeSub?.cancel();
+
+      if (!gotData) {
+        _scaleLog('  ⚠️ No data at $baud baud — skipping.');
+        await _safeClosePort(port);
+        return false;
+      }
+
+      // ── Confirmed — set up real subscription ─────────────────────────────
+      await _subscription?.cancel();
+      _scaleBuffer.clear();
+
+      _subscription = port.inputStream?.listen(
+        _onScaleData,
+        onError: (e) {
+          _scaleLog('❌ Stream error: $e');
+          _weightProvider?.setConnected(false);
+          if (mounted) setState(() => _scaleStatus = 'Stream error');
+        },
+        onDone: () {
+          _scaleLog('⚠️ Stream closed.');
+          _weightProvider?.setConnected(false);
+          if (mounted) setState(() => _scaleStatus = 'Disconnected');
+        },
+        cancelOnError: false,
+      );
+
+      _port                = port;
+      _connectedDeviceName = device.productName ?? 'Scale';
+      _weightProvider?.setConnected(true);
+
+      if (mounted) setState(() => _scaleStatus = 'Connected: $_connectedDeviceName');
+      _scaleLog('✅ Connected: $label');
+      return true;
+
+    } on TimeoutException {
+      _scaleLog('  ⏱ Connection timed out: $label');
+      await _safeClosePort(port);
+      if (_port == port) _port = null;
+      return false;
+    } catch (e) {
+      _scaleLog('  ❌ Exception: $e');
+      await _safeClosePort(port);
+      if (_port == port) _port = null;
+      return false;
+    }
+  }
+
+  Future<void> _safeClosePort(UsbPort? port) async {
+    try { await port?.close(); } catch (_) {}
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SCALE — DATA PARSING
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  void _onScaleData(Uint8List data) {
+    _scaleBuffer.addAll(data);
+
+    // ── Newline-terminated frames (standard RS-232 scale protocol) ───────────
+    while (true) {
+      final idx = _scaleBuffer.indexOf(0x0A); // LF
+      if (idx == -1) break;
+      final frame = _scaleBuffer.sublist(0, idx + 1);
+      _scaleBuffer.removeRange(0, idx + 1);
+      final line = String.fromCharCodes(frame).trim();
+      if (line.isNotEmpty) {
+        _scaleLog('📦 $line');
+        _parseAndUpdateWeight(line);
+      }
+    }
+
+    // ── Fixed-width frames without LF (some Magellan firmware versions) ──────
+    if (_scaleBuffer.length > 64) {
+      final line = String.fromCharCodes(_scaleBuffer).trim();
+      _scaleBuffer.clear();
+      if (line.isNotEmpty) {
+        _scaleLog('📦 (raw) $line');
+        _parseAndUpdateWeight(line);
+      }
+    }
+  }
 
   void _parseAndUpdateWeight(String raw) {
     final clean = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
-    print('🔵 Raw scale data: "$clean"');
 
-    // Primary: number + unit
-    final match = RegExp(
+    // ── "1.234 kg" / "2.50 lb" / "12.0 oz" ──────────────────────────────────
+    final unitMatch = RegExp(
       r'([+-]?\d*\.?\d+)\s*(kg|g|lb|oz)',
       caseSensitive: false,
     ).firstMatch(clean);
 
-    if (match != null) {
-      final value = double.tryParse(match.group(1) ?? '');
-      final unit  = match.group(2)?.toLowerCase() ?? 'kg';
+    if (unitMatch != null) {
+      final value = double.tryParse(unitMatch.group(1) ?? '');
+      final unit  = unitMatch.group(2)?.toLowerCase() ?? 'kg';
       if (value != null) {
-        final double kg          = _convertToKg(value, unit);
-        final double lb          = _kgToLb(kg);
-        final String displayText = '${lb.toStringAsFixed(3)} lb';
-        print('✅ Parsed: $value $unit → $kg kg → $displayText');
+        final kg          = _convertToKg(value, unit);
+        final lb          = kg * 2.20462;
+        final displayText = '${lb.toStringAsFixed(3)} lb';
+        _scaleLog('✅ $value $unit → $kg kg → $displayText');
         _weightProvider?.updateWeight(kg, displayText: displayText);
         return;
       }
     }
 
-    // Fallback: bare number — assume kg
+    // ── Bare number (Magellan SASI/OSD): "  2.500" — assume kg ──────────────
     final numMatch = RegExp(r'([+-]?\d*\.?\d+)').firstMatch(clean);
     if (numMatch != null) {
       final value = double.tryParse(numMatch.group(1) ?? '');
       if (value != null && value >= 0) {
-        final double lb          = _kgToLb(value);
-        final String displayText = '${lb.toStringAsFixed(3)} lb';
-        print('⚠️ No unit found, assuming kg: $value → $displayText');
+        final lb          = value * 2.20462;
+        final displayText = '${lb.toStringAsFixed(3)} lb';
+        _scaleLog('⚠️ No unit — assuming kg: $value → $displayText');
         _weightProvider?.updateWeight(value, displayText: displayText);
         return;
       }
     }
 
-    print('❌ Cannot parse weight from: "$clean"');
+    _scaleLog('❌ Cannot parse: "$clean"');
   }
 
   double _convertToKg(double value, String unit) {
@@ -546,20 +656,29 @@ class _TopBarState extends State<TopBar> {
     }
   }
 
-  /// Safe disconnect — uses cached _weightProvider, never context.
-  /// Call this from dispose() or anywhere after the widget may be gone.
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SCALE — CONNECT / DISCONNECT HELPERS
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  void _scaleLog(String msg) {
+    if (kDebugMode) print(msg);
+  }
+
+  /// Fully safe disconnect — uses cached [_weightProvider], never touches context.
+  /// Call from dispose() or after async gaps.
   Future<void> _disconnectScaleSafe() async {
     await _subscription?.cancel();
     _subscription = null;
-    await _port?.close();
+    await _safeClosePort(_port);
     _port = null;
     _weightProvider?.setConnected(false);
     _weightProvider?.updateWeight(0.0);
   }
 
-  /// Public disconnect — also updates local state. Use for reconnect flows.
+  /// Full disconnect + state update. Use for reconnect flows.
   Future<void> _disconnectScale() async {
     await _disconnectScaleSafe();
+    _connectedDeviceName = '';
     if (mounted) setState(() => _scaleStatus = 'Disconnected');
   }
 
@@ -568,13 +687,11 @@ class _TopBarState extends State<TopBar> {
     await _connectToScale();
   }
 
-  // ══════════════════════════════════════════════════════════════════════
-  // PRODUCT / SEARCH METHODS
-  // ══════════════════════════════════════════════════════════════════════
+
 
   Future<void> _loadCachedProducts() async {
     try {
-      final repo = CategoryRepository();
+      final repo     = CategoryRepository();
       final products = await repo.getAllCachedProducts();
       setState(() {
         _cachedProducts = products;
@@ -608,22 +725,11 @@ class _TopBarState extends State<TopBar> {
 
   void _onSearchChanged() {
     if (_debounce?.isActive ?? false) _debounce?.cancel();
-
     _debounce = Timer(const Duration(milliseconds: 350), () {
       final query = _searchController.text.toLowerCase();
-
-      if (query.isEmpty) {
-        _removeOverlay();
-        setState(() {});
-        return;
-      }
-
-      if (_overlayEntry == null) {
-        _showSearchResultsOverlay();
-      } else {
-        _overlayEntry?.markNeedsBuild();
-      }
-
+      if (query.isEmpty) { _removeOverlay(); setState(() {}); return; }
+      if (_overlayEntry == null) _showSearchResultsOverlay();
+      else _overlayEntry?.markNeedsBuild();
       setState(() {});
     });
   }
@@ -637,11 +743,8 @@ class _TopBarState extends State<TopBar> {
 
   void _showSearchResultsOverlay() {
     if (_overlayEntry != null || _dialogOpen) return;
-
-    final box =
-    _searchFieldKey.currentContext?.findRenderObject() as RenderBox?;
+    final box = _searchFieldKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
-
     final offset = box.localToGlobal(Offset.zero);
     final size   = box.size;
 
@@ -653,16 +756,13 @@ class _TopBarState extends State<TopBar> {
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
-                onTap: () {
-                  _removeOverlay();
-                  _searchFocusNode.unfocus();
-                },
+                onTap: () { _removeOverlay(); _searchFocusNode.unfocus(); },
               ),
             ),
             Positioned(
               width: size.width,
-              left: offset.dx,
-              top: offset.dy + size.height,
+              left:  offset.dx,
+              top:   offset.dy + size.height,
               child: Material(
                 elevation: 6,
                 child: Container(
@@ -684,20 +784,17 @@ class _TopBarState extends State<TopBar> {
         );
       },
     );
-
     Overlay.of(context).insert(_overlayEntry!);
   }
 
   Widget _buildLocalResultsList() {
     final query = _searchController.text.toLowerCase();
-
     if (!_cacheLoaded) return const Center(child: CircularProgressIndicator());
     if (_cachedProducts.isEmpty) return const Center(child: Text("No products in cache"));
 
     final Map<String, dynamic> unique = {};
     for (final p in _cachedProducts) {
-      final name =
-      (p["fast_key_item_name"] ?? "").toString().trim().toLowerCase();
+      final name = (p["fast_key_item_name"] ?? "").toString().trim().toLowerCase();
       if (name.isEmpty || !name.contains(query)) continue;
       unique[name] = p;
     }
@@ -748,14 +845,10 @@ class _TopBarState extends State<TopBar> {
                   ? Image.network(
                 imageUrl,
                 fit: BoxFit.cover,
-                loadingBuilder: (ctx, child, progress) =>
-                progress == null
+                loadingBuilder: (ctx, child, progress) => progress == null
                     ? child
-                    : const Center(
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2)),
-                errorBuilder: (_, __, ___) =>
-                const Icon(Icons.broken_image, size: 40),
+                    : const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 40),
               )
                   : const Icon(Icons.image, size: 40),
             ),
@@ -772,7 +865,7 @@ class _TopBarState extends State<TopBar> {
             );
 
             try {
-              final isar = await IsarService.instance;
+              final isar    = await IsarService.instance;
               final entries = await isar.isarCacheEntrys
                   .where()
                   .filter()
@@ -782,22 +875,16 @@ class _TopBarState extends State<TopBar> {
               for (final entry in entries) {
                 final List<dynamic> cached = jsonDecode(entry.json);
                 final match = cached.firstWhere(
-                      (item) =>
-                  item["fast_key_product_id"]?.toString() ==
+                      (item) => item["fast_key_product_id"]?.toString() ==
                       p["fast_key_product_id"]?.toString(),
                   orElse: () => null,
                 );
-
                 if (match != null) {
                   final rawTags = match["tags"];
                   if (rawTags is List) {
-                    fullProduct.tags = rawTags.map((t) {
-                      return SKU.Tags(
-                        id:   t["id"],
-                        name: t["name"],
-                        slug: t["slug"],
-                      );
-                    }).toList();
+                    fullProduct.tags = rawTags.map((t) => SKU.Tags(
+                      id: t["id"], name: t["name"], slug: t["slug"],
+                    )).toList();
                   }
                   break;
                 }
@@ -813,9 +900,8 @@ class _TopBarState extends State<TopBar> {
     );
   }
 
-  Future<List<Map<String, dynamic>>> _getVariantsFromCache(
-      int productId) async {
-    final isar = await IsarService.instance;
+  Future<List<Map<String, dynamic>>> _getVariantsFromCache(int productId) async {
+    final isar    = await IsarService.instance;
     final entries = await isar.isarCacheEntrys
         .where()
         .filter()
@@ -824,45 +910,35 @@ class _TopBarState extends State<TopBar> {
 
     for (final entry in entries) {
       final List<dynamic> products = jsonDecode(entry.json);
-
       final match = products.firstWhere(
             (p) => p["fast_key_product_id"]?.toString() == productId.toString(),
         orElse: () => null,
       );
-
       if (match == null) continue;
 
       final rawVariations = match["variations"];
       if (rawVariations is! List || rawVariations.isEmpty) continue;
 
       final List<Map<String, dynamic>> variants = [];
-
       for (final v in rawVariations) {
         if (v is Map<String, dynamic>) {
           variants.add({
             "id":    v["id"],
-            "name":  v["name"] ??
-                (v["attributes"] as List?)
-                    ?.map((a) => a["option"])
-                    .join(" - "),
+            "name":  v["name"] ?? (v["attributes"] as List?)?.map((a) => a["option"]).join(" - "),
             "price": v["regular_price"] ?? v["price"] ?? "0",
             "image": v["image"]?["src"],
             "sku":   v["sku"],
           });
         } else if (v is int) {
           variants.add({
-            "id":    v,
-            "name":  "Variant",
+            "id": v, "name": "Variant",
             "price": match["price"] ?? "0",
-            "image": match["image"],
-            "sku":   match["sku"],
+            "image": match["image"], "sku": match["sku"],
           });
         }
       }
-
       if (variants.isNotEmpty) return variants;
     }
-
     return [];
   }
 
@@ -872,14 +948,11 @@ class _TopBarState extends State<TopBar> {
       _removeOverlay();
 
       var screen = widget.screen;
-      if (screen != Screen.FASTKEY &&
-          screen != Screen.CATEGORY &&
-          screen != Screen.ADD) {
+      if (screen != Screen.FASTKEY && screen != Screen.CATEGORY && screen != Screen.ADD) {
         if (kDebugMode) print("TopBar - return from product selection (invalid screen)");
         return;
       }
 
-      // Auto-create order if none exists
       final ensuredOrderId = await orderHelper.ensureOrderExists();
       if (ensuredOrderId == null) {
         if (kDebugMode) print("Failed to create or restore order");
@@ -894,15 +967,14 @@ class _TopBarState extends State<TopBar> {
 
       List<dynamic> lineItems = List.from(rawOrder['line_items'] ?? []);
 
-      // ─── Age verification ──────────────────────────────────────────
+      // ── Age verification ────────────────────────────────────────────────────
       final tags = product.tags ?? [];
       final bool hasAgeRestriction =
       tags.any((t) => t.name == TextConstants.age_restricted);
 
       SKU.Tags? ageRestrictedTag;
       if (hasAgeRestriction) {
-        ageRestrictedTag =
-            tags.firstWhere((t) => t.name == TextConstants.age_restricted);
+        ageRestrictedTag = tags.firstWhere((t) => t.name == TextConstants.age_restricted);
       }
 
       final dynamic hiveAge      = rawOrder["age_verified"];
@@ -911,11 +983,8 @@ class _TopBarState extends State<TopBar> {
           hiveAge?.toString().toLowerCase() == "true";
 
       if (hasAgeRestriction && !alreadyVerified) {
-        final int minAge =
-            int.tryParse(ageRestrictedTag?.slug?.toString() ?? "0") ?? 0;
-
+        final int minAge = int.tryParse(ageRestrictedTag?.slug?.toString() ?? "0") ?? 0;
         print("🔞 Showing Age Verification Popup (SEARCH)");
-
         _dialogOpen = true;
         _searchFocusNode.unfocus();
         _removeOverlay();
@@ -923,71 +992,50 @@ class _TopBarState extends State<TopBar> {
 
         final prov = AgeVerificationProvider();
         final ok   = await prov.verifyAge(context, minAge: minAge);
-
         _dialogOpen = false;
 
-        if (!ok) {
-          print("❌ Age verification failed → Block product");
-          return;
-        }
-
+        if (!ok) { print("❌ Age verification failed"); return; }
         rawOrder["age_verified"] = true;
         await offlineBox.put(activeOrderId.toString(), rawOrder);
-        print("💾 Saved age_verified = true for search flow");
       }
 
-      // ─── EBT eligibility ──────────────────────────────────────────
+      // ── EBT eligibility ─────────────────────────────────────────────────────
       bool isEbtEligible = false;
-
       try {
-        final isar = await IsarService.instance;
-
+        final isar         = await IsarService.instance;
         final cachedEntries = await isar.isarCacheEntrys
             .where()
             .filter()
             .keyStartsWith("products_")
             .findAll();
-
         for (final entry in cachedEntries) {
           final List<dynamic> products = jsonDecode(entry.json);
-
           final match = products.firstWhere(
-                (p) =>
-            p["fast_key_product_id"]?.toString() ==
-                product.id.toString(),
+                (p) => p["fast_key_product_id"]?.toString() == product.id.toString(),
             orElse: () => null,
           );
-
           if (match != null) {
             isEbtEligible = match["is_ebt_eligible"] == true;
-            if (kDebugMode) {
-              print(
-                  "🥗 EBT FOUND (ISAR) → ${match["fast_key_item_name"]} | Eligible: $isEbtEligible");
-            }
+            if (kDebugMode) print("🥗 EBT → ${match["fast_key_item_name"]} | $isEbtEligible");
             break;
           }
         }
       } catch (e) {
-        if (kDebugMode) print("⚠️ Error resolving EBT eligibility (ISAR): $e");
+        if (kDebugMode) print("⚠️ EBT resolve error: $e");
       }
 
-      // ─── Produce → Auto Weight Popup ──────────────────────────────
-      final bool hasProduceTag = tags.any(
-            (t) =>
-        t.slug?.toLowerCase() == "produce" ||
-            t.name?.toLowerCase() == "produce",
-      );
+      // ── Produce → Auto Weight Popup ─────────────────────────────────────────
+      final bool hasProduceTag = tags.any((t) =>
+      t.slug?.toLowerCase() == "produce" || t.name?.toLowerCase() == "produce");
 
       if (hasProduceTag) {
-        print("🌿 Produce product detected → Showing AutoWeightPriceDialog");
-
+        print("🌿 Produce detected → AutoWeightPriceDialog");
         _removeOverlay();
         await Future.delayed(const Duration(milliseconds: 40));
 
-        final dynamic priceRaw = product.price;
-        final double unitPrice = priceRaw is num
-            ? priceRaw.toDouble()
-            : double.tryParse(priceRaw?.toString() ?? "0") ?? 0.0;
+        final double unitPrice = (product.price is num)
+            ? (product.price as num).toDouble()
+            : double.tryParse(product.price?.toString() ?? "0") ?? 0.0;
 
         _dialogOpen = true;
         _searchFocusNode.unfocus();
@@ -1001,47 +1049,32 @@ class _TopBarState extends State<TopBar> {
             unitPrice:   unitPrice,
           ),
         );
-
         _dialogOpen = false;
 
-        if (result == null) {
-          print("⚠️ Auto weight cancelled");
-          return;
-        }
+        if (result == null) { print("⚠️ Auto weight cancelled"); return; }
 
         final double finalPrice = result["finalPrice"];
         final double weight     = result["weight"];
 
         setState(() => isAddingItemLoading = true);
-
         await orderHelper.addItemToOrder(
-          product.id!,
-          product.name ?? 'Unknown',
+          product.id!, product.name ?? 'Unknown',
           product.images?.isNotEmpty == true ? product.images!.first : '',
-          finalPrice,
-          1,
-          product.sku ?? '',
+          finalPrice, 1, product.sku ?? '',
           int.parse(activeOrderId),
-          type:          "weighted",
-          productId:     product.id,
-          variationId:   -1,
-          unitPrice:     unitPrice,
-          salesPrice:    finalPrice,
-          regularPrice:  unitPrice,
-          combo:         null,
-          isEbtEligible: isEbtEligible,
+          type: "weighted", productId: product.id, variationId: -1,
+          unitPrice: unitPrice, salesPrice: finalPrice, regularPrice: unitPrice,
+          combo: null, isEbtEligible: isEbtEligible,
           onItemAdded: () {
-            _removeOverlay();
-            _clearSearch();
+            _removeOverlay(); _clearSearch();
             setState(() => isAddingItemLoading = false);
             widget.onProductSelected?.call(product);
           },
         );
-
-        return; // stop further processing
+        return;
       }
 
-      // ─── Variable / Variants logic ────────────────────────────────
+      // ── Variants / Variable price ────────────────────────────────────────────
       final double productPrice = (product.price is num)
           ? (product.price as num).toDouble()
           : double.tryParse(product.price?.toString() ?? "") ?? 0.0;
@@ -1054,9 +1087,8 @@ class _TopBarState extends State<TopBar> {
           t.name?.toLowerCase() == "variable product" ||
           t.name?.toLowerCase() == "variable");
 
-      final String variableKey  = "variable_price_added_${product.id}";
+      final String variableKey   = "variable_price_added_${product.id}";
       final String savedPriceKey = "selected_price_${product.id}";
-
       final bool popupAlreadyShown = rawOrder[variableKey] == true;
 
       if (popupAlreadyShown) {
@@ -1064,10 +1096,8 @@ class _TopBarState extends State<TopBar> {
         finalPrice = double.tryParse(savedPrice.toString()) ?? productPrice;
       }
 
-      bool hasVariants = false;
-
       final cachedVariants = await _getVariantsFromCache(product.id!);
-      hasVariants = cachedVariants.isNotEmpty;
+      bool hasVariants = cachedVariants.isNotEmpty;
 
       if (!hasVariants) {
         productBloc.fetchProductVariations(product.id!);
@@ -1078,26 +1108,18 @@ class _TopBarState extends State<TopBar> {
 
       if (hasVariants) {
         productBloc.fetchProductVariations(product.id!);
-
         final response = await productBloc.variationStream
             .firstWhere((r) => r.status == Status.COMPLETED);
 
         List<Map<String, dynamic>> variants = [];
-
         if (response.data != null && response.data!.isNotEmpty) {
-          variants = response.data!
-              .map((v) => {
-            "id":    v.id,
-            "name":  v.name ?? "Variant",
-            "price": v.price ?? "0",
-            "image": v.image?.src ?? "",
-            "sku":   v.sku ?? "",
-          })
-              .toList();
+          variants = response.data!.map((v) => {
+            "id": v.id, "name": v.name ?? "Variant",
+            "price": v.price ?? "0", "image": v.image?.src ?? "", "sku": v.sku ?? "",
+          }).toList();
         } else {
           variants = cachedVariants;
         }
-
         if (variants.isEmpty) return;
 
         _removeOverlay();
@@ -1111,24 +1133,14 @@ class _TopBarState extends State<TopBar> {
             title:      product.name ?? "Select Variant",
             variations: variants,
             onAddVariant: (selected, qty) async {
-              final price =
-                  double.tryParse(selected["price"].toString()) ?? 0;
-
+              final price = double.tryParse(selected["price"].toString()) ?? 0;
               await orderHelper.addItemToOrder(
-                selected["id"],
-                selected["name"],
-                selected["image"],
-                price,
-                qty,
-                selected["sku"],
-                int.parse(activeOrderId),
-                type:          'variant',
-                productId:     product.id,
-                variationId:   selected["id"],
+                selected["id"], selected["name"], selected["image"], price, qty,
+                selected["sku"], int.parse(activeOrderId),
+                type: 'variant', productId: product.id, variationId: selected["id"],
                 isEbtEligible: isEbtEligible,
                 onItemAdded: () {
-                  _removeOverlay();
-                  _clearSearch();
+                  _removeOverlay(); _clearSearch();
                   if (mounted) setState(() => isAddingItemLoading = false);
                   widget.onProductSelected?.call(product);
                 },
@@ -1155,10 +1167,9 @@ class _TopBarState extends State<TopBar> {
           productImage: _getProductImage(product),
           minPrice:     productPrice,
         );
-
         if (enteredPrice == null) return;
 
-        finalPrice            = enteredPrice;
+        finalPrice             = enteredPrice;
         rawOrder[variableKey]  = true;
         rawOrder[savedPriceKey] = finalPrice;
         await offlineBox.put(activeOrderId.toString(), rawOrder);
@@ -1167,33 +1178,17 @@ class _TopBarState extends State<TopBar> {
       setState(() => isAddingItemLoading = true);
 
       try {
-        final pid   = product.id!;
-        final psku  = product.sku ?? '';
-        final image = product.images?.isNotEmpty == true
-            ? product.images!.first
-            : '';
-
         await orderHelper.addItemToOrder(
-          pid,
-          product.name ?? 'Unknown',
-          image,
-          finalPrice,
-          1,
-          psku,
+          product.id!, product.name ?? 'Unknown',
+          product.images?.isNotEmpty == true ? product.images!.first : '',
+          finalPrice, 1, product.sku ?? '',
           int.tryParse(activeOrderId) ?? 0,
-          type:           "simple",
-          productId:      pid,
-          variationId:    -1,
-          variationName:  null,
-          variationCount: 0,
-          combo:          null,
-          salesPrice:     finalPrice,
-          regularPrice:   finalPrice,
-          unitPrice:      finalPrice,
-          isEbtEligible:  isEbtEligible,
+          type: "simple", productId: product.id!, variationId: -1,
+          variationName: null, variationCount: 0, combo: null,
+          salesPrice: finalPrice, regularPrice: finalPrice, unitPrice: finalPrice,
+          isEbtEligible: isEbtEligible,
           onItemAdded: () {
-            _removeOverlay();
-            _clearSearch();
+            _removeOverlay(); _clearSearch();
             setState(() => isAddingItemLoading = false);
             widget.onProductSelected?.call(product);
           },
@@ -1211,9 +1206,6 @@ class _TopBarState extends State<TopBar> {
   }
 
   void _removeOverlay() {
-    if (kDebugMode) {
-      print("TopBar - _removeOverlay | exists: ${_overlayEntry != null}");
-    }
     _overlayEntry?.remove();
     _overlayEntry = null;
   }
@@ -1230,7 +1222,6 @@ class _TopBarState extends State<TopBar> {
       }
       return;
     }
-
     final userData = await UserDbHelper().getUserData();
     if (userData != null && userData[AppDBConst.userId] != null) {
       setState(() {
@@ -1422,9 +1413,10 @@ class _TopBarState extends State<TopBar> {
     ) ??
         false;
   }
-  // ══════════════════════════════════════════════════════════════════════
+
+  // ══════════════════════════════════════════════════════════════════════════════
   // BUILD
-  // ══════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
@@ -1439,17 +1431,16 @@ class _TopBarState extends State<TopBar> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          // ── Logo ────────────────────────────────────────────────────
+          // ── Logo ──────────────────────────────────────────────────────────
           SvgPicture.asset(
             themeHelper.themeMode == ThemeMode.dark
                 ? 'assets/svg/app_logo.svg'
                 : 'assets/svg/app_icon.svg',
-            height: 40,
-            width:  40,
+            height: 40, width: 40,
           ),
           const SizedBox(width: 80),
 
-          // ── Search bar ──────────────────────────────────────────────
+          // ── Search bar ────────────────────────────────────────────────────
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -1465,9 +1456,7 @@ class _TopBarState extends State<TopBar> {
                         ? const Color(0xFF605F5F)
                         : Colors.grey.withOpacity(0.1),
                     blurRadius:   2,
-                    spreadRadius: themeHelper.themeMode == ThemeMode.dark
-                        ? 2
-                        : 4,
+                    spreadRadius: themeHelper.themeMode == ThemeMode.dark ? 2 : 4,
                     offset: const Offset(0, 0),
                   ),
                 ],
@@ -1479,13 +1468,11 @@ class _TopBarState extends State<TopBar> {
                 controller: _searchController,
                 focusNode:  _searchFocusNode,
                 decoration: InputDecoration(
-                  hintText: TextConstants.searchHint,
-                  prefixIcon: Icon(Icons.search,
-                      color: Theme.of(context).iconTheme.color),
+                  hintText:   TextConstants.searchHint,
+                  prefixIcon: Icon(Icons.search, color: Theme.of(context).iconTheme.color),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
-                    icon: Icon(Icons.clear,
-                        color: Theme.of(context).iconTheme.color),
+                    icon: Icon(Icons.clear, color: Theme.of(context).iconTheme.color),
                     onPressed: _clearSearch,
                   )
                       : null,
@@ -1503,102 +1490,90 @@ class _TopBarState extends State<TopBar> {
           ),
           const SizedBox(width: 50),
 
-          // ── Scale weight display ────────────────────────────────────
+          // ── Scale weight display ──────────────────────────────────────────
           Consumer<WeightProvider>(
             builder: (context, weightProvider, _) {
               final bool connected = weightProvider.isConnected;
               final isDark = themeHelper.themeMode == ThemeMode.dark;
 
-              // Split "0.000 lb" → numPart="0.000", unitPart="lb"
               final parts    = weightProvider.weightText.trim().split(' ');
               final numPart  = parts.isNotEmpty ? parts[0] : '0.00';
               final unitPart = parts.length > 1  ? parts[1] : 'lb';
 
               return GestureDetector(
-                // onLongPress: _reconnectScale,
+                onLongPress: _reconnectScale, // long-press to force reconnect
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (connected) ...[
-
-                      // ── Grey pill: 7-segment number ─────────────────
+                      // Grey pill: 7-segment number
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 7),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                         decoration: BoxDecoration(
-                          color: isDark
-                              ? const Color(0xFF2C2C2C)
-                              : const Color(0xFFEAEAEA),
+                          color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFEAEAEA),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: SevenSegmentDisplay(
                           text:        numPart,
                           digitHeight: 28,
-                          onColor:  isDark
-                              ? const Color(0xFFEEEEEE)   // bright on dark bg
-                              : const Color(0xFF1A1A1A),  // dark on light bg
-                          offColor: isDark
-                              ? const Color(0xFF444444)   // subtle ghost dark
-                              : const Color(0xFFD0D0D0),  // subtle ghost light
+                          onColor:  isDark ? const Color(0xFFEEEEEE) : const Color(0xFF1A1A1A),
+                          offColor: isDark ? const Color(0xFF444444) : const Color(0xFFD0D0D0),
                           spacing: 3,
                         ),
                       ),
                       const SizedBox(width: 6),
-
-                      // ── Dark pill: unit label ────────────────────────
+                      // Dark pill: unit label
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 13, vertical: 7),
+                        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
                         decoration: BoxDecoration(
-                          color: isDark
-                              ? const Color(0xFF444444)
-                              : const Color(0xFF3A3A3A),
+                          color: isDark ? const Color(0xFF444444) : const Color(0xFF3A3A3A),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           unitPart,
                           style: const TextStyle(
-                            fontSize:   15,
-                            fontWeight: FontWeight.w600,
-                            color:      Colors.white,
-                            letterSpacing: 0.5,
-                            height: 1.0,
+                            fontSize: 15, fontWeight: FontWeight.w600,
+                            color: Colors.white, letterSpacing: 0.5, height: 1.0,
                           ),
                         ),
                       ),
-
                     ] else ...[
-
-                      // ── Disconnected / Connecting ────────────────────
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? ThemeNotifier.secondaryBackground
-                              : Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.scale,
-                                size: 16, color: Colors.grey.shade400),
-                            const SizedBox(width: 6),
-                            Text(
-                              _isConnecting
-                                  ? 'Connecting...'
-                                  : 'Scale disconnected',
-                              style: TextStyle(
-                                fontSize:   13,
-                                fontWeight: FontWeight.w500,
-                                color:      Colors.grey.shade500,
+                      // Disconnected / Connecting state
+                      GestureDetector(
+                        onTap: _isConnecting ? null : _reconnectScale,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? ThemeNotifier.secondaryBackground
+                                : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_isConnecting)
+                                SizedBox(
+                                  width: 14, height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.5,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                )
+                              else
+                                Icon(Icons.scale, size: 16, color: Colors.grey.shade400),
+                              const SizedBox(width: 6),
+                              Text(
+                                _isConnecting ? 'Connecting...' : 'Scale disconnected',
+                                style: TextStyle(
+                                  fontSize: 13, fontWeight: FontWeight.w500,
+                                  color: Colors.grey.shade500,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-
                     ],
                   ],
                 ),
@@ -1607,18 +1582,15 @@ class _TopBarState extends State<TopBar> {
           ),
           const SizedBox(width: 16),
 
-          // ── Cash drawer ─────────────────────────────────────────────
+          // ── Cash drawer ───────────────────────────────────────────────────
           GestureDetector(
             onTap: () async {
-              final isAuthorized =
-              await _showCashDrawerPinPopup(context);
+              final isAuthorized = await _showCashDrawerPinPopup(context);
               if (!isAuthorized) return;
-
               await PrinterSettings.openDrawer(context: context);
-
-              List<int> bytes = [];
-              final ticket = await _printerSettings.getTicket();
-              bytes += ticket.feed(1);
+              List<int> bytes  = [];
+              final ticket     = await _printerSettings.getTicket();
+              bytes           += ticket.feed(1);
               await _printerSettings.printTicket(bytes, ticket);
             },
             child: Container(
@@ -1636,12 +1608,9 @@ class _TopBarState extends State<TopBar> {
               ),
               child: SvgPicture.asset(
                 SvgUtils.cashDrawerIcon,
-                width: 26,
-                height: 26,
+                width: 26, height: 26,
                 colorFilter: ColorFilter.mode(
-                  themeHelper.themeMode == ThemeMode.dark
-                      ? Colors.white70
-                      : Colors.grey,
+                  themeHelper.themeMode == ThemeMode.dark ? Colors.white70 : Colors.grey,
                   BlendMode.srcIn,
                 ),
               ),
@@ -1649,7 +1618,7 @@ class _TopBarState extends State<TopBar> {
           ),
           const SizedBox(width: 16),
 
-          // ── Mode toggle ─────────────────────────────────────────────
+          // ── Mode toggle ───────────────────────────────────────────────────
           GestureDetector(
             onTap: widget.onModeChanged,
             child: Container(
@@ -1667,12 +1636,9 @@ class _TopBarState extends State<TopBar> {
               ),
               child: SvgPicture.asset(
                 SvgUtils.changeModeIcon,
-                width: 26,
-                height: 26,
+                width: 26, height: 26,
                 colorFilter: ColorFilter.mode(
-                  themeHelper.themeMode == ThemeMode.dark
-                      ? Colors.white70
-                      : Colors.grey,
+                  themeHelper.themeMode == ThemeMode.dark ? Colors.white70 : Colors.grey,
                   BlendMode.srcIn,
                 ),
               ),
@@ -1680,7 +1646,7 @@ class _TopBarState extends State<TopBar> {
           ),
           const SizedBox(width: 16),
 
-          // ── Theme toggle ────────────────────────────────────────────
+          // ── Theme toggle ──────────────────────────────────────────────────
           GestureDetector(
             onTap: () {
               themeHelper.setThemeMode(
@@ -1704,12 +1670,9 @@ class _TopBarState extends State<TopBar> {
               ),
               child: SvgPicture.asset(
                 SvgUtils.themeIcon,
-                width: 26,
-                height: 26,
+                width: 26, height: 26,
                 colorFilter: ColorFilter.mode(
-                  themeHelper.themeMode == ThemeMode.dark
-                      ? Colors.white70
-                      : Colors.grey,
+                  themeHelper.themeMode == ThemeMode.dark ? Colors.white70 : Colors.grey,
                   BlendMode.srcIn,
                 ),
               ),
@@ -1717,7 +1680,7 @@ class _TopBarState extends State<TopBar> {
           ),
           const SizedBox(width: 16),
 
-          // ── Notifications ───────────────────────────────────────────
+          // ── Notifications ─────────────────────────────────────────────────
           Container(
             decoration: BoxDecoration(
               color: themeHelper.themeMode == ThemeMode.dark
@@ -1731,21 +1694,17 @@ class _TopBarState extends State<TopBar> {
               ),
             ),
             padding: const EdgeInsets.all(10),
-            child: Icon(
-              Icons.notifications,
-              size:  24,
-              color: themeHelper.themeMode == ThemeMode.dark
-                  ? Colors.white
-                  : Colors.black54,
-            ),
+            child: Icon(Icons.notifications, size: 24,
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? Colors.white
+                    : Colors.black54),
           ),
           const SizedBox(width: 16),
 
-          // ── User chip ───────────────────────────────────────────────
+          // ── User chip ─────────────────────────────────────────────────────
           Container(
             height: 45,
-            padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
             decoration: BoxDecoration(
               color: themeHelper.themeMode == ThemeMode.dark
                   ? ThemeNotifier.secondaryBackground
@@ -1763,14 +1722,9 @@ class _TopBarState extends State<TopBar> {
                   radius: 15,
                   backgroundColor: Colors.deepPurple,
                   child: Text(
-                    (userDisplayName ?? "Unknown")
-                        .substring(0, 1)
-                        .toUpperCase(),
+                    (userDisplayName ?? "Unknown").substring(0, 1).toUpperCase(),
                     style: const TextStyle(
-                      color:      Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize:   14,
-                    ),
+                        color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                 ),
                 const SizedBox(width: 15),
@@ -1790,10 +1744,7 @@ class _TopBarState extends State<TopBar> {
                     ),
                     Text(
                       userRole ?? "Unknown",
-                      style: const TextStyle(
-                        color:    Color(0xFFE09696),
-                        fontSize: 12,
-                      ),
+                      style: const TextStyle(color: Color(0xFFE09696), fontSize: 12),
                     ),
                   ],
                 ),

@@ -50,7 +50,7 @@ class WeightProvider extends ChangeNotifier {
     _weightText      = '0.000 lb';
     notifyListeners(); // TopBar Consumer rebuilds immediately to show 0.000
 
-    Future.delayed(const Duration(seconds: 3), () {
+    Future.delayed(const Duration(seconds: 1), () {
       _suppressUpdates = false;
       // No notifyListeners — next real scale reading will update naturally
     });
