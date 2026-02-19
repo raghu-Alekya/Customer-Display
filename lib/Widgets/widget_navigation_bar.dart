@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:pinaka_pos/Screens/Auth/login_screen.dart';
 import 'package:pinaka_pos/Screens/Home/apps_dashboard_screen.dart';
@@ -14,6 +15,7 @@ import 'package:quickalert/models/quickalert_type.dart';
 import 'package:quickalert/widgets/quickalert_dialog.dart';
 import 'package:flutter_swipe_button/flutter_swipe_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../Blocs/Orders/refund_orderlist_bloc.dart';
 import '../Constants/misc_features.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Database/user_db_helper.dart';
@@ -25,10 +27,12 @@ import '../Helper/api_response.dart';
 import '../Helper/customerdisplayhelper.dart';
 import '../Preferences/pinaka_preferences.dart';
 import '../Repositories/Auth/logout_repository.dart';
+import '../Repositories/Orders/refund_orderlist_repository.dart';
 import '../Screens/Home/add_screen.dart';
 import '../Screens/Home/Settings/settings_screen.dart';
 import '../Screens/Home/shift_open_close_balance.dart';
 import '../Screens/Home/total_orders_screen.dart';
+import '../Screens/refund_screen.dart';
 import '../Utilities/svg_images_utility.dart';
 import '../services/CustomerDisplayService.dart';
 import 'widget_alert_popup_dialogs.dart';
@@ -50,6 +54,19 @@ class NavigationBar extends StatelessWidget {
     this.callbackOnlyIndices,
     Key? key,
   }) : super(key: key);
+
+  String todayStart() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day, 0, 0, 0)
+        .toIso8601String();
+  }
+
+  String todayEnd() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day, 23, 59, 59)
+        .toIso8601String();
+  }
+
 
 
   @override
@@ -320,6 +337,49 @@ class NavigationBar extends StatelessWidget {
             },
             isVertical: isVertical,
           ),
+          // const SizedBox(height: 10),
+          //
+          // SidebarButton(
+          //   // imageAsset: 'assets/refund.png', // ✅ REFUND ICON ADDED
+          //   label: "Refund",
+          //   isSelected: selectedSidebarIndex == 5,
+          //   isDisabled: false,
+          //   onTap: selectedSidebarIndex == 5
+          //       ? () {}
+          //       : () {
+          //     if (kDebugMode) {
+          //       print("##### Refund button tapped");
+          //     }
+          //
+          //     lastSelectedIndex = 5;
+          //     onSidebarItemSelected(5);
+          //
+          //     Navigator.push(
+          //       context,
+          //       MaterialPageRoute(
+          //         builder: (_) => BlocProvider(
+          //           create: (context) => CompletedOrdersBloc(
+          //             context.read<CompletedOrdersRepository>(),
+          //           )..add(
+          //             FetchCompletedOrders(
+          //               page: 1,
+          //               authorId: 11,
+          //               from: todayStart(),
+          //               to: todayEnd(),
+          //             ),
+          //           ),
+          //           child: const CompletedOrdersScreen(lastSelectedIndex: 5),
+          //         ),
+          //       ),
+          //     );
+          //
+          //
+          //
+          //
+          //   },
+          //   isVertical: isVertical,
+          // ),
+
           // You can add more dynamic items here in the future.
         ];
 
@@ -330,8 +390,8 @@ class NavigationBar extends StatelessWidget {
             SidebarButton(
               svgAsset: SvgUtils.settingsIcon,
               label: TextConstants.settingsHeaderText,
-              isSelected: selectedSidebarIndex == 5,
-              onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5
+              isSelected: selectedSidebarIndex == 6,
+              onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 6
                   ? () {}
                   : () {
                 if (kDebugMode) {
@@ -339,7 +399,7 @@ class NavigationBar extends StatelessWidget {
                 }
                 lastSelectedIndex = selectedSidebarIndex; // Build #1.0.7: Store before navigating
 
-                onSidebarItemSelected(5); // Highlight settings
+                onSidebarItemSelected(6); // Highlight settings
 
                 Navigator.push(
                   context,
@@ -371,11 +431,11 @@ class NavigationBar extends StatelessWidget {
             SidebarButton(
               svgAsset: SvgUtils.logoutIcon,
               label: TextConstants.logoutText,
-              isSelected: selectedSidebarIndex == 6,
+              isSelected: selectedSidebarIndex == 7,
               onTap: isShiftInvalid || isShiftScreen // Build #1.0.247: Enabled Multiple click for Logout
                   ? () {}
                   : () {
-                onSidebarItemSelected(6);
+                onSidebarItemSelected(7);
                 if (kDebugMode) {
                   print("nav logout called");
                 }
@@ -1039,6 +1099,8 @@ class SidebarButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool isVertical;
   final bool isDisabled;
+  final String? imageAsset; // PNG / JPG
+
 
   const SidebarButton({
     this.icon,
@@ -1048,6 +1110,7 @@ class SidebarButton extends StatelessWidget {
     required this.onTap,
     this.isVertical = true,
     this.isDisabled = false,
+    this.imageAsset,
     super.key,
   });
 
@@ -1084,30 +1147,43 @@ class SidebarButton extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-
-              svgAsset != null
-                  ? SvgPicture
-                  .asset( // Build #1.0.148: Fixed Issue: Menu Bar Icons not matching with latest Figma Design , now using from assets/svg/navigation/
-                svgAsset!,
-                colorFilter: ColorFilter.mode(
-                  isSelected
+              // 🔹 ICON (SVG / PNG / ICONDATA)
+              if (svgAsset != null)
+                SvgPicture.asset(
+                  svgAsset!,
+                  height: 20,
+                  colorFilter: ColorFilter.mode(
+                    isSelected
+                        ? Colors.white
+                        : isDisabled
+                        ? Colors.grey.shade800
+                        : Colors.white70,
+                    BlendMode.srcIn,
+                  ),
+                )
+              else if (imageAsset != null)
+                Image.asset(
+                  imageAsset!,
+                  height: 20,
+                  color: isSelected
                       ? Colors.white
                       : isDisabled
                       ? Colors.grey.shade800
                       : Colors.white70,
-                  BlendMode.srcIn,
+                )
+              else
+                Icon(
+                  icon,
+                  color: isSelected
+                      ? Colors.white
+                      : isDisabled
+                      ? Colors.grey.shade800
+                      : Colors.white70,
                 ),
-                height: 20,
-              )
-                  : Icon(
-                icon,
-                color: isSelected
-                    ? Colors.white
-                    : isDisabled
-                    ? Colors.grey.shade800
-                    : Colors.white70,
-              ),
+
               const SizedBox(height: 7),
+
+              // 🔹 LABEL
               Text(
                 label,
                 style: TextStyle(
@@ -1117,12 +1193,12 @@ class SidebarButton extends StatelessWidget {
                       ? Colors.grey.shade800
                       : Colors.white70,
                   fontWeight: FontWeight.bold,
-                  fontSize: isSelected ? 11.0 : 10.0, // Increase if selected
+                  fontSize: isSelected ? 11.0 : 10.0,
                 ),
                 textAlign: TextAlign.center,
               ),
-
             ],
+
           ),
         )
       ],
