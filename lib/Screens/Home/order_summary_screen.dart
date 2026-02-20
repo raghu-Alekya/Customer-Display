@@ -4107,8 +4107,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   ? _currentPaymentRemainingBalance!
                   : balanceAmount;
 
-              final bool hasAnyPaymentBeenMade = tenderAmount > 0;
+              // Check if payments and voids cancel each other out (net zero effect)
+// NEW (fixed):
+              final payments = await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId ?? 0);
+              final bool hasAnyPaymentBeenMade = payments.isNotEmpty;
+              double netAmount = payments.fold(0.0, (sum, p) => sum + p.amount);
+              final bool hasNetPayment = netAmount.abs() > 0.01; // net effect is non-zero
+
               final bool hasDiscount = discount > 0;
+
 
               // 🔹 Always update customer display to non-summary mode
               await CustomerDisplayHelper.updateCustomerDisplay(
@@ -8221,7 +8228,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       isSynced: false,
       createdAt: now,
       remainingBalance: (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
-      status: PaymentDbStatus.completed,
+      status: PaymentDbStatus.voided,
       serverPaymentId: int.tryParse(_lastPayment?.paymentId ?? "0"),
     );
 
@@ -8632,11 +8639,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     try {
       final box = StorageProvider.offlineOrders;
 
-      final String orderKey =
-          widget.orderId?.toString() ??
-              widget.offlineOrderId?.toString() ??
-              orderId?.toString() ??
-              "";
+      final String orderKey = widget.orderId?.toString() ??
+          widget.offlineOrderId?.toString() ??
+          orderId?.toString() ??
+          "";
 
       if (orderKey.isEmpty) {
         print("❌ No order key found for sync");
@@ -8648,28 +8654,60 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final order = Map<String, dynamic>.from(raw);
 
-      final int? localOrderId =
-      int.tryParse(orderKey);
-
+      final int? localOrderId = int.tryParse(orderKey);
       if (localOrderId == null) return;
-      final payments =
-      (await LocalPaymentDBHelper.instance
+
+      final payments = (await LocalPaymentDBHelper.instance
           .getPaymentsByOrderId(localOrderId))
           .where((p) => !p.isSynced)
           .toList();
 
       print("💰 Single sync payments attached → ${payments.length}");
 
-      final result =
-      await OrderRepository().syncSingleOfflineOrder(order);
+      final result = await OrderRepository().syncSingleOfflineOrder(order);
 
-      if (result != null) {
-        print("✅ Single order synced successfully");
-        for (final p in payments) {
-          await LocalPaymentDBHelper.instance
-              .markAsSynced(p.id, result['id']);
+      if (result == null || result is! Map) {
+        if (kDebugMode) {
+          print("❌ Invalid Woo response for order → $orderKey");
         }
+        return; // replaced 'continue' with return
       }
+
+      final Map<String, dynamic> woo = Map<String, dynamic>.from(result);
+      final int wooOrderId = woo['id'] ?? 0;
+      final String wooStatus = woo['status']?.toString().toLowerCase() ?? '';
+
+      if (kDebugMode) {
+        print("🟣 Woo response → order:$wooOrderId status:$wooStatus");
+      }
+
+      // ✅ Mark payments as synced
+      for (final p in payments) {
+        await LocalPaymentDBHelper.instance.markAsSynced(p.id, wooOrderId);
+      }
+
+      // 🗑️ DELETE IMMEDIATELY if Woo says COMPLETED
+      if (wooStatus == 'completed') {
+        await box.delete(orderKey);
+        await box.delete(wooOrderId.toString());
+
+        if (kDebugMode) {
+          print(
+            "🗑️ Offline order deleted → local:$orderKey woo:$wooOrderId",
+          );
+        }
+        return;
+      }
+
+      // 🔁 Otherwise keep order for retry
+      order['wooOrderId'] = wooOrderId;
+      order['wooStatus'] = wooStatus;
+      order['synced'] = true;
+      order['sync_at'] = DateTime.now().toIso8601String();
+
+      await box.put(orderKey, order);
+
+      print("✅ Single order synced successfully");
 
     } catch (e) {
       print("❌ Single order sync error: $e");

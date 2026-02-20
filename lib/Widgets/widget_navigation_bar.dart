@@ -772,23 +772,60 @@ class NavigationBar extends StatelessWidget {
   }
 
   /// Handles swipe-to-close-shift: checks for open orders, then navigates to close shift screen or shows warning.
-  void _handleSwipeToCloseShift(BuildContext context, NavigatorState navigator, bool isDarkMode) async {
+  void _handleSwipeToCloseShift(
+      BuildContext context,
+      NavigatorState navigator,
+      bool isDarkMode,
+      ) async {
+
     final orderHelper = OrderHelper();
-    // Use loadData (Hive) - app's primary order storage - not loadProcessingData (SQLite)
     await orderHelper.loadData();
 
-    if (orderHelper.orders.isNotEmpty) {
-      if (kDebugMode) {
-        print("Processing Orders > 0 -> orders length: ${orderHelper.orders.length}");
+    // Filter orders that should BLOCK shift closing
+    final blockingOrders = orderHelper.orders.where((order) {
+      try {
+        final status = order.values.toList()[1]['status']?.toString().toLowerCase();
+
+        // Add statuses that should BLOCK shift closing
+        return status == 'pending' ||
+            status == 'on-hold' ||
+            status == 'draft';
+
+        // IMPORTANT:
+        // We are NOT blocking for 'processing'
+      } catch (e) {
+        if (kDebugMode) {
+          print("Error reading order status: $e");
+        }
+        return false;
       }
-      navigator.pop(); // close logout dialog
-      // Show Close Shift Warning popup (use navigator.context - dialog context may be invalid after pop)
+    }).toList();
+
+    if (kDebugMode) {
+      print("===== ORDER STATUS CHECK =====");
+      print("Total Orders Loaded: ${orderHelper.orders.length}");
+      print("Blocking Orders Count: ${blockingOrders.length}");
+
+      for (var order in orderHelper.orders) {
+        final status = order.values.toList()[1]['status'];
+        print("Order ID: ${order.values.toList()[0]} -> Status: $status");
+      }
+      print("===== END STATUS CHECK =====");
+    }
+
+    //  If there are blocking orders
+    if (blockingOrders.isNotEmpty) {
+
+      navigator.pop();
+
       showDialog(
         context: navigator.context,
         barrierDismissible: false,
         builder: (BuildContext dialogContext) {
           return Dialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
+            ),
             backgroundColor: isDarkMode ? Colors.grey[900] : Colors.white,
             insetPadding: const EdgeInsets.symmetric(horizontal: 60),
             child: SizedBox(
@@ -798,14 +835,17 @@ class NavigationBar extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.error_outline, color: Colors.red, size: 40),
+                    const Icon(Icons.error_outline,
+                        color: Colors.red, size: 40),
                     const SizedBox(height: 12),
                     Text(
                       "Close Shift Warning",
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: isDarkMode ? Colors.white : Colors.black87,
+                        color: isDarkMode
+                            ? Colors.white
+                            : Colors.black87,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -814,7 +854,9 @@ class NavigationBar extends StatelessWidget {
                       "Please close all open orders before closing shift",
                       style: TextStyle(
                         fontSize: 14,
-                        color: isDarkMode ? Colors.white : Colors.black87,
+                        color: isDarkMode
+                            ? Colors.white
+                            : Colors.black87,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -825,13 +867,22 @@ class NavigationBar extends StatelessWidget {
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius:
+                            BorderRadius.circular(8),
+                          ),
                         ),
                         onPressed: () {
-                          ScannerGuard.isCouponPopupOpen = false;
+                          ScannerGuard.isCouponPopupOpen =
+                          false;
                           Navigator.of(dialogContext).pop();
                         },
-                        child: const Text("OK", style: TextStyle(fontSize: 16, color: Colors.white)),
+                        child: const Text(
+                          "OK",
+                          style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.white),
+                        ),
                       ),
                     ),
                   ],
@@ -841,14 +892,23 @@ class NavigationBar extends StatelessWidget {
           );
         },
       );
+
     } else {
-      if (kDebugMode) print("No open orders -> navigating to close shift");
-      navigator.pop(); // close logout dialog
+
+      //  No blocking orders → Allow close shift
+      if (kDebugMode) {
+        print("No blocking orders found -> Closing Shift Allowed");
+      }
+
+      navigator.pop();
       ScannerGuard.isCouponPopupOpen = false;
+
       navigator.push(
         MaterialPageRoute(
           builder: (context) => ShiftOpenCloseBalanceScreen(),
-          settings: const RouteSettings(arguments: TextConstants.navLogout),
+          settings: const RouteSettings(
+            arguments: TextConstants.navLogout,
+          ),
         ),
       );
     }
