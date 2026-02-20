@@ -337,48 +337,45 @@ class NavigationBar extends StatelessWidget {
             },
             isVertical: isVertical,
           ),
-          // const SizedBox(height: 10),
-          //
-          // SidebarButton(
-          //   // imageAsset: 'assets/refund.png', // ✅ REFUND ICON ADDED
-          //   label: "Refund",
-          //   isSelected: selectedSidebarIndex == 5,
-          //   isDisabled: false,
-          //   onTap: selectedSidebarIndex == 5
-          //       ? () {}
-          //       : () {
-          //     if (kDebugMode) {
-          //       print("##### Refund button tapped");
-          //     }
-          //
-          //     lastSelectedIndex = 5;
-          //     onSidebarItemSelected(5);
-          //
-          //     Navigator.push(
-          //       context,
-          //       MaterialPageRoute(
-          //         builder: (_) => BlocProvider(
-          //           create: (context) => CompletedOrdersBloc(
-          //             context.read<CompletedOrdersRepository>(),
-          //           )..add(
-          //             FetchCompletedOrders(
-          //               page: 1,
-          //               authorId: 11,
-          //               from: todayStart(),
-          //               to: todayEnd(),
-          //             ),
-          //           ),
-          //           child: const CompletedOrdersScreen(lastSelectedIndex: 5),
-          //         ),
-          //       ),
-          //     );
-          //
-          //
-          //
-          //
-          //   },
-          //   isVertical: isVertical,
-          // ),
+          const SizedBox(height: 10),
+
+          SidebarButton(
+            // imageAsset: 'assets/refund.png', // ✅ REFUND ICON ADDED
+            label: "Refund",
+            isSelected: selectedSidebarIndex == 5,
+            isDisabled: false,
+            onTap: selectedSidebarIndex == 5
+                ? () {}
+                : () {
+              if (kDebugMode) {
+                print("##### Refund button tapped");
+              }
+
+              lastSelectedIndex = 5;
+              onSidebarItemSelected(5);
+
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => BlocProvider(
+                    create: (context) => CompletedOrdersBloc(
+                      context.read<CompletedOrdersRepository>(),
+                    )..add(
+                      FetchCompletedOrders(
+                        page: 1,
+                        perPage: 10, // 🔴 IMPORTANT (don’t forget this)
+                      ),
+                    ),
+                    child: const CompletedOrdersScreen(lastSelectedIndex: 5),
+                  ),
+                ),
+              );
+
+
+
+            },
+            isVertical: isVertical,
+          ),
 
           // You can add more dynamic items here in the future.
         ];

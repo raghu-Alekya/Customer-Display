@@ -6,6 +6,7 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pinaka_pos/services/CustomerDisplayService.dart';
 import 'package:provider/provider.dart';
+import 'Blocs/Orders/refund_orderlist_bloc.dart';
 import 'Constants/misc_features.dart';
 import 'Database/db_helper.dart';
 import 'Database/discount_rule_isar.dart';
@@ -46,6 +47,7 @@ import 'Inventory_screen/inventory_get_product_types/inventory_get_product_types
 import 'Inventory_screen/inventory_get_product_types/inventory_get_product_types_remote_data_source.dart';
 import 'Inventory_screen/inventory_get_product_types/inventory_get_product_types_repository_impl.dart';
 import 'Preferences/pinaka_preferences.dart';
+import 'Repositories/Orders/refund_orderlist_repository.dart';
 import 'Screens/Auth/splash_screen.dart';
 import 'package:flutter/services.dart';
 import '../../Helper/api_helper.dart';
@@ -170,8 +172,23 @@ void main() async {
 
 
   runApp(
-    MultiBlocProvider(
-      providers: [
+      MultiRepositoryProvider(
+        providers: [
+          RepositoryProvider<CompletedOrdersRepository>(
+            create: (_) => CompletedOrdersRepository(
+              baseUrl: "https://merchantretail.alektasolutions.com",
+            ),
+          ),
+        ],
+       child:
+       MultiBlocProvider(
+       providers: [
+         // ✅ ADD THIS
+         BlocProvider<CompletedOrdersBloc>(
+           create: (context) => CompletedOrdersBloc(
+             context.read<CompletedOrdersRepository>(),
+           ),
+         ),
         BlocProvider<Inventory_Tag_Bloc>(
           create: (_) => Inventory_Tag_Bloc(inventoryTagUseCase),
         ),
@@ -209,7 +226,7 @@ void main() async {
         child: const MyApp(),
       ),
     ),
-  );
+  ));
 
 }
 class MyApp extends StatelessWidget {

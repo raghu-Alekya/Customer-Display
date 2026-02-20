@@ -13,7 +13,7 @@ class CompletedOrdersRepository {
 
   Future<List<CompletedOrder>> fetchCompletedOrders({
     required int page,
-    required int perPage,
+    int? perPage,
     int? authorId,
     String? from,
     String? to,

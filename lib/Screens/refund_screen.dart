@@ -42,16 +42,22 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   int _selectedSidebarIndex = 5;
   int _currentPage = 1;
 
+  int itemsPerPage = 10;
+
+
   final int _rowsPerPage = 10;
   List<int> quantities = [];
 // int _currentPage = 1;
   List<CompletedOrder> _allOrders = [];
+  List<CompletedOrder> filteredOrders = [];
 // List<CompletedOrder> _allOrders = [];
   List<CompletedOrder> _pagedOrders = [];
   List<CompletedOrder> _visibleOrders = [];
   // final int _rowsPerPage = 10;
   // int _currentPage = 1;
   int _totalPages = 1;
+  TextEditingController searchController = TextEditingController();
+  String selectedStatus = 'Completed';
 
 
   List<CompletedOrder> _orders = [];
@@ -85,6 +91,19 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
       _paginate();
     });
   }
+  void _updatePagination() {
+    final startIndex = (_currentPage - 1) * itemsPerPage;
+    final endIndex = startIndex + itemsPerPage;
+
+    setState(() {
+      _pagedOrders = filteredOrders.sublist(
+        startIndex,
+        endIndex > filteredOrders.length
+            ? filteredOrders.length
+            : endIndex,
+      );
+    });
+  }
 
 
 
@@ -92,14 +111,16 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   @override
   void initState() {
     super.initState();
+    // _allOrders = widget.orders; // or loaded data
+    filteredOrders = _allOrders;
 
     context.read<CompletedOrdersBloc>().add(
       FetchCompletedOrders(
-        page: 1, // backend returns ALL orders
+        page: 1,
+        perPage: 100, // ✅ required
       ),
     );
   }
-
 
   Widget build(BuildContext context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -268,9 +289,40 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
         SizedBox(
           width: 220,
           child: TextField(
+            controller: searchController,
+            onChanged: (value) {
+              setState(() {
+                if (value.isEmpty) {
+                  filteredOrders = _allOrders;
+                } else {
+                  filteredOrders = _allOrders.where((order) {
+                    return order.orderId
+                        .toString()
+                        .toLowerCase()
+                        .contains(value.toLowerCase());
+                  }).toList();
+                }
+
+                _currentPage = 1; // Reset to first page after search
+                _updatePagination();
+              });
+            },
             decoration: InputDecoration(
               hintText: "Search Order ID",
               prefixIcon: const Icon(Icons.search),
+              suffixIcon: searchController.text.isNotEmpty
+                  ? IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  searchController.clear();
+                  setState(() {
+                    filteredOrders = _allOrders;
+                    _currentPage = 1;
+                    _updatePagination();
+                  });
+                },
+              )
+                  : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -280,11 +332,23 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
         ),
         const SizedBox(width: 12),
         DropdownButton<String>(
-          value: "Completed",
+          value: selectedStatus,
           items: const [
-            DropdownMenuItem(value: "Completed", child: Text("Completed")),
+            DropdownMenuItem(
+              value: "Completed",
+              child: Text("Completed"),
+            ),
+            DropdownMenuItem(
+              value: "Refund",
+              child: Text("Refund"),
+            ),
           ],
-          onChanged: (_) {},
+          onChanged: (value) {
+            if (value == null) return;
+            setState(() {
+              selectedStatus = value;
+            });
+          },
         ),
       ],
     );

@@ -14,11 +14,13 @@ abstract class CompletedOrdersEvent extends Equatable {
 
 class FetchCompletedOrders extends CompletedOrdersEvent {
   final int page;
+  final int perPage;
   final int? authorId;
   final String? from;
   final String? to;
 
   const FetchCompletedOrders({
+    required this.perPage,
     required this.page,
     this.authorId,
     this.from,
@@ -60,39 +62,28 @@ class CompletedOrdersError extends CompletedOrdersState {
 class CompletedOrdersBloc
     extends Bloc<CompletedOrdersEvent, CompletedOrdersState> {
 
-  CompletedOrdersBloc(CompletedOrdersRepository read)
+  final CompletedOrdersRepository repository;
+
+  CompletedOrdersBloc(this.repository)
       : super(CompletedOrdersInitial()) {
     on<FetchCompletedOrders>(_onFetchOrders);
   }
 
-  Future<void> _onFetchOrders(FetchCompletedOrders event,
-      Emitter<CompletedOrdersState> emit,) async {
+  Future<void> _onFetchOrders(
+      FetchCompletedOrders event,
+      Emitter<CompletedOrdersState> emit,
+      ) async {
     emit(CompletedOrdersLoading());
 
     try {
-      print("=========== FETCH COMPLETED ORDERS START ===========");
+      final orders = await repository.fetchCompletedOrders(
+        page: event.page,
+        perPage: event.perPage,
+        // perPage: event.perPage, // ✅ use event value
+      );
 
-      // final repository = CompletedOrdersRepository(
-      //   baseUrl: "https://merchantretail.alektasolutions.com", token: '',
-      // );
-      //
-      // final orders = await repository.fetchCompletedOrders(
-      //   page: event.page,
-      //   perPage: 100, authorId: '', from: '', to: '',
-      //   // authorId: event.authorId,
-      //   // from: event.from,
-      //   // to: event.to,
-      // );
-
-      // print("✅ ORDERS RECEIVED: ${orders.length}");
-      // print("=========== FETCH COMPLETED ORDERS END ===========");
-      //
-      // emit(CompletedOrdersLoaded(orders));
-    } catch (e, s) {
-      print("❌ ERROR IN FETCH COMPLETED ORDERS");
-      print("Error: $e");
-      print("StackTrace: $s");
-
+      emit(CompletedOrdersLoaded(orders));
+    } catch (e) {
       emit(CompletedOrdersError(e.toString()));
     }
   }
