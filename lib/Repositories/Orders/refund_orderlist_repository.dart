@@ -98,4 +98,53 @@ class CompletedOrdersRepository {
 
     return token;
   }
+  Future<Map<String, dynamic>> refundOrder({
+    required int orderId,
+    required String refundType, // "Full" or "Partial"
+    List<Map<String, dynamic>>? items,
+  }) async {
+    final token = await _getTokenFromDb();
+
+    final uri = Uri.parse(
+      '$baseUrl/wp-json/pinaka-pos/v1/orders/get-amt-by-paymethod',
+    );
+
+    final Map<String, dynamic> body = {
+      "order_id": orderId,
+      "refund_type": refundType,
+    };
+
+    if (refundType == "Partial" && items != null) {
+      body["items"] = items;
+    }
+
+    if (kDebugMode) {
+      print("========== REFUND API ==========");
+      print("URL: $uri");
+      print("BODY: ${jsonEncode(body)}");
+    }
+
+    final response = await http.post(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(body),
+    );
+
+    if (kDebugMode) {
+      print("Status Code: ${response.statusCode}");
+      print("Response: ${response.body}");
+    }
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = jsonDecode(response.body);
+      return data; // Return the parsed JSON
+    } else {
+      throw Exception(
+        'Refund failed (status: ${response.statusCode})',
+      );
+    }
+  }
 }

@@ -12,20 +12,13 @@ import '../../Widgets/widget_navigation_bar.dart' as custom_widgets;
 import '../../Widgets/widget_order_screen_panel.dart';
 import '../../Widgets/widget_topbar.dart';
 import '../Blocs/Orders/refund_orderlist_bloc.dart';
+import '../Blocs/Orders/refund_validation_bloc.dart';
 import '../Models/Orders/refund_orderlist_model.dart';
+import '../Repositories/Orders/refund_validation_repository.dart';
+import '../Widgets/refund_checkin_popup.dart';
 
 enum SidebarPosition { left, right, bottom }
 enum OrderPanelPosition { left, right }
-// List<int> quantities = [];
-// // int _currentPage = 1;
-// List<CompletedOrder> _allOrders = [];
-// // List<CompletedOrder> _allOrders = [];
-// List<CompletedOrder> _pagedOrders = [];
-// List<CompletedOrder> _visibleOrders = [];
-// final int _rowsPerPage = 10;
-// int _currentPage = 1;
-// int _totalPages = 1;
-
 
 
 List<String> allData = List.generate(27, (i) => "Item ${i + 1}");
@@ -58,6 +51,10 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   int _totalPages = 1;
   TextEditingController searchController = TextEditingController();
   String selectedStatus = 'Completed';
+  String? selectedTransactionId;
+  List<String> transactionIds = [];
+  Map<int, String?> selectedTxnPerOrder = {};
+  List<String> transactionIdOptions = [];
 
 
   List<CompletedOrder> _orders = [];
@@ -104,8 +101,6 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
       );
     });
   }
-
-
 
   // @override
   @override
@@ -180,6 +175,15 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                       if (state is CompletedOrdersLoaded) {
                         setState(() {
                           _allOrders = state.orders;
+
+                          // ✅ collect unique transaction IDs
+                          transactionIds = _allOrders
+                              .map((o) => o.transactionId)
+                              .where((id) => id.isNotEmpty)
+                              .toSet()
+                              .toList();
+
+                          filteredOrders = _allOrders;
                           _currentPage = 1;
                           _totalPages = (_allOrders.length / _rowsPerPage).ceil();
                           _paginate();
@@ -282,12 +286,12 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
     return Row(
       children: [
         const Text(
-          "status",
+          "completed orderlist",
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const Spacer(),
         SizedBox(
-          width: 220,
+          width: 200,
           child: TextField(
             controller: searchController,
             onChanged: (value) {
@@ -330,25 +334,39 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
             ),
           ),
         ),
-        const SizedBox(width: 12),
-        DropdownButton<String>(
-          value: selectedStatus,
-          items: const [
-            DropdownMenuItem(
-              value: "Completed",
-              child: Text("Completed"),
+        const SizedBox(width: 18),
+        DropdownButtonHideUnderline(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade400),
+              borderRadius: BorderRadius.circular(6),
+              color: Colors.white,
             ),
-            DropdownMenuItem(
-              value: "Refund",
-              child: Text("Refund"),
+            child: DropdownButton<String>(
+              value: selectedStatus,
+              isDense: true,
+              icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+              onChanged: (value) {
+                if (value == null) return;
+
+                setState(() {
+                  selectedStatus = value;
+
+                  filteredOrders = value == "Completed"
+                      ? _allOrders.where((o) => o.status == "completed").toList()
+                      : _allOrders.where((o) => o.status == "refund").toList();
+
+                  _currentPage = 1;
+                  _updatePagination();
+                });
+              },
+              items: const [
+                DropdownMenuItem(value: "Completed", child: Text("Completed")),
+                DropdownMenuItem(value: "Refund", child: Text("Refund")),
+              ],
             ),
-          ],
-          onChanged: (value) {
-            if (value == null) return;
-            setState(() {
-              selectedStatus = value;
-            });
-          },
+          ),
         ),
       ],
     );
@@ -368,18 +386,20 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
         children: [
           /// 🔹 TABLE HEADER
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: 14),
             decoration: const BoxDecoration(
               color: Color(0xFF6F6F70),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(1)),
             ),
             child: Row(
               children: const [
+                SizedBox(width: 10),
+
                 _HeaderCell("Order ID"),
                 _HeaderCell("Order Type"),
                 _HeaderCell("Date"),
                 _HeaderCell("Transaction ID"),
-                const SizedBox(width:10),
+                // SizedBox(width: 10),
                 _HeaderCell("Payment Type"),
                 _HeaderCell("Amount"),
                 _HeaderCell("Item Tax"),
@@ -387,7 +407,6 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                 _HeaderCell("Total"),
                 _HeaderCell("Status"),
               ],
-
             ),
           ),
 
@@ -395,43 +414,96 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
           Expanded(
             child: ListView.builder(
               itemCount: _pagedOrders.length,
-              itemBuilder: (_, index) {
+              itemBuilder: (context, index) {
                 final order = _pagedOrders[index];
 
-                return Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: Color(0xFFD8D7D7)),
+                return InkWell(
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (dialogContext) {
+                        return BlocProvider(
+                          create: (_) => RefundValidationBloc(
+                            repository: RefundValidationRepository(
+                              baseUrl: "https://merchantretail.alektasolutions.com",
+                            ),
+                          ),
+                          child: PinCheckInDialog(order: order),
+                        );
+                      },
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Color(0xFFD8D7D7)),
+                      ),
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      _DataCell("#${order.orderId}"),
-                      _DataCell(order.orderType),
-                      _DataCell(order.completedAt.toString().split(' ').first),
-                      _DataCell(order.transactionId),
-                      const SizedBox(width: 25),
-                      _DataCell(order.paymentMethod),
-                      _DataCell(order.amount.toStringAsFixed(2)),
-                      _DataCell(order.tax.toStringAsFixed(2)),
-                      _DataCell(order.discount.toStringAsFixed(2)),
-                      _DataCell(order.total.toStringAsFixed(2)),
-                      const _StatusCell(),
-                    ],
+                    child: Row(
+                      children: [
+                        _DataCell("#${order.orderId}"),
+                        _DataCell(order.orderType),
+                        _DataCell(
+                            order.completedAt.toString().split(' ').first),
+                        // _DataCell(order.transactionId),
+                        Expanded(
+                          child: order.transactionId.isNotEmpty
+                              ? Text(order.transactionId)
+                              : DropdownButtonHideUnderline(
+                            child: Container(
+                              height: 32,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey.shade400),
+                                borderRadius: BorderRadius.circular(6),
+                                color: Colors.white,
+                              ),
+                              child: DropdownButton<String>(
+                                hint: const Text(
+                                  "Select",
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                                value: selectedTxnPerOrder[order.orderId],
+                                isDense: true,
+                                icon: const Icon(Icons.keyboard_arrow_down, size: 16),
+                                onChanged: (value) {
+                                  setState(() {
+                                    selectedTxnPerOrder[order.orderId] = value;
+                                  });
+                                },
+                                items: transactionIdOptions.map((txn) {
+                                  return DropdownMenuItem<String>(
+                                    value: txn,
+                                    child: Text(
+                                      txn,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ),
+                        ),
+                        // const SizedBox(width:5),
+                        _DataCell(order.paymentMethod),
+                        _DataCell(order.amount.toStringAsFixed(2)),
+                        _DataCell(order.tax.toStringAsFixed(2)),
+                        _DataCell(order.discount.toStringAsFixed(2)),
+                        _DataCell(order.total.toStringAsFixed(2)),
+                        const _StatusCell(),
+                      ],
+                    ),
                   ),
                 );
               },
             ),
           ),
-
-
-
         ],
       ),
     );
   }
-
   // ================= PAGINATION =================
 
   Widget _buildPagination() {
@@ -541,10 +613,10 @@ class _StatusCell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
         decoration: BoxDecoration(
           color: Colors.green.shade100,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: const Text(
           "Completed",

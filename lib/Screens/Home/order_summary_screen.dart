@@ -6014,11 +6014,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                               : Colors.grey[400],
                                                           fontSize: ResponsiveLayout.getFontSize(22),
                                                         ),
-                                                        errorText: _amountErrorText,
-                                                        errorStyle: TextStyle(
-                                                          color: Colors.red,
-                                                          fontSize: ResponsiveLayout.getFontSize(12),
-                                                        ),
+
+                                                        // errorText: _amountErrorText,
+                                                        // errorStyle: TextStyle(
+                                                        //   color: Colors.red,
+                                                        //   fontSize: ResponsiveLayout.getFontSize(12),
+                                                        // ),
+
                                                       ),
                                                       style: TextStyle(
                                                         fontSize: ResponsiveLayout.getFontSize(22),
@@ -6054,6 +6056,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                         }
                                                       },
                                                     ),
+
                                                   ),
                                                 ),
 
@@ -6878,7 +6881,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               _buildRedeemCouponButton(
                                 TextConstants.generatecoupon,
                                 "assets/coupon.png",
-                                //isActive: offlineOrder?["coupon_applied"] != true,
+
+                                // 🔥 Disable when coupon already applied
+                                isActive: !(offlineOrder?["coupon_applied"] == true || isCouponActive),
+
                                 onTap: () async {
                                   if (offlineOrder == null) {
                                     ScaffoldMessenger.of(context).showSnackBar(
@@ -6890,6 +6896,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   await _syncAndShowCouponPopup();
                                 },
                               ),
+
+
 
                             ],
                           )
@@ -6905,6 +6913,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     );
   }
+
+  bool isGenerateCouponActive = false;
   Future<void> _syncAndShowCouponPopup() async {
     if (_isProcessing) return;
 
@@ -6946,7 +6956,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         couponValue     = discountAmount;
         ebtTotal        = 0.0;
         cashbackFee    = 0.0;
-        isCouponActive = true;
+        isGenerateCouponActive = true;
       });
 
       _showCouponResponsePopup(response);
@@ -6975,6 +6985,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       existing["coupon_amount"] = discountAmount;
 
       await box.put(key, existing);
+      offlineOrder = existing;
 
       debugPrint("✅ Coupon saved in Hive for order $key");
 
@@ -6990,8 +7001,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       setState(() => _isProcessing = false);
     }
   }
-
-
 
   void _showErrorPopup(String message) {
     showDialog(
@@ -8686,14 +8695,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         await LocalPaymentDBHelper.instance.markAsSynced(p.id, wooOrderId);
       }
 
-      // 🗑️ DELETE IMMEDIATELY if Woo says COMPLETED
-      if (wooStatus == 'completed') {
+      // DELETE IMMEDIATELY if Woo says COMPLETED
+      if (wooStatus == 'completed' || wooStatus == 'pending') {
         await box.delete(orderKey);
         await box.delete(wooOrderId.toString());
 
         if (kDebugMode) {
           print(
-            "🗑️ Offline order deleted → local:$orderKey woo:$wooOrderId",
+            " Offline order deleted → local:$orderKey woo:$wooOrderId",
           );
         }
         return;
@@ -8713,7 +8722,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       print("❌ Single order sync error: $e");
     }
   }
-
 
   void _showPaymentDialog(
       BuildContext context,

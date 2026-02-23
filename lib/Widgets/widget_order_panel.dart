@@ -3310,7 +3310,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
       final Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(rawOfflineOrder);
 
-      // / ⭐ OPTIONAL: auto-remove cashback if amount is 0
       if (offlineOrder['cashbacks'] != null &&
           offlineOrder['cashbacks'] is List &&
           (offlineOrder['cashbacks'] as List).isNotEmpty) {
@@ -3329,11 +3328,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
       // 🛍️ Load products
       final offlineProducts = ((offlineOrder['products'] ?? []) as List)
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
-
-      // 🛍️ Load custom items (separate list)
-      final offlineCustomItems = ((offlineOrder['custom_items'] ?? []) as List)
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
 
@@ -3407,7 +3401,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               'item_price': price,
               'items_count': qty,
               'item_sum_price': price * qty,
-              'item_image': resolveProductImageFromMap(item),
+              'item_image': item['image'] ?? "",
               'item_type': 'custom',
               'sku': item['sku'],
               'auto_discount': 0.0,
@@ -3440,7 +3434,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               'item_price': price,
               'items_count': qty,
               'item_sum_price': price * qty,
-              'item_image': resolveProductImageFromMap(item),
+              'item_image': item['image'] ?? "",
               'item_type': itemType,
               'item_tax': 0.0,
             };
@@ -3451,19 +3445,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
 
           double itemTax = 0.0;
-          double itemDiscount = _toDouble(item['auto_discount']) +
-              _toDouble(item['auto_discount_total']) +
-              _toDouble(item['multipack_discount_total']) +
-              _toDouble(item['combo_discount_total']);
+          double itemDiscount = 0.0;
 
           final String productIdStr =
               (item['product_id'] ?? item['id'])?.toString() ?? '';
 
           final int productId = int.tryParse(productIdStr) ?? 0;
-          final int variationId = (item['variation_id'] ?? item['variationId'] ?? 0) is num
-              ? ((item['variation_id'] ?? item['variationId']) as num).toInt()
-              : 0;
-          final String sku = (item['sku'] ?? item['item_sku'] ?? '').toString();
 
           itemTax = getProductTaxFromHive(productId, price, qty);
           item['auto_discount_per_unit'] = qty > 0 ? itemDiscount / qty : 0.0;
@@ -3483,35 +3470,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             'item_price': price,
             'items_count': qty,
             'item_sum_price': price * qty,
-            'item_image': resolveProductImageFromMap(item),
+            'item_image': item['image'] ?? '',
             'item_type': itemType,
             'item_tax': itemTax,
             'is_ebt_eligible': item['is_ebt_eligible'] == true,
             'auto_discount': itemDiscount,
-            AppDBConst.multipackDiscount: _toDouble(item['multipack_discount_total']),
-            AppDBConst.autoDiscountTotal: itemDiscount,
-            AppDBConst.comboDiscountTotal: _toDouble(item['combo_discount_total']),
             'original_total': price * qty,
             'product_id': productId,
-            'variation_id': variationId,
-            'sku': sku,
-          };
-        }),
-
-        // ---------------------- Custom items (from custom_items list) ----------------------
-        ...offlineCustomItems.map((item) {
-          final name = item['custom_item_name'] ?? item['item_name'] ?? item['name'] ?? "Item";
-          final price = double.tryParse(item['custom_item_price']?.toString() ?? item['amount']?.toString() ?? item['price']?.toString() ?? '0') ?? 0.0;
-          final qty = int.tryParse(item['quantity']?.toString() ?? item['items_count']?.toString() ?? '1') ?? 1;
-          final img = resolveProductImageFromMap(item);
-          return {
-            'item_name': name,
-            'item_price': price,
-            'items_count': qty,
-            'item_sum_price': price * qty,
-            'item_image': img.isNotEmpty ? img : 'assets/custom.png',
-            'item_type': 'custom',
-            'sku': item['sku'],
           };
         }),
 
@@ -3554,9 +3519,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       totalItems = offlineProducts.fold(0, (sum, product) {
         final qty = int.tryParse(product['quantity']?.toString() ?? '1') ?? 1;
         return sum + qty;
-      }) + offlineCustomItems.fold(0, (sum, item) {
-        final qty = int.tryParse(item['quantity']?.toString() ?? item['items_count']?.toString() ?? '1') ?? 1;
-        return sum + qty;
       });
 
       double productTotal = 0.0;
@@ -3569,10 +3531,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         final bool isCustom = itemType.contains("custom");
         final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
         final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-        final double itemDiscount = _toDouble(item['auto_discount']) +
-            _toDouble(item['auto_discount_total']) +
-            _toDouble(item['multipack_discount_total']) +
-            _toDouble(item['combo_discount_total']);
+        double itemDiscount = 0.0;
 
         if (!isCustom) {
           final String productIdStr =
@@ -3581,12 +3540,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         }
 
         productTotal += (price * qty) - itemDiscount;
-      }
-
-      for (final item in offlineCustomItems) {
-        final qty = int.tryParse(item['quantity']?.toString() ?? item['items_count']?.toString() ?? '1') ?? 1;
-        final price = double.tryParse(item['custom_item_price']?.toString() ?? item['amount']?.toString() ?? item['price']?.toString() ?? '0') ?? 0.0;
-        productTotal += price * qty;
       }
 
       double payoutTotal = offlinePayouts.fold<double>(0, (sum, payout) {
@@ -3603,15 +3556,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
       orderDiscount = (offlineOrder['orderDiscount'] is num)
           ? (offlineOrder['orderDiscount'] as num).toDouble()
-          : _toDouble(offlineOrder['order_discount']);
+          : 0.0;
 
       if (offlineOrder.containsKey('merchantDiscountType')) {
         merchantDiscount = getCurrentMerchantDiscount(offlineOrder);
         offlineOrder['merchantDiscount'] = merchantDiscount;
-      } else {
-        merchantDiscount = (offlineOrder['merchantDiscount'] is num)
-            ? (offlineOrder['merchantDiscount'] as num).toDouble()
-            : _toDouble(offlineOrder['merchant_discount']);
       }
 
       final isPercentageDiscount =
@@ -3660,25 +3609,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         print("   netPayable: $netPayable");
         print("🧾 Offline items for UI → ${jsonEncode(orderItems)}");
       }
-
-      setState(() {}); // Refresh UI
-    } else if (orderItems.isNotEmpty) {
-      // Fallback: calculate totals from orderItems (e.g. when order from fetchOrderItems)
-      totalItems = orderItems.fold(0, (sum, item) {
-        final type = (item['item_type'] ?? item[AppDBConst.itemType] ?? '').toString().toLowerCase();
-        if (type.contains('payout') || type.contains('coupon') || type.contains('cashback')) return sum;
-        final qty = (item['items_count'] ?? item[AppDBConst.itemCount] ?? 1);
-        return sum + ((qty is num) ? qty.toInt() : int.tryParse(qty.toString()) ?? 1);
-      });
-      grossTotal = orderItems.fold(0.0, (sum, item) {
-        final amt = item['item_sum_price'] ?? item[AppDBConst.itemSumPrice] ?? 0.0;
-        return sum + ((amt is num) ? amt.toDouble() : double.tryParse(amt.toString()) ?? 0.0);
-      });
-      orderDiscount = 0.0;
-      merchantDiscount = 0.0;
-      netTotal = grossTotal - orderDiscount - merchantDiscount;
-      netPayable = netTotal + orderTax + cashbackFee;
-      if (netPayable < 0) netPayable = 0;
     }
 
     if (kDebugMode) {

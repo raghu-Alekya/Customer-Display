@@ -340,7 +340,7 @@ class NavigationBar extends StatelessWidget {
           const SizedBox(height: 10),
 
           SidebarButton(
-            // imageAsset: 'assets/refund.png', // ✅ REFUND ICON ADDED
+            imageAsset: 'assets/refund.png', // ✅ REFUND ICON ADDED
             label: "Refund",
             isSelected: selectedSidebarIndex == 5,
             isDisabled: false,
@@ -779,45 +779,28 @@ class NavigationBar extends StatelessWidget {
       ) async {
 
     final orderHelper = OrderHelper();
+
+    // Load orders from Hive (primary storage)
     await orderHelper.loadData();
 
-    // Filter orders that should BLOCK shift closing
-    final blockingOrders = orderHelper.orders.where((order) {
-      try {
-        final status = order.values.toList()[1]['status']?.toString().toLowerCase();
+    if (orderHelper.orders.isNotEmpty) {
 
-        // Add statuses that should BLOCK shift closing
-        return status == 'pending' ||
-            status == 'on-hold' ||
-            status == 'draft';
+      if (kDebugMode) {
+        print("===== ACTIVE ORDERS FOUND =====");
+        print("Total Active Orders: ${orderHelper.orders.length}");
 
-        // IMPORTANT:
-        // We are NOT blocking for 'processing'
-      } catch (e) {
-        if (kDebugMode) {
-          print("Error reading order status: $e");
+        for (var order in orderHelper.orders) {
+          print("---------- ORDER ----------");
+          print("Order data : ${order.values}");
+
+          print("----------------------------");
         }
-        return false;
+        print("===== END ACTIVE ORDERS =====");
       }
-    }).toList();
 
-    if (kDebugMode) {
-      print("===== ORDER STATUS CHECK =====");
-      print("Total Orders Loaded: ${orderHelper.orders.length}");
-      print("Blocking Orders Count: ${blockingOrders.length}");
+      navigator.pop(); // close logout dialog
 
-      for (var order in orderHelper.orders) {
-        final status = order.values.toList()[1]['status'];
-        print("Order ID: ${order.values.toList()[0]} -> Status: $status");
-      }
-      print("===== END STATUS CHECK =====");
-    }
-
-    //  If there are blocking orders
-    if (blockingOrders.isNotEmpty) {
-
-      navigator.pop();
-
+      // Show Close Shift Warning popup
       showDialog(
         context: navigator.context,
         barrierDismissible: false,
@@ -835,17 +818,18 @@ class NavigationBar extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.error_outline,
-                        color: Colors.red, size: 40),
+                    const Icon(
+                      Icons.error_outline,
+                      color: Colors.red,
+                      size: 40,
+                    ),
                     const SizedBox(height: 12),
                     Text(
                       "Close Shift Warning",
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: isDarkMode
-                            ? Colors.white
-                            : Colors.black87,
+                        color: isDarkMode ? Colors.white : Colors.black87,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -854,9 +838,7 @@ class NavigationBar extends StatelessWidget {
                       "Please close all open orders before closing shift",
                       style: TextStyle(
                         fontSize: 14,
-                        color: isDarkMode
-                            ? Colors.white
-                            : Colors.black87,
+                        color: isDarkMode ? Colors.white : Colors.black87,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -868,20 +850,19 @@ class NavigationBar extends StatelessWidget {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red,
                           shape: RoundedRectangleBorder(
-                            borderRadius:
-                            BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                         ),
                         onPressed: () {
-                          ScannerGuard.isCouponPopupOpen =
-                          false;
+                          ScannerGuard.isCouponPopupOpen = false;
                           Navigator.of(dialogContext).pop();
                         },
                         child: const Text(
                           "OK",
                           style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.white),
+                            fontSize: 16,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
@@ -895,12 +876,11 @@ class NavigationBar extends StatelessWidget {
 
     } else {
 
-      //  No blocking orders → Allow close shift
       if (kDebugMode) {
-        print("No blocking orders found -> Closing Shift Allowed");
+        print("No active orders found -> Navigating to Close Shift screen");
       }
 
-      navigator.pop();
+      navigator.pop(); // close logout dialog
       ScannerGuard.isCouponPopupOpen = false;
 
       navigator.push(
@@ -1208,7 +1188,7 @@ class SidebarButton extends StatelessWidget {
               if (svgAsset != null)
                 SvgPicture.asset(
                   svgAsset!,
-                  height: 20,
+                  height: 15,
                   colorFilter: ColorFilter.mode(
                     isSelected
                         ? Colors.white
@@ -1221,7 +1201,7 @@ class SidebarButton extends StatelessWidget {
               else if (imageAsset != null)
                 Image.asset(
                   imageAsset!,
-                  height: 20,
+                  height: 15,
                   color: isSelected
                       ? Colors.white
                       : isDisabled
@@ -1250,7 +1230,7 @@ class SidebarButton extends StatelessWidget {
                       ? Colors.grey.shade800
                       : Colors.white70,
                   fontWeight: FontWeight.bold,
-                  fontSize: isSelected ? 11.0 : 10.0,
+                  fontSize: isSelected ? 10.0 : 9.0,
                 ),
                 textAlign: TextAlign.center,
               ),

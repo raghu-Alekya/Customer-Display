@@ -13,8 +13,6 @@ class OrdersListModel {
   }
 }
 
-
-
 class OrderModel {
   final int id;
   final int parentId;
@@ -110,8 +108,6 @@ class OrderModel {
       }
     }
 
-
-
     final orderDiscountStr = getOrderMetaValue('_discount_amount');
     final orderLevelAutoDiscountAmount = double.tryParse(orderDiscountStr ?? '0') ?? 0.0;
 
@@ -185,14 +181,15 @@ class OrderModel {
 
   double get totalAllDiscounts {
     final discount = double.tryParse(discountTotal) ?? 0.0;
-    final auto = double.tryParse(autoDiscountTotal ?? '0') ?? 0.0;
+
     return discount +
         totalMultipackDiscount +
-        auto +
-        totalCombinedAutoDiscount +
+        totalAutoDiscount +
+        orderLevelAutoDiscountAmount +
         totalComboDiscount +
         totalDisplayAutoDiscount;
   }
+
   double get cashbackFee {
     if (feeLines == null || feeLines!.isEmpty) return 0.0;
 
@@ -396,8 +393,6 @@ class LineItem {
     required this.displayAutoDiscountAmount,
   });
 
-
-
   factory LineItem.fromJson(Map<String, dynamic> json) {
     final metaList = (json['meta_data'] as List<dynamic>?)
         ?.map((e) => MetaData.fromJson(e as Map<String, dynamic>))
@@ -417,7 +412,6 @@ class LineItem {
         return null;
       }
     }
-
 
     final String? posAutoDiscountStr = getMetaValue('_pos_auto_discount');
     final String? posDiscountTypeRaw = getMetaValue('_pos_discount_type');
@@ -448,27 +442,35 @@ class LineItem {
           autoDiscountAmount = discountValue;
           autoDiscountApplied = true;
           break;
-        default:
-        // Unknown type → treat as auto
-          autoDiscountAmount = discountValue;
-          autoDiscountApplied = true;
-          if (kDebugMode) {
-            print(" Unknown _pos_discount_type '$discountType' → treated as auto (value: $discountValue)");
-          }
-          break;
       }
     }
 
     // Legacy multipack fields (kept for backward compatibility)
     final String? originalSubtotal = getMetaValue('_pinaka_multipack_original_subtotal');
-    final String? multipackUnitPriceBefore = getMetaValue('_pinaka_multipack_unit_price_before');
-    final String? multipackUnitPriceAfter = getMetaValue('_pinaka_multipack_unit_price_after');
+    final String? multipackUnitPriceBefore =
+    getMetaValue('_pinaka_multipack_unit_price_before');
+    final String? multipackUnitPriceAfter =
+    getMetaValue('_pinaka_multipack_unit_price_after');
 
-    // Optional old display-key fallback
-    final String? displayAutoStr = getMetaValue('auto_discount_amount') ??
-        _extractDisplayMetaValue(metaList, 'auto_discount_amount', keyToMatch: 'display_key');
-    final double displayAutoDiscountAmount = double.tryParse(displayAutoStr ?? '0') ?? 0.0;
+    // ────────────────────────────────────────────────
+    // Auto discount display logic – modern has highest priority
+    // ────────────────────────────────────────────────
+    double displayAutoDiscountAmount = 0.0;
 
+    // Prefer modern auto discount when it exists
+    if (autoDiscountApplied && autoDiscountAmount > 0) {
+      displayAutoDiscountAmount = autoDiscountAmount;
+    } else {
+      // Only use legacy value if no modern auto discount
+      final String? displayAutoStr = getMetaValue('auto_discount_amount') ??
+          _extractDisplayMetaValue(
+            metaList,
+            'auto_discount_amount',
+            keyToMatch: 'display_key',
+          );
+      displayAutoDiscountAmount = double.tryParse(displayAutoStr ?? '0') ?? 0.0;
+    }
+    // ────────────────────────────────────────────────
 
     return LineItem(
       id: json['id'] ?? 0,
@@ -534,6 +536,33 @@ class LineItem {
     }
   }
 
+  // ────────────────────────────────────────────────────────────────
+  // DISPLAY PRIORITY HELPERS – Auto shows first / has highest priority
+  // ────────────────────────────────────────────────────────────────
+
+  /// Returns the discount type with highest display priority
+  String? get primaryDiscountType {
+    if (autoDiscountApplied && autoDiscountAmount > 0) return 'auto';
+    if (comboDiscountApplied && comboDiscountAmount > 0) return 'mixmatch';
+    if (multipackApplied && multipackDiscountAmount > 0) return 'multipack';
+    if (displayAutoDiscountAmount > 0) return 'auto (legacy)';
+    return null;
+  }
+
+  /// Returns the discount amount with highest display priority
+  double get primaryDiscountAmount {
+    if (autoDiscountApplied && autoDiscountAmount > 0) return autoDiscountAmount;
+    if (comboDiscountApplied && comboDiscountAmount > 0) return comboDiscountAmount;
+    if (multipackApplied && multipackDiscountAmount > 0) return multipackDiscountAmount;
+    if (displayAutoDiscountAmount > 0) return displayAutoDiscountAmount;
+    return 0.0;
+  }
+
+  bool get hasAnyDiscount =>
+      multipackDiscountAmount > 0 ||
+          autoDiscountAmount > 0 ||
+          comboDiscountAmount > 0 ||
+          displayAutoDiscountAmount > 0;
 
   bool get hasMultipackDiscount => multipackApplied && multipackDiscountAmount > 0;
   bool get hasAutoDiscount => autoDiscountApplied && autoDiscountAmount > 0;
@@ -547,13 +576,13 @@ class LineItem {
           displayAutoDiscountAmount;
 }
 
-
-
 class Tag {
   final int id;
   final String name;
   final String slug;
+
   Tag({required this.id, required this.name, required this.slug});
+
   factory Tag.fromJson(Map<String, dynamic> json) {
     return Tag(
       id: json['id'] ?? 0,

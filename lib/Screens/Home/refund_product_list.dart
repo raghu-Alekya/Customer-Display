@@ -1,0 +1,1278 @@
+import 'dart:convert';
+
+import 'package:dotted_line/dotted_line.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:pinaka_pos/Widgets/widget_topbar.dart';
+// Fix import path to match your project (e.g. widget_navigation_bar.dart):
+import 'package:pinaka_pos/Widgets/widget_navigation_bar.dart';
+import 'package:pinaka_pos/Widgets/widget_navigation_bar.dart' as custom;
+
+import '../../Models/Orders/refund_orderlist_model.dart';
+import '../../Widgets/cash_refund.dart';
+import '../../Widgets/verify_item_status.dart';
+
+class RefundScreen extends StatefulWidget {
+  final CompletedOrder order;
+
+  const RefundScreen({
+    super.key,
+    required this.order,
+  });
+
+  @override
+  State<RefundScreen> createState() => _RefundScreenState();
+}
+
+class _RefundScreenState extends State<RefundScreen> {
+
+  String? selectedReason;
+  String selectedPayment = "Cash";
+  int _selectedSidebarIndex = 5; // Refund index
+  bool isExpanded = false;
+  bool isConfirmEnabled = false;
+// Add this at the top of your State class
+  List<Map<String, dynamic>> selectedItems = [];
+  late CompletedOrder selectedOrder;
+  bool isAllSelected = false;
+  bool _showFullSummary = true;
+  void _toggleSummary() {
+    setState(() {
+      _showFullSummary = !_showFullSummary;
+    });
+  }
+  double get grossTotal => selectedOrder.amount;
+
+  double get taxTotal => selectedOrder.tax;
+
+  double get netTotal => grossTotal + taxTotal;
+
+  double get merchantDiscount => selectedOrder.discount;
+
+  double get totalNetPayable => selectedOrder.total;
+
+// Refund calculation (only selected items)
+  double get refundGross {
+    double sum = 0;
+    for (var item in selectedItems) {
+      sum += double.tryParse(
+        item['amount'].toString().replaceAll("₹", ""),
+      ) ??
+          0;
+    }
+    return sum;
+  }
+
+  double get refundTax {
+    double sum = 0;
+    for (var item in selectedItems) {
+      sum += double.tryParse(
+        item['tax'].toString().replaceAll("₹", ""),
+      ) ??
+          0;
+    }
+    return sum;
+  }
+
+  double get refundNetTotal => refundGross + refundTax;
+
+  double get refundDiscount {
+    if (grossTotal == 0) return 0;
+    return (refundGross / grossTotal) * merchantDiscount;
+  }
+
+  double get totalRefund => refundNetTotal - refundDiscount;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedOrder = widget.order;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final bool isFullRefund =
+        selectedItems.length == selectedOrder.items.length &&
+            selectedItems.isNotEmpty;
+
+    final bool isPartialRefund =
+        selectedItems.isNotEmpty &&
+            selectedItems.length < selectedOrder.items.length;
+
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: Padding(
+        padding: const EdgeInsets.only(
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: 10,
+        ),
+        child: Column(
+          children: [
+            TopBar(
+              screen: Screen.ORDERS,
+              onModeChanged: () async {},
+            ),
+            const SizedBox(height: 10),
+            // const Divider(
+            //   color: Colors.grey,
+            //   thickness: 0.4,
+            //   height: 4,
+            // ),
+
+            /// ================= MAIN SECTION: SIDEBAR + CONTENT =================
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  /// ================= LEFT SIDEBAR (NavigationBar) =================
+                  custom.NavigationBar(
+                    selectedSidebarIndex: _selectedSidebarIndex,
+                    onSidebarItemSelected: (index) {
+                      setState(() => _selectedSidebarIndex = index);
+                    },
+                    isVertical: true,
+                    isShiftScreen: false,
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  /// ================= REFUND CONTENT (Products + Summary) =================
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // LEFT: Products list + Reason
+                        Expanded(
+                          flex: 3,
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: _boxDecoration(),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          GestureDetector(
+                                            onTap: () {
+                                              Navigator.pop(context);
+                                            },
+                                            // onTap: () => Navigator.of(context).pop(),
+                                            child: const Icon(
+                                              Icons.arrow_back,
+                                              size: 20,
+                                              color: Colors.black,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          const Text(
+                                            "Products List",
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      // Table header
+                                      Container(
+                                        height: 50,
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? const Color(0xFF2A2A2A)
+                                              : const Color(0xFF989292),
+                                          borderRadius: const BorderRadius.only(
+                                            topLeft: Radius.circular(7),
+                                            topRight: Radius.circular(7),
+                                          ),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 20),
+                                        child: Row(
+                                          children:  [
+                                            SizedBox(width: 0),
+
+                                            GestureDetector(
+                                              onTap: () {
+                                                setState(() {
+                                                  isAllSelected = !isAllSelected;
+
+                                                  if (isAllSelected) {
+                                                    // Select all
+                                                    selectedItems.clear();
+
+                                                    for (var item in selectedOrder.items) {
+                                                      final unitPrice =
+                                                      (item.total / item.quantity).toStringAsFixed(2);
+
+                                                      selectedItems.add({
+                                                        'name': item.name,
+                                                        'price': "₹$unitPrice ×${item.quantity}",
+                                                        'tax': "₹0.00", // Update if tax available
+                                                        'amount': "₹${item.total.toStringAsFixed(2)}",
+                                                      });
+                                                    }
+                                                  } else {
+                                                    // Unselect all
+                                                    selectedItems.clear();
+                                                  }
+                                                });
+                                              },
+                                              child: Container(
+                                                width: 14,
+                                                height: 14,
+                                                decoration: BoxDecoration(
+                                                  color: isAllSelected
+                                                      ? Colors.red
+                                                      : Colors.transparent,
+                                                  border: Border.all(
+                                                    color: const Color(0xFFFBFBFC),
+                                                    width: 1,
+                                                  ),
+                                                ),
+                                                child: isAllSelected
+                                                    ? const Icon(
+                                                  Icons.check,
+                                                  size: 12,
+                                                  color: Colors.white,
+                                                )
+                                                    : null,
+                                              ),
+                                            ),
+                                            SizedBox(width: 14),
+                                            Expanded(
+                                                flex: 3,
+                                                child: Text("Item Name",
+                                                    style: TextStyle(
+                                                        color: Colors.white))),
+                                            Expanded(
+                                                flex: 2,
+                                                child: Text("Unit Price",
+                                                    style: TextStyle(
+                                                        color: Colors.white))),
+                                            Expanded(
+                                                flex: 2,
+                                                child: Text("Tax",
+                                                    style: TextStyle(
+                                                        color: Colors.white))),
+                                            Expanded(
+                                                flex: 2,
+                                                child: Text("Quantity",
+                                                    style: TextStyle(
+                                                        color: Colors.white))),
+                                            Expanded(
+                                                flex: 2,
+                                                child: Text("Amount",
+                                                    textAlign: TextAlign.right,
+                                                    style: TextStyle(
+                                                        color: Colors.white))),
+                                          ],
+                                        ),
+                                      ),
+
+// BODY
+                                      Expanded(
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            borderRadius:
+                                            const BorderRadius.only(
+                                              bottomLeft: Radius.circular(7),
+                                              bottomRight: Radius.circular(7),
+                                            ),
+                                            border: Border.all(
+                                                color: Colors.grey.shade200),
+                                          ),
+                                          child: ListView.builder(
+                                            padding: EdgeInsets.zero,
+                                            itemCount: selectedOrder.items.length,
+                                            itemBuilder: (context, index) {
+                                              final item = selectedOrder.items[index];
+
+                                              final unitPrice =
+                                              (item.total / item.quantity).toStringAsFixed(2);
+
+                                              return _refundRow(
+                                                item.name,
+                                                "\$$unitPrice ×${item.quantity}",
+                                                "\$${item.totalTax.toStringAsFixed(2)}", // if tax exists in model
+                                                item.quantity,
+                                                "\$${item.total.toStringAsFixed(2)}",
+                                                hasDiscount: item.isItemsHasDiscount == "Yes",
+                                                discountType: item.itemDiscountType,
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+
+                                      // const SizedBox(height: 8),
+                                      // const Expanded(
+                                      //   child: SizedBox(),
+                                      // ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              // Enter Reason
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 12),
+                                decoration: _boxDecoration(),
+                                child: Row(
+                                  children: [
+                                    const Text(
+                                      "Enter Reason :",
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,fontSize: 16),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    SizedBox(
+                                      width: MediaQuery.of(context).size.width *
+                                          0.42,
+                                      child: DropdownButtonFormField<String>(
+                                        value: selectedReason,
+                                        hint: const Text("Select Reason"),
+                                        decoration: InputDecoration(
+                                          isDense: true,
+                                          contentPadding: const EdgeInsets.symmetric(
+                                              horizontal: 12, vertical: 12),
+
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                            borderSide: const BorderSide(color: Colors.grey),
+                                          ),
+
+                                          focusedBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                            borderSide: const BorderSide(
+                                              color: Color(0xFFB9B9B9),
+                                              width: 1,
+                                            ),
+                                          ),
+                                        ),
+
+                                        items: [" Customer changed Opinion", "Expired product "]
+                                            .map((e) => DropdownMenuItem(
+                                          value: e,
+                                          child: Text(e),
+                                        ))
+                                            .toList(),
+                                        onChanged: (val) {
+                                          setState(() => selectedReason = val);
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+
+                        /// RIGHT: Refund Summary Panel
+                        Expanded(
+                          flex: 2,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: _boxDecoration(),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    // Left: Order ID
+                                    RichText(
+                                      text: TextSpan(
+                                        children: [
+                                          TextSpan(
+                                            text: "Order ID: ",
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                              color: Color(0xFF83868C), // Color for "Order ID:"
+                                            ),
+                                          ),
+                                          TextSpan(
+                                            text: "#${selectedOrder.orderId}",
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                              color: Color(0xFF4C5F7D), // Color for the order number
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    // Right: Calendar + Date + Divider + Time
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.calendar_today,
+                                          size: 16,
+                                          color: Colors.black,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          DateFormat('dd MMM yyyy')
+                                              .format(selectedOrder.completedAt.toLocal()),
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.black,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          width: 1,
+                                          height: 14,
+                                          color: Colors.black,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          DateFormat('hh:mm a')
+                                              .format(selectedOrder.completedAt.toLocal()),
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.black,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                // Locate the Stack inside the Summary Panel (around line 348)
+                                Container(
+                                  width: double.infinity,
+                                  height: 270,
+                                  clipBehavior: Clip.antiAlias,
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? const Color(0xFF252525)
+                                        : const Color(0xFFF1F1F3),
+                                    borderRadius: BorderRadius.circular(7),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0x26000000),
+                                        blurRadius: 15,
+                                        offset: Offset(0, 2),
+                                      )
+                                    ],
+                                  ),
+                                  child: Column( // Changed Stack to Column for easier scrolling
+                                    children: [
+                                      /// Header (Already exists in your code)
+                                      Container(
+                                        height: 35,
+                                        color: const Color(0xFF989292),
+                                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                                        child: Row(
+                                          children: const [
+                                            Expanded(flex: 3, child: Text("Item Name", style: TextStyle(color: Colors.white, fontSize: 12))),
+                                            Expanded(flex: 2, child: Text("Price/Qty", style: TextStyle(color: Colors.white, fontSize: 12))),
+                                            Expanded(flex: 1, child: Text("Tax", style: TextStyle(color: Colors.white, fontSize: 12))),
+                                            Expanded(flex: 1, child: Text("Amount", style: TextStyle(color: Colors.white, fontSize: 12))),
+                                          ],
+                                        ),
+                                      ),
+
+                                      /// Dynamic List of Selected Items
+                                      Expanded(
+                                        child: selectedItems.isEmpty
+                                            ? const Center(
+                                          child: Text(
+                                            "No Item Selected",
+                                            style: TextStyle(
+                                              color: Color(0xFF9A9A9A),
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        )
+                                            : ListView.builder(
+                                          itemCount: selectedItems.length,
+                                          itemBuilder: (context, index) {
+                                            final item = selectedItems[index];
+
+                                            return Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                  horizontal: 10, vertical: 8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white, // ✅ WHITE BACKGROUND
+                                                border: Border(
+                                                  bottom:
+                                                  BorderSide(color: Colors.grey.shade300),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  Expanded(
+                                                    flex: 3,
+                                                    child: Text(
+                                                      item['name'],
+                                                      style:
+                                                      const TextStyle(fontSize: 12),
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 2,
+                                                    child: Text(
+                                                      item['price'],
+                                                      style:
+                                                      const TextStyle(fontSize: 12),
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 1,
+                                                    child: Text(
+                                                      item['tax'],
+                                                      style:
+                                                      const TextStyle(fontSize: 12),
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 1,
+                                                    child: Text(
+                                                      item['amount'],
+                                                      textAlign: TextAlign.right,
+                                                      style:
+                                                      const TextStyle(fontSize: 12),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: const [
+                                    Text(
+                                      "Select Payment Type",
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Align(
+                                        alignment: Alignment.centerRight,
+                                        child: Text(
+                                          '*Refund will be issued to the only original payment method.',
+                                          textAlign: TextAlign.right,
+                                          style: TextStyle(
+                                            color: Color(0xFF0753C5),
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w400,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    _paymentButton("Cash"),
+                                    const SizedBox(width: 10),
+                                    _paymentButton("Card"),
+                                    const SizedBox(width: 10),
+                                    _paymentButton("Wallet"),
+                                  ],
+                                ),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      margin: const EdgeInsets.only(
+                                          top: 4, right: 6),
+                                      width: 6,
+                                      height: 6,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFD97D00),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const Expanded(
+                                      child: Text(
+                                        'Refund amount is calculated after discount application',
+                                        style: TextStyle(
+                                          color: Color(0xFFD97D00),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      margin: const EdgeInsets.only(
+                                          top: 4, right: 6),
+                                      width: 6,
+                                      height: 6,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFBF3333),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const Expanded(
+                                      child: Text(
+                                        'For card payments, only the exact paid amount can be refunded. '
+                                            'Partial or excess refunds are not allowed.',
+                                        style: TextStyle(
+                                          color: Color(0xFFBF3333),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    // 🔥 Make whole header clickable
+                                    GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          isExpanded = !isExpanded;
+                                        });
+                                      },
+                                      child: Container(
+                                        width: double.infinity,
+                                        height: 40,
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFFE5EFFF),
+                                          borderRadius: BorderRadius.only(
+                                            bottomLeft: Radius.circular(8),
+                                            bottomRight: Radius.circular(8),
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Color(0x26000000), // soft black
+                                              blurRadius: 6,
+                                              offset: Offset(0, 4), // 👈 shadow only at bottom
+                                            ),
+                                          ],
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const SizedBox(width: 15),
+                                            const Expanded(
+                                              child: Text(
+                                                'Payment Summary',
+                                                style: TextStyle(
+                                                  color: Color(0xFF222222),
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.only(right: 10),
+                                              child: Icon(
+                                                isExpanded
+                                                    ? Icons.keyboard_arrow_up
+                                                    : Icons.keyboard_arrow_down,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+
+                                    // 🔥 Expand UPWARD
+                                    if (isExpanded)
+                                      Positioned(
+                                        bottom: 40,
+                                        left: 0,
+                                        right: 0,
+                                        child: AnimatedSize(
+                                          duration: const Duration(milliseconds: 300),
+                                          curve: Curves.easeInOut,
+                                          alignment: Alignment.bottomCenter,
+                                          child: Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                  horizontal: 15, vertical: 10),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFFFFFF),
+                                                borderRadius: const BorderRadius.only(
+                                                  topLeft: Radius.circular(8),
+                                                  topRight: Radius.circular(8),
+                                                ),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                    color: Color(0x26000000),
+                                                    blurRadius: 10,
+                                                    offset: Offset(0, -2),
+                                                  )
+                                                ],
+                                              ),
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+
+                                                  /// ===== ORIGINAL ORDER =====
+                                                  _buildRow("Gross Total", "₹${grossTotal.toStringAsFixed(2)}"),
+                                                  _buildRow("Tax", "₹${taxTotal.toStringAsFixed(2)}"),
+
+                                                  ShaderMask(
+                                                    shaderCallback: (Rect bounds) {
+                                                      final isDark =
+                                                          Theme.of(context).brightness == Brightness.dark;
+
+                                                      return LinearGradient(
+                                                        begin: Alignment.centerLeft,
+                                                        end: Alignment.centerRight,
+                                                        colors: isDark
+                                                            ? [
+                                                          Colors.white.withOpacity(0.1),
+                                                          Colors.white.withOpacity(0.7),
+                                                          Colors.white.withOpacity(0.1),
+                                                        ]
+                                                            : [
+                                                          Colors.black.withOpacity(0.1),
+                                                          Colors.black.withOpacity(0.7),
+                                                          Colors.black.withOpacity(0.1),
+                                                        ],
+                                                        stops: const [0.0, 0.5, 1.0],
+                                                      ).createShader(bounds);
+                                                    },
+                                                    blendMode: BlendMode.srcIn,
+                                                    child: DottedLine(
+                                                      dashLength: 6,
+                                                      dashGapLength: 4,
+                                                      lineThickness: 1,
+                                                      direction: Axis.horizontal,
+                                                      dashColor:
+                                                      Theme.of(context).brightness == Brightness.dark
+                                                          ? Colors.white
+                                                          : Colors.black,
+                                                    ),
+                                                  ),
+                                                  _buildRow("Net Total", "₹${netTotal.toStringAsFixed(2)}"),
+
+                                                  _buildRow(
+                                                    "Merchant Discount",
+                                                    "- ₹${merchantDiscount.toStringAsFixed(2)}",
+                                                    valueColor: Colors.blue,
+                                                  ),
+
+                                                  ShaderMask(
+                                                    shaderCallback: (Rect bounds) {
+                                                      final isDark =
+                                                          Theme.of(context).brightness == Brightness.dark;
+
+                                                      return LinearGradient(
+                                                        begin: Alignment.centerLeft,
+                                                        end: Alignment.centerRight,
+                                                        colors: isDark
+                                                            ? [
+                                                          Colors.white.withOpacity(0.1),
+                                                          Colors.white.withOpacity(0.7),
+                                                          Colors.white.withOpacity(0.1),
+                                                        ]
+                                                            : [
+                                                          Colors.black.withOpacity(0.1),
+                                                          Colors.black.withOpacity(0.7),
+                                                          Colors.black.withOpacity(0.1),
+                                                        ],
+                                                        stops: const [0.0, 0.5, 1.0],
+                                                      ).createShader(bounds);
+                                                    },
+                                                    blendMode: BlendMode.srcIn,
+                                                    child: DottedLine(
+                                                      dashLength: 6,
+                                                      dashGapLength: 4,
+                                                      lineThickness: 1,
+                                                      direction: Axis.horizontal,
+                                                      dashColor:
+                                                      Theme.of(context).brightness == Brightness.dark
+                                                          ? Colors.white
+                                                          : Colors.black,
+                                                    ),
+                                                  ),
+
+                                                  _buildRow(
+                                                    "Total Net Payable",
+                                                    "₹${totalNetPayable.toStringAsFixed(2)}",
+                                                    isBold: true,
+                                                  ),
+
+                                                  // const SizedBox(height: 15),
+
+                                                  /// ===== REFUND SECTION =====
+                                                  if (isPartialRefund) ...[
+                                                    const SizedBox(height: 8),
+
+
+                                                    Align(
+                                                      alignment: Alignment.centerLeft,
+                                                      child: const Text(
+                                                        "Refund Summary",
+                                                        style: TextStyle(
+                                                          fontWeight: FontWeight.w600,
+                                                          fontSize: 13,
+                                                        ),
+                                                      ),
+                                                    ),
+
+                                                    const SizedBox(height: 8),
+
+                                                    _buildRow(
+                                                        "Refund Gross Total", "₹${refundGross.toStringAsFixed(2)}"),
+                                                    _buildRow("Tax", "₹${refundTax.toStringAsFixed(2)}"),
+
+                                                    _buildDottedDivider(context),
+
+                                                    _buildRow(
+                                                        "Net Total", "₹${refundNetTotal.toStringAsFixed(2)}"),
+
+                                                    _buildRow(
+                                                      "Merchant Discount",
+                                                      "- ₹${refundDiscount.toStringAsFixed(2)}",
+                                                      valueColor: Colors.blue,
+                                                    ),
+
+                                                    _buildDottedDivider(context),
+
+                                                    _buildRow(
+                                                      "Total Refund",
+                                                      "₹${totalRefund.toStringAsFixed(2)}",
+                                                      isBold: true,
+                                                    ),
+                                                  ],
+                                                ],
+                                              )
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 10),
+                                InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () {
+                                    showDialog(
+                                      context: context,
+                                      barrierDismissible: false,
+                                      builder: (_) => VerifyItemStatusDialog(
+                                        // order: widget.order, // pass order if needed
+                                      ),
+                                    );
+                                  },
+                                  child: Container(
+                                    width: double.infinity,
+                                    height: 45,
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade600, // enabled look
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Center(
+                                      child: Text(
+                                        "Confirm Refund",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  Widget _buildDottedDivider(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return ShaderMask(
+      shaderCallback: (Rect bounds) {
+        return LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: isDark
+              ? [
+            Colors.white.withOpacity(0.1),
+            Colors.white.withOpacity(0.7),
+            Colors.white.withOpacity(0.1),
+          ]
+              : [
+            Colors.black.withOpacity(0.1),
+            Colors.black.withOpacity(0.7),
+            Colors.black.withOpacity(0.1),
+          ],
+          stops: const [0.0, 0.5, 1.0],
+        ).createShader(bounds);
+      },
+      blendMode: BlendMode.srcIn,
+      child: DottedLine(
+        dashLength: 6,
+        dashGapLength: 4,
+        lineThickness: 1,
+        direction: Axis.horizontal,
+        dashColor: isDark ? Colors.white : Colors.black,
+      ),
+    );
+  }
+  Widget _buildRow(String title, String value,
+      {bool isBold = false, Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.w400,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.w400,
+              color: valueColor ?? Colors.black,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  Widget _refundRow(
+      String itemName,
+      String unitPrice,
+      String tax,
+      int qty,
+      String amount, {
+        bool hasDiscount = false,
+        String discountType = "",
+      }) {
+    // Check if this specific item is already in the selected list
+    bool isChecked = selectedItems.any((item) => item['name'] == itemName);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        // CHANGE THIS LINE: Set to transparent to remove the blue highlight
+        color: Colors.transparent,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+      ),
+      child: Row(
+        children: [
+          // Real Checkbox
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: Checkbox(
+              fillColor: WidgetStateProperty.resolveWith<Color>((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return Colors.red;
+                }
+                return Colors.white;
+              }),
+              checkColor: Colors.white,
+              side: BorderSide(color: Colors.grey.shade400, width: 1.5),
+              value: isChecked,
+              onChanged: (bool? value) {
+                setState(() {
+                  if (value == true) {
+                    selectedItems.add({
+                      'name': itemName,
+                      'price': unitPrice,
+                      'tax': tax,
+                      'qty': qty,
+                      'amount': amount,
+                    });
+                  } else {
+                    selectedItems.removeWhere((item) => item['name'] == itemName);
+                  }
+                });
+              },
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(itemName, style: const TextStyle(fontSize: 13)),
+                if (hasDiscount)
+                  Text(
+                    "Discount: $discountType",
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.red,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(flex: 2, child: Text(unitPrice, style: const TextStyle(fontSize: 13))),
+          Expanded(flex: 2, child: Text(tax, style: const TextStyle(fontSize: 13))),
+          Expanded(
+            flex: 2,
+            child: Row(
+              children: [
+                _qtyButton("-"),
+                Container(width: 30, alignment: Alignment.center, child: Text(qty.toString())),
+                _qtyButton("+"),
+              ],
+            ),
+          ),
+          Expanded(flex: 2, child: Text(amount, textAlign: TextAlign.right, style: const TextStyle(fontSize: 13))),
+        ],
+      ),
+    );
+  }
+  Widget _qtyButton(String symbol) {
+    return Container(
+      width: 22,
+      height: 22,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        symbol,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+// Define colors for each payment type
+  final Map<String, Color> paymentColors = {
+    "Cash": Color(0xFF84BB60),
+    "Card": Color(0xFF7F5AA6),
+    "Wallet": Color(0xFF978349),
+  };
+
+  Widget _paymentButton(String type) {
+    final bool isSelected = selectedPayment == type;
+    final Color color = paymentColors[type] ?? Colors.green; // fallback
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          print("=========== REFUND DEBUG START ===========");
+
+          print("Order ID: ${selectedOrder.orderId}");
+          print("Selected Payment (Before Set): $selectedPayment");
+
+          print("Selected Items Count: ${selectedItems.length}");
+          print("Total Order Items: ${selectedOrder.items.length}");
+
+          print("Gross Total: $grossTotal");
+          print("Tax Total: $taxTotal");
+          print("Net Total: $netTotal");
+          print("Merchant Discount: $merchantDiscount");
+          print("Total Net Payable: $totalNetPayable");
+
+          print("Refund Gross: $refundGross");
+          print("Refund Tax: $refundTax");
+          print("Refund Discount: $refundDiscount");
+          print("Total Refund: $totalRefund");
+
+          setState(() => selectedPayment = type);
+          print("Selected Payment (After Set): $selectedPayment");
+
+          if (type == "Cash") {
+            print("---- CASH REFUND FLOW START ----");
+
+            final bool isFullRefund =
+                selectedItems.length == selectedOrder.items.length;
+
+            final bool isPartialRefund = !isFullRefund;
+
+            print("Is Full Refund: $isFullRefund");
+            print("Is Partial Refund: $isPartialRefund");
+
+            List<RefundItem>? refundItems;
+
+            // ✅ Restrict ONLY for Partial Refund
+            if (isPartialRefund) {
+
+              print("---- CHECKING DISCOUNT FOR PARTIAL REFUND ----");
+
+              final bool hasDiscountedItem = selectedItems.any((selectedItem) {
+                final lineItem = selectedOrder.items
+                    .firstWhere((e) => e.name == selectedItem['name']);
+
+                print("Checking Item: ${lineItem.name}");
+                print("isItemsHasDiscount: ${lineItem.isItemsHasDiscount}");
+                print("itemDiscountType: ${lineItem.itemDiscountType}");
+
+                return lineItem.isItemsHasDiscount == "Yes";
+              });
+
+              if (hasDiscountedItem) {
+                print("❌ PARTIAL REFUND BLOCKED: Discounted item detected");
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        "Partial refund not allowed for discounted items."),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+
+                print("=========== REFUND DEBUG END (BLOCKED) ===========");
+                return;
+              }
+
+              print("---- PARTIAL REFUND ITEM MAPPING START ----");
+
+              refundItems = selectedItems.map((item) {
+
+                final lineItem = selectedOrder.items
+                    .firstWhere((e) => e.name == item['name']);
+
+                final double refundAmount = double.parse(
+                  (lineItem.total + lineItem.totalTax).toStringAsFixed(2),
+                );
+
+                print("---- Mapping Item ----");
+                print("Item Name: ${item['name']}");
+                print("Matched LineItem ID: ${lineItem.id}");
+                print("LineItem Total: ${lineItem.total}");
+                print("LineItem Tax: ${lineItem.totalTax}");
+                print("Final Refund Amount: $refundAmount");
+                print("-------------------------------");
+
+                return RefundItem(
+                  orderItemId: lineItem.id,
+                  orderItemAmount: refundAmount,
+                );
+
+              }).toList();
+
+              print("Refund Items JSON: ${jsonEncode(refundItems.map((e) => e.toJson()).toList())}");
+              print("---- PARTIAL REFUND ITEM MAPPING END ----");
+            }
+
+            // ✅ Full refund will NOT check discount
+            final refundRequest = RefundRequestModel(
+              orderId: selectedOrder.orderId,
+              refundType: isFullRefund ? "Full" : "Partial",
+              items: refundItems,
+            );
+
+            print("---- FINAL REFUND REQUEST JSON ----");
+            print(jsonEncode(refundRequest.toJson()));
+            print("---- CASH REFUND FLOW END ----");
+
+            showDialog(
+              context: context,
+              builder: (_) => CashRefundDialog(
+                refundRequest: refundRequest,
+                refundAmount: totalRefund,
+                onContinue: () {
+                  setState(() {
+                    isConfirmEnabled = true;
+                  });
+                },
+              ),
+            );
+          }
+
+          print("=========== REFUND DEBUG END ===========");
+        },
+        child: Container(
+          height: 40,
+          decoration: BoxDecoration(
+            color: isSelected ? color.withOpacity(0.2) : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected ? color : Colors.grey.shade300,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              /// Circle Indicator (filled as before)
+              Container(
+                width: 10,
+                height: 10,
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isSelected ? color : Colors.grey.shade400,
+                ),
+              ),
+
+              /// Text
+              Text(
+                type,
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: isSelected ? color : Colors.black,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  BoxDecoration _boxDecoration() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return BoxDecoration(
+      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color:
+          isDark ? Colors.black.withOpacity(0.4) : const Color(0x14000000),
+          blurRadius: 8,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    );
+  }
+}

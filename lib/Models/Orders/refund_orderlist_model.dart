@@ -69,7 +69,9 @@ class LineItem {
   final int quantity;
   final double total;
   final String image;
-
+  final double totalTax;
+  final String isItemsHasDiscount;
+  final String itemDiscountType;
   LineItem({
     required this.id,
     required this.name,
@@ -77,6 +79,9 @@ class LineItem {
     required this.quantity,
     required this.total,
     required this.image,
+    required this.totalTax,
+    required this.isItemsHasDiscount,
+    required this.itemDiscountType,
   });
 
   factory LineItem.fromJson(Map<String, dynamic> json) {
@@ -87,6 +92,9 @@ class LineItem {
       quantity: json['quantity'],
       total: double.parse(json['total']),
       image: json['image']?['src'] ?? '',
+      totalTax: double.tryParse(json['total_tax']?.toString() ?? '0') ?? 0.0,
+      isItemsHasDiscount: json['is_items_has_discount'] ?? "No",
+      itemDiscountType: json['item_discount_type'] ?? "",
     );
   }
 }
@@ -105,4 +113,44 @@ class CouponModel {
       discount: double.parse(json['discount']),
     );
   }
+}
+class RefundItem {
+  final int orderItemId;
+  final double orderItemAmount;
+
+  RefundItem({
+    required this.orderItemId,
+    required this.orderItemAmount,
+  });
+
+  Map<String, dynamic> toJson() => {
+    "order_item_id": orderItemId,
+    "order_item_amount": orderItemAmount,
+  };
+}
+
+class RefundRequestModel {
+  final int orderId;
+  final String refundType; // "Full" or "Partial"
+  final List<RefundItem>? items;
+
+  RefundRequestModel({
+    required this.orderId,
+    required this.refundType,
+    this.items,
+  });
+
+  Map<String, dynamic> toJson() {
+    final data = {
+      "order_id": orderId,
+      "refund_type": refundType,
+    };
+
+    if (refundType == "Partial" && items != null) {
+      data["items"] = items!.map((e) => e.toJson()).toList();
+    }
+
+    return data;
+  }
+
 }
