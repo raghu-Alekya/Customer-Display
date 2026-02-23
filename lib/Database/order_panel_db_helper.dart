@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
@@ -8,12 +9,15 @@ import 'package:pinaka_pos/Models/Orders/orders_model.dart';
 import 'package:pinaka_pos/Repositories/Orders/order_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:isar/isar.dart'; // Build #1.0.104
 import '../Constants/text.dart';
 import '../Helper/api_response.dart';
 import '../Models/Category/category_product_model.dart';
 import '../Models/Orders/get_orders_model.dart' as model;
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import 'db_helper.dart';
+import 'isar_service.dart'; // Build #1.0.104
+import 'isar_cache_entry.dart'; // Build #1.0.104
 
 /// Resolves product image URL from various possible keys (image, product_image, images array, etc.)
 /// Top-level function for use across the app; OrderHelper.resolveProductImage delegates to this.
@@ -24,13 +28,16 @@ String resolveProductImageFromMap(dynamic map) {
   final image = m['image'];
   if (image is String && image.trim().isNotEmpty) return image;
   final productImage = m['product_image'];
-  if (productImage is String && productImage.trim().isNotEmpty) return productImage;
+  if (productImage is String && productImage.trim().isNotEmpty)
+    return productImage;
   final itemImage = m['item_image'];
   if (itemImage is String && itemImage.trim().isNotEmpty) return itemImage;
   final customItemImage = m['custom_item_image'];
-  if (customItemImage is String && customItemImage.trim().isNotEmpty) return customItemImage;
+  if (customItemImage is String && customItemImage.trim().isNotEmpty)
+    return customItemImage;
   final fastKeyImage = m['fast_key_item_image'];
-  if (fastKeyImage is String && fastKeyImage.trim().isNotEmpty) return fastKeyImage;
+  if (fastKeyImage is String && fastKeyImage.trim().isNotEmpty)
+    return fastKeyImage;
 
   if (image is Map && image['src'] != null) {
     final src = image['src'].toString();
@@ -58,10 +65,13 @@ enum ItemType {
   const ItemType(this.value);
 }
 
-class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Order data
-  static final OrderHelper _instance = OrderHelper._internal(); // Singleton instance to ensure only one instance of OrderHelper exists
+class OrderHelper {
+  // Build #1.0.10 - Naveen: Added Order Helper to Maintain Order data
+  static final OrderHelper _instance = OrderHelper
+      ._internal(); // Singleton instance to ensure only one instance of OrderHelper exists
   factory OrderHelper() => _instance;
   static bool isOrderPanelLoaded = false;
+
   /// Notifier so RightOrderPanel can refresh when a new order is created (e.g. from grid).
   static final ValueNotifier<int> orderPanelRefreshNotifier = ValueNotifier(0);
 
@@ -72,13 +82,15 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   /// When ensureOrderExists fails, this holds the error message for UI feedback.
   static String? lastEnsureOrderError;
 
-  Map<int, bool> orderAgeVerifiedFlags={};
+  Map<int, bool> orderAgeVerifiedFlags = {};
   int? activeOrderId; // Stores the currently active order ID
   int? activeUserId; // Stores the active user ID
-  int? selectedOrderId; // Build #1.0.248 : save & persists across rebuilds of theme selection change
+  int?
+  selectedOrderId; // Build #1.0.248 : save & persists across rebuilds of theme selection change
   int? cancelledOrderId; // Build #1.0.189: Stores the cancelled order ID
   List<int> orderIds = []; // List of order IDs for the active user
   List<Map<String, dynamic>> orders = [];
+
   /// Build 1.0.171: Concurrency Control: _syncFuture ensures only one sync operation runs at a time by checking if a sync is in progress; if so, it waits for completion, preventing data corruption or race conditions.
   /// Reliable Sync Process: Using a Completer, _syncFuture manages the sync, clears and updates the database with API orders, handles errors, and resets to allow new syncs, maintaining data consistency.
   static Future<void>? _syncFuture;
@@ -93,7 +105,145 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     loadData(); // Load existing order data on initialization
   }
 
-  void _upsertOfflineOrderInMemory(int orderId, Map<String, dynamic> updatedOrder) {
+  double getCurrentMerchantDiscount(Map<String, dynamic> order) {
+    final products = (order['products'] as List?) ?? [];
+
+    double currentGross = 0.0;
+    for (var p in products) {
+      final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+      final qty = int.tryParse(p['quantity']?.toString() ?? '1') ?? 1;
+      currentGross += price * qty;
+    }
+
+    final type = order['merchantDiscountType']?.toString() ?? 'fixed';
+    final perc = double.tryParse(
+        order['merchantDiscountPercentage']?.toString() ?? '0') ??
+        0.0;
+    final fixed =
+        double.tryParse(order['merchantDiscountFixed']?.toString() ?? '0') ??
+            0.0;
+
+    if (type == 'percentage' && perc > 0) {
+      return (currentGross * perc) / 100.0;
+    } else {
+      return fixed;
+    }
+  }
+
+  double getProductTaxFromHive(
+      int productId, double discountedUnitPrice, int qty) {
+    try {
+      final double taxableBase = discountedUnitPrice * qty;
+      final isar = IsarService.sync;
+      if (isar == null) return 0.0;
+
+      final cachedEntries = isar.isarCacheEntrys
+          .where()
+          .filter()
+          .keyStartsWith("products_")
+          .findAllSync();
+
+      for (final entry in cachedEntries) {
+        final List products = json.decode(entry.json);
+        final product = products.firstWhere(
+              (p) => p["fast_key_product_id"] == productId || p["id"] == productId,
+          orElse: () => null,
+        );
+
+        if (product == null) continue;
+        if (product["tax_status"] == "none") return 0.0;
+
+        final taxRates = product["tax"]?["tax_rates"];
+        if (taxRates is List && taxRates.isNotEmpty) {
+          double taxTotal = 0.0;
+          for (final tax in taxRates) {
+            final double rate =
+                double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
+            final double rawTax = (taxableBase * rate) / 100;
+            final double roundedTax = (rawTax * 100).roundToDouble() / 100;
+            taxTotal += roundedTax;
+          }
+          return (taxTotal * 100).roundToDouble() / 100;
+        }
+      }
+    } catch (e) {
+      if (kDebugMode)
+        print("❌ Error calculating tax for product $productId: $e");
+    }
+    return 0.0;
+  }
+
+  Future<void> saveOfflineOrder(int orderId, Map<String, dynamic> order) async {
+    final box = StorageProvider.offlineOrders;
+
+    // --- Recalculate Totals ---
+    final products = (order['products'] as List?) ?? [];
+    final customItems = (order['custom_items'] as List?) ?? [];
+    final payouts = (order['payouts'] as List?) ?? [];
+    final cashbacks = (order['cashbacks'] as List?) ?? [];
+
+    double grossTotal = 0.0;
+    double orderTax = 0.0;
+
+    // 1. Products
+    for (final p in products) {
+      final qty = int.tryParse(p['quantity']?.toString() ?? '1') ?? 1;
+      final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+      grossTotal += price * qty;
+
+      final pid = int.tryParse((p['product_id'] ?? p['id']).toString()) ?? 0;
+      orderTax += getProductTaxFromHive(pid, price, qty);
+    }
+
+    // 2. Custom Items
+    for (final c in customItems) {
+      final qty = int.tryParse(c['quantity']?.toString() ?? '1') ?? 1;
+      final price = double.tryParse(c['price']?.toString() ?? '0') ?? 0.0;
+      grossTotal += price * qty;
+
+      final taxRate = double.tryParse(c['tax_rate']?.toString() ?? '0') ?? 0.0;
+      if (taxRate > 0) {
+        orderTax += ((price * taxRate) / 100) * qty;
+      }
+    }
+
+    // 3. Payouts & cashbacks
+    double payoutTotal = payouts.fold(0.0,
+            (s, p) => s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0));
+    double cashbackTotal = cashbacks.fold(0.0,
+            (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0));
+    double cbFee = (order['cashbackFee'] as num?)?.toDouble() ?? 0.0;
+    if (cashbacks.isEmpty) cbFee = 0.0;
+
+    grossTotal += payoutTotal + cashbackTotal;
+
+    double orderDiscount = (order['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+    double merchantDiscount = getCurrentMerchantDiscount(order);
+
+    double netTotal = grossTotal - orderDiscount - merchantDiscount;
+    double netPayable = netTotal + orderTax + cbFee;
+
+    // Update the map
+    order['gross_total'] = grossTotal;
+    order['orderDiscount'] = orderDiscount;
+    order['merchantDiscount'] = merchantDiscount;
+    order['cashbackFee'] = cbFee;
+    order['order_tax'] = orderTax;
+    order['net_total'] = netTotal;
+    order['net_payable'] = netPayable;
+
+    // Save to Hive and Memory
+    await box.put(orderId.toString(), order);
+    _upsertOfflineOrderInMemory(orderId, order);
+
+    if (kDebugMode) {
+      print(
+          "💾 Saved complete order $orderId with totals (net_payable: $netPayable)");
+    }
+  }
+
+  void _upsertOfflineOrderInMemory(
+      int orderId, Map<String, dynamic> updatedOrder) {
     // Keep the in-memory offline snapshot in sync without re-reading the entire Hive box.
     // ⚡ Ensure orders is mutable (convert fixed-length list to growable if needed)
     if (orders is! List || orders.isEmpty) {
@@ -126,12 +276,14 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   // Loads processing order data from the local database and shared preferences
   Future<void> loadProcessingData() async {
     final prefs = await SharedPreferences.getInstance();
-    activeOrderId = prefs.getInt('activeOrderId'); // Retrieve the saved active order ID
+    activeOrderId =
+        prefs.getInt('activeOrderId'); // Retrieve the saved active order ID
     activeUserId = await getUserIdFromDB();
     // Debugging logs
     if (kDebugMode) {
-      print("#### Order Panel DB helper loadData: before activeOrderId = $activeOrderId, activeUserId= $activeUserId ");
-      print("#### DEBUG orders: $orders");  // Build #1.0.189
+      print(
+          "#### Order Panel DB helper loadData: before activeOrderId = $activeOrderId, activeUserId= $activeUserId ");
+      print("#### DEBUG orders: $orders"); // Build #1.0.189
       print("#### DEBUG orders length >>>>> : ${orders.length}");
       print("#### DEBUG orderIds >>>>> : $orderIds");
     }
@@ -141,20 +293,26 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       AppDBConst.orderTable,
       where: '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} = ?',
       whereArgs: [activeUserId ?? 1, 'processing'],
+
       /// Build #1.0.161
       /// If required "asc" orders list, un-comment this line (order id's order low to high)
       /// Build #1.0.251 : FIXED - We have to use orderServerId rather than orderDate, it is already latest based on backend
-      orderBy: '${AppDBConst.orderServerId} ASC', // Ensure orders are sorted by creation date
+      orderBy:
+      '${AppDBConst.orderServerId} ASC', // Ensure orders are sorted by creation date
     );
     // ⚡ Ensure mutable list (db.query returns fixed-length list)
     orders = List<Map<String, dynamic>>.from(queryResult);
 
     if (orders.isNotEmpty) {
       // Convert order list from DB into a list of order IDs
-      orderIds = orders.map((order) => order[AppDBConst.orderServerId] as int).toList();
+      orderIds = orders
+          .map((order) => order[AppDBConst.orderServerId] as int)
+          .toList();
       // If activeOrderId is null or invalid, set it to the last available order ID
       if (activeOrderId == null || !orderIds.contains(activeOrderId)) {
-        activeOrderId = orders.last[AppDBConst.orderServerId];///changed to order server id
+        activeOrderId = orders.last[AppDBConst.orderServerId];
+
+        ///changed to order server id
         await prefs.setInt('activeOrderId', activeOrderId!);
       }
     } else {
@@ -166,11 +324,12 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
     // Debugging logs
     if (kDebugMode) {
-      print("#### Order Panel DB helper loadData: activeOrderId = $activeOrderId");
-      print("#### Order Panel DB helper loadData: orderIds = $orderIds, activeUserId: $activeUserId");
+      print(
+          "#### Order Panel DB helper loadData: activeOrderId = $activeOrderId");
+      print(
+          "#### Order Panel DB helper loadData: orderIds = $orderIds, activeUserId: $activeUserId");
     }
   }
-
 
   Future<void> loadData() async {
     final prefs = await SharedPreferences.getInstance();
@@ -224,12 +383,12 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       }
 
       return MapEntry(entry.key, normalized);
-    })
-        .toList();
+    }).toList();
 
     if (validEntries.isNotEmpty) {
       // ⚡ Ensure mutable list (not fixed-length)
-      orders = List<Map<String, dynamic>>.from(validEntries.map((e) => e.value));
+      orders =
+      List<Map<String, dynamic>>.from(validEntries.map((e) => e.value));
 
       // ✅ Sort by created_at descending (newest first) for stable tab order on navbar navigation
       orders.sort((a, b) {
@@ -243,11 +402,15 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       });
 
       // ✅ Extract order IDs from sorted orders (keeps orderIds in sync)
-      orderIds = orders.map((map) {
+      orderIds = orders
+          .map((map) {
         if (map.containsKey('order_id')) return map['order_id'] as int?;
         if (map.containsKey('id')) return map['id'] as int?;
-        return int.tryParse(map['order_id']?.toString() ?? map['id']?.toString() ?? '');
-      }).whereType<int>().toList();
+        return int.tryParse(
+            map['order_id']?.toString() ?? map['id']?.toString() ?? '');
+      })
+          .whereType<int>()
+          .toList();
 
       // ✅ Set active order ID if not found
       if (activeOrderId == null || !orderIds.contains(activeOrderId)) {
@@ -271,7 +434,6 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     }
   }
 
-
   Future<int> getUserIdFromDB() async {
     var userId = 0;
     try {
@@ -287,7 +449,6 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     }
     return userId;
   }
-
 
   // Update an orderID from API
   Future<void> updateServerOrderIDInDB(int orderServerId) async {
@@ -345,7 +506,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     await prefs.setInt('activeOrderId', activeOrderId!);
 
     if (kDebugMode) {
-      print("#### Order updated with ID: Active DBOrder ID $activeOrderId, serverOrderID $orderServerId, orderDate: ${DateTime.now().toString()}");
+      print(
+          "#### Order updated with ID: Active DBOrder ID $activeOrderId, serverOrderID $orderServerId, orderDate: ${DateTime.now().toString()}");
     }
   }
 
@@ -354,7 +516,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     // Build 1.0.171: Check if a sync operation is already in progress
     if (_syncFuture != null) {
       if (kDebugMode) {
-        print("#### DEBUG: syncOrdersFromApi - Sync already in progress, waiting for completion");
+        print(
+            "#### DEBUG: syncOrdersFromApi - Sync already in progress, waiting for completion");
       }
       await _syncFuture; // Wait for the existing sync to complete
       return;
@@ -369,20 +532,23 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
     try {
       final db = await DBHelper.instance.database;
-      activeUserId = await getUserIdFromDB(); // Build #1.0.165: to load user before update order table, to filter user based processing order only
+      activeUserId =
+      await getUserIdFromDB(); // Build #1.0.165: to load user before update order table, to filter user based processing order only
       // Build #1.0.80: Count orders in the database
       final dbOrdersCount = await db.query(AppDBConst.orderTable);
       final apiOrdersCount = apiOrders.length;
 
       if (kDebugMode) {
-        print("#### DEBUG: syncOrdersFromApi - API orders count: $apiOrdersCount, DB orders count: ${dbOrdersCount.length}, activeUserId :${activeUserId ?? 1}");
+        print(
+            "#### DEBUG: syncOrdersFromApi - API orders count: $apiOrdersCount, DB orders count: ${dbOrdersCount.length}, activeUserId :${activeUserId ?? 1}");
       }
 
       // Check if counts match
       //Build #1.0.165: delete db every time because of user filter logic applied for order table
       // if (dbOrdersCount.length != apiOrdersCount) {
       if (kDebugMode) {
-        print("#### DEBUG: syncOrdersFromApi - Counts do not match, deleting DB orders");
+        print(
+            "#### DEBUG: syncOrdersFromApi - Counts do not match, deleting DB orders");
       }
       // Build #1.0.80: Delete all orders in the database
       // await db.delete(AppDBConst.orderTable);
@@ -391,9 +557,11 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       /// If we go to order screen - prev all processing orders will remove that the cause of checking processing orders while closing shift
       if (apiOrders.isNotEmpty) {
         // Check if we're syncing processing orders
-        final isSyncingProcessingOrders = apiOrders.any((order) => order.status == 'processing');
+        final isSyncingProcessingOrders =
+        apiOrders.any((order) => order.status == 'processing');
         if (kDebugMode) {
-          print("#### DEBUG: isSyncingProcessingOrders $isSyncingProcessingOrders");
+          print(
+              "#### DEBUG: isSyncingProcessingOrders $isSyncingProcessingOrders");
         }
         if (isSyncingProcessingOrders) {
           // If syncing processing orders, only delete processing orders
@@ -408,7 +576,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           // when ever orderScreenPanel calls like - order screen prev non-processing orders will remove and re-adding below
           await db.delete(
             AppDBConst.orderTable,
-            where: '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} != ?',
+            where:
+            '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} != ?',
             whereArgs: [activeUserId ?? 1, 'processing'],
           );
         }
@@ -417,14 +586,17 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         // DON'T delete all orders when apiOrders is empty
         // Just skip the deletion and proceed with sync (which will do nothing)
         if (kDebugMode) {
-          print("#### DEBUG: syncOrdersFromApi - No orders to sync, skipping deletion");
+          print(
+              "#### DEBUG: syncOrdersFromApi - No orders to sync, skipping deletion");
         }
         // await db.delete(AppDBConst.orderTable); // NO NEED TO DELETE COMPLETE ORDER TABLE
       }
       //  delete purchasedItemsTable related data
       /// Build #1.0.226: purchasedItemsTable foreign key has ON DELETE CASCADE which means when a parent order is deleted, all child purchased items are automatically deleted
       // await db.delete(AppDBConst.purchasedItemsTable); // NO NEED HERE
-      OrderHelper.isOrderPanelLoaded = false;/// set 'false' to load 'processing' orders in order panel again, if db is empty by orders screen loading.
+      OrderHelper.isOrderPanelLoaded = false;
+
+      /// set 'false' to load 'processing' orders in order panel again, if db is empty by orders screen loading.
       // }
       // if(!isProcessing) {
       //   if (kDebugMode) {
@@ -437,12 +609,14 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       // }
       // Proceed with syncing only if counts match or after clearing DB
       if (kDebugMode) {
-        print("#### DEBUG: syncOrdersFromApi - Processing ${apiOrders.length} orders");
+        print(
+            "#### DEBUG: syncOrdersFromApi - Processing ${apiOrders.length} orders");
       }
 
       for (var apiOrder in apiOrders) {
         if (kDebugMode) {
-          print("#### DEBUG: syncOrdersFromApi - Processing order serverId: ${apiOrder.id}");
+          print(
+              "#### DEBUG: syncOrdersFromApi - Processing order serverId: ${apiOrder.id}");
         }
         // Check if order exists in DB by API id
         final existingOrders = await db.query(
@@ -452,7 +626,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         );
 
         if (kDebugMode) {
-          print("#### DEBUG: syncOrdersFromApi - existingOrders: ${existingOrders.length}");
+          print(
+              "#### DEBUG: syncOrdersFromApi - existingOrders: ${existingOrders.length}");
         }
 
         if (existingOrders.isNotEmpty) {
@@ -465,18 +640,27 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
               AppDBConst.orderDate: apiOrder.dateCreated,
               AppDBConst.orderTime: apiOrder.dateCreated,
               AppDBConst.orderPaymentMethod: apiOrder.paymentMethod,
-              AppDBConst.orderDiscount: double.tryParse(apiOrder.discountTotal) ?? 0.0, // Store discount
-              AppDBConst.orderTax: double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
-              AppDBConst.orderAgeRestricted: apiOrder.metaData.firstWhere( //Build #1.0.234: Saving Age Restricted value in order table
+              AppDBConst.orderDiscount:
+              double.tryParse(apiOrder.discountTotal) ??
+                  0.0, // Store discount
+              AppDBConst.orderTax:
+              double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
+              AppDBConst.orderAgeRestricted: apiOrder.metaData
+                  .firstWhere(
+                //Build #1.0.234: Saving Age Restricted value in order table
                     (meta) => meta.key == TextConstants.ageRestrictedKey,
-                orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
-              ).value.toString(),
+                orElse: () =>
+                    model.MetaData(id: 0, key: '', value: 'false'),
+              )
+                  .value
+                  .toString(),
             },
             where: '${AppDBConst.orderServerId} = ?',
             whereArgs: [apiOrder.id],
           );
           if (kDebugMode) {
-            print("#### DEBUG: syncOrdersFromApi Updated order with serverId: ${apiOrder.id}, orderTotal: ${apiOrder.total}");
+            print(
+                "#### DEBUG: syncOrdersFromApi Updated order with serverId: ${apiOrder.id}, orderTotal: ${apiOrder.total}");
           }
         } else {
           await db.insert(AppDBConst.orderTable, {
@@ -489,28 +673,41 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
             AppDBConst.orderDate: apiOrder.dateCreated,
             AppDBConst.orderTime: apiOrder.dateCreated,
             AppDBConst.orderPaymentMethod: apiOrder.paymentMethod,
-            AppDBConst.orderDiscount: double.tryParse(apiOrder.discountTotal) ?? 0.0, // Store discount
-            AppDBConst.orderTax: double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
-            AppDBConst.orderShipping: double.tryParse(apiOrder.shippingTotal) ?? 0.0, // Store shipping
-            AppDBConst.orderAgeRestricted: apiOrder.metaData //Build #1.0.234: Saving Age Restricted value in order table
-                .firstWhere((meta) => meta.key == TextConstants.ageRestrictedKey,
+            AppDBConst.orderDiscount: double.tryParse(apiOrder.discountTotal) ??
+                0.0, // Store discount
+            AppDBConst.orderTax:
+            double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
+            AppDBConst.orderShipping: double.tryParse(apiOrder.shippingTotal) ??
+                0.0, // Store shipping
+            AppDBConst.orderAgeRestricted: apiOrder
+                .metaData //Build #1.0.234: Saving Age Restricted value in order table
+                .firstWhere(
+                  (meta) => meta.key == TextConstants.ageRestrictedKey,
               orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
-            ).value.toString(),
+            )
+                .value
+                .toString(),
           });
           if (kDebugMode) {
-            print("#### DEBUG: syncOrdersFromApi Inserted new order with serverId: ${apiOrder.id}, orderTotal: ${apiOrder.total}");
+            print(
+                "#### DEBUG: syncOrdersFromApi Inserted new order with serverId: ${apiOrder.id}, orderTotal: ${apiOrder.total}");
           }
         }
 
         // Sync line items using API order id
         // await updateOrderItems(apiOrder.id, apiOrder.lineItems);
-        await updateOrderItems(apiOrder.id, apiOrder.lineItems, apiOrder);  // ✅ Pass the entire apiOrder
+        await updateOrderItems(apiOrder.id, apiOrder.lineItems,
+            apiOrder); // ✅ Pass the entire apiOrder
 
         // await updateOrderPayoutItems(apiOrder.id, apiOrder.feeLines ?? []); // Build #1.0.64
-        await updateOrderPayoutItem(apiOrder.id, apiOrder.lineItems); // Build #1.0.198
+        await updateOrderPayoutItem(
+            apiOrder.id, apiOrder.lineItems); // Build #1.0.198
         // Build #1.0.207: Fixed Issue - Always Merchant discount showing "0"
         // Ex: updateOrderPayoutItem modified to lineItems but discount we are getting in fee lines only , we are not using this, that's why merchant discount calculation is 0.
-        await updateOrderMerchantDiscount(apiOrder.id, apiOrder.lineItems ?? []); // Build #1.0.274 : updated fee lines to line items change
+        await updateOrderMerchantDiscount(
+            apiOrder.id,
+            apiOrder.lineItems ??
+                []); // Build #1.0.274 : updated fee lines to line items change
         await updateOrderCouponItems(apiOrder.id, apiOrder.couponLines ?? []);
       }
 
@@ -520,9 +717,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           final items = await getOrderItems(order.id);
           for (var item in items) {
             print(
-                "#### DEBUG: Check after insert if Order items ID: ${item[AppDBConst
-                    .itemId]},  ${item[AppDBConst
-                    .itemServerId]} for order ${order.id} is correct?, loadOrderItems 3");
+                "#### DEBUG: Check after insert if Order items ID: ${item[AppDBConst.itemId]},  ${item[AppDBConst.itemServerId]} for order ${order.id} is correct?, loadOrderItems 3");
           }
         }
         print("#### DEBUG: syncOrdersFromApi - Refreshing local data");
@@ -533,31 +728,38 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         print("#### DEBUG: syncOrdersFromApi - Sync completed successfully");
       }
       completer.complete();
-    } catch (e) { // Build 1.0.171
+    } catch (e) {
+      // Build 1.0.171
       // Handle errors and propagate them
       if (kDebugMode) {
         print("#### DEBUG: syncOrdersFromApi - Error occurred: $e");
       }
       completer.completeError(e);
       rethrow;
-    } finally { // Build 1.0.171
+    } finally {
+      // Build 1.0.171
       // Reset _syncFuture to allow new sync operations
       _syncFuture = null;
       if (kDebugMode) {
-        print("#### DEBUG: syncOrdersFromApi - Sync future reset, ready for new sync");
+        print(
+            "#### DEBUG: syncOrdersFromApi - Sync future reset, ready for new sync");
       }
     }
   }
 
   //Build #1.0.40: update order items using item id
 
-  Future<void> updateOrderItems(int orderId, List<model.LineItem> apiItems, model.OrderModel orderModel) async {
+  Future<void> updateOrderItems(int orderId, List<model.LineItem> apiItems,
+      model.OrderModel orderModel) async {
     if (kDebugMode) {
       print("#### DEBUG: updateOrderItems orderId: $orderId");
-      print("#### DEBUG: Order-level auto discount: ${orderModel.orderLevelAutoDiscountAmount}");  // ✅ Log the discount
+      print(
+          "#### DEBUG: Order-level auto discount: ${orderModel.orderLevelAutoDiscountAmount}"); // ✅ Log the discount
       // NEW: Log combo and display auto discounts
-      print("#### DEBUG: Total combo discount: ${orderModel.totalComboDiscount}");
-      print("#### DEBUG: Total display auto discount: ${orderModel.totalDisplayAutoDiscount}");
+      print(
+          "#### DEBUG: Total combo discount: ${orderModel.totalComboDiscount}");
+      print(
+          "#### DEBUG: Total display auto discount: ${orderModel.totalDisplayAutoDiscount}");
     }
     final db = await DBHelper.instance.database;
     final existingItems = await db.query(
@@ -567,19 +769,24 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     );
 
     final existingItemsMap = {
-      for (var item in existingItems) item[AppDBConst.itemServerId].toString(): item,
+      for (var item in existingItems)
+        item[AppDBConst.itemServerId].toString(): item,
     };
 
     if (kDebugMode) {
-      print("#### DEBUG: updateOrderItems - Processing ${apiItems.length} items for order $orderId, existing items: ${existingItemsMap.length}");
+      print(
+          "#### DEBUG: updateOrderItems - Processing ${apiItems.length} items for order $orderId, existing items: ${existingItemsMap.length}");
     }
 
     for (var apiItem in apiItems) {
-      if(apiItem.name.contains('Payout') || apiItem.name == TextConstants.discountText){
+      if (apiItem.name.contains('Payout') ||
+          apiItem.name == TextConstants.discountText) {
         continue;
       }
       final itemId = apiItem.id.toString();
-      final double itemPrice = apiItem.productData.price == '' ?  double.parse(apiItem.productData.price ?? '0.0') : double.parse(apiItem.productData.price ?? '0.0');
+      final double itemPrice = apiItem.productData.price == ''
+          ? double.parse(apiItem.productData.price ?? '0.0')
+          : double.parse(apiItem.productData.price ?? '0.0');
       final int itemQuantity = apiItem.quantity ?? 0;
       final double itemSumPrice = double.parse(apiItem.subtotal);
 
@@ -589,26 +796,61 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
             " unitPrice: ${apiItem.productData.price ?? "0.0"}");
       }
 
-      final String variationName = apiItem.productVariationData?.metaData?.firstWhere((e) => e.key == "custom_name", orElse: () => model.MetaData(id: 0, key: "", value: "")).value ?? "";
+      final String variationName = apiItem.productVariationData?.metaData
+          ?.firstWhere((e) => e.key == "custom_name",
+          orElse: () => model.MetaData(id: 0, key: "", value: ""))
+          .value ??
+          "";
       final int variationCount = apiItem.productData.variations?.length ?? 0;
-      final String combo = apiItem.metaData.firstWhere((e) => e.value.contains('Combo'), orElse: () => model.MetaData(id: 0, key: "", value: "")).value.split(' ').first ?? "";
+      final String combo = apiItem.metaData
+          .firstWhere((e) => e.value.contains('Combo'),
+          orElse: () => model.MetaData(id: 0, key: "", value: ""))
+          .value
+          .split(' ')
+          .first ??
+          "";
 
-      final bool hasVariations = apiItem.productData.variations != null && apiItem.productData.variations!.isNotEmpty;
+      final bool hasVariations = apiItem.productData.variations != null &&
+          apiItem.productData.variations!.isNotEmpty;
       final double salesPrice = hasVariations
-          ? double.tryParse(apiItem.productVariationData?.salePrice?.isNotEmpty == true ? apiItem.productVariationData!.salePrice! : "0.0") ?? 0.0
-          : double.tryParse(apiItem.productData.salePrice?.isNotEmpty == true ? apiItem.productData.salePrice! : "0.0") ?? 0.0;
+          ? double.tryParse(
+          apiItem.productVariationData?.salePrice?.isNotEmpty == true
+              ? apiItem.productVariationData!.salePrice!
+              : "0.0") ??
+          0.0
+          : double.tryParse(apiItem.productData.salePrice?.isNotEmpty == true
+          ? apiItem.productData.salePrice!
+          : "0.0") ??
+          0.0;
       final double regularPrice = hasVariations
-          ? double.tryParse(apiItem.productVariationData?.regularPrice?.isNotEmpty == true ? apiItem.productVariationData!.regularPrice! : "0.0") ?? 0.0
-          : double.tryParse(apiItem.productData.regularPrice?.isNotEmpty == true ? apiItem.productData.regularPrice! : "0.0") ?? 0.0;
+          ? double.tryParse(
+          apiItem.productVariationData?.regularPrice?.isNotEmpty == true
+              ? apiItem.productVariationData!.regularPrice!
+              : "0.0") ??
+          0.0
+          : double.tryParse(apiItem.productData.regularPrice?.isNotEmpty == true
+          ? apiItem.productData.regularPrice!
+          : "0.0") ??
+          0.0;
       final double unitPrice = hasVariations
-          ? double.tryParse(apiItem.productVariationData?.price?.isNotEmpty == true ? apiItem.productVariationData!.price! : "0.0") ?? 0.0
-          : double.tryParse(apiItem.productData.price?.isNotEmpty == true ? apiItem.productData.price! : "0.0") ?? 0.0;
+          ? double.tryParse(
+          apiItem.productVariationData?.price?.isNotEmpty == true
+              ? apiItem.productVariationData!.price!
+              : "0.0") ??
+          0.0
+          : double.tryParse(apiItem.productData.price?.isNotEmpty == true
+          ? apiItem.productData.price!
+          : "0.0") ??
+          0.0;
 
       if (kDebugMode) {
-        print("#### DEBUG: updateOrderItems - Processing API item ID: $itemId, name: ${apiItem.name}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
-        print("variationName $variationName, variationCount:$variationCount, combo:$combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
+        print(
+            "#### DEBUG: updateOrderItems - Processing API item ID: $itemId, name: ${apiItem.name}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
+        print(
+            "variationName $variationName, variationCount:$variationCount, combo:$combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
         // NEW: Log item-level discounts
-        print("Item discounts - Multipack: ${apiItem.multipackDiscountAmount}, Auto: ${apiItem.autoDiscountAmount}, Combo: ${apiItem.comboDiscountAmount}, Display Auto: ${apiItem.displayAutoDiscountAmount}");
+        print(
+            "Item discounts - Multipack: ${apiItem.multipackDiscountAmount}, Auto: ${apiItem.autoDiscountAmount}, Combo: ${apiItem.comboDiscountAmount}, Display Auto: ${apiItem.displayAutoDiscountAmount}");
       }
 
       if (existingItemsMap.containsKey(itemId)) {
@@ -645,9 +887,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         if (apiItem.productData != null &&
             apiItem.productData.tags != null &&
             apiItem.productData.tags.isNotEmpty) {
-          isCustomItem = apiItem.productData.tags.any(
-                  (tag) => tag.name == TextConstants.customItem
-          );
+          isCustomItem = apiItem.productData.tags
+              .any((tag) => tag.name == TextConstants.customItem);
         }
         await db.insert(AppDBConst.purchasedItemsTable, {
           AppDBConst.itemServerId: apiItem.id,
@@ -658,7 +899,9 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           AppDBConst.itemCount: itemQuantity,
           AppDBConst.itemSumPrice: itemSumPrice,
           AppDBConst.orderIdForeignKey: orderId,
-          AppDBConst.itemType: isCustomItem ? ItemType.customProduct.value :  ItemType.product.value,
+          AppDBConst.itemType: isCustomItem
+              ? ItemType.customProduct.value
+              : ItemType.product.value,
           AppDBConst.itemVariationCustomName: variationName,
           AppDBConst.itemVariationCount: variationCount,
           AppDBConst.itemCombo: combo,
@@ -686,7 +929,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         whereArgs: [item[AppDBConst.itemServerId]],
       );
       if (kDebugMode) {
-        print("#### DEBUG: Deleted obsolete item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
+        print(
+            "#### DEBUG: Deleted obsolete item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
       }
     }
 
@@ -695,7 +939,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     await db.update(
       AppDBConst.orderTable,
       {
-        AppDBConst.autoDiscountTotal: orderModel.orderLevelAutoDiscountAmount,  // ✅ CORRECT: Use instance property
+        AppDBConst.autoDiscountTotal: orderModel
+            .orderLevelAutoDiscountAmount, // ✅ CORRECT: Use instance property
         // NEW: Update order-level combo and display auto discounts
         AppDBConst.comboDiscountTotal: orderModel.totalComboDiscount,
         AppDBConst.displayAutoDiscount: orderModel.totalDisplayAutoDiscount,
@@ -710,16 +955,19 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       print("#### DEBUG: Updated order $orderId with order-level discounts:");
       print("  - Auto discount: ${orderModel.orderLevelAutoDiscountAmount}");
       print("  - Combo discount: ${orderModel.totalComboDiscount}");
-      print("  - Display auto discount: ${orderModel.totalDisplayAutoDiscount}");
+      print(
+          "  - Display auto discount: ${orderModel.totalDisplayAutoDiscount}");
       print("  - Multipack discount: ${orderModel.totalMultipackDiscount}");
     }
 
     final items = await getOrderItems(orderId);
     for (var item in items) {
       if (kDebugMode) {
-        print("#### DEBUG: Check after insert if Order items ID: ${item[AppDBConst.itemId]},  ${item[AppDBConst.itemServerId]} for order $orderId is correct?, loadOrderItems 2");
+        print(
+            "#### DEBUG: Check after insert if Order items ID: ${item[AppDBConst.itemId]},  ${item[AppDBConst.itemServerId]} for order $orderId is correct?, loadOrderItems 2");
         // NEW: Check if discounts are saved correctly
-        print("Item discounts saved - Multipack: ${item[AppDBConst.multipack_discount_total]}, Auto: ${item[AppDBConst.autoDiscountTotal]}, Combo: ${item[AppDBConst.comboDiscountTotal]}, Display Auto: ${item[AppDBConst.displayAutoDiscount]}");
+        print(
+            "Item discounts saved - Multipack: ${item[AppDBConst.multipack_discount_total]}, Auto: ${item[AppDBConst.autoDiscountTotal]}, Combo: ${item[AppDBConst.comboDiscountTotal]}, Display Auto: ${item[AppDBConst.displayAutoDiscount]}");
       }
     }
 
@@ -727,25 +975,31 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       print("#### DEBUG: updateOrderItems for order id $orderId completed...");
     }
   }
+
   // Build #1.0.64 : Modified updateOrderPayoutItems to align with updateOrderItems
-  @Deprecated("This API is deprecated and replaced by 'updateOrderPayoutItem' with line_item")
-  Future<void> updateOrderPayoutItems(int orderId, List<model.FeeLine> feeLines) async {
+  @Deprecated(
+      "This API is deprecated and replaced by 'updateOrderPayoutItem' with line_item")
+  Future<void> updateOrderPayoutItems(
+      int orderId, List<model.FeeLine> feeLines) async {
     if (kDebugMode) {
       print("#### DEBUG: updateOrderPayoutItems orderId: $orderId");
     }
     final db = await DBHelper.instance.database;
     final existingItems = await db.query(
       AppDBConst.purchasedItemsTable,
-      where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+      where:
+      '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
       whereArgs: [orderId, ItemType.payout.value],
     );
 
     final existingItemsMap = {
-      for (var item in existingItems) item[AppDBConst.itemServerId].toString(): item,
+      for (var item in existingItems)
+        item[AppDBConst.itemServerId].toString(): item,
     };
 
     if (kDebugMode) {
-      print("#### DEBUG: updateOrderPayoutItems - Processing ${feeLines.length} payout items for order $orderId, existing items: ${existingItems.length}");
+      print(
+          "#### DEBUG: updateOrderPayoutItems - Processing ${feeLines.length} payout items for order $orderId, existing items: ${existingItems.length}");
     }
     double merchantDiscount = 0.0;
     var merchantDiscountIds = "";
@@ -762,7 +1016,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       final double itemSumPrice = itemPrice;
 
       if (kDebugMode) {
-        print("#### DEBUG: updateOrderPayoutItems - Processing payout item ID: $itemId, name: ${feeLine.name}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
+        print(
+            "#### DEBUG: updateOrderPayoutItems - Processing payout item ID: $itemId, name: ${feeLine.name}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
       }
 
       if (feeLine.name == TextConstants.payout) {
@@ -782,7 +1037,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
             whereArgs: [existingItem[AppDBConst.itemServerId]],
           );
           if (kDebugMode) {
-            print("#### DEBUG: Updated payout item ID: $itemId for order $orderId");
+            print(
+                "#### DEBUG: Updated payout item ID: $itemId for order $orderId");
           }
           existingItemsMap.remove(itemId);
         } else {
@@ -799,7 +1055,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
             AppDBConst.itemType: ItemType.payout.value,
           });
           if (kDebugMode) {
-            print("#### DEBUG: Inserted new payout item ID: $itemId for order $orderId");
+            print(
+                "#### DEBUG: Inserted new payout item ID: $itemId for order $orderId");
           }
         }
       }
@@ -818,7 +1075,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       whereArgs: [orderId],
     );
     if (kDebugMode) {
-      print("#### DEBUG: updateOrderPayoutItems - Processing merchantDiscount item IDs: $merchantDiscountIds, discountTotal: $merchantDiscount");
+      print(
+          "#### DEBUG: updateOrderPayoutItems - Processing merchantDiscount item IDs: $merchantDiscountIds, discountTotal: $merchantDiscount");
     }
 
     for (var item in existingItemsMap.values) {
@@ -828,29 +1086,34 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         whereArgs: [item[AppDBConst.itemServerId]],
       );
       if (kDebugMode) {
-        print("#### DEBUG: Deleted obsolete payout item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
+        print(
+            "#### DEBUG: Deleted obsolete payout item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
       }
     }
   }
 
   //  Build #1.0.198 : Modified updateOrderPayoutItem to align with new payout API changes
-  Future<void> updateOrderPayoutItem(int orderId, List<model.LineItem> lineItems) async {
+  Future<void> updateOrderPayoutItem(
+      int orderId, List<model.LineItem> lineItems) async {
     if (kDebugMode) {
       print("#### DEBUG: updateOrderPayoutItems orderId: $orderId");
     }
     final db = await DBHelper.instance.database;
     final existingItems = await db.query(
       AppDBConst.purchasedItemsTable,
-      where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+      where:
+      '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
       whereArgs: [orderId, ItemType.payout.value],
     );
 
     final existingItemsMap = {
-      for (var item in existingItems) item[AppDBConst.itemServerId].toString(): item,
+      for (var item in existingItems)
+        item[AppDBConst.itemServerId].toString(): item,
     };
 
     if (kDebugMode) {
-      print("#### DEBUG: updateOrderPayoutItems - Processing ${lineItems.length} payout items for order $orderId, existing items: ${existingItems.length}");
+      print(
+          "#### DEBUG: updateOrderPayoutItems - Processing ${lineItems.length} payout items for order $orderId, existing items: ${existingItems.length}");
     }
     double merchantDiscount = 0.0;
     var merchantDiscountIds = "";
@@ -867,7 +1130,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       final double itemSumPrice = itemPrice;
 
       if (kDebugMode) {
-        print("#### DEBUG: updateOrderPayoutItems - Processing payout item ID: $itemId, name: ${lineItem.name}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
+        print(
+            "#### DEBUG: updateOrderPayoutItems - Processing payout item ID: $itemId, name: ${lineItem.name}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
       }
 
       if (lineItem.name == TextConstants.payout) {
@@ -887,7 +1151,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
             whereArgs: [existingItem[AppDBConst.itemServerId]],
           );
           if (kDebugMode) {
-            print("#### DEBUG: Updated payout item ID: $itemId for order $orderId");
+            print(
+                "#### DEBUG: Updated payout item ID: $itemId for order $orderId");
           }
           existingItemsMap.remove(itemId);
         } else {
@@ -904,7 +1169,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
             AppDBConst.itemType: ItemType.payout.value,
           });
           if (kDebugMode) {
-            print("#### DEBUG: Inserted new payout item ID: $itemId for order $orderId");
+            print(
+                "#### DEBUG: Inserted new payout item ID: $itemId for order $orderId");
           }
         }
       }
@@ -923,7 +1189,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       whereArgs: [orderId],
     );
     if (kDebugMode) {
-      print("#### DEBUG: updateOrderPayoutItems - Processing merchantDiscount item IDs: $merchantDiscountIds, discountTotal: $merchantDiscount");
+      print(
+          "#### DEBUG: updateOrderPayoutItems - Processing merchantDiscount item IDs: $merchantDiscountIds, discountTotal: $merchantDiscount");
     }
 
     for (var item in existingItemsMap.values) {
@@ -933,11 +1200,14 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         whereArgs: [item[AppDBConst.itemServerId]],
       );
       if (kDebugMode) {
-        print("#### DEBUG: Deleted obsolete payout item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
+        print(
+            "#### DEBUG: Deleted obsolete payout item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
       }
     }
   }
-  Future<void> updateOrderField(int orderId, String fieldKey, dynamic value) async {
+
+  Future<void> updateOrderField(
+      int orderId, String fieldKey, dynamic value) async {
     try {
       // ✅ Update SQLite
       final db = await DBHelper.instance.database;
@@ -957,7 +1227,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         );
 
         if (kDebugMode) {
-          print("✅ updateOrderField → Updated $fieldKey = $value for Order #$orderId in SQLite");
+          print(
+              "✅ updateOrderField → Updated $fieldKey = $value for Order #$orderId in SQLite");
         }
 
         // ✅ Update in-memory list
@@ -999,6 +1270,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       if (kDebugMode) print("❌ updateOrderField failed: $e\n$s");
     }
   }
+
   dynamic _convertToJsonSafe(dynamic value) {
     if (value == null) return null;
 
@@ -1014,14 +1286,18 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       return value;
     }
   }
+
   // Build #1.0.207: Fixed Issue - Always Merchant discount showing "0"
   // Ex: updateOrderPayoutItem modified to lineItems but discount we are getting in fee lines only , we are not using this, that's why merchant discount calculation is 0.
   // Added this function to handle merchant discounts from feeLines
-  Future<void> updateOrderMerchantDiscount(int orderId, List<model.LineItem> lineItems) async { // Build #1.0.274 : updated fee lines to line items
+  Future<void> updateOrderMerchantDiscount(
+      int orderId, List<model.LineItem> lineItems) async {
+    // Build #1.0.274 : updated fee lines to line items
     final db = await DBHelper.instance.database;
     double merchantDiscount = 0.0;
     // Use a list instead of string concatenation
-    List<String> merchantDiscountIdsList = []; // Build #1.0.216: FIXED Issue - Merchant discount not deleting, showing error "Payout ID not found"
+    List<String> merchantDiscountIdsList =
+    []; // Build #1.0.216: FIXED Issue - Merchant discount not deleting, showing error "Payout ID not found"
 
     for (var lineItem in lineItems) {
       if (lineItem.name == TextConstants.discountText) {
@@ -1044,23 +1320,27 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   }
 
   // Build #1.0.64 : Modified updateOrderCouponItems to align with updateOrderItems
-  Future<void> updateOrderCouponItems(int orderId, List<model.CouponLine> couponLines) async {
+  Future<void> updateOrderCouponItems(
+      int orderId, List<model.CouponLine> couponLines) async {
     if (kDebugMode) {
       print("#### DEBUG: updateOrderCouponItems orderId: $orderId");
     }
     final db = await DBHelper.instance.database;
     final existingItems = await db.query(
       AppDBConst.purchasedItemsTable,
-      where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+      where:
+      '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
       whereArgs: [orderId, ItemType.coupon.value],
     );
 
     final existingItemsMap = {
-      for (var item in existingItems) item[AppDBConst.itemServerId].toString(): item,
+      for (var item in existingItems)
+        item[AppDBConst.itemServerId].toString(): item,
     };
 
     if (kDebugMode) {
-      print("#### DEBUG: updateOrderCouponItems - Processing ${couponLines.length} coupon items for order $orderId, existing items: ${existingItems.length}");
+      print(
+          "#### DEBUG: updateOrderCouponItems - Processing ${couponLines.length} coupon items for order $orderId, existing items: ${existingItems.length}");
     }
 
     for (var coupon in couponLines) {
@@ -1070,7 +1350,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       final double itemSumPrice = itemPrice;
 
       if (kDebugMode) {
-        print("#### DEBUG: updateOrderCouponItems - Processing coupon item ID: $itemId, code: ${coupon.code}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
+        print(
+            "#### DEBUG: updateOrderCouponItems - Processing coupon item ID: $itemId, code: ${coupon.code}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
       }
 
       if (existingItemsMap.containsKey(itemId)) {
@@ -1085,11 +1366,13 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
             AppDBConst.itemImage: 'assets/svg/coupon.svg',
             AppDBConst.itemSKU: '',
           },
-          where: '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
+          where:
+          '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
           whereArgs: [existingItem[AppDBConst.itemServerId]],
         );
         if (kDebugMode) {
-          print("#### DEBUG: Updated coupon item ID: $itemId for order $orderId");
+          print(
+              "#### DEBUG: Updated coupon item ID: $itemId for order $orderId");
         }
         existingItemsMap.remove(itemId);
       } else {
@@ -1106,7 +1389,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           AppDBConst.itemType: ItemType.coupon.value,
         });
         if (kDebugMode) {
-          print("#### DEBUG: Inserted new coupon item ID: $itemId for order $orderId");
+          print(
+              "#### DEBUG: Inserted new coupon item ID: $itemId for order $orderId");
         }
       }
     }
@@ -1114,14 +1398,17 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     for (var item in existingItemsMap.values) {
       await db.delete(
         AppDBConst.purchasedItemsTable,
-        where: '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
+        where:
+        '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
         whereArgs: [item[AppDBConst.itemServerId]],
       );
       if (kDebugMode) {
-        print("#### DEBUG: Deleted obsolete coupon item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
+        print(
+            "#### DEBUG: Deleted obsolete coupon item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
       }
     }
   }
+
   Future<int?> ensureOrderExists() async {
     // Concurrency: if another ensureOrderExists is in progress, wait for it
     if (_ensureOrderInProgress != null) {
@@ -1150,8 +1437,10 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
     // 3️⃣ Try reuse unpaid order
     for (final order in orders) {
-      final oid = order[AppDBConst.orderServerId] ?? order['order_id'] ?? order['id'];
-      final int? orderId = oid is int ? oid : int.tryParse(oid?.toString() ?? '');
+      final oid =
+          order[AppDBConst.orderServerId] ?? order['order_id'] ?? order['id'];
+      final int? orderId =
+      oid is int ? oid : int.tryParse(oid?.toString() ?? '');
       if (orderId == null) continue;
       final payments =
       await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
@@ -1193,7 +1482,9 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
       return newOrderId;
     } catch (e, s) {
-      lastEnsureOrderError = e is Exception ? e.toString().replaceFirst('Exception: ', '') : e.toString();
+      lastEnsureOrderError = e is Exception
+          ? e.toString().replaceFirst('Exception: ', '')
+          : e.toString();
       if (kDebugMode) {
         print("❌ ensureOrderExists failed: $e");
         print("Stack: $s");
@@ -1202,8 +1493,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     }
   }
 
-
-  Future<int> createOrder({int? serverOrderId}) async { // Build #1.0.11 : updated
+  Future<int> createOrder({int? serverOrderId}) async {
+    // Build #1.0.11 : updated
     final db = await DBHelper.instance.database;
 
     // When serverOrderId is provided (offline or API), avoid duplicate insert
@@ -1229,7 +1520,9 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           _upsertOfflineOrderInMemory(serverOrderId, minimalOrder);
         }
         await loadData();
-        if (kDebugMode) print("#### Order already in DB, synced activeOrderId: $activeOrderId");
+        if (kDebugMode)
+          print(
+              "#### Order already in DB, synced activeOrderId: $activeOrderId");
         return activeOrderId!;
       }
     }
@@ -1264,7 +1557,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         await box.put(serverOrderId.toString(), minimalOrder);
         _upsertOfflineOrderInMemory(serverOrderId, minimalOrder);
         if (kDebugMode) {
-          print("#### Order $serverOrderId added for order panel & addItemToOrder");
+          print(
+              "#### Order $serverOrderId added for order panel & addItemToOrder");
         }
       }
     }
@@ -1280,6 +1574,7 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
     return activeOrderId!;
   }
+
   // Deletes an order from the database and offline storage
   Future<void> deleteOrder(int orderId) async {
     // Remove from offline storage (Isar) - required for orders to disappear from UI
@@ -1287,12 +1582,14 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     await offlineBox.delete(orderId.toString());
 
     final db = await DBHelper.instance.database;
-    await db.delete( //Build #1.0.78 : delete from db -> purchasedItemsTable
+    await db.delete(
+      //Build #1.0.78 : delete from db -> purchasedItemsTable
       AppDBConst.purchasedItemsTable,
       where: '${AppDBConst.orderIdForeignKey} = ?',
       whereArgs: [orderId],
     );
-    await db.delete( //Build #1.0.78 : delete from db -> orderTable
+    await db.delete(
+      //Build #1.0.78 : delete from db -> orderTable
       AppDBConst.orderTable,
       where: '${AppDBConst.orderServerId} = ?',
       whereArgs: [orderId],
@@ -1337,7 +1634,6 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     }
   }
 
-
   // Build #1.0.161: Store current active order before leaving
   /// we are using same "activeOrderId" for both orderPanel & total order screen
   /// we have to save order panel activeOrderId in "lastActiveOrderId" pref value when comes back assign it
@@ -1365,7 +1661,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   }
 
   // Fetch all orders for a specific user
-  Future<List<Map<String, dynamic>>> getUserOrders(int userID) async { // Build #1.0.11 : added here from db_helper
+  Future<List<Map<String, dynamic>>> getUserOrders(int userID) async {
+    // Build #1.0.11 : added here from db_helper
     final db = await DBHelper.instance.database;
     return await db.query(
       AppDBConst.orderTable,
@@ -1375,7 +1672,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   }
 
   // Fetch order for a specific orderId
-  Future<List<Map<String, dynamic>>> getOrderById(int orderId) async { // Build #1.0.11 : added here from db_helper
+  Future<List<Map<String, dynamic>>> getOrderById(int orderId) async {
+    // Build #1.0.11 : added here from db_helper
     final db = await DBHelper.instance.database;
     return await db.query(
       AppDBConst.orderTable,
@@ -1401,13 +1699,15 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   }
 
   /// Resolves product image URL from various possible keys. Delegates to top-level [resolveProductImageFromMap].
-  static String resolveProductImage(dynamic map) => resolveProductImageFromMap(map);
+  static String resolveProductImage(dynamic map) =>
+      resolveProductImageFromMap(map);
 
   /// Gets order items from offline storage (products, order_items, payouts, cashbacks, discounts).
   /// Returns empty list if order not found.
   /// Items are converted to display format (item_name, item_price, items_count, etc.).
   /// Supports both "products" (Categories/Fast Keys) and "order_items" (Order Summary) structures.
-  Future<List<Map<String, dynamic>>> getOrderItemsFromOffline(int orderID) async {
+  Future<List<Map<String, dynamic>>> getOrderItemsFromOffline(
+      int orderID) async {
     final box = StorageProvider.offlineOrders;
     final raw = await box.get(orderID.toString());
     if (raw == null || raw is! Map) return [];
@@ -1424,12 +1724,18 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         final name = map['item_name'] ?? map['name'] ?? '';
         final price = (map['item_price'] ?? map['price'] ?? 0).toDouble();
         final qty = (map['items_count'] ?? map['quantity'] ?? 1).toInt();
-        final itemType = (map['item_type'] ?? map['type'] ?? 'product').toString();
+        final itemType =
+        (map['item_type'] ?? map['type'] ?? 'product').toString();
         // Skip discount type - we add from discounts list separately
         if (itemType.toLowerCase().contains('discount')) continue;
-        final multipack = _toDouble(map['multipack_discount_total'] ?? map['multipackDiscount'] ?? 0);
-        final auto = _toDouble(map['auto_discount_total'] ?? map['autoDiscountTotal'] ?? map['auto_discount'] ?? 0);
-        final combo = _toDouble(map['combo_discount_total'] ?? map['comboDiscountTotal'] ?? 0);
+        final multipack = _toDouble(
+            map['multipack_discount_total'] ?? map['multipackDiscount'] ?? 0);
+        final auto = _toDouble(map['auto_discount_total'] ??
+            map['autoDiscountTotal'] ??
+            map['auto_discount'] ??
+            0);
+        final combo = _toDouble(
+            map['combo_discount_total'] ?? map['comboDiscountTotal'] ?? 0);
         items.add({
           AppDBConst.itemName: name,
           AppDBConst.itemPrice: price,
@@ -1439,7 +1745,10 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           AppDBConst.itemType: itemType,
           'is_ebt_eligible': map['is_ebt_eligible'] == true,
           'product_id': (map['product_id'] as num?)?.toInt() ?? 0,
-          'variation_id': int.tryParse((map['variation_id'] ?? map['variationId'] ?? 0).toString()) ?? 0,
+          'variation_id': int.tryParse(
+              (map['variation_id'] ?? map['variationId'] ?? 0)
+                  .toString()) ??
+              0,
           'sku': map['sku'] ?? map['item_sku'] ?? '',
           AppDBConst.multipackDiscount: multipack,
           AppDBConst.autoDiscountTotal: auto,
@@ -1449,7 +1758,9 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     } else {
       for (final p in products) {
         final map = Map<String, dynamic>.from(p is Map ? p : {});
-        final itemType = (map['item_type'] ?? map['type'] ?? 'product').toString().toLowerCase();
+        final itemType = (map['item_type'] ?? map['type'] ?? 'product')
+            .toString()
+            .toLowerCase();
         // Skip discount type - we add from discounts list separately
         if (itemType.contains('discount')) continue;
         final name = map['name'] ?? map['product_name'] ?? '';
@@ -1457,9 +1768,14 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         final qty = (map['quantity'] as num?)?.toInt() ?? 1;
         final sumPrice = price * qty;
 
-        final multipack = _toDouble(map['multipack_discount_total'] ?? map['multipackDiscount'] ?? 0);
-        final auto = _toDouble(map['auto_discount_total'] ?? map['autoDiscountTotal'] ?? map['auto_discount'] ?? 0);
-        final combo = _toDouble(map['combo_discount_total'] ?? map['comboDiscountTotal'] ?? 0);
+        final multipack = _toDouble(
+            map['multipack_discount_total'] ?? map['multipackDiscount'] ?? 0);
+        final auto = _toDouble(map['auto_discount_total'] ??
+            map['autoDiscountTotal'] ??
+            map['auto_discount'] ??
+            0);
+        final combo = _toDouble(
+            map['combo_discount_total'] ?? map['comboDiscountTotal'] ?? 0);
 
         items.add({
           AppDBConst.itemName: name,
@@ -1470,7 +1786,10 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           AppDBConst.itemType: map['item_type'] ?? map['type'] ?? 'product',
           'is_ebt_eligible': map['is_ebt_eligible'] == true,
           'product_id': (map['product_id'] as num?)?.toInt() ?? 0,
-          'variation_id': int.tryParse((map['variation_id'] ?? map['variationId'] ?? 0).toString()) ?? 0,
+          'variation_id': int.tryParse(
+              (map['variation_id'] ?? map['variationId'] ?? 0)
+                  .toString()) ??
+              0,
           'sku': map['sku'] ?? '',
           AppDBConst.multipackDiscount: multipack,
           AppDBConst.autoDiscountTotal: auto,
@@ -1504,7 +1823,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         AppDBConst.itemPrice: price,
         AppDBConst.itemCount: 1,
         AppDBConst.itemSumPrice: price,
-        AppDBConst.itemImage: map['product_image'] ?? map['item_image'] ?? map['image'] ?? '',
+        AppDBConst.itemImage:
+        map['product_image'] ?? map['item_image'] ?? map['image'] ?? '',
         AppDBConst.itemType: 'cashback',
       });
     }
@@ -1514,8 +1834,14 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
     final discounts = (order['discounts'] as List?) ?? [];
     for (final d in discounts) {
       final map = Map<String, dynamic>.from(d is Map ? d : {});
-      final amount = (map[AppDBConst.itemPrice] ?? map['discount_amount'] ?? map['display_amount'] ?? 0).toDouble().abs();
-      final name = map[AppDBConst.itemName] ?? map['name'] ?? 'Merchant Discount';
+      final amount = (map[AppDBConst.itemPrice] ??
+          map['discount_amount'] ??
+          map['display_amount'] ??
+          0)
+          .toDouble()
+          .abs();
+      final name =
+          map[AppDBConst.itemName] ?? map['name'] ?? 'Merchant Discount';
       items.add({
         AppDBConst.itemName: name,
         AppDBConst.itemPrice: -amount,
@@ -1530,11 +1856,13 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
   }
 
 // Delete an item from an order
-  Future<void> deleteItem(int itemServerId) async { // delete the item/product based on serverID not item id
+  Future<void> deleteItem(int itemServerId) async {
+    // delete the item/product based on serverID not item id
     final db = await DBHelper.instance.database;
     await db.delete(
       AppDBConst.purchasedItemsTable,
-      where: '${AppDBConst.itemServerId} = ?', // Build #1.0.92: using item server id , checked used places!!
+      where:
+      '${AppDBConst.itemServerId} = ?', // Build #1.0.92: using item server id , checked used places!!
       whereArgs: [itemServerId],
     );
 
@@ -1581,7 +1909,6 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         double? unitPrice,
         bool isEbtEligible = false,
       }) async {
-
     print("🍏 addItemToOrder() CALLED for: $name | EBT: $isEbtEligible");
 
     final key = '$orderId-$productId-$variationId';
@@ -1595,10 +1922,12 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
     try {
       // Block adding items to orders that have payments (pending orders)
-      final payments = await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+      final payments =
+      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
       if (payments.isNotEmpty) {
         if (kDebugMode) {
-          print("⚠ addItemToOrder blocked: order $orderId has payments (pending) - cannot add line items");
+          print(
+              "⚠ addItemToOrder blocked: order $orderId has payments (pending) - cannot add line items");
         }
         return;
       }
@@ -1655,7 +1984,9 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           'price': price,
           'quantity': quantity,
           'sku': sku,
-          'type': (variationId != null && variationId > 0) ? 'variant' : (type ?? 'product'),
+          'type': (variationId != null && variationId > 0)
+              ? 'variant'
+              : (type ?? 'product'),
 
           'product_id': productId,
           // ✅ ADD ALL THREE KEYS (safe + backward compatible)
@@ -1681,18 +2012,19 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
         });
       }
 
-      final updatedOrder = <String, dynamic>{...order, 'products': products};
-      await box.put(orderId.toString(), updatedOrder);
-      _upsertOfflineOrderInMemory(orderId, updatedOrder);
-
       print("💾 ORDER UPDATED → Product Count: ${products.length}");
       for (var p in products) {
-        print("   ▶ ${p['name']} | Qty: ${p['quantity']} | EBT: ${p['is_ebt_eligible']}");
+        print(
+            "   ▶ ${p['name']} | Qty: ${p['quantity']} | EBT: ${p['is_ebt_eligible']}");
       }
+
+      final updatedOrder = <String, dynamic>{...order, 'products': products};
+
+      // Calculate totals and save to Hive + Memory
+      await saveOfflineOrder(orderId, updatedOrder);
 
       notifyOrderPanelToRefresh();
       if (onItemAdded != null) onItemAdded();
-
     } finally {
       _activeAdds.remove(key);
     }
@@ -1718,7 +2050,6 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       print("   Variation → $variationId");
     }
   }
-
 
   static Map<String, dynamic>? getFromCache(String sku) {
     return _inMemoryProductCache[sku.trim().toLowerCase()];
@@ -1751,15 +2082,12 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
           .toLowerCase();
 
       if (storedSku == normalized) {
-        return true;      // MATCH FOUND → PRODUCT ALREADY EXISTS
+        return true; // MATCH FOUND → PRODUCT ALREADY EXISTS
       }
     }
 
-    return false;          // NO MATCH
+    return false; // NO MATCH
   }
-
-
-
 
   Future<bool> orderHasItems(int orderId) async {
     try {
@@ -1767,7 +2095,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
 
       // 🧾 Check if the order has any associated items in order_items table
       final List<Map<String, dynamic>> items = await db.query(
-        AppDBConst.orderTable, // ✅ Replace with your correct order items table name constant
+        AppDBConst
+            .orderTable, // ✅ Replace with your correct order items table name constant
         where: '${AppDBConst.orderServerId} = ?',
         whereArgs: [orderId],
         limit: 1, // Optimization: we only need to know if at least one exists
@@ -1782,7 +2111,8 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       return hasItems;
     } catch (e, s) {
       if (kDebugMode) {
-        print("❌ [orderHasItems] Failed to check items for Order ID $orderId: $e\n$s");
+        print(
+            "❌ [orderHasItems] Failed to check items for Order ID $orderId: $e\n$s");
       }
       return false;
     }
@@ -1816,8 +2146,12 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       );
 
       // Update the order total in the orders table
-      final items = await getOrderItems(item.first[AppDBConst.orderIdForeignKey] as int);
-      double orderTotal = items.fold(0.0, (sum, item) => sum + (item[AppDBConst.itemSumPrice] as num).toDouble());
+      final items =
+      await getOrderItems(item.first[AppDBConst.orderIdForeignKey] as int);
+      double orderTotal = items.fold(
+          0.0,
+              (sum, item) =>
+          sum + (item[AppDBConst.itemSumPrice] as num).toDouble());
 
       await db.update(
         AppDBConst.orderTable,
@@ -1827,8 +2161,10 @@ class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Or
       );
 
       if (kDebugMode) {
-        print('#### Item quantity updated: ID=$itemId, Quantity=$newQuantity, New Sum Price=$newSumPrice');
-        print('#### Order total updated: Order ID=${item.first[AppDBConst.orderIdForeignKey]}, Total=$orderTotal');
+        print(
+            '#### Item quantity updated: ID=$itemId, Quantity=$newQuantity, New Sum Price=$newSumPrice');
+        print(
+            '#### Order total updated: Order ID=${item.first[AppDBConst.orderIdForeignKey]}, Total=$orderTotal');
       }
     }
   }

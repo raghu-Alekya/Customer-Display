@@ -15,7 +15,6 @@ import 'package:focus_detector/focus_detector.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:isar/isar.dart';
-import 'package:isar/isar.dart';
 import 'package:pinaka_pos/Database/discount_rule_isar.dart';
 import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
@@ -132,6 +131,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   Map<String, dynamic>? resolvedProductMap;
   VoidCallback? _orderPanelRefreshListener;
   bool _isNewTabDisabled = false;
+
   /// True only after restore + fetch complete; prevents showing stale order items when switching from Orders/Apps.
   bool _initialRestoreDone = false;
 
@@ -161,10 +161,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     OrderHelper.isOrderPanelLoaded = false;
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await orderHelper.restoreActiveOrderId(); // ✅ WAIT - restores lastActiveOrderId for POS context
+      await orderHelper
+          .restoreActiveOrderId(); // ✅ WAIT - restores lastActiveOrderId for POS context
       await fetchOrdersData(); // load after restore
       if (mounted) {
-        setState(() => _initialRestoreDone = true); // Safe to derive from orderHelper in build
+        setState(() => _initialRestoreDone =
+        true); // Safe to derive from orderHelper in build
       }
     });
     _orderPanelRefreshListener = () {
@@ -196,8 +198,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
 
     final type = order['merchantDiscountType']?.toString() ?? 'fixed';
-    final perc = double.tryParse(order['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
-    final fixed = double.tryParse(order['merchantDiscountFixed']?.toString() ?? '0') ?? 0.0;
+    final perc =
+        double.tryParse(order['merchantDiscountPercentage']?.toString() ?? '0') ??
+            0.0;
+    final fixed =
+        double.tryParse(order['merchantDiscountFixed']?.toString() ?? '0') ??
+            0.0;
 
     if (type == 'percentage' && perc > 0) {
       return (currentGross * perc) / 100.0;
@@ -205,6 +211,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       return fixed;
     }
   }
+
   // Build #1.0.104: created this function for initial call & while back to this screen
   Future<void> fetchOrdersData() async {
     if (kDebugMode) {
@@ -327,19 +334,18 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     if (!mounted) return;
 
     setState(() {
-      tabs = visibleOrders
-          .asMap()
-          .entries
-          .map((entry) {
+      tabs = visibleOrders.asMap().entries.map((entry) {
         final o = entry.value;
-        final id = o[AppDBConst.orderServerId] ?? o['order_id'] ?? o[AppDBConst.orderId] ?? o['id'];
+        final id = o[AppDBConst.orderServerId] ??
+            o['order_id'] ??
+            o[AppDBConst.orderId] ??
+            o['id'];
         return {
           "title": "$id",
           "subtitle": "Tab ${entry.key + 1}",
           "orderId": id as Object,
         };
-      })
-          .toList();
+      }).toList();
 
       if (kDebugMode) {
         print("##### DEBUG: Loaded ${tabs.length} tabs: $tabs");
@@ -477,7 +483,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
-
     // 🔥 CRITICAL FIX: Clear orderItems IMMEDIATELY to prevent stale data flash
     if (mounted) {
       setState(() {
@@ -511,10 +516,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
       try {
         // 1️⃣ Prefer offline storage (products added via addItemToOrder)
-        final offlineItems = await orderHelper.getOrderItemsFromOffline(orderHelper.activeOrderId!);
+        final offlineItems = await orderHelper
+            .getOrderItemsFromOffline(orderHelper.activeOrderId!);
         if (offlineItems.isNotEmpty) {
           if (kDebugMode) {
-            print("##### DEBUG: fetchOrderItems - Loaded ${offlineItems.length} items from offline storage");
+            print(
+                "##### DEBUG: fetchOrderItems - Loaded ${offlineItems.length} items from offline storage");
           }
           if (mounted) {
             setState(() {
@@ -1177,66 +1184,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               print("❌ PRODUCT CACHE ERROR → $e");
               print("📌 STACKTRACE → $s");
             }
-
-
-            // ---------------------------------------------------------------------------
-            // 3️⃣ CUSTOM ITEM → Increment quantity if already in order
-            // ---------------------------------------------------------------------------
-            try {
-              final offlineBox =   StorageProvider.offlineOrders;
-              final raw = await offlineBox.get(activeOrderId.toString());
-
-              if (raw != null) {
-                List<Map<String, dynamic>> orderProducts =
-                List<Map<String, dynamic>>.from(raw["products"] ?? []);
-
-                final int? selectedVariationId =
-                null; // no variant selected yet
-
-                final existingIndex = orderProducts.indexWhere((p) =>
-                normalizeSku(p["sku"]) == trimmedBarcode &&
-                    (p["variation_id"] == null ||
-                        p["variation_id"] == selectedVariationId));
-
-                // 🚫 DO NOT AUTO-INCREMENT IF PRODUCT HAS VARIANTS
-                if (existingIndex != -1) {
-                  final existingItem = orderProducts[existingIndex];
-
-                  // 🔐 Determine if this is a variant product
-                  final bool hasVariantInProduct =
-                  (product?.variations?.isNotEmpty ?? false);
-
-                  final bool hasVariantInOrder =
-                      existingItem["variation_id"] != null;
-
-                  // ❌ STOP auto-increment if ANY variant exists
-                  if (hasVariantInProduct || hasVariantInOrder) {
-                    if (kDebugMode) {
-                      print("🚫 Variant detected — skipping auto increment");
-                    }
-                    return;
-                  }
-
-                  // ✅ SAFE TO AUTO-INCREMENT (simple product only)
-                  orderProducts[existingIndex]["quantity"] += 1;
-
-                  await offlineBox.put(activeOrderId.toString(), {
-                    ...raw,
-                    "products": orderProducts,
-                  });
-
-                  await fetchOrderItems();
-                  await CustomerDisplayHelper.updateCustomerDisplay(
-                      activeOrderId);
-
-                  _isLoading = false;
-                  if (mounted) setState(() {});
-                  return;
-                }
-              }
-            } catch (e) {
-              print("⚠ Offline custom increment error: $e");
-            }
+            // Removed redundant auto-increment logic.
+            // All scans now proceed to product resolution below.
 
             // ---------------------------------------------------------------------------
             // 4️⃣ FULL LIST CACHE
@@ -1513,7 +1462,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                 // / ⭐ FIX: MARK VARIABLE PRICE AS ALREADY ADDED
 // ------------------------------------------------------------
                 // ⭐ FIX: MARK VARIABLE PRICE AS ALREADY ADDED
-                final box =  StorageProvider.offlineOrders;
+                final box = StorageProvider.offlineOrders;
                 final orderKey = activeOrderId.toString();
                 final hiveOrder = Map<String, dynamic>.from(
                   await box.get(orderKey),
@@ -1562,13 +1511,14 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
             //PRODUCE (WEIGHED ITEMS) HANDLING
             final bool hasProduceTag = (product?.tags ?? []).any((t) {
-              final name = (t.name  ?? "").toString().toLowerCase().trim();
+              final name = (t.name ?? "").toString().toLowerCase().trim();
               final slug = (t.slug ?? "").toString().toLowerCase().trim();
               return name.contains("produce") || slug.contains("produce");
             });
 
             if (hasProduceTag) {
-              print("🏷 Produce tag detected on product → Showing AutoWeightPriceDialog");
+              print(
+                  "🏷 Produce tag detected on product → Showing AutoWeightPriceDialog");
 
               // Stop loader before showing dialog
               _isLoading = false;
@@ -1589,16 +1539,17 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               }
 
               final double finalPrice = result["finalPrice"] as double;
-              final double weight     = result["weight"]    as double;
+              final double weight = result["weight"] as double;
 
-              print("Weight: ${weight}kg, Final Price: ₹${finalPrice.toStringAsFixed(2)}");
+              print(
+                  "Weight: ${weight}kg, Final Price: ₹${finalPrice.toStringAsFixed(2)}");
 
               await orderHelper.addItemToOrder(
-                null,               // or productId if you want to keep reference
+                null, // or productId if you want to keep reference
                 productName,
                 image,
                 finalPrice,
-                1,                  // quantity = 1 (weight-based item)
+                1, // quantity = 1 (weight-based item)
                 productSku,
                 activeOrderId,
                 type: 'weighted',
@@ -1694,7 +1645,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // ------------------------------------------------------
 // 4️⃣ LOAD ORDER DATA (Hive)
 // ------------------------------------------------------
-            final hiveBox =  StorageProvider.offlineOrders;
+            final hiveBox = StorageProvider.offlineOrders;
             final orderKey = orderHelper.activeOrderId.toString();
 
             // Ensure order exists
@@ -1703,7 +1654,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                 "age_verified": false,
               });
             }
-
 
             final Map<String, dynamic> hiveOrder =
             Map<String, dynamic>.from(await hiveBox.get(orderKey));
@@ -1927,7 +1877,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                       : 14,
                                                 ),
                                               ),
-                                              const SizedBox(width:9),
+                                              const SizedBox(width: 9),
                                               if (isSelected)
                                                 GestureDetector(
                                                   onTap: () {
@@ -2054,7 +2004,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
             // 🔹 Empty Order Panel Overlay (when tabs list is empty)
             if (tabs.isEmpty && orderHelper.activeOrderId == null)
-
               Positioned.fill(
                 child: Container(
                   padding: const EdgeInsets.all(16),
@@ -2326,7 +2275,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       print(
           "📦 Offline Orders Box Contains ID? ${await offlineBox.containsKey(orderId.toString())}");
 
-      final bool isOfflineOrder = await offlineBox.containsKey(orderId.toString());
+      final bool isOfflineOrder =
+      await offlineBox.containsKey(orderId.toString());
       if (isOfflineOrder) {
         print("\n🟡 OFFLINE ORDER DETECTED — Performing Offline Delete Flow");
         await OrderRepository().saveOfflineOrderTotals(orderId);
@@ -2590,21 +2540,29 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // If no discount → allow delete
     if (merchantDiscount > 0) {
       // 1️⃣ Calculate current total amount (price * quantity)
-      double productsTotal = ((offlineOrder['products'] as List?) ?? []).fold(
-          0.0,
-              (sum, p) {
-            final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
-            final qty = int.tryParse(p['quantity']?.toString() ?? p['items_count']?.toString() ?? '1') ?? 1;
-            return sum + (price * qty);
-          });
+      double productsTotal =
+      ((offlineOrder['products'] as List?) ?? []).fold(0.0, (sum, p) {
+        final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
+        final qty = int.tryParse(p['quantity']?.toString() ??
+            p['items_count']?.toString() ??
+            '1') ??
+            1;
+        return sum + (price * qty);
+      });
 
-      double customTotal = ((offlineOrder['custom_items'] as List?) ?? []).fold(
-          0.0,
-              (sum, c) {
-            final price = double.tryParse(c['custom_item_price']?.toString() ?? c['amount']?.toString() ?? c['price']?.toString() ?? '0') ?? 0;
-            final qty = int.tryParse(c['quantity']?.toString() ?? c['items_count']?.toString() ?? '1') ?? 1;
-            return sum + (price * qty);
-          });
+      double customTotal =
+      ((offlineOrder['custom_items'] as List?) ?? []).fold(0.0, (sum, c) {
+        final price = double.tryParse(c['custom_item_price']?.toString() ??
+            c['amount']?.toString() ??
+            c['price']?.toString() ??
+            '0') ??
+            0;
+        final qty = int.tryParse(c['quantity']?.toString() ??
+            c['items_count']?.toString() ??
+            '1') ??
+            1;
+        return sum + (price * qty);
+      });
 
       double payoutsTotal = ((offlineOrder['payouts'] as List?) ?? []).fold(
           0.0,
@@ -2616,13 +2574,18 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               (sum, c) =>
           sum + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0));
 
-      double currentTotal = productsTotal + customTotal + payoutsTotal + cashbacksTotal;
+      double currentTotal =
+          productsTotal + customTotal + payoutsTotal + cashbacksTotal;
 
       // 2️⃣ Get line total of the item being deleted (price * quantity)
-      double itemPrice =
-          double.tryParse(orderItem['item_price']?.toString() ?? orderItem[AppDBConst.itemPrice]?.toString() ?? '0') ?? 0;
-      int itemQty =
-          int.tryParse(orderItem['items_count']?.toString() ?? orderItem[AppDBConst.itemCount]?.toString() ?? '1') ?? 1;
+      double itemPrice = double.tryParse(orderItem['item_price']?.toString() ??
+          orderItem[AppDBConst.itemPrice]?.toString() ??
+          '0') ??
+          0;
+      int itemQty = int.tryParse(orderItem['items_count']?.toString() ??
+          orderItem[AppDBConst.itemCount]?.toString() ??
+          '1') ??
+          1;
       double itemLineTotal = itemPrice * itemQty;
 
       // 3️⃣ New total after deletion
@@ -2689,7 +2652,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           offlineOrder['products'] = products;
         } else {
           final payoutsStart = productsLen + customLen;
-          if (itemIndex >= payoutsStart && itemIndex < payoutsStart + payoutsLen) {
+          if (itemIndex >= payoutsStart &&
+              itemIndex < payoutsStart + payoutsLen) {
             payouts.removeAt(itemIndex - payoutsStart);
           }
         }
@@ -2709,27 +2673,49 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       if (useIndex) {
         if (itemIndex! < productsLen) {
           products.removeAt(itemIndex);
-        } else if (itemIndex >= productsLen && itemIndex < productsLen + customLen) {
+        } else if (itemIndex >= productsLen &&
+            itemIndex < productsLen + customLen) {
           customItems.removeAt(itemIndex - productsLen);
         }
         offlineOrder['products'] = products;
         offlineOrder['custom_items'] = customItems;
       } else {
-        final tappedName = (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '').toString().toLowerCase();
-        final tappedPrice = double.tryParse(orderItem['item_price']?.toString() ?? orderItem[AppDBConst.itemPrice]?.toString() ?? '0') ?? 0;
+        final tappedName =
+        (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '')
+            .toString()
+            .toLowerCase();
+        final tappedPrice = double.tryParse(
+            orderItem['item_price']?.toString() ??
+                orderItem[AppDBConst.itemPrice]?.toString() ??
+                '0') ??
+            0;
 
         customItems.removeWhere((c) {
-          final name = (c['custom_item_name'] ?? c['item_name'] ?? c['name'] ?? '').toString().toLowerCase();
-          final price = double.tryParse(c['custom_item_price']?.toString() ?? c['amount']?.toString() ?? c['price']?.toString() ?? '0') ?? 0;
+          final name =
+          (c['custom_item_name'] ?? c['item_name'] ?? c['name'] ?? '')
+              .toString()
+              .toLowerCase();
+          final price = double.tryParse(c['custom_item_price']?.toString() ??
+              c['amount']?.toString() ??
+              c['price']?.toString() ??
+              '0') ??
+              0;
           return name == tappedName && (price - tappedPrice).abs() < 0.001;
         });
         offlineOrder['custom_items'] = customItems;
 
         products.removeWhere((p) {
-          final type = (p['item_type'] ?? p['type'] ?? '').toString().toLowerCase();
+          final type =
+          (p['item_type'] ?? p['type'] ?? '').toString().toLowerCase();
           if (!type.contains('custom')) return false;
-          final name = (p['name'] ?? p['custom_item_name'] ?? p['product_name'] ?? '').toString().toLowerCase();
-          final price = double.tryParse(p['price']?.toString() ?? p['custom_item_price']?.toString() ?? '0') ?? 0;
+          final name =
+          (p['name'] ?? p['custom_item_name'] ?? p['product_name'] ?? '')
+              .toString()
+              .toLowerCase();
+          final price = double.tryParse(p['price']?.toString() ??
+              p['custom_item_price']?.toString() ??
+              '0') ??
+              0;
           return name == tappedName && (price - tappedPrice).abs() < 0.001;
         });
         offlineOrder['products'] = products;
@@ -2744,7 +2730,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           offlineOrder['products'] = products;
         } else {
           final cashbacksStart = productsLen + customLen + payoutsLen;
-          if (itemIndex >= cashbacksStart && itemIndex < cashbacksStart + cashbacks.length) {
+          if (itemIndex >= cashbacksStart &&
+              itemIndex < cashbacksStart + cashbacks.length) {
             cashbacks.removeAt(itemIndex - cashbacksStart);
           }
         }
@@ -2768,46 +2755,91 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       if (useIndex && itemIndex! < productsLen) {
         removedProduct = products.removeAt(itemIndex);
         if (removedProduct != null) {
-          deletedProductId = (removedProduct['product_id'] ?? removedProduct['id'] ?? removedProduct['fast_key_product_id'] ?? removedProduct['serverItemId'] ?? -1) is num
-              ? ((removedProduct['product_id'] ?? removedProduct['id'] ?? removedProduct['fast_key_product_id'] ?? removedProduct['serverItemId'] ?? -1) as num).toInt()
+          deletedProductId = (removedProduct['product_id'] ??
+              removedProduct['id'] ??
+              removedProduct['fast_key_product_id'] ??
+              removedProduct['serverItemId'] ??
+              -1) is num
+              ? ((removedProduct['product_id'] ??
+              removedProduct['id'] ??
+              removedProduct['fast_key_product_id'] ??
+              removedProduct['serverItemId'] ??
+              -1) as num)
+              .toInt()
               : -1;
-          matchedSku = (removedProduct['sku'] ?? removedProduct['item_sku'] ?? removedProduct['product_sku'] ?? removedProduct['fast_key_item_sku'] ?? '')
-              .toString().toLowerCase().trim();
+          matchedSku = (removedProduct['sku'] ??
+              removedProduct['item_sku'] ??
+              removedProduct['product_sku'] ??
+              removedProduct['fast_key_item_sku'] ??
+              '')
+              .toString()
+              .toLowerCase()
+              .trim();
         }
       } else {
         final orderProductId = (orderItem['product_id'] as num?)?.toInt() ?? -1;
-        final orderVariationId = (orderItem['variation_id'] as num?)?.toInt() ?? 0;
-        final orderSku = (orderItem['sku'] ?? '').toString().toLowerCase().trim();
+        final orderVariationId =
+            (orderItem['variation_id'] as num?)?.toInt() ?? 0;
+        final orderSku =
+        (orderItem['sku'] ?? '').toString().toLowerCase().trim();
 
         bool matchProduct(Map<String, dynamic> p) {
           if (orderProductId >= 0) {
             final pid = (p['product_id'] ?? p['id'] ?? -1) is num
                 ? ((p['product_id'] ?? p['id'] ?? -1) as num).toInt()
                 : -1;
-            final vid = (p['variation_id'] ?? p['variationId'] ?? p['item_variation'] ?? 0) is num
-                ? ((p['variation_id'] ?? p['variationId'] ?? p['item_variation']) as num).toInt()
+            final vid = (p['variation_id'] ??
+                p['variationId'] ??
+                p['item_variation'] ??
+                0) is num
+                ? ((p['variation_id'] ??
+                p['variationId'] ??
+                p['item_variation']) as num)
+                .toInt()
                 : 0;
             if (pid == orderProductId && vid == orderVariationId) return true;
           }
           if (orderSku.isNotEmpty) {
-            final pSku = (p['sku'] ?? p['item_sku'] ?? '').toString().toLowerCase().trim();
+            final pSku = (p['sku'] ?? p['item_sku'] ?? '')
+                .toString()
+                .toLowerCase()
+                .trim();
             if (pSku == orderSku) return true;
           }
-          final name1 = (p['name'] ?? p['product_name'] ?? p['fast_key_item_name'] ?? '').toString().toLowerCase();
+          final name1 =
+          (p['name'] ?? p['product_name'] ?? p['fast_key_item_name'] ?? '')
+              .toString()
+              .toLowerCase();
           final name2 = (orderItem['item_name'] ?? '').toString().toLowerCase();
           final price1 = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
-          final price2 = double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+          final price2 =
+              double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
           return name1 == name2 && (price1 - price2).abs() < 0.001;
         }
 
         products.removeWhere((p) {
           final match = matchProduct(p);
           if (match) {
-            deletedProductId = (p['product_id'] ?? p['id'] ?? p['fast_key_product_id'] ?? p['serverItemId'] ?? -1) is num
-                ? ((p['product_id'] ?? p['id'] ?? p['fast_key_product_id'] ?? p['serverItemId'] ?? -1) as num).toInt()
+            deletedProductId = (p['product_id'] ??
+                p['id'] ??
+                p['fast_key_product_id'] ??
+                p['serverItemId'] ??
+                -1) is num
+                ? ((p['product_id'] ??
+                p['id'] ??
+                p['fast_key_product_id'] ??
+                p['serverItemId'] ??
+                -1) as num)
+                .toInt()
                 : -1;
-            matchedSku = (p['sku'] ?? p['item_sku'] ?? p['product_sku'] ?? p['fast_key_item_sku'] ?? '')
-                .toString().toLowerCase().trim();
+            matchedSku = (p['sku'] ??
+                p['item_sku'] ??
+                p['product_sku'] ??
+                p['fast_key_item_sku'] ??
+                '')
+                .toString()
+                .toLowerCase()
+                .trim();
           }
           return match;
         });
@@ -2862,25 +2894,47 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     // Recalculate totals after delete
     double productTotal = 0.0;
     for (final p in products) {
-      final qty = int.tryParse(p['quantity']?.toString() ?? p['items_count']?.toString() ?? '1') ?? 1;
+      final qty = int.tryParse(p['quantity']?.toString() ??
+          p['items_count']?.toString() ??
+          '1') ??
+          1;
       final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
       productTotal += price * qty;
     }
     for (final c in customItems) {
-      final qty = int.tryParse(c['quantity']?.toString() ?? c['items_count']?.toString() ?? '1') ?? 1;
-      final price = double.tryParse(c['custom_item_price']?.toString() ?? c['amount']?.toString() ?? c['price']?.toString() ?? '0') ?? 0.0;
+      final qty = int.tryParse(c['quantity']?.toString() ??
+          c['items_count']?.toString() ??
+          '1') ??
+          1;
+      final price = double.tryParse(c['custom_item_price']?.toString() ??
+          c['amount']?.toString() ??
+          c['price']?.toString() ??
+          '0') ??
+          0.0;
       productTotal += price * qty;
     }
-    double payoutsTotal = payouts.fold<double>(0, (s, p) => s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0));
-    double cashbacksTotal = cashbacks.fold<double>(0, (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0));
+    double payoutsTotal = payouts.fold<double>(0,
+            (s, p) => s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0));
+    double cashbacksTotal = cashbacks.fold<double>(0,
+            (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0));
     final grossTotal = productTotal + payoutsTotal + cashbacksTotal;
-    final orderDiscount = (offlineOrder['orderDiscount'] is num) ? (offlineOrder['orderDiscount'] as num).toDouble() : 0.0;
-    final merchantDiscountVal = (offlineOrder['merchantDiscount'] is num) ? (offlineOrder['merchantDiscount'] as num).toDouble() : 0.0;
-    final cashbackFee = (offlineOrder['cashbackFee'] is num) ? (offlineOrder['cashbackFee'] as num).toDouble() : 0.0;
-    final orderTax = (offlineOrder['order_tax'] is num) ? (offlineOrder['order_tax'] as num).toDouble() : 0.0;
+    final orderDiscount = (offlineOrder['orderDiscount'] is num)
+        ? (offlineOrder['orderDiscount'] as num).toDouble()
+        : 0.0;
+    final merchantDiscountVal = (offlineOrder['merchantDiscount'] is num)
+        ? (offlineOrder['merchantDiscount'] as num).toDouble()
+        : 0.0;
+    final cashbackFee = (offlineOrder['cashbackFee'] is num)
+        ? (offlineOrder['cashbackFee'] as num).toDouble()
+        : 0.0;
+    final orderTax = (offlineOrder['order_tax'] is num)
+        ? (offlineOrder['order_tax'] as num).toDouble()
+        : 0.0;
     offlineOrder['gross_total'] = grossTotal;
-    offlineOrder['net_total'] = grossTotal - orderDiscount - merchantDiscountVal;
-    offlineOrder['net_payable'] = offlineOrder['net_total'] + orderTax + cashbackFee;
+    offlineOrder['net_total'] =
+        grossTotal - orderDiscount - merchantDiscountVal;
+    offlineOrder['net_payable'] =
+        offlineOrder['net_total'] + orderTax + cashbackFee;
 
     // 💾 Save updated order back to offline storage
     await offlineBox.put(orderKey, offlineOrder);
@@ -2896,22 +2950,47 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     if (mounted) {
       setState(() {
         orderItems.removeWhere((i) {
-          final it = (i['item_type'] ?? i[AppDBConst.itemType] ?? '').toString().toLowerCase();
+          final it = (i['item_type'] ?? i[AppDBConst.itemType] ?? '')
+              .toString()
+              .toLowerCase();
           if (it == 'payout') {
-            final amt1 = double.tryParse(i['item_price']?.toString() ?? i[AppDBConst.itemPrice]?.toString() ?? '0') ?? 0;
-            final amt2 = double.tryParse(orderItem['item_price']?.toString() ?? orderItem[AppDBConst.itemPrice]?.toString() ?? '0') ?? 0;
+            final amt1 = double.tryParse(i['item_price']?.toString() ??
+                i[AppDBConst.itemPrice]?.toString() ??
+                '0') ??
+                0;
+            final amt2 = double.tryParse(orderItem['item_price']?.toString() ??
+                orderItem[AppDBConst.itemPrice]?.toString() ??
+                '0') ??
+                0;
             return amt1 == amt2;
           }
           if (it == 'cashback') {
-            final amt1 = double.tryParse(i['item_price']?.toString() ?? i[AppDBConst.itemPrice]?.toString() ?? '0') ?? 0;
-            final amt2 = double.tryParse(orderItem['item_price']?.toString() ?? orderItem[AppDBConst.itemPrice]?.toString() ?? '0') ?? 0;
+            final amt1 = double.tryParse(i['item_price']?.toString() ??
+                i[AppDBConst.itemPrice]?.toString() ??
+                '0') ??
+                0;
+            final amt2 = double.tryParse(orderItem['item_price']?.toString() ??
+                orderItem[AppDBConst.itemPrice]?.toString() ??
+                '0') ??
+                0;
             return amt1 == amt2;
           }
           if (it.contains('custom')) {
-            final n1 = (i['item_name'] ?? i[AppDBConst.itemName] ?? '').toString().toLowerCase();
-            final n2 = (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '').toString().toLowerCase();
-            final p1 = double.tryParse(i['item_price']?.toString() ?? i[AppDBConst.itemPrice]?.toString() ?? '0') ?? 0;
-            final p2 = double.tryParse(orderItem['item_price']?.toString() ?? orderItem[AppDBConst.itemPrice]?.toString() ?? '0') ?? 0;
+            final n1 = (i['item_name'] ?? i[AppDBConst.itemName] ?? '')
+                .toString()
+                .toLowerCase();
+            final n2 =
+            (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '')
+                .toString()
+                .toLowerCase();
+            final p1 = double.tryParse(i['item_price']?.toString() ??
+                i[AppDBConst.itemPrice]?.toString() ??
+                '0') ??
+                0;
+            final p2 = double.tryParse(orderItem['item_price']?.toString() ??
+                orderItem[AppDBConst.itemPrice]?.toString() ??
+                '0') ??
+                0;
             return n1 == n2 && (p1 - p2).abs() < 0.001;
           }
           final pid1 = (i['product_id'] as num?)?.toInt() ?? -1;
@@ -2920,10 +2999,21 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           final vid2 = (orderItem['variation_id'] as num?)?.toInt() ?? 0;
           final sku1 = (i['sku'] ?? '').toString().toLowerCase();
           final sku2 = (orderItem['sku'] ?? '').toString().toLowerCase();
-          final n1 = (i['item_name'] ?? i[AppDBConst.itemName] ?? '').toString().toLowerCase();
-          final n2 = (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '').toString().toLowerCase();
-          final p1 = double.tryParse(i['item_price']?.toString() ?? i[AppDBConst.itemPrice]?.toString() ?? '0') ?? 0;
-          final p2 = double.tryParse(orderItem['item_price']?.toString() ?? orderItem[AppDBConst.itemPrice]?.toString() ?? '0') ?? 0;
+          final n1 = (i['item_name'] ?? i[AppDBConst.itemName] ?? '')
+              .toString()
+              .toLowerCase();
+          final n2 =
+          (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '')
+              .toString()
+              .toLowerCase();
+          final p1 = double.tryParse(i['item_price']?.toString() ??
+              i[AppDBConst.itemPrice]?.toString() ??
+              '0') ??
+              0;
+          final p2 = double.tryParse(orderItem['item_price']?.toString() ??
+              orderItem[AppDBConst.itemPrice]?.toString() ??
+              '0') ??
+              0;
           if (pid2 >= 0 && pid1 == pid2 && vid1 == vid2) return true;
           if (sku2.isNotEmpty && sku1 == sku2) return true;
           return n1 == n2 && (p1 - p2).abs() < 0.001;
@@ -3154,17 +3244,20 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               'assets/svg/calendar.svg',
                               width: 20,
                               height: 20,
-                              color: Theme.of(context).brightness == Brightness.dark
+                              color: Theme.of(context).brightness ==
+                                  Brightness.dark
                                   ? Colors.white
                                   : Colors.black,
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              DateFormat(TextConstants.dateFormat).format(DateTime.now()),
+                              DateFormat(TextConstants.dateFormat)
+                                  .format(DateTime.now()),
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
-                                color: Theme.of(context).brightness == Brightness.dark
+                                color: Theme.of(context).brightness ==
+                                    Brightness.dark
                                     ? Colors.white
                                     : Colors.black,
                               ),
@@ -3177,17 +3270,20 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               'assets/svg/clock.svg',
                               width: 20,
                               height: 20,
-                              color: Theme.of(context).brightness == Brightness.dark
+                              color: Theme.of(context).brightness ==
+                                  Brightness.dark
                                   ? Colors.white
                                   : Colors.black,
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              DateFormat(TextConstants.timeFormat).format(DateTime.now()),
+                              DateFormat(TextConstants.timeFormat)
+                                  .format(DateTime.now()),
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
-                                color: Theme.of(context).brightness == Brightness.dark
+                                color: Theme.of(context).brightness ==
+                                    Brightness.dark
                                     ? Colors.white
                                     : Colors.black,
                               ),
@@ -3308,7 +3404,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         print("📦 Detected offline order (${orderHelper.activeOrderId})");
       }
 
-      final Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(rawOfflineOrder);
+      final Map<String, dynamic> offlineOrder =
+      Map<String, dynamic>.from(rawOfflineOrder);
 
       if (offlineOrder['cashbacks'] != null &&
           offlineOrder['cashbacks'] is List &&
@@ -3368,8 +3465,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
             final price =
                 double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-            final qty =
-                int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+            final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
 
             final String taxClass = item['tax_class']?.toString() ??
                 item['tax_Class']?.toString() ??
@@ -3442,7 +3538,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
           // ---------------- REAL PRODUCTS ONLY ----------------
           final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-          final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+          final price =
+              double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
 
           double itemTax = 0.0;
           double itemDiscount = 0.0;
@@ -3524,9 +3621,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       double productTotal = 0.0;
 
       for (final item in offlineProducts) {
-        final itemType = (item['item_type'] ?? item['type'] ?? '')
-            .toString()
-            .toLowerCase();
+        final itemType =
+        (item['item_type'] ?? item['type'] ?? '').toString().toLowerCase();
 
         final bool isCustom = itemType.contains("custom");
         final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
@@ -3570,21 +3666,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       netTotal = grossTotal - orderDiscount - merchantDiscount;
       netPayable = netTotal + orderTax + cashbackFee;
 
-      if (orderHelper.activeOrderId != null) {
-        final updatedOrder = Map<String, dynamic>.from(rawOfflineOrder);
-        updatedOrder['gross_total'] = grossTotal;
-        updatedOrder['orderDiscount'] = orderDiscount;
-        updatedOrder['merchantDiscount'] = merchantDiscount;
-        updatedOrder['cashbackFee'] = cashbackFee;
-        updatedOrder['order_tax'] = orderTax;
-        updatedOrder['net_total'] = netTotal;
-        updatedOrder['net_payable'] = netPayable;
-        updatedOrder['autoProductDiscount'] = autoProductDiscount;
-
-        unawaited(StorageProvider.offlineOrders.put(
-            orderHelper.activeOrderId.toString(), updatedOrder));
-        print("💾 Saved latest totals");
-      }
+      // Build #1.0.104: Total calculation moved to OrderHelper.saveOfflineOrder
+      // Removed put from build to prevent race conditions.
+      print("💾 Totals calculated for UI");
 
       // 🔹 Format date/time
       if (offlineOrder['created_at'] != null) {
@@ -3612,7 +3696,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
 
     if (kDebugMode) {
-      print("✅ Final Totals → gross: $grossTotal, discount: $orderDiscount, tax: $orderTax, net: $netTotal, payable: $netPayable");
+      print(
+          "✅ Final Totals → gross: $grossTotal, discount: $orderDiscount, tax: $orderTax, net: $netTotal, payable: $netPayable");
       print("#### ACTIVE ORDER ID: ${orderHelper.activeOrderId}");
       print("#### orderItems: $orderItems");
       print("#### grossTotal: $grossTotal");
@@ -3658,7 +3743,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             'assets/svg/calendar.svg',
                             width: 20,
                             height: 20,
-                            color: Theme.of(context).brightness == Brightness.dark
+                            color:
+                            Theme.of(context).brightness == Brightness.dark
                                 ? Colors.white
                                 : Colors.black,
                           ),
@@ -3668,7 +3754,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
-                              color: Theme.of(context).brightness == Brightness.dark
+                              color: Theme.of(context).brightness ==
+                                  Brightness.dark
                                   ? Colors.white
                                   : Colors.black,
                             ),
@@ -3681,7 +3768,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             'assets/svg/clock.svg',
                             width: 20,
                             height: 20,
-                            color: Theme.of(context).brightness == Brightness.dark
+                            color:
+                            Theme.of(context).brightness == Brightness.dark
                                 ? Colors.white
                                 : Colors.black,
                           ),
@@ -3691,7 +3779,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
-                              color: Theme.of(context).brightness == Brightness.dark
+                              color: Theme.of(context).brightness ==
+                                  Brightness.dark
                                   ? Colors.white
                                   : Colors.black,
                             ),
@@ -3735,7 +3824,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                       buildDefaultDragHandles: false,
                       onReorder: (oldIndex, newIndex) {
                         if (kDebugMode) {
-                          print("Reordering item from $oldIndex to $newIndex");
+                          print(
+                              "Reordering item from $oldIndex to $newIndex");
                         }
                         if (oldIndex < newIndex) newIndex -= 1;
 
@@ -3891,16 +3981,17 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             "🗑️ Delete tapped for item: $orderItem");
                                       }
 
-                                      final bool isOffline =
-                                          orderHelper.activeOrderId !=
-                                              null &&
-                                              (await StorageProvider.offlineOrders
-                                                  .containsKey(orderHelper
-                                                  .activeOrderId
-                                                  .toString()));
+                                      final bool isOffline = orderHelper
+                                          .activeOrderId !=
+                                          null &&
+                                          (await StorageProvider
+                                              .offlineOrders
+                                              .containsKey(orderHelper
+                                              .activeOrderId
+                                              .toString()));
 
-                                      await deleteOfflineItem(
-                                          orderItem, itemIndex: index);
+                                      await deleteOfflineItem(orderItem,
+                                          itemIndex: index);
 
                                       if (kDebugMode) {
                                         print(isOffline
@@ -3957,10 +4048,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                           orderItem['items_count'],
                                           AppDBConst.itemImage:
                                           orderItem['item_image'],
-                                          'product_id': orderItem['product_id'],
-                                          'variation_id': orderItem['variation_id'],
+                                          'product_id':
+                                          orderItem['product_id'],
+                                          'variation_id':
+                                          orderItem['variation_id'],
                                           'sku': orderItem['sku'],
-                                          'item_type': orderItem['item_type'],
+                                          'item_type':
+                                          orderItem['item_type'],
                                         },
                                         onQuantityUpdated:
                                             (newQuantity) async {
@@ -3973,9 +4067,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             orderHelper.activeOrderId
                                                 .toString();
                                             final offlineBox =
-                                                StorageProvider.offlineOrders;
+                                                StorageProvider
+                                                    .offlineOrders;
                                             final rawOfflineOrder =
-                                            await offlineBox.get(orderKey);
+                                            await offlineBox
+                                                .get(orderKey);
 
                                             if (rawOfflineOrder == null)
                                               return;
@@ -4010,32 +4106,69 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                     .toList() ??
                                                     [];
 
-                                            final tappedItemType = (orderItem['item_type'] ?? 'product').toString().toLowerCase();
-                                            final productsLen = products.length;
-                                            final customLen = customItems.length;
+                                            final tappedItemType =
+                                            (orderItem['item_type'] ??
+                                                'product')
+                                                .toString()
+                                                .toLowerCase();
+                                            final productsLen =
+                                                products.length;
+                                            final customLen =
+                                                customItems.length;
 
                                             // Index-based update: orderItems = [products..., custom_items..., payouts..., cashbacks...]
                                             // Update only the tapped line so variants do not impact each other
                                             if (index < productsLen) {
-                                              final product = products[index];
-                                              final price = double.tryParse(product['price']?.toString() ?? '0') ?? 0.0;
-                                              product['quantity'] = newQuantity;
-                                              product['items_count'] = newQuantity;
-                                              product['subtotal'] = price * newQuantity;
+                                              final product =
+                                              products[index];
+                                              final price =
+                                                  double.tryParse(product[
+                                                  'price']
+                                                      ?.toString() ??
+                                                      '0') ??
+                                                      0.0;
+                                              product['quantity'] =
+                                                  newQuantity;
+                                              product['items_count'] =
+                                                  newQuantity;
+                                              product['subtotal'] =
+                                                  price * newQuantity;
                                               if (kDebugMode) {
-                                                print("🟢 Updated PRODUCT → ${product['name'] ?? product['product_name']} | Qty: $newQuantity");
+                                                print(
+                                                    "🟢 Updated PRODUCT → ${product['name'] ?? product['product_name']} | Qty: $newQuantity");
                                               }
-                                            } else if (tappedItemType.contains('custom') &&
+                                            } else if (tappedItemType
+                                                .contains('custom') &&
                                                 index >= productsLen &&
-                                                index < productsLen + customLen) {
-                                              final custom = customItems[index - productsLen];
-                                              final price = double.tryParse(custom['custom_item_price']?.toString() ?? custom['amount']?.toString() ?? custom['price']?.toString() ?? '0') ?? 0.0;
-                                              custom['quantity'] = newQuantity;
-                                              custom['items_count'] = newQuantity;
-                                              custom['subtotal'] = price * newQuantity;
+                                                index <
+                                                    productsLen +
+                                                        customLen) {
+                                              final custom = customItems[
+                                              index - productsLen];
+                                              final price = double.tryParse(custom[
+                                              'custom_item_price']
+                                                  ?.toString() ??
+                                                  custom['amount']
+                                                      ?.toString() ??
+                                                  custom['price']
+                                                      ?.toString() ??
+                                                  '0') ??
+                                                  0.0;
+                                              custom['quantity'] =
+                                                  newQuantity;
+                                              custom['items_count'] =
+                                                  newQuantity;
+                                              custom['subtotal'] =
+                                                  price * newQuantity;
                                               if (kDebugMode) {
-                                                final customName = (custom['custom_item_name'] ?? custom['item_name'] ?? '').toString();
-                                                print("🟣 Updated CUSTOM ITEM → $customName | Qty: $newQuantity");
+                                                final customName = (custom[
+                                                'custom_item_name'] ??
+                                                    custom[
+                                                    'item_name'] ??
+                                                    '')
+                                                    .toString();
+                                                print(
+                                                    "🟣 Updated CUSTOM ITEM → $customName | Qty: $newQuantity");
                                               }
                                             }
 
@@ -4048,33 +4181,112 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             // Recalculate totals
                                             double productTotal = 0.0;
                                             for (final p in products) {
-                                              final qty = int.tryParse(p['quantity']?.toString() ?? '1') ?? 1;
-                                              final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+                                              final qty = int.tryParse(p[
+                                              'quantity']
+                                                  ?.toString() ??
+                                                  '1') ??
+                                                  1;
+                                              final price = double
+                                                  .tryParse(p['price']
+                                                  ?.toString() ??
+                                                  '0') ??
+                                                  0.0;
                                               productTotal += price * qty;
                                             }
                                             for (final c in customItems) {
-                                              final qty = int.tryParse(c['quantity']?.toString() ?? '1') ?? 1;
-                                              final price = double.tryParse(c['custom_item_price']?.toString() ?? c['amount']?.toString() ?? '0') ?? 0.0;
+                                              final qty = int.tryParse(c[
+                                              'quantity']
+                                                  ?.toString() ??
+                                                  '1') ??
+                                                  1;
+                                              final price = double.tryParse(
+                                                  c['custom_item_price']
+                                                      ?.toString() ??
+                                                      c['amount']
+                                                          ?.toString() ??
+                                                      '0') ??
+                                                  0.0;
                                               productTotal += price * qty;
                                             }
-                                            double payoutsTotal = ((offlineOrder['payouts'] as List?) ?? [])
-                                                .fold<double>(0, (s, p) => s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0));
-                                            double cashbacksTotal = ((offlineOrder['cashbacks'] as List?) ?? [])
-                                                .fold<double>(0, (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0));
-                                            final grossTotal = productTotal + payoutsTotal + cashbacksTotal;
-                                            final orderDiscount = (offlineOrder['orderDiscount'] is num) ? (offlineOrder['orderDiscount'] as num).toDouble() : 0.0;
-                                            final merchantDiscount = (offlineOrder['merchantDiscount'] is num) ? (offlineOrder['merchantDiscount'] as num).toDouble() : 0.0;
-                                            final cashbackFee = (offlineOrder['cashbackFee'] is num) ? (offlineOrder['cashbackFee'] as num).toDouble() : 0.0;
-                                            final orderTax = (offlineOrder['order_tax'] is num) ? (offlineOrder['order_tax'] as num).toDouble() : 0.0;
-                                            offlineOrder['gross_total'] = grossTotal;
-                                            offlineOrder['net_total'] = grossTotal - orderDiscount - merchantDiscount;
-                                            offlineOrder['net_payable'] = offlineOrder['net_total'] + orderTax + cashbackFee;
+                                            double payoutsTotal = ((offlineOrder[
+                                            'payouts']
+                                            as List?) ??
+                                                [])
+                                                .fold<double>(
+                                                0,
+                                                    (s, p) =>
+                                                s +
+                                                    (double.tryParse(
+                                                        p['amount']
+                                                            ?.toString() ??
+                                                            '0') ??
+                                                        0.0));
+                                            double cashbacksTotal = ((offlineOrder[
+                                            'cashbacks']
+                                            as List?) ??
+                                                [])
+                                                .fold<double>(
+                                                0,
+                                                    (s, c) =>
+                                                s +
+                                                    (double.tryParse(
+                                                        c['amount']
+                                                            ?.toString() ??
+                                                            '0') ??
+                                                        0.0));
+                                            final grossTotal =
+                                                productTotal +
+                                                    payoutsTotal +
+                                                    cashbacksTotal;
+                                            final orderDiscount = (offlineOrder[
+                                            'orderDiscount']
+                                            is num)
+                                                ? (offlineOrder[
+                                            'orderDiscount']
+                                            as num)
+                                                .toDouble()
+                                                : 0.0;
+                                            final merchantDiscount =
+                                            (offlineOrder[
+                                            'merchantDiscount']
+                                            is num)
+                                                ? (offlineOrder[
+                                            'merchantDiscount']
+                                            as num)
+                                                .toDouble()
+                                                : 0.0;
+                                            final cashbackFee = (offlineOrder[
+                                            'cashbackFee'] is num)
+                                                ? (offlineOrder[
+                                            'cashbackFee']
+                                            as num)
+                                                .toDouble()
+                                                : 0.0;
+                                            final orderTax = (offlineOrder[
+                                            'order_tax'] is num)
+                                                ? (offlineOrder[
+                                            'order_tax']
+                                            as num)
+                                                .toDouble()
+                                                : 0.0;
+                                            offlineOrder['gross_total'] =
+                                                grossTotal;
+                                            offlineOrder['net_total'] =
+                                                grossTotal -
+                                                    orderDiscount -
+                                                    merchantDiscount;
+                                            offlineOrder['net_payable'] =
+                                                offlineOrder[
+                                                'net_total'] +
+                                                    orderTax +
+                                                    cashbackFee;
 
                                             await offlineBox.put(
                                                 orderKey, offlineOrder);
 
                                             await orderHelper.loadData();
-                                            OrderHelper.notifyOrderPanelToRefresh();
+                                            OrderHelper
+                                                .notifyOrderPanelToRefresh();
 
                                             // 🖥 Update customer display
                                             await CustomerDisplayHelper
@@ -4113,7 +4325,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                     'item_type':
                                                     'product',
                                                     'item_image':
-                                                    resolveProductImageFromMap(item),
+                                                    resolveProductImageFromMap(
+                                                        item),
                                                   };
                                                 }).toList();
 
@@ -4147,8 +4360,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                     'item_type':
                                                     'custom item',
                                                     'item_image': () {
-                                                      final img = resolveProductImageFromMap(item);
-                                                      return img.isNotEmpty ? img : 'assets/custom.png';
+                                                      final img =
+                                                      resolveProductImageFromMap(
+                                                          item);
+                                                      return img
+                                                          .isNotEmpty
+                                                          ? img
+                                                          : 'assets/custom.png';
                                                     }(),
                                                   };
                                                 }).toList();
@@ -4795,130 +5013,285 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                           : GestureDetector(
                                         onTap: () async {
                                           if (kDebugMode) {
-                                            print("####################### Remove Merchant Discount locally");
+                                            print(
+                                                "####################### Remove Merchant Discount locally");
                                           }
 
-                                          final activeOrderId = orderHelper.activeOrderId;
-                                          if (activeOrderId == null) {
-                                            _scaffoldMessenger.showSnackBar(
+                                          final activeOrderId =
+                                              orderHelper
+                                                  .activeOrderId;
+                                          if (activeOrderId ==
+                                              null) {
+                                            _scaffoldMessenger
+                                                .showSnackBar(
                                               const SnackBar(
-                                                content: Text("No active order found"),
-                                                backgroundColor: Colors.red,
-                                                duration: Duration(seconds: 2),
+                                                content: Text(
+                                                    "No active order found"),
+                                                backgroundColor:
+                                                Colors.red,
+                                                duration: Duration(
+                                                    seconds: 2),
                                               ),
                                             );
                                             return;
                                           }
 
                                           // Step 1: Show confirmation dialog
-                                          await CustomDialog.showRemoveSpecialOrderItemsConfirmation(
+                                          await CustomDialog
+                                              .showRemoveSpecialOrderItemsConfirmation(
                                             context,
                                             confirm: () async {
-                                              setState(() => _isLoading = true);
+                                              setState(() =>
+                                              _isLoading =
+                                              true);
 
-                                              final offlineBox = StorageProvider.offlineOrders;
-                                              final rawOrder = await offlineBox.get(activeOrderId.toString());
+                                              final offlineBox =
+                                                  StorageProvider
+                                                      .offlineOrders;
+                                              final rawOrder =
+                                              await offlineBox.get(
+                                                  activeOrderId
+                                                      .toString());
 
-                                              if (rawOrder == null) {
-                                                setState(() => _isLoading = false);
-                                                _scaffoldMessenger.showSnackBar(
+                                              if (rawOrder ==
+                                                  null) {
+                                                setState(() =>
+                                                _isLoading =
+                                                false);
+                                                _scaffoldMessenger
+                                                    .showSnackBar(
                                                   const SnackBar(
-                                                    content: Text("No offline order data found"),
-                                                    backgroundColor: Colors.red,
-                                                    duration: Duration(seconds: 2),
+                                                    content: Text(
+                                                        "No offline order data found"),
+                                                    backgroundColor:
+                                                    Colors.red,
+                                                    duration:
+                                                    Duration(
+                                                        seconds:
+                                                        2),
                                                   ),
                                                 );
                                                 return;
                                               }
 
                                               // Convert to editable Map
-                                              final Map<String, dynamic> order = Map<String, dynamic>.from(rawOrder);
+                                              final Map<String,
+                                                  dynamic> order = Map<
+                                                  String,
+                                                  dynamic>.from(
+                                                  rawOrder);
 
                                               // ────────────────────────────────────────────────
                                               // Remove ALL possible merchant discount fields
                                               // (covers both old and new storage formats)
                                               // ────────────────────────────────────────────────
-                                              bool hadDiscount = false;
+                                              bool hadDiscount =
+                                              false;
 
                                               if (order.containsKey('merchantDiscount') ||
-                                                  order.containsKey('merchantDiscountIds') ||
-                                                  order.containsKey('discounts') ||
-                                                  order.containsKey('merchantDiscountType') ||
-                                                  order.containsKey('merchantDiscountPercentage') ||
-                                                  order.containsKey('merchantDiscountFixed') ||
-                                                  order.containsKey('merchantDiscountBaseGross') ||
-                                                  order.containsKey('merchantDiscountIsPercentage')) {
-
+                                                  order.containsKey(
+                                                      'merchantDiscountIds') ||
+                                                  order.containsKey(
+                                                      'discounts') ||
+                                                  order.containsKey(
+                                                      'merchantDiscountType') ||
+                                                  order.containsKey(
+                                                      'merchantDiscountPercentage') ||
+                                                  order.containsKey(
+                                                      'merchantDiscountFixed') ||
+                                                  order.containsKey(
+                                                      'merchantDiscountBaseGross') ||
+                                                  order.containsKey(
+                                                      'merchantDiscountIsPercentage')) {
                                                 hadDiscount = true;
 
-                                                order.remove('merchantDiscount');
-                                                order.remove('merchantDiscountIds');
-                                                order.remove('discounts');
-                                                order.remove('merchantDiscountType');
-                                                order.remove('merchantDiscountPercentage');
-                                                order.remove('merchantDiscountFixed');
-                                                order.remove('merchantDiscountBaseGross');
-                                                order.remove('merchantDiscountIsPercentage');
-                                                order.remove('merchant_discount_calculated');
+                                                order.remove(
+                                                    'merchantDiscount');
+                                                order.remove(
+                                                    'merchantDiscountIds');
+                                                order.remove(
+                                                    'discounts');
+                                                order.remove(
+                                                    'merchantDiscountType');
+                                                order.remove(
+                                                    'merchantDiscountPercentage');
+                                                order.remove(
+                                                    'merchantDiscountFixed');
+                                                order.remove(
+                                                    'merchantDiscountBaseGross');
+                                                order.remove(
+                                                    'merchantDiscountIsPercentage');
+                                                order.remove(
+                                                    'merchant_discount_calculated');
                                               }
 
                                               // Recalculate totals with merchant discount = 0
-                                              final products = (order['products'] as List?) ?? [];
-                                              final customItems = (order['custom_items'] as List?) ?? [];
-                                              double productTotal = 0.0;
-                                              for (final p in products) {
-                                                final qty = int.tryParse(p['quantity']?.toString() ?? p['items_count']?.toString() ?? '1') ?? 1;
-                                                final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
-                                                productTotal += price * qty;
+                                              final products =
+                                                  (order['products']
+                                                  as List?) ??
+                                                      [];
+                                              final customItems =
+                                                  (order['custom_items']
+                                                  as List?) ??
+                                                      [];
+                                              double productTotal =
+                                              0.0;
+                                              for (final p
+                                              in products) {
+                                                final qty = int.tryParse(p[
+                                                'quantity']
+                                                    ?.toString() ??
+                                                    p['items_count']
+                                                        ?.toString() ??
+                                                    '1') ??
+                                                    1;
+                                                final price = double
+                                                    .tryParse(p['price']
+                                                    ?.toString() ??
+                                                    '0') ??
+                                                    0.0;
+                                                productTotal +=
+                                                    price * qty;
                                               }
-                                              for (final c in customItems) {
-                                                final qty = int.tryParse(c['quantity']?.toString() ?? c['items_count']?.toString() ?? '1') ?? 1;
-                                                final price = double.tryParse(c['custom_item_price']?.toString() ?? c['amount']?.toString() ?? c['price']?.toString() ?? '0') ?? 0.0;
-                                                productTotal += price * qty;
+                                              for (final c
+                                              in customItems) {
+                                                final qty = int.tryParse(c[
+                                                'quantity']
+                                                    ?.toString() ??
+                                                    c['items_count']
+                                                        ?.toString() ??
+                                                    '1') ??
+                                                    1;
+                                                final price = double.tryParse(c[
+                                                'custom_item_price']
+                                                    ?.toString() ??
+                                                    c['amount']
+                                                        ?.toString() ??
+                                                    c['price']
+                                                        ?.toString() ??
+                                                    '0') ??
+                                                    0.0;
+                                                productTotal +=
+                                                    price * qty;
                                               }
-                                              final payouts = (order['payouts'] as List?) ?? [];
-                                              final cashbacks = (order['cashbacks'] as List?) ?? [];
-                                              double payoutsTotal = payouts.fold<double>(0, (s, p) => s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0));
-                                              double cashbacksTotal = cashbacks.fold<double>(0, (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0));
-                                              final grossTotal = productTotal + payoutsTotal + cashbacksTotal;
-                                              final orderDiscount = (order['orderDiscount'] is num) ? (order['orderDiscount'] as num).toDouble() : 0.0;
-                                              final orderTax = (order['order_tax'] is num) ? (order['order_tax'] as num).toDouble() : 0.0;
-                                              final cashbackFee = (order['cashbackFee'] is num) ? (order['cashbackFee'] as num).toDouble() : 0.0;
-                                              order['gross_total'] = grossTotal;
-                                              order['net_total'] = grossTotal - orderDiscount;
-                                              order['net_payable'] = order['net_total'] + orderTax + cashbackFee;
+                                              final payouts = (order[
+                                              'payouts']
+                                              as List?) ??
+                                                  [];
+                                              final cashbacks =
+                                                  (order['cashbacks']
+                                                  as List?) ??
+                                                      [];
+                                              double payoutsTotal =
+                                              payouts.fold<
+                                                  double>(
+                                                  0,
+                                                      (s, p) =>
+                                                  s +
+                                                      (double.tryParse(p['amount']?.toString() ??
+                                                          '0') ??
+                                                          0));
+                                              double
+                                              cashbacksTotal =
+                                              cashbacks.fold<
+                                                  double>(
+                                                  0,
+                                                      (s, c) =>
+                                                  s +
+                                                      (double.tryParse(c['amount']?.toString() ??
+                                                          '0') ??
+                                                          0));
+                                              final grossTotal =
+                                                  productTotal +
+                                                      payoutsTotal +
+                                                      cashbacksTotal;
+                                              final orderDiscount =
+                                              (order['orderDiscount']
+                                              is num)
+                                                  ? (order['orderDiscount']
+                                              as num)
+                                                  .toDouble()
+                                                  : 0.0;
+                                              final orderTax = (order[
+                                              'order_tax']
+                                              is num)
+                                                  ? (order['order_tax']
+                                              as num)
+                                                  .toDouble()
+                                                  : 0.0;
+                                              final cashbackFee =
+                                              (order['cashbackFee']
+                                              is num)
+                                                  ? (order['cashbackFee']
+                                              as num)
+                                                  .toDouble()
+                                                  : 0.0;
+                                              order['gross_total'] =
+                                                  grossTotal;
+                                              order['net_total'] =
+                                                  grossTotal -
+                                                      orderDiscount;
+                                              order['net_payable'] =
+                                                  order['net_total'] +
+                                                      orderTax +
+                                                      cashbackFee;
 
-                                              await offlineBox.put(activeOrderId.toString(), order);
+                                              await offlineBox.put(
+                                                  activeOrderId
+                                                      .toString(),
+                                                  order);
 
-                                              await orderHelper.loadData();
-                                              OrderHelper.notifyOrderPanelToRefresh();
-                                              await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+                                              await orderHelper
+                                                  .loadData();
+                                              OrderHelper
+                                                  .notifyOrderPanelToRefresh();
+                                              await CustomerDisplayHelper
+                                                  .updateCustomerDisplay(
+                                                  activeOrderId);
 
-                                              if (mounted) setState(() => _isLoading = false);
+                                              if (mounted)
+                                                setState(() =>
+                                                _isLoading =
+                                                false);
 
                                               if (hadDiscount) {
-                                                _scaffoldMessenger.showSnackBar(
+                                                _scaffoldMessenger
+                                                    .showSnackBar(
                                                   const SnackBar(
-                                                    content: Text("Merchant discount removed successfully"),
-                                                    backgroundColor: Colors.green,
-                                                    duration: Duration(seconds: 2),
+                                                    content: Text(
+                                                        "Merchant discount removed successfully"),
+                                                    backgroundColor:
+                                                    Colors
+                                                        .green,
+                                                    duration:
+                                                    Duration(
+                                                        seconds:
+                                                        2),
                                                   ),
                                                 );
                                               } else {
-                                                _scaffoldMessenger.showSnackBar(
+                                                _scaffoldMessenger
+                                                    .showSnackBar(
                                                   const SnackBar(
-                                                    content: Text("No merchant discount was found on this order"),
-                                                    backgroundColor: Colors.orange,
-                                                    duration: Duration(seconds: 2),
+                                                    content: Text(
+                                                        "No merchant discount was found on this order"),
+                                                    backgroundColor:
+                                                    Colors
+                                                        .orange,
+                                                    duration:
+                                                    Duration(
+                                                        seconds:
+                                                        2),
                                                   ),
                                                 );
                                               }
 
-                                              widget.refreshOrderList?.call();
+                                              widget
+                                                  .refreshOrderList
+                                                  ?.call();
                                             },
                                           );
                                         },
-
                                         child: SvgPicture.asset(
                                           "assets/svg/delete.svg",
                                           height: 24,
@@ -5157,8 +5530,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                           setState(() => _isPayBtnLoading = true);
 
                           try {
-                            final List<Map<String, dynamic>> workingItems =
-                            orderItems.map((e) => Map<String, dynamic>.from(e)).toList();
+                            final List<Map<String, dynamic>>
+                            workingItems = orderItems
+                                .map((e) =>
+                            Map<String, dynamic>.from(e))
+                                .toList();
 
                             int? serverOrderId;
 
@@ -5172,8 +5548,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             double totalEbtAfterDiscount = 0.0;
 
                             final boxData = await box.get(hiveKey);
-                            final double discountAmount =
-                            ((boxData is Map ? boxData["discount_amount"] : null) ??
+                            final double discountAmount = ((boxData is Map
+                                ? boxData["discount_amount"]
+                                : null) ??
                                 0.0)
                                 .toDouble();
 
@@ -5197,16 +5574,21 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             // 🔥 CALL DISCOUNT ENGINE
                             // =======================================================
                             final rawEngineDiscounts =
-                            await DiscountEngine.applyAll(AppDB.isar, cartItems);
+                            await DiscountEngine.applyAll(
+                                AppDB.isar, cartItems);
 
 // 🔧 Normalize keys to int (CRITICAL FIX)
-                            final Map<int, EngineDiscountResult> engineDiscounts = {
-                              for (final entry in rawEngineDiscounts.entries)
-                                int.tryParse(entry.key.toString()) ?? -1: entry.value
+                            final Map<int, EngineDiscountResult>
+                            engineDiscounts = {
+                              for (final entry
+                              in rawEngineDiscounts.entries)
+                                int.tryParse(entry.key.toString()) ?? -1:
+                                entry.value
                             };
 
                             if (kDebugMode) {
-                              print("🔥 NORMALIZED ENGINE MAP = $engineDiscounts");
+                              print(
+                                  "🔥 NORMALIZED ENGINE MAP = $engineDiscounts");
                             }
 
                             if (kDebugMode) {
@@ -5218,15 +5600,21 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             // 🔥 APPLY + NORMALIZE ENGINE RESULTS (ONCE)
                             // =======================================================
                             for (final item in workingItems) {
-                              final pid = int.tryParse(item['product_id']?.toString() ?? '');
-                              final engineResult = pid != null ? engineDiscounts[pid] : null;
+                              final pid = int.tryParse(
+                                  item['product_id']?.toString() ?? '');
+                              final engineResult = pid != null
+                                  ? engineDiscounts[pid]
+                                  : null;
 
-                              item['auto_discount'] = engineResult?.amount ?? 0.0;
-                              item['discount_type'] = engineResult?.ruleType ?? '';
-                              item['discount_source'] = engineResult != null ? 'engine' : '';
-                              item['rule_id'] = engineResult?.ruleId ?? '';
+                              item['auto_discount'] =
+                                  engineResult?.amount ?? 0.0;
+                              item['discount_type'] =
+                                  engineResult?.ruleType ?? '';
+                              item['discount_source'] =
+                              engineResult != null ? 'engine' : '';
+                              item['rule_id'] =
+                                  engineResult?.ruleId ?? '';
                             }
-
 
                             // =======================================================
                             // 🔹 CALCULATE TAX & TOTALS
@@ -5235,8 +5623,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             final List<Tax> taxList =
                             await _assetDBHelper.getTaxList();
 
-                            for (final item in workingItems)
-                            {
+                            for (final item in workingItems) {
                               final int productId = int.tryParse(
                                   item['product_id']?.toString() ??
                                       '0') ??
@@ -5275,8 +5662,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               item['tax_after_discount'] = itemTax;
                             }
 
-                            for (final item in workingItems)
-                            {
+                            for (final item in workingItems) {
                               final double price =
                                   (item['item_price'] as num?)
                                       ?.toDouble() ??
@@ -5332,19 +5718,21 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             final existingLocal = await box.get(localKey);
                             final Map<String, dynamic> updated =
                             existingLocal != null
-                                ? Map<String, dynamic>.from(existingLocal)
+                                ? Map<String, dynamic>.from(
+                                existingLocal)
                                 : <String, dynamic>{
-                              'order_id': orderHelper.activeOrderId,
+                              'order_id':
+                              orderHelper.activeOrderId,
                               'id': orderHelper.activeOrderId,
-                              'products': <Map<String, dynamic>>[],
+                              'products':
+                              <Map<String, dynamic>>[],
                             };
 
+                            updated["tax_discount"] = double.parse(
+                                totalTaxAfterDiscount.toStringAsFixed(2));
 
-                            updated["tax_discount"] =
-                                double.parse(totalTaxAfterDiscount.toStringAsFixed(2));
-
-                            updated["cashback_fee"] =
-                                double.parse(cashbackFee.toStringAsFixed(2));
+                            updated["cashback_fee"] = double.parse(
+                                cashbackFee.toStringAsFixed(2));
 // =======================================================
 // 🔥 BUILD DISCOUNT LINES (SOURCE OF TRUTH)
 // =======================================================
@@ -5356,7 +5744,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               if (pid == null || pid == "0") continue;
 
                               discountLines[pid] = {
-                                "amount": (item['auto_discount'] ?? 0).toDouble(),
+                                "amount": (item['auto_discount'] ?? 0)
+                                    .toDouble(),
                                 "type": item['discount_type'] ?? "",
                                 "source": item['discount_source'] ?? "",
                                 "rule_id": item['rule_id'] ?? "",
@@ -5375,25 +5764,32 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             // ===== VERIFY HIVE WRITE =====
                             final verifyWrite = await box.get(localKey);
 
-                            debugPrint("\n🟥🟥🟥 VERIFY AFTER SAVE (CHECKOUT) 🟥🟥🟥");
+                            debugPrint(
+                                "\n🟥🟥🟥 VERIFY AFTER SAVE (CHECKOUT) 🟥🟥🟥");
                             debugPrint("OrderID: $localKey");
 
                             final items = verifyWrite?['items'] ?? [];
                             for (final i in items) {
-                              debugPrint("ITEM → ${i['item_name']} | discount_meta=${i['discount_meta']}");
+                              debugPrint(
+                                  "ITEM → ${i['item_name']} | discount_meta=${i['discount_meta']}");
                             }
 
-                            final products = verifyWrite?['products'] ?? [];
+                            final products =
+                                verifyWrite?['products'] ?? [];
                             for (final p in products) {
-                              debugPrint("PRODUCT → ${p['name']} | discount_meta=${p['discount_meta']}");
+                              debugPrint(
+                                  "PRODUCT → ${p['name']} | discount_meta=${p['discount_meta']}");
                             }
 
                             debugPrint("🟥🟥🟥 END VERIFY 🟥🟥🟥\n");
 
                             final finalStored = await box.get(localKey);
-                            debugPrint("🧠 FINAL STORED HIVE ORDER =====================");
-                            debugPrint(const JsonEncoder.withIndent('  ').convert(finalStored));
-                            debugPrint("===============================================");
+                            debugPrint(
+                                "🧠 FINAL STORED HIVE ORDER =====================");
+                            debugPrint(const JsonEncoder.withIndent('  ')
+                                .convert(finalStored));
+                            debugPrint(
+                                "===============================================");
 // DEBUG
                             final verify = await box.get(localKey);
                             debugPrint("🧠 STORED ORDER AFTER SAVE:");
