@@ -6861,7 +6861,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                               const SizedBox(height: 10),
                               _buildCouponButton(
-                                TextConstants.Issuecoupon,
+                                TextConstants.generatecoupon,
                                 "assets/coupon.png",
                                 isActive: redeemedValue == 0 &&
                                     !isPaymentStarted &&
@@ -6879,7 +6879,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               ),
                               const SizedBox(height: 10),
                               _buildRedeemCouponButton(
-                                TextConstants.generatecoupon,
+                                TextConstants.Issuecoupon,
                                 "assets/coupon.png",
 
                                 // 🔥 Disable when coupon already applied
