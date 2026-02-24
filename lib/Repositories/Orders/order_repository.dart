@@ -1470,9 +1470,9 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         : TextConstants.processing);
 
     orderType = orderType != "" ? orderType : "";
-
-    final userData = await UserDbHelper().getUserData();
-    userId = "${userData?[AppDBConst.userId]}"; ///Added to filter user based processing orders as per requirement update on 7-Jul-25
+    //
+    // final userData = await UserDbHelper().getUserData();
+    // userId = "${userData?[AppDBConst.userId]}"; ///Added to filter user based processing orders as per requirement update on 7-Jul-25
     //"?page=1&per_page=10&search=&status="
     var getOrdersParameter = "?author=$userId&page=$pageNumber&per_page=$pageLimit&created_via=$orderType&search=&status=";
     // Encode for URL (spaces become '+', commas become '%2C')

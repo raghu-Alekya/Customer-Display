@@ -607,10 +607,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     } catch (_) {}
     final deletedBox = StorageProvider.deletedOrders;
 
-    dynamic deleted = await deletedBox.get(widget.activeOrderId.toString());
-    if (deleted == null) {
-      deleted = deletedBox.get(widget.activeOrderId.toString());
-    }
+    final deleted =
+    await deletedBox.get(widget.activeOrderId.toString());
 
     if (deleted != null) {
       print("🔥 Loading DELETED ORDER ITEMS for ID = ${widget.activeOrderId}");
@@ -1578,28 +1576,28 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                     child: Row(
                                       children: [
                                         // Replace the ClipRRect widget with this:
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(5),
-                                          child: isPayout
-                                              ? SvgPicture.asset(
-                                            "assets/svg/payout.svg",
-                                            height: MediaQuery.of(context).size.height * 0.08,
-                                            width: MediaQuery.of(context).size.height * 0.075,
-                                            fit: BoxFit.cover,
-                                          ) : isCashback
-                                              ? Image.asset(
-                                            "assets/cashback.jpeg",
-                                            height: MediaQuery.of(context).size.height * 0.08,
-                                            width: MediaQuery.of(context).size.height * 0.075,
-                                            fit: BoxFit.cover,
-                                          )
-
-                                              : buildProductImage(
-                                            orderItem[AppDBConst.itemImage]?.toString(),
-                                            height: MediaQuery.of(context).size.height * 0.08,
-                                            width: MediaQuery.of(context).size.height * 0.075,
-                                          ),
-                                        ),
+                                        // ClipRRect(
+                                        //   borderRadius: BorderRadius.circular(5),
+                                        //   child: isPayout
+                                        //       ? SvgPicture.asset(
+                                        //     "assets/svg/payout.svg",
+                                        //     height: MediaQuery.of(context).size.height * 0.08,
+                                        //     width: MediaQuery.of(context).size.height * 0.075,
+                                        //     fit: BoxFit.cover,
+                                        //   ) : isCashback
+                                        //       ? Image.asset(
+                                        //     "assets/cashback.jpeg",
+                                        //     height: MediaQuery.of(context).size.height * 0.08,
+                                        //     width: MediaQuery.of(context).size.height * 0.075,
+                                        //     fit: BoxFit.cover,
+                                        //   )
+                                        //
+                                        //       : buildProductImage(
+                                        //     orderItem[AppDBConst.itemImage]?.toString(),
+                                        //     height: MediaQuery.of(context).size.height * 0.08,
+                                        //     width: MediaQuery.of(context).size.height * 0.075,
+                                        //   ),
+                                        // ),
                                         const SizedBox(width: 10),
 
                                         Expanded(

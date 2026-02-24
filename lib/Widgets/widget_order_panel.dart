@@ -186,8 +186,14 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       fetchOrdersData();
     }
   }
-
   double getCurrentMerchantDiscount(Map<String, dynamic> order) {
+    // If any required key is missing, return 0 immediately
+    if (!order.containsKey('merchantDiscountType') &&
+        !order.containsKey('merchantDiscountFixed') &&
+        !order.containsKey('merchantDiscountPercentage')) {
+      return 0.0;
+    }
+
     final products = (order['products'] as List?) ?? [];
 
     double currentGross = 0.0;
@@ -198,18 +204,20 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
 
     final type = order['merchantDiscountType']?.toString() ?? 'fixed';
-    final perc =
-        double.tryParse(order['merchantDiscountPercentage']?.toString() ?? '0') ??
-            0.0;
-    final fixed =
-        double.tryParse(order['merchantDiscountFixed']?.toString() ?? '0') ??
-            0.0;
+    final perc = double.tryParse(
+        order['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
+    final fixed = double.tryParse(
+        order['merchantDiscountFixed']?.toString() ?? '0') ?? 0.0;
 
+    double result = 0.0;
     if (type == 'percentage' && perc > 0) {
-      return (currentGross * perc) / 100.0;
+      result = (currentGross * perc) / 100.0;
     } else {
-      return fixed;
+      result = fixed;
     }
+
+    //  Ignore floating point noise
+    return result < 0.01 ? 0.0 : result;
   }
 
   // Build #1.0.104: created this function for initial call & while back to this screen
@@ -4989,7 +4997,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               ],
                             ),
                             SizedBox(height: 2),
-                            if (merchantDiscount > 0)
+    if (merchantDiscount >= 0.01)
                               Row(
                                 mainAxisAlignment:
                                 MainAxisAlignment.spaceBetween,

@@ -31,8 +31,8 @@ class OrderModel {
   final String totalTax;
   final int customerId;
   final String orderKey;
-  final Billing billing;
-  final Shipping shipping;
+  // final Billing billing;
+  // final Shipping shipping;
   final List<LineItem> lineItems;
   List<FeeLine>? feeLines;
   List<CouponLine> couponLines;
@@ -69,8 +69,8 @@ class OrderModel {
     required this.totalTax,
     required this.customerId,
     required this.orderKey,
-    required this.billing,
-    required this.shipping,
+    // required this.billing,
+    // required this.shipping,
     required this.lineItems,
     this.feeLines,
     required this.couponLines,
@@ -129,8 +129,8 @@ class OrderModel {
       totalTax: json['total_tax'] ?? '0.00',
       customerId: json['customer_id'] ?? 0,
       orderKey: json['order_key'] ?? '',
-      billing: Billing.fromJson(json['billing'] ?? {}),
-      shipping: Shipping.fromJson(json['shipping'] ?? {}),
+      // billing: Billing.fromJson(json['billing'] ?? {}),
+      // shipping: Shipping.fromJson(json['shipping'] ?? {}),
       lineItems: (json['line_items'] as List<dynamic>?)
           ?.map((item) => LineItem.fromJson(item))
           .toList() ??
@@ -286,48 +286,48 @@ class CouponLine {
   }
 }
 
-class Billing {
-  final String firstName;
-  final String lastName;
-  final String email;
-  final String phone;
-
-  Billing({
-    required this.firstName,
-    required this.lastName,
-    required this.email,
-    required this.phone,
-  });
-
-  factory Billing.fromJson(Map<String, dynamic> json) {
-    return Billing(
-      firstName: json['first_name'] ?? '',
-      lastName: json['last_name'] ?? '',
-      email: json['email'] ?? '',
-      phone: json['phone'] ?? '',
-    );
-  }
-}
-
-class Shipping {
-  final String firstName;
-  final String lastName;
-  final String phone;
-
-  Shipping({
-    required this.firstName,
-    required this.lastName,
-    required this.phone,
-  });
-
-  factory Shipping.fromJson(Map<String, dynamic> json) {
-    return Shipping(
-      firstName: json['first_name'] ?? '',
-      lastName: json['last_name'] ?? '',
-      phone: json['phone'] ?? '',
-    );
-  }
-}
+// class Billing {
+//   final String firstName;
+//   final String lastName;
+//   final String email;
+//   final String phone;
+//
+//   Billing({
+//     required this.firstName,
+//     required this.lastName,
+//     required this.email,
+//     required this.phone,
+//   });
+//
+//   factory Billing.fromJson(Map<String, dynamic> json) {
+//     return Billing(
+//       firstName: json['first_name'] ?? '',
+//       lastName: json['last_name'] ?? '',
+//       email: json['email'] ?? '',
+//       phone: json['phone'] ?? '',
+//     );
+//   }
+// }
+//
+// class Shipping {
+//   final String firstName;
+//   final String lastName;
+//   final String phone;
+//
+//   Shipping({
+//     required this.firstName,
+//     required this.lastName,
+//     required this.phone,
+//   });
+//
+//   factory Shipping.fromJson(Map<String, dynamic> json) {
+//     return Shipping(
+//       firstName: json['first_name'] ?? '',
+//       lastName: json['last_name'] ?? '',
+//       phone: json['phone'] ?? '',
+//     );
+//   }
+// }
 
 class LineItem {
   final int id;

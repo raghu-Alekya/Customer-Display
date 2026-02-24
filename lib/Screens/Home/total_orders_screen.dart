@@ -174,225 +174,114 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
     var filterOrderType = await AssetDBHelper.instance.getOrderTypeList();
     _filterOrderType.addAll(filterOrderType);
-
-    // ⭐ ADD OFFLINE ORDER TYPE MANUALLY
-    _filterOrderType.add(OrderType(slug: "offline Order", name: "offline Order"));
   }
-  //Build #1.0.54: added Fetch orders from API
   void _fetchOrders() {
     debugPrint("OrdersScreen: Initiating fetch orders");
+
     _fetchOrdersSubscription?.cancel();
     _loadingDelayTimer?.cancel();
     _loadingDelayTimer = null;
     _fetchInProgress = false;
+
     _fetchOrdersSubscription =
-        _orderBloc.fetchTotalOrdersStream.listen((response) async {
+        _orderBloc.fetchTotalOrdersStream.listen((response) {
+
           if (!mounted) return;
 
           if (response.status == Status.COMPLETED) {
+
             _fetchInProgress = false;
             _loadingDelayTimer?.cancel();
             _loadingDelayTimer = null;
 
-            debugPrint(
-                "OrdersScreen: Successfully fetched ${response.data!.ordersData.length} orders, Total Count: ${response.data!.orderTotalCount}");
-
-            final deletedBox = StorageProvider.deletedOrders;
-            final deletedMap = await deletedBox.toMap();
+            final orders = response.data?.ordersData ?? [];
 
             setState(() {
-              _pageOrders = response.data!.ordersData;
-
+              _pageOrders = orders;
               _currentChunk = 1;
 
-              // 👇 ALWAYS start with only chunkSize
               _visibleOrders = _pageOrders.take(_chunkSize).toList();
               _orders = _visibleOrders;
 
-              _totalOrdersCount = response.data!.orderTotalCount;
+              _totalOrdersCount = response.data?.orderTotalCount ?? 0;
               isLoading = false;
-
-            // -------------------------------------------------------------
-              // ⭐ MERGE OFFLINE DELETED ORDERS WITH USER FILTER LOGIC
-              // -------------------------------------------------------------
-
-              // Get selected user filter
-              final String selectedUserId = _filterUsers
-                  .firstWhere((e) => e.displayName == _selectedUserFilter)
-                  .iD ??
-                  "";
-
-              if (deletedMap.isNotEmpty) {
-                debugPrint("Merging ${deletedMap.length} deleted offline orders...");
-
-                final deletedOrderModels = deletedMap.values.map((json) {
-                  final map = Map<String, dynamic>.from(json);
-
-                  // ⭐ FIX 1: Convert order_id → id
-                  map["id"] ??= map["order_id"];
-
-                  // ⭐ FIX 2: Convert created_at → date_created
-                  if (map["created_at"] != null) {
-                    map["date_created"] = map["created_at"]
-                        .toString()
-                        .replaceAll("T", " ")
-                        .split(".")
-                        .first;
-                  }
-
-                  final payable = (map["net_payable"] as num?)?.toDouble() ?? 0.0;
-
-// ⭐ FINAL TOTAL (SHOW IN LIST)
-                  map["total"] = payable.toStringAsFixed(2);
-
-
-                  // ⭐ FIX 4: Force offline order meta
-                  map["status"] = "cancelled";
-                  map["order_type"] = "offline Order";
-                  map["created_via"] = "offline Order";
-                  map["createdVia"] = "offline Order";
-
-                  // ⭐ FIX 5: USER & SHIFT LOGIC
-                  final metaUserId =
-                      _extractMeta(map, "user_id") ?? _extractMeta(map, "pos_placed_by");
-                  map["user_id"] = metaUserId != null
-                      ? int.tryParse(metaUserId.toString())
-                      : -1;
-
-                  map["createdBy"] = map["user_id"];
-                  map["employee_name"] = map["employee_name"] ??
-                      _extractMeta(map, "user_name") ??
-                      "Offline User";
-                  map["shift_id"] ??= _extractMeta(map, "shift_id") ?? -1;
-
-                  // ⭐ USER FILTER APPLIED (MATCH ONLINE FILTER BEHAVIOR)
-                  if (selectedUserId.isNotEmpty && selectedUserId != "All") {
-                    if (map["user_id"].toString() != selectedUserId.toString()) {
-                      return null; // ❌ Skip unrelated deleted order
-                    }
-                  }
-
-                  try {
-                    return model.OrderModel.fromJson(map);
-                  } catch (e) {
-                    debugPrint("❌ Error converting deleted order: $e\nMAP: $map");
-                    return null;
-                  }
-                }).where((e) => e != null).cast<model.OrderModel>().toList();
-
-                // ⭐ Remove duplicates
-                final existingIds = _orders.map((o) => o.id ?? 0).toSet();
-                final uniqueDeleted = deletedOrderModels.where((order) {
-                  final deletedId = order.id ?? 0;
-                  return !existingIds.contains(deletedId);
-                }).toList();
-
-                debugPrint("Added deleted offline orders: ${uniqueDeleted.length}");
-
-                // ⭐ PREPEND offline deleted orders
-                if (_currentPage == 1) {
-                  _pageOrders = [...uniqueDeleted, ..._pageOrders];
-                  _visibleOrders = _pageOrders.take(_chunkSize).toList();
-                  _orders = _visibleOrders;
-                }
-
-                // ⭐ SORT latest first
-                _orders.sort((a, b) {
-                  final da = DateTime.tryParse(a.dateCreated ?? "") ?? DateTime(1970);
-                  final db = DateTime.tryParse(b.dateCreated ?? "") ?? DateTime(1970);
-                  return db.compareTo(da);
-                });
-              }
-
-              // -------------------------------------------------------------
-
-              if (_orders.isEmpty) {
-                debugPrint("_orders empty:");
-                OrderHelper().selectedOrderId = null;
-                return;
-              }
-
-              if (OrderHelper().selectedOrderId == null ||
-                  !_orders.any((order) =>
-                  order.id == OrderHelper().selectedOrderId)) {
-                OrderHelper().selectedOrderId = _orders.first.id;
-                _onOrderRowSelected(OrderHelper().selectedOrderId!);
-              } else {
-                _onOrderRowSelected(OrderHelper().selectedOrderId!);
-              }
             });
+
+            // 🔥 Selection Logic (kept)
+            if (_orders.isEmpty) {
+              OrderHelper().selectedOrderId = null;
+              return;
+            }
+
+            final currentSelected = OrderHelper().selectedOrderId;
+
+            final orderToSelect =
+            (currentSelected == null ||
+                !_orders.any((o) => o.id == currentSelected))
+                ? _orders.first.id
+                : currentSelected;
+
+            OrderHelper().selectedOrderId = orderToSelect;
+
+            _onOrderRowSelected(orderToSelect!);
           }
 
-          // ---------------- ERROR HANDLING ----------------
+          // ERROR
           else if (response.status == Status.ERROR) {
+
             _fetchInProgress = false;
             _loadingDelayTimer?.cancel();
             _loadingDelayTimer = null;
 
-            if (response.message!.contains('Unauthorised')) {
-              Navigator.pushReplacement(context,
-                  MaterialPageRoute(builder: (context) => LoginScreen()));
+            setState(() => isLoading = false);
 
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Unauthorised. Session is expired on this device."),
-                  backgroundColor: Colors.red,
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            } else {
-              debugPrint("OrdersScreen: Error fetching orders - ${response.message}");
-              setState(() => isLoading = false);
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(TextConstants.failedToFetchOrders),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            }
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Failed to fetch orders"),
+                backgroundColor: Colors.red,
+              ),
+            );
           }
 
-          // ---------------- LOADING STATE (delayed to avoid flash for quick loads) ----------------
+          // LOADING
           else if (response.status == Status.LOADING) {
+
             _fetchInProgress = true;
             _loadingDelayTimer?.cancel();
-            _loadingDelayTimer = Timer(const Duration(milliseconds: 300), () {
-              if (mounted && _fetchInProgress) {
-                setState(() => isLoading = true);
-              }
-            });
+
+            _loadingDelayTimer = Timer(
+              const Duration(milliseconds: 300),
+                  () {
+                if (mounted && _fetchInProgress) {
+                  setState(() => isLoading = true);
+                }
+              },
+            );
           }
         });
 
-    // ---------------- API FILTER PARAMS ----------------
-    var selectedStatus = _filterStatuses
-        .firstWhere((element) => element.name == _selectedStatusFilter)
-        .slug;
+    // 🔥 Call Bloc (NOT repository directly)
+    final selectedStatus = _filterStatuses
+        .firstWhere((e) => e.name == _selectedStatusFilter)
+        .slug ?? "";
 
-    var selectedUserId = _filterUsers
-        .firstWhere((element) =>
-    element.displayName == _selectedUserFilter)
-        .iD ??
-        "";
+    final selectedUserId = _filterUsers
+        .firstWhere((e) => e.displayName == _selectedUserFilter)
+        .iD ?? "";
 
-    var selectedOrderType = _filterOrderType
-        .firstWhere((element) =>
-    element.name == _selectedOrderTypeFilter)
-        .slug ??
-        "";
+    final selectedOrderType = _filterOrderType
+        .firstWhere((e) => e.name == _selectedOrderTypeFilter)
+        .slug ?? "";
 
     DateFormat format = DateFormat('yyyy-MM-dd');
-    String? startDateFormatted = '';
-    String? endDateFormatted = '';
+    String startDateFormatted = "";
+    String endDateFormatted = "";
 
-    if (_startDate != null) {
+    if (_startDate != null && _endDate != null) {
       startDateFormatted = format.format(_startDate!);
       endDateFormatted = format.format(_endDate!);
     }
 
-    // API CALL
     _orderBloc.fetchTotalOrdersCount(
       allStatuses: true,
       pageNumber: _currentPage,
@@ -400,10 +289,236 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
       status: selectedStatus,
       orderType: selectedOrderType,
       userId: selectedUserId,
-      startDate: startDateFormatted ?? '',
-      endDate: endDateFormatted ?? '',
+      startDate: startDateFormatted,
+      endDate: endDateFormatted,
     );
   }
+  //Build #1.0.54: added Fetch orders from API
+//   void _fetchOrders() {
+//     debugPrint("OrdersScreen: Initiating fetch orders");
+//     _fetchOrdersSubscription?.cancel();
+//     _loadingDelayTimer?.cancel();
+//     _loadingDelayTimer = null;
+//     _fetchInProgress = false;
+//     _fetchOrdersSubscription =
+//         _orderBloc.fetchTotalOrdersStream.listen((response) async {
+//           if (!mounted) return;
+//
+//           if (response.status == Status.COMPLETED) {
+//             _fetchInProgress = false;
+//             _loadingDelayTimer?.cancel();
+//             _loadingDelayTimer = null;
+//
+//             debugPrint(
+//                 "OrdersScreen: Successfully fetched ${response.data!.ordersData.length} orders, Total Count: ${response.data!.orderTotalCount}");
+//
+//             final deletedBox = StorageProvider.deletedOrders;
+//             final deletedMap = await deletedBox.toMap();
+//
+//             setState(() {
+//               _pageOrders = response.data!.ordersData;
+//
+//               _currentChunk = 1;
+//
+//               // 👇 ALWAYS start with only chunkSize
+//               _visibleOrders = _pageOrders.take(_chunkSize).toList();
+//               _orders = _visibleOrders;
+//
+//               _totalOrdersCount = response.data!.orderTotalCount;
+//               isLoading = false;
+//
+//             // -------------------------------------------------------------
+//               // ⭐ MERGE OFFLINE DELETED ORDERS WITH USER FILTER LOGIC
+//               // -------------------------------------------------------------
+//
+//               // Get selected user filter
+//               final String selectedUserId = _filterUsers
+//                   .firstWhere((e) => e.displayName == _selectedUserFilter)
+//                   .iD ??
+//                   "";
+//
+//               if (deletedMap.isNotEmpty) {
+//                 debugPrint("Merging ${deletedMap.length} deleted offline orders...");
+//
+//                 final deletedOrderModels = deletedMap.values.map((json) {
+//                   final map = Map<String, dynamic>.from(json);
+//
+//                   // ⭐ FIX 1: Convert order_id → id
+//                   map["id"] ??= map["order_id"];
+//
+//                   // ⭐ FIX 2: Convert created_at → date_created
+//                   if (map["created_at"] != null) {
+//                     map["date_created"] = map["created_at"]
+//                         .toString()
+//                         .replaceAll("T", " ")
+//                         .split(".")
+//                         .first;
+//                   }
+//
+//                   final payable = (map["net_payable"] as num?)?.toDouble() ?? 0.0;
+//
+// // ⭐ FINAL TOTAL (SHOW IN LIST)
+//                   map["total"] = payable.toStringAsFixed(2);
+//
+//
+//                   // ⭐ FIX 4: Force offline order meta
+//                   map["status"] = "cancelled";
+//                   map["order_type"] = "offline Order";
+//                   map["created_via"] = "offline Order";
+//                   map["createdVia"] = "offline Order";
+//
+//                   // ⭐ FIX 5: USER & SHIFT LOGIC
+//                   final metaUserId =
+//                       _extractMeta(map, "user_id") ?? _extractMeta(map, "pos_placed_by");
+//                   map["user_id"] = metaUserId != null
+//                       ? int.tryParse(metaUserId.toString())
+//                       : -1;
+//
+//                   map["createdBy"] = map["user_id"];
+//                   map["employee_name"] = map["employee_name"] ??
+//                       _extractMeta(map, "user_name") ??
+//                       "Offline User";
+//                   map["shift_id"] ??= _extractMeta(map, "shift_id") ?? -1;
+//
+//                   // ⭐ USER FILTER APPLIED (MATCH ONLINE FILTER BEHAVIOR)
+//                   if (selectedUserId.isNotEmpty && selectedUserId != "All") {
+//                     if (map["user_id"].toString() != selectedUserId.toString()) {
+//                       return null; // ❌ Skip unrelated deleted order
+//                     }
+//                   }
+//
+//                   try {
+//                     return model.OrderModel.fromJson(map);
+//                   } catch (e) {
+//                     debugPrint("❌ Error converting deleted order: $e\nMAP: $map");
+//                     return null;
+//                   }
+//                 }).where((e) => e != null).cast<model.OrderModel>().toList();
+//
+//                 // ⭐ Remove duplicates
+//                 final existingIds = _orders.map((o) => o.id ?? 0).toSet();
+//                 final uniqueDeleted = deletedOrderModels.where((order) {
+//                   final deletedId = order.id ?? 0;
+//                   return !existingIds.contains(deletedId);
+//                 }).toList();
+//
+//                 debugPrint("Added deleted offline orders: ${uniqueDeleted.length}");
+//
+//                 // ⭐ PREPEND offline deleted orders
+//                 if (_currentPage == 1) {
+//                   _pageOrders = [...uniqueDeleted, ..._pageOrders];
+//                   _visibleOrders = _pageOrders.take(_chunkSize).toList();
+//                   _orders = _visibleOrders;
+//                 }
+//
+//                 // ⭐ SORT latest first
+//                 _orders.sort((a, b) {
+//                   final da = DateTime.tryParse(a.dateCreated ?? "") ?? DateTime(1970);
+//                   final db = DateTime.tryParse(b.dateCreated ?? "") ?? DateTime(1970);
+//                   return db.compareTo(da);
+//                 });
+//               }
+//
+//               // -------------------------------------------------------------
+//
+//               if (_orders.isEmpty) {
+//                 debugPrint("_orders empty:");
+//                 OrderHelper().selectedOrderId = null;
+//                 return;
+//               }
+//
+//               if (OrderHelper().selectedOrderId == null ||
+//                   !_orders.any((order) =>
+//                   order.id == OrderHelper().selectedOrderId)) {
+//                 OrderHelper().selectedOrderId = _orders.first.id;
+//                 _onOrderRowSelected(OrderHelper().selectedOrderId!);
+//               } else {
+//                 _onOrderRowSelected(OrderHelper().selectedOrderId!);
+//               }
+//             });
+//           }
+//
+//           // ---------------- ERROR HANDLING ----------------
+//           else if (response.status == Status.ERROR) {
+//             _fetchInProgress = false;
+//             _loadingDelayTimer?.cancel();
+//             _loadingDelayTimer = null;
+//
+//             if (response.message!.contains('Unauthorised')) {
+//               Navigator.pushReplacement(context,
+//                   MaterialPageRoute(builder: (context) => LoginScreen()));
+//
+//               ScaffoldMessenger.of(context).showSnackBar(
+//                 const SnackBar(
+//                   content: Text("Unauthorised. Session is expired on this device."),
+//                   backgroundColor: Colors.red,
+//                   duration: Duration(seconds: 2),
+//                 ),
+//               );
+//             } else {
+//               debugPrint("OrdersScreen: Error fetching orders - ${response.message}");
+//               setState(() => isLoading = false);
+//
+//               ScaffoldMessenger.of(context).showSnackBar(
+//                 SnackBar(
+//                   content: Text(TextConstants.failedToFetchOrders),
+//                   backgroundColor: Colors.red,
+//                   duration: const Duration(seconds: 2),
+//                 ),
+//               );
+//             }
+//           }
+//
+//           // ---------------- LOADING STATE (delayed to avoid flash for quick loads) ----------------
+//           else if (response.status == Status.LOADING) {
+//             _fetchInProgress = true;
+//             _loadingDelayTimer?.cancel();
+//             _loadingDelayTimer = Timer(const Duration(milliseconds: 300), () {
+//               if (mounted && _fetchInProgress) {
+//                 setState(() => isLoading = true);
+//               }
+//             });
+//           }
+//         });
+//
+//     // ---------------- API FILTER PARAMS ----------------
+//     var selectedStatus = _filterStatuses
+//         .firstWhere((element) => element.name == _selectedStatusFilter)
+//         .slug;
+//
+//     var selectedUserId = _filterUsers
+//         .firstWhere((element) =>
+//     element.displayName == _selectedUserFilter)
+//         .iD ??
+//         "";
+//
+//     var selectedOrderType = _filterOrderType
+//         .firstWhere((element) =>
+//     element.name == _selectedOrderTypeFilter)
+//         .slug ??
+//         "";
+//
+//     DateFormat format = DateFormat('yyyy-MM-dd');
+//     String? startDateFormatted = '';
+//     String? endDateFormatted = '';
+//
+//     if (_startDate != null) {
+//       startDateFormatted = format.format(_startDate!);
+//       endDateFormatted = format.format(_endDate!);
+//     }
+//
+//     // API CALL
+//     _orderBloc.fetchTotalOrdersCount(
+//       allStatuses: true,
+//       pageNumber: _currentPage,
+//       pageLimit: _rowsPerPage,
+//       status: selectedStatus,
+//       orderType: selectedOrderType,
+//       userId: selectedUserId,
+//       startDate: startDateFormatted ?? '',
+//       endDate: endDateFormatted ?? '',
+//     );
+//   }
 
   // Sort orders based on column
   void _sortData(String column) {
