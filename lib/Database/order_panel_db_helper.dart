@@ -1,17 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
-import 'package:pinaka_pos/Blocs/Orders/order_bloc.dart';
 import 'package:pinaka_pos/Database/user_db_helper.dart';
-import 'package:pinaka_pos/Models/Orders/orders_model.dart';
 import 'package:pinaka_pos/Repositories/Orders/order_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:isar/isar.dart'; // Build #1.0.104
 import '../Constants/text.dart';
-import '../Helper/api_response.dart';
 import '../Models/Category/category_product_model.dart';
 import '../Models/Orders/get_orders_model.dart' as model;
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
@@ -86,7 +81,7 @@ class OrderHelper {
   int? activeOrderId; // Stores the currently active order ID
   int? activeUserId; // Stores the active user ID
   int?
-  selectedOrderId; // Build #1.0.248 : save & persists across rebuilds of theme selection change
+      selectedOrderId; // Build #1.0.248 : save & persists across rebuilds of theme selection change
   int? cancelledOrderId; // Build #1.0.189: Stores the cancelled order ID
   List<int> orderIds = []; // List of order IDs for the active user
   List<Map<String, dynamic>> orders = [];
@@ -117,7 +112,7 @@ class OrderHelper {
 
     final type = order['merchantDiscountType']?.toString() ?? 'fixed';
     final perc = double.tryParse(
-        order['merchantDiscountPercentage']?.toString() ?? '0') ??
+            order['merchantDiscountPercentage']?.toString() ?? '0') ??
         0.0;
     final fixed =
         double.tryParse(order['merchantDiscountFixed']?.toString() ?? '0') ??
@@ -146,7 +141,7 @@ class OrderHelper {
       for (final entry in cachedEntries) {
         final List products = json.decode(entry.json);
         final product = products.firstWhere(
-              (p) => p["fast_key_product_id"] == productId || p["id"] == productId,
+          (p) => p["fast_key_product_id"] == productId || p["id"] == productId,
           orElse: () => null,
         );
 
@@ -209,9 +204,9 @@ class OrderHelper {
 
     // 3. Payouts & cashbacks
     double payoutTotal = payouts.fold(0.0,
-            (s, p) => s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0));
+        (s, p) => s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0));
     double cashbackTotal = cashbacks.fold(0.0,
-            (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0));
+        (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0));
     double cbFee = (order['cashbackFee'] as num?)?.toDouble() ?? 0.0;
     if (cashbacks.isEmpty) cbFee = 0.0;
 
@@ -298,7 +293,7 @@ class OrderHelper {
       /// If required "asc" orders list, un-comment this line (order id's order low to high)
       /// Build #1.0.251 : FIXED - We have to use orderServerId rather than orderDate, it is already latest based on backend
       orderBy:
-      '${AppDBConst.orderServerId} ASC', // Ensure orders are sorted by creation date
+          '${AppDBConst.orderServerId} ASC', // Ensure orders are sorted by creation date
     );
     // ⚡ Ensure mutable list (db.query returns fixed-length list)
     orders = List<Map<String, dynamic>>.from(queryResult);
@@ -347,8 +342,8 @@ class OrderHelper {
 
     final validEntries = allOfflineOrders.entries
         .where((entry) =>
-    entry.value is Map &&
-        !(entry.value as Map).containsKey('map_to_local'))
+            entry.value is Map &&
+            !(entry.value as Map).containsKey('map_to_local'))
         .map((entry) {
       // ✅ Normalize the root map
       final normalized = Map<String, dynamic>.from(entry.value as Map);
@@ -367,19 +362,19 @@ class OrderHelper {
       // ✅ Normalize nested 'request' if present
       if (normalized['request'] is Map) {
         normalized['request'] =
-        Map<String, dynamic>.from(normalized['request'] as Map);
+            Map<String, dynamic>.from(normalized['request'] as Map);
       }
 
       // ✅ Normalize nested 'customer' if present
       if (normalized['customer'] is Map) {
         normalized['customer'] =
-        Map<String, dynamic>.from(normalized['customer'] as Map);
+            Map<String, dynamic>.from(normalized['customer'] as Map);
       }
 
       // ✅ Normalize 'totals' or other nested objects if exist
       if (normalized['totals'] is Map) {
         normalized['totals'] =
-        Map<String, dynamic>.from(normalized['totals'] as Map);
+            Map<String, dynamic>.from(normalized['totals'] as Map);
       }
 
       return MapEntry(entry.key, normalized);
@@ -388,7 +383,7 @@ class OrderHelper {
     if (validEntries.isNotEmpty) {
       // ⚡ Ensure mutable list (not fixed-length)
       orders =
-      List<Map<String, dynamic>>.from(validEntries.map((e) => e.value));
+          List<Map<String, dynamic>>.from(validEntries.map((e) => e.value));
 
       // ✅ Sort by created_at descending (newest first) for stable tab order on navbar navigation
       orders.sort((a, b) {
@@ -404,11 +399,11 @@ class OrderHelper {
       // ✅ Extract order IDs from sorted orders (keeps orderIds in sync)
       orderIds = orders
           .map((map) {
-        if (map.containsKey('order_id')) return map['order_id'] as int?;
-        if (map.containsKey('id')) return map['id'] as int?;
-        return int.tryParse(
-            map['order_id']?.toString() ?? map['id']?.toString() ?? '');
-      })
+            if (map.containsKey('order_id')) return map['order_id'] as int?;
+            if (map.containsKey('id')) return map['id'] as int?;
+            return int.tryParse(
+                map['order_id']?.toString() ?? map['id']?.toString() ?? '');
+          })
           .whereType<int>()
           .toList();
 
@@ -533,7 +528,7 @@ class OrderHelper {
     try {
       final db = await DBHelper.instance.database;
       activeUserId =
-      await getUserIdFromDB(); // Build #1.0.165: to load user before update order table, to filter user based processing order only
+          await getUserIdFromDB(); // Build #1.0.165: to load user before update order table, to filter user based processing order only
       // Build #1.0.80: Count orders in the database
       final dbOrdersCount = await db.query(AppDBConst.orderTable);
       final apiOrdersCount = apiOrders.length;
@@ -558,7 +553,7 @@ class OrderHelper {
       if (apiOrders.isNotEmpty) {
         // Check if we're syncing processing orders
         final isSyncingProcessingOrders =
-        apiOrders.any((order) => order.status == 'processing');
+            apiOrders.any((order) => order.status == 'processing');
         if (kDebugMode) {
           print(
               "#### DEBUG: isSyncingProcessingOrders $isSyncingProcessingOrders");
@@ -577,7 +572,7 @@ class OrderHelper {
           await db.delete(
             AppDBConst.orderTable,
             where:
-            '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} != ?',
+                '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} != ?',
             whereArgs: [activeUserId ?? 1, 'processing'],
           );
         }
@@ -641,17 +636,17 @@ class OrderHelper {
               AppDBConst.orderTime: apiOrder.dateCreated,
               AppDBConst.orderPaymentMethod: apiOrder.paymentMethod,
               AppDBConst.orderDiscount:
-              double.tryParse(apiOrder.discountTotal) ??
-                  0.0, // Store discount
+                  double.tryParse(apiOrder.discountTotal) ??
+                      0.0, // Store discount
               AppDBConst.orderTax:
-              double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
+                  double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
               AppDBConst.orderAgeRestricted: apiOrder.metaData
                   .firstWhere(
-                //Build #1.0.234: Saving Age Restricted value in order table
+                    //Build #1.0.234: Saving Age Restricted value in order table
                     (meta) => meta.key == TextConstants.ageRestrictedKey,
-                orElse: () =>
-                    model.MetaData(id: 0, key: '', value: 'false'),
-              )
+                    orElse: () =>
+                        model.MetaData(id: 0, key: '', value: 'false'),
+                  )
                   .value
                   .toString(),
             },
@@ -676,15 +671,15 @@ class OrderHelper {
             AppDBConst.orderDiscount: double.tryParse(apiOrder.discountTotal) ??
                 0.0, // Store discount
             AppDBConst.orderTax:
-            double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
+                double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
             AppDBConst.orderShipping: double.tryParse(apiOrder.shippingTotal) ??
                 0.0, // Store shipping
             AppDBConst.orderAgeRestricted: apiOrder
                 .metaData //Build #1.0.234: Saving Age Restricted value in order table
                 .firstWhere(
                   (meta) => meta.key == TextConstants.ageRestrictedKey,
-              orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
-            )
+                  orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
+                )
                 .value
                 .toString(),
           });
@@ -797,51 +792,51 @@ class OrderHelper {
       }
 
       final String variationName = apiItem.productVariationData?.metaData
-          ?.firstWhere((e) => e.key == "custom_name",
-          orElse: () => model.MetaData(id: 0, key: "", value: ""))
-          .value ??
+              ?.firstWhere((e) => e.key == "custom_name",
+                  orElse: () => model.MetaData(id: 0, key: "", value: ""))
+              .value ??
           "";
       final int variationCount = apiItem.productData.variations?.length ?? 0;
       final String combo = apiItem.metaData
-          .firstWhere((e) => e.value.contains('Combo'),
-          orElse: () => model.MetaData(id: 0, key: "", value: ""))
-          .value
-          .split(' ')
-          .first ??
+              .firstWhere((e) => e.value.contains('Combo'),
+                  orElse: () => model.MetaData(id: 0, key: "", value: ""))
+              .value
+              .split(' ')
+              .first ??
           "";
 
       final bool hasVariations = apiItem.productData.variations != null &&
           apiItem.productData.variations!.isNotEmpty;
       final double salesPrice = hasVariations
           ? double.tryParse(
-          apiItem.productVariationData?.salePrice?.isNotEmpty == true
-              ? apiItem.productVariationData!.salePrice!
-              : "0.0") ??
-          0.0
+                  apiItem.productVariationData?.salePrice?.isNotEmpty == true
+                      ? apiItem.productVariationData!.salePrice!
+                      : "0.0") ??
+              0.0
           : double.tryParse(apiItem.productData.salePrice?.isNotEmpty == true
-          ? apiItem.productData.salePrice!
-          : "0.0") ??
-          0.0;
+                  ? apiItem.productData.salePrice!
+                  : "0.0") ??
+              0.0;
       final double regularPrice = hasVariations
           ? double.tryParse(
-          apiItem.productVariationData?.regularPrice?.isNotEmpty == true
-              ? apiItem.productVariationData!.regularPrice!
-              : "0.0") ??
-          0.0
+                  apiItem.productVariationData?.regularPrice?.isNotEmpty == true
+                      ? apiItem.productVariationData!.regularPrice!
+                      : "0.0") ??
+              0.0
           : double.tryParse(apiItem.productData.regularPrice?.isNotEmpty == true
-          ? apiItem.productData.regularPrice!
-          : "0.0") ??
-          0.0;
+                  ? apiItem.productData.regularPrice!
+                  : "0.0") ??
+              0.0;
       final double unitPrice = hasVariations
           ? double.tryParse(
-          apiItem.productVariationData?.price?.isNotEmpty == true
-              ? apiItem.productVariationData!.price!
-              : "0.0") ??
-          0.0
+                  apiItem.productVariationData?.price?.isNotEmpty == true
+                      ? apiItem.productVariationData!.price!
+                      : "0.0") ??
+              0.0
           : double.tryParse(apiItem.productData.price?.isNotEmpty == true
-          ? apiItem.productData.price!
-          : "0.0") ??
-          0.0;
+                  ? apiItem.productData.price!
+                  : "0.0") ??
+              0.0;
 
       if (kDebugMode) {
         print(
@@ -988,7 +983,7 @@ class OrderHelper {
     final existingItems = await db.query(
       AppDBConst.purchasedItemsTable,
       where:
-      '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+          '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
       whereArgs: [orderId, ItemType.payout.value],
     );
 
@@ -1102,7 +1097,7 @@ class OrderHelper {
     final existingItems = await db.query(
       AppDBConst.purchasedItemsTable,
       where:
-      '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+          '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
       whereArgs: [orderId, ItemType.payout.value],
     );
 
@@ -1233,7 +1228,7 @@ class OrderHelper {
 
         // ✅ Update in-memory list
         final orderIndex = orders.indexWhere(
-              (order) => order[AppDBConst.orderServerId] == orderId,
+          (order) => order[AppDBConst.orderServerId] == orderId,
         );
         if (orderIndex != -1) {
           orders[orderIndex][fieldKey] = value;
@@ -1297,7 +1292,7 @@ class OrderHelper {
     double merchantDiscount = 0.0;
     // Use a list instead of string concatenation
     List<String> merchantDiscountIdsList =
-    []; // Build #1.0.216: FIXED Issue - Merchant discount not deleting, showing error "Payout ID not found"
+        []; // Build #1.0.216: FIXED Issue - Merchant discount not deleting, showing error "Payout ID not found"
 
     for (var lineItem in lineItems) {
       if (lineItem.name == TextConstants.discountText) {
@@ -1329,7 +1324,7 @@ class OrderHelper {
     final existingItems = await db.query(
       AppDBConst.purchasedItemsTable,
       where:
-      '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+          '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
       whereArgs: [orderId, ItemType.coupon.value],
     );
 
@@ -1367,7 +1362,7 @@ class OrderHelper {
             AppDBConst.itemSKU: '',
           },
           where:
-          '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
+              '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
           whereArgs: [existingItem[AppDBConst.itemServerId]],
         );
         if (kDebugMode) {
@@ -1399,7 +1394,7 @@ class OrderHelper {
       await db.delete(
         AppDBConst.purchasedItemsTable,
         where:
-        '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
+            '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
         whereArgs: [item[AppDBConst.itemServerId]],
       );
       if (kDebugMode) {
@@ -1440,10 +1435,10 @@ class OrderHelper {
       final oid =
           order[AppDBConst.orderServerId] ?? order['order_id'] ?? order['id'];
       final int? orderId =
-      oid is int ? oid : int.tryParse(oid?.toString() ?? '');
+          oid is int ? oid : int.tryParse(oid?.toString() ?? '');
       if (orderId == null) continue;
       final payments =
-      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+          await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
 
       if (payments.isEmpty) {
         await setActiveOrder(orderId);
@@ -1725,7 +1720,7 @@ class OrderHelper {
         final price = (map['item_price'] ?? map['price'] ?? 0).toDouble();
         final qty = (map['items_count'] ?? map['quantity'] ?? 1).toInt();
         final itemType =
-        (map['item_type'] ?? map['type'] ?? 'product').toString();
+            (map['item_type'] ?? map['type'] ?? 'product').toString();
         // Skip discount type - we add from discounts list separately
         if (itemType.toLowerCase().contains('discount')) continue;
         final multipack = _toDouble(
@@ -1746,8 +1741,8 @@ class OrderHelper {
           'is_ebt_eligible': map['is_ebt_eligible'] == true,
           'product_id': (map['product_id'] as num?)?.toInt() ?? 0,
           'variation_id': int.tryParse(
-              (map['variation_id'] ?? map['variationId'] ?? 0)
-                  .toString()) ??
+                  (map['variation_id'] ?? map['variationId'] ?? 0)
+                      .toString()) ??
               0,
           'sku': map['sku'] ?? map['item_sku'] ?? '',
           AppDBConst.multipackDiscount: multipack,
@@ -1787,8 +1782,8 @@ class OrderHelper {
           'is_ebt_eligible': map['is_ebt_eligible'] == true,
           'product_id': (map['product_id'] as num?)?.toInt() ?? 0,
           'variation_id': int.tryParse(
-              (map['variation_id'] ?? map['variationId'] ?? 0)
-                  .toString()) ??
+                  (map['variation_id'] ?? map['variationId'] ?? 0)
+                      .toString()) ??
               0,
           'sku': map['sku'] ?? '',
           AppDBConst.multipackDiscount: multipack,
@@ -1824,7 +1819,7 @@ class OrderHelper {
         AppDBConst.itemCount: 1,
         AppDBConst.itemSumPrice: price,
         AppDBConst.itemImage:
-        map['product_image'] ?? map['item_image'] ?? map['image'] ?? '',
+            map['product_image'] ?? map['item_image'] ?? map['image'] ?? '',
         AppDBConst.itemType: 'cashback',
       });
     }
@@ -1835,9 +1830,9 @@ class OrderHelper {
     for (final d in discounts) {
       final map = Map<String, dynamic>.from(d is Map ? d : {});
       final amount = (map[AppDBConst.itemPrice] ??
-          map['discount_amount'] ??
-          map['display_amount'] ??
-          0)
+              map['discount_amount'] ??
+              map['display_amount'] ??
+              0)
           .toDouble()
           .abs();
       final name =
@@ -1862,7 +1857,7 @@ class OrderHelper {
     await db.delete(
       AppDBConst.purchasedItemsTable,
       where:
-      '${AppDBConst.itemServerId} = ?', // Build #1.0.92: using item server id , checked used places!!
+          '${AppDBConst.itemServerId} = ?', // Build #1.0.92: using item server id , checked used places!!
       whereArgs: [itemServerId],
     );
 
@@ -1890,25 +1885,25 @@ class OrderHelper {
   // Adds an item to the currently active order; creates an order if none exists
   static final Set<String> _activeAdds = {};
   Future<void> addItemToOrder(
-      int? serverItemId,
-      String name,
-      String image,
-      double price,
-      int quantity,
-      String sku,
-      int orderId, {
-        VoidCallback? onItemAdded,
-        String? type,
-        int? productId = -1,
-        int? variationId = -1,
-        String? variationName,
-        int? variationCount,
-        String? combo,
-        double? salesPrice,
-        double? regularPrice,
-        double? unitPrice,
-        bool isEbtEligible = false,
-      }) async {
+    int? serverItemId,
+    String name,
+    String image,
+    double price,
+    int quantity,
+    String sku,
+    int orderId, {
+    VoidCallback? onItemAdded,
+    String? type,
+    int? productId = -1,
+    int? variationId = -1,
+    String? variationName,
+    int? variationCount,
+    String? combo,
+    double? salesPrice,
+    double? regularPrice,
+    double? unitPrice,
+    bool isEbtEligible = false,
+  }) async {
     print("🍏 addItemToOrder() CALLED for: $name | EBT: $isEbtEligible");
 
     final key = '$orderId-$productId-$variationId';
@@ -1923,7 +1918,7 @@ class OrderHelper {
     try {
       // Block adding items to orders that have payments (pending orders)
       final payments =
-      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+          await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
       if (payments.isNotEmpty) {
         if (kDebugMode) {
           print(
@@ -1949,9 +1944,19 @@ class OrderHelper {
       final normVariationId = (variationId ?? 0).toInt();
 
       // Find existing item to merge quantity (scan/search/selection)
-      final existingIndex = products.indexWhere((p) =>
-      (p['product_id'] ?? -1) == normProductId &&
-          (p['variation_id'] ?? 0) == normVariationId);
+      final existingIndex = products.indexWhere((p) {
+        final pid = (p['product_id'] ?? p['id'] ?? -1);
+        final vid = (p['variation_id'] ?? p['item_variation'] ?? 0);
+        final matchesIds = pid == normProductId && vid == normVariationId;
+
+        // If it's a custom item (productId 0 or -1), we MUST also match the SKU
+        if (normProductId == 0 || normProductId == -1) {
+          final storedSku = normalizeSku(p['sku']?.toString() ?? '');
+          final newSku = normalizeSku(sku);
+          return matchesIds && storedSku == newSku;
+        }
+        return matchesIds;
+      });
 
       if (existingIndex != -1) {
         final existing = products[existingIndex];
@@ -2032,12 +2037,16 @@ class OrderHelper {
 
   static Map<String, dynamic> _inMemoryProductCache = {};
 
+  static String normalizeSku(String s) {
+    return s.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9\-]'), '');
+  }
+
   static void addToCache(
-      String sku,
-      Map<String, dynamic> productJson, {
-        int? variationId,
-      }) {
-    final normalizedSku = sku.trim().toLowerCase();
+    String sku,
+    Map<String, dynamic> productJson, {
+    int? variationId,
+  }) {
+    final normalizedSku = normalizeSku(sku);
 
     _inMemoryProductCache[normalizedSku] = {
       "product": productJson,
@@ -2052,7 +2061,7 @@ class OrderHelper {
   }
 
   static Map<String, dynamic>? getFromCache(String sku) {
-    return _inMemoryProductCache[sku.trim().toLowerCase()];
+    return _inMemoryProductCache[normalizeSku(sku)];
   }
 
   static void removeFromCache(String sku) {
@@ -2069,19 +2078,19 @@ class OrderHelper {
 
     if (order == null || order["products"] == null) return false;
 
-    final normalized = sku.trim().toLowerCase();
+    final normalized = normalizeSku(sku);
 
     for (final p in order["products"]) {
       final storedSku = (p["sku"] ??
-          p["item_sku"] ??
-          p["product_sku"] ??
-          p["fast_key_item_sku"] ??
-          "")
-          .toString()
-          .trim()
-          .toLowerCase();
+              p["item_sku"] ??
+              p["product_sku"] ??
+              p["fast_key_item_sku"] ??
+              "")
+          .toString();
 
-      if (storedSku == normalized) {
+      final storedSkuNormalized = normalizeSku(storedSku);
+
+      if (storedSkuNormalized == normalized) {
         return true; // MATCH FOUND → PRODUCT ALREADY EXISTS
       }
     }
@@ -2147,11 +2156,11 @@ class OrderHelper {
 
       // Update the order total in the orders table
       final items =
-      await getOrderItems(item.first[AppDBConst.orderIdForeignKey] as int);
+          await getOrderItems(item.first[AppDBConst.orderIdForeignKey] as int);
       double orderTotal = items.fold(
           0.0,
-              (sum, item) =>
-          sum + (item[AppDBConst.itemSumPrice] as num).toDouble());
+          (sum, item) =>
+              sum + (item[AppDBConst.itemSumPrice] as num).toDouble());
 
       await db.update(
         AppDBConst.orderTable,

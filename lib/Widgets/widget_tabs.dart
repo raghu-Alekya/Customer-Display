@@ -9,8 +9,6 @@ import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import 'package:provider/provider.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';
 
-
-
 // Import your custom numpad
 import '../Blocs/Assets/asset_bloc.dart';
 import '../Blocs/Orders/order_bloc.dart';
@@ -35,7 +33,12 @@ import 'OrderPopupHelper.dart';
 import 'widget_custom_num_pad.dart';
 
 class AppScreenTabWidget extends StatefulWidget {
-  AppScreenTabWidget({this.selectedTabIndex = 0, this.barcode = "", this.refreshOrderList, required this.scaffoldMessengerContext, super.key});
+  AppScreenTabWidget(
+      {this.selectedTabIndex = 0,
+      this.barcode = "",
+      this.refreshOrderList,
+      required this.scaffoldMessengerContext,
+      super.key});
   int selectedTabIndex = 0;
   String barcode = "";
   final BuildContext scaffoldMessengerContext;
@@ -45,7 +48,8 @@ class AppScreenTabWidget extends StatefulWidget {
   State<AppScreenTabWidget> createState() => _AppScreenTabWidgetState();
 }
 
-class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSelectionMixin {
+class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
+    with LayoutSelectionMixin {
   // Tab selection
   bool _isPayoutLoading = false;
   // bool _isCouponLoading = false;
@@ -73,7 +77,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   TaxModel? _selectedTax;
   bool _isTaxLoading = false;
 
-
   // Tax slab options
   late List<String> _taxSlabOptions = [];
   String _selectedTaxSlab = '';
@@ -85,15 +88,20 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   double _maxCashbackLimit = 0.0;
   late final OrderRepository _orderRepository;
 
-
-
   // Adding a separate state variable for selected tab
   late int _selectedTabIndex;
 
   // Text editing controllers
-  final TextEditingController _customItemNameController = TextEditingController();
-  final TextEditingController _customItemPriceController = TextEditingController();
+  final TextEditingController _customItemNameController =
+      TextEditingController();
+  final TextEditingController _customItemPriceController =
+      TextEditingController();
   final TextEditingController _skuController = TextEditingController();
+
+  // Focus nodes
+  final FocusNode _nameFocusNode = FocusNode();
+
+  bool _isTaxDropdownEnabled = true;
 
   // Add this boolean variable to track when user is entering item price
   bool _isEnteringItemPrice = false;
@@ -101,17 +109,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
   // Function to check if the item name is empty
   bool _isItemNameEmpty() {
-    return _customItemNameController.text
-        .trim()
-        .isEmpty;
-  }
-  String normalizeSku(String s) {
-    return (s ?? "")
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9\-]'), '');
+    return _customItemNameController.text.trim().isEmpty;
   }
 
+  String normalizeSku(String s) {
+    return OrderHelper.normalizeSku(s);
+  }
 
   @override
   void initState() {
@@ -120,8 +123,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     productBloc = ProductBloc(ProductRepository());
     super.initState();
     _loadCashbackLimit();
+
     _customItemNameController.addListener(() {
       _customItemName = _customItemNameController.text;
+      setState(() {}); // Trigger a rebuild when the text changes
     });
     _customItemPriceController.addListener(() {
       _customItemPrice = _customItemPriceController.text;
@@ -129,16 +134,14 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     _skuController.addListener(() {
       _sku = _skuController.text;
     });
+
     _loadOrderData(); // Load order data on initialization
     _loadTaxSlabs();
     _loadTaxes();
     // Initialize the selected tab index from widget
     _selectedTabIndex = widget.selectedTabIndex;
-    // Add a listener to _customItemNameController to track changes in the text field
-    _customItemNameController.addListener(() {
-      setState(() {}); // Trigger a rebuild when the text changes
-    });
   }
+
   Future<void> _loadTaxes() async {
     setState(() => _isTaxLoading = true);
 
@@ -154,23 +157,30 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     ///It will load sku and text field both with barcode from scanner initially
     if (kDebugMode) {
       print(
-          "WidgetTabs.didChangeDependencies assign text field with barcode value ${_skuController
-              .text} = ${widget.barcode}");
+          "WidgetTabs.didChangeDependencies assign text field with barcode value ${_skuController.text} = ${widget.barcode}");
     }
     //Build #1.0.234: Fixed Issue [SCRUM - 388] -> SKU Disappears After Device Keyboard is Hidden
     // Only set the barcode value if it's different from current value and not empty
     if (widget.barcode.isNotEmpty && _skuController.text != widget.barcode) {
       if (kDebugMode) {
         print(
-            "WidgetTabs.didChangeDependencies assign text field with barcode value ${widget
-                .barcode}");
+            "WidgetTabs.didChangeDependencies assign text field with barcode value ${widget.barcode}");
       }
       _skuController.text = widget.barcode;
       _sku = widget.barcode;
+
+      // Focus Name field after a scan
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_selectedTabIndex == 2 && _customItemName.isEmpty) {
+          _nameFocusNode.requestFocus();
+        }
+      });
+
+      _isTaxDropdownEnabled = true;
+
       if (kDebugMode) {
         print(
-            "WidgetTabs.didChangeDependencies are text field and sku same?  ${_skuController
-                .text} = $_sku");
+            "WidgetTabs.didChangeDependencies are text field and sku same?  ${_skuController.text} = $_sku");
       }
     } else {
       if (kDebugMode) {
@@ -182,15 +192,16 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   Future<void> _loadTaxSlabs() async {
     try {
       List<Tax> taxes = await _assetDBHelper.getTaxList();
-      if (kDebugMode) print(
-          "#### _loadTaxSlabs: Loaded ${taxes.length} taxes: ${taxes.map((t) =>
-              t.toMap()).toList()},  widget.barcode: -${widget.barcode},");
+      if (kDebugMode)
+        print(
+            "#### _loadTaxSlabs: Loaded ${taxes.length} taxes: ${taxes.map((t) => t.toMap()).toList()},  widget.barcode: -${widget.barcode},");
       setState(() {
         _taxSlabOptions = taxes.map((tax) => tax.name).toSet().toList();
         if (_taxSlabOptions.isNotEmpty) {
           _selectedTaxSlab = _taxSlabOptions.first;
-          if (kDebugMode) print(
-              "#### _loadTaxSlabs: Set selected tax slab to: $_selectedTaxSlab");
+          if (kDebugMode)
+            print(
+                "#### _loadTaxSlabs: Set selected tax slab to: $_selectedTaxSlab");
         } else {
           if (kDebugMode) print("#### _loadTaxSlabs: Tax slabs are empty");
           _selectedTaxSlab = ''; // Ensure reset if no options
@@ -210,18 +221,20 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     _customItemNameController.dispose();
     _customItemPriceController.dispose();
     _skuController.dispose();
+    _nameFocusNode.dispose();
     super.dispose();
   }
+
   void _loadCashbackLimit() async {
     final config = await CashbackHelper.getCashbackConfig();
 
     if (config != null &&
         config["cash_back_service"] != null &&
         config["cash_back_service"]["max_cashback"] != null) {
-
       setState(() {
-        _maxCashbackLimit =
-            double.tryParse(config["cash_back_service"]["max_cashback"].toString()) ?? 0.0;
+        _maxCashbackLimit = double.tryParse(
+                config["cash_back_service"]["max_cashback"].toString()) ??
+            0.0;
       });
 
       print("🟢 Loaded Max Cashback Limit = $_maxCashbackLimit");
@@ -229,7 +242,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       print("❌ max_cashback NOT FOUND");
     }
   }
-
 
   // Fetch order ID and total from OrderHelper (use loadData for offline orders)
   Future<void> _loadOrderData() async {
@@ -240,15 +252,24 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         print("####_loadOrderData, orderId: $orderId");
       }
       if (orderId != null) {
-        final order = _orderHelper.orders.cast<Map<String, dynamic>>()
-            .where((o) {
+        final order =
+            _orderHelper.orders.cast<Map<String, dynamic>>().where((o) {
           final oid = o['order_id'] ?? o['id'] ?? o[AppDBConst.orderServerId];
-          return oid != null && (oid == orderId || oid.toString() == orderId.toString());
+          return oid != null &&
+              (oid == orderId || oid.toString() == orderId.toString());
         }).toList();
         if (order.isNotEmpty) {
           final o = order.first;
-          orderTotal = (o['gross_total'] ?? o['net_payable'] ?? o['net_total'] ?? o[AppDBConst.orderTotal] ?? 0.0) is num
-              ? ((o['gross_total'] ?? o['net_payable'] ?? o['net_total'] ?? o[AppDBConst.orderTotal]) as num).toDouble()
+          orderTotal = (o['gross_total'] ??
+                  o['net_payable'] ??
+                  o['net_total'] ??
+                  o[AppDBConst.orderTotal] ??
+                  0.0) is num
+              ? ((o['gross_total'] ??
+                      o['net_payable'] ??
+                      o['net_total'] ??
+                      o[AppDBConst.orderTotal]) as num)
+                  .toDouble()
               : 0.0;
         }
       }
@@ -259,45 +280,45 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   Widget build(BuildContext context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return
-      //backgroundColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.white,
-      // const Color(0xFFF1F5F9),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(4, 10, 2, 10),
-        child: Container(
-          decoration: BoxDecoration(
-            color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                .primaryBackground : Colors.white,
-            borderRadius: BorderRadius.circular(16.0),
-            border: Border.all(
-                color: themeHelper.themeMode == ThemeMode.dark ? Color(
-                    0xFF1A1A1A) : Color(0xFFE1E1E1)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 5,
-              )
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          // Ensures children conform to the rounded corners
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              // Top Tabs
-              _buildTabs(),
-
-              // Content based on selected tab
-              Expanded(
-                  child: ClipPath(
-                      clipper: ContentSideClipper(
-                          selectedIndex: _selectedTabIndex),
-                      child: _buildTabContent()
-                  )
-              ),
-            ],
-          ),
+        //backgroundColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.white,
+        // const Color(0xFFF1F5F9),
+        Padding(
+      padding: const EdgeInsets.fromLTRB(4, 10, 2, 10),
+      child: Container(
+        decoration: BoxDecoration(
+          color: themeHelper.themeMode == ThemeMode.dark
+              ? ThemeNotifier.primaryBackground
+              : Colors.white,
+          borderRadius: BorderRadius.circular(16.0),
+          border: Border.all(
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? Color(0xFF1A1A1A)
+                  : Color(0xFFE1E1E1)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 5,
+            )
+          ],
         ),
-      );
+        clipBehavior: Clip.antiAlias,
+        // Ensures children conform to the rounded corners
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            // Top Tabs
+            _buildTabs(),
+
+            // Content based on selected tab
+            Expanded(
+                child: ClipPath(
+                    clipper:
+                        ContentSideClipper(selectedIndex: _selectedTabIndex),
+                    child: _buildTabContent())),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildTabs() {
@@ -305,13 +326,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     return ClipPath(
       clipper: TabSideClipper(selectedIndex: _selectedTabIndex),
       child: Container(
-          width: MediaQuery
-              .of(context)
-              .size
-              .width * 0.12,
+          width: MediaQuery.of(context).size.width * 0.12,
           decoration: BoxDecoration(
-            color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                .tabsBackground :Color(0xFFEAEDFF),
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.tabsBackground
+                : Color(0xFFEAEDFF),
             // borderRadius: BorderRadius.circular(16.0),
           ),
           child: Column(
@@ -324,7 +343,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                 "Merchant \nDiscounts",
 
                 const Color(0xFF4C5F7D), // default = white for logo
-                const Color(0xFF4C5F7D),// Foreground text color
+                const Color(0xFF4C5F7D), // Foreground text color
                 // Color(0xFF007BFF),      // icon color
                 // Color(0xFF007BFF),    // text color
                 // color: isSelected
@@ -333,15 +352,16 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
                 //themeHelper: themeHelper,
               ),
-
               const SizedBox(width: 10),
-
               if (_selectedTabIndex != 0 && _selectedTabIndex != 1)
-                Divider(height: 1, thickness: 1, indent: 1, endIndent: 1,
+                Divider(
+                    height: 1,
+                    thickness: 1,
+                    indent: 1,
+                    endIndent: 1,
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? Colors.black
                         : Color(0xFF8EAAD8)),
-
               _buildTab(
                   1,
                   SvgUtils.cashbackIcon,
@@ -349,18 +369,17 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   // Color(0xFF55CBCD),    // icon color
                   // Color(0xFF55CBCD),     // text color
                   const Color(0xFF4C5F7D), // default = white for logo
-                  const Color(0xFF4C5F7D)
-
-              ),
-
+                  const Color(0xFF4C5F7D)),
               const SizedBox(width: 10),
-
               if (_selectedTabIndex != 1 && _selectedTabIndex != 2)
-                Divider(height: 1, thickness: 1, indent: 10, endIndent: 10,
+                Divider(
+                    height: 1,
+                    thickness: 1,
+                    indent: 10,
+                    endIndent: 10,
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? Colors.black
                         : Color(0xFF8EAAD8)),
-
               _buildTab(
                   2,
                   SvgUtils.addCustomItemIcon,
@@ -368,18 +387,17 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   // Color(0xFF55709A),    // icon color
                   // Color(0xFF55709A),
                   const Color(0xFF4C5F7D), // default = white for logo
-                  const Color(0xFF4C5F7D)
-
-
-              ),
-
+                  const Color(0xFF4C5F7D)),
               const SizedBox(width: 10),
-
               if (_selectedTabIndex != 2 && _selectedTabIndex != 3)
-                Divider(height: 1, thickness: 1, indent: 10, endIndent: 10,   color: themeHelper.themeMode == ThemeMode.dark
-                    ? Colors.black
-                    : Color(0xFF8EAAD8)),
-
+                Divider(
+                    height: 1,
+                    thickness: 1,
+                    indent: 10,
+                    endIndent: 10,
+                    color: themeHelper.themeMode == ThemeMode.dark
+                        ? Colors.black
+                        : Color(0xFF8EAAD8)),
               _buildTab(
                   3,
                   SvgUtils.addPayoutIcon,
@@ -387,42 +405,38 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   // Color(0xFFD93535),    // icon color
                   // Color(0xFFD93535),   // text color
                   const Color(0xFF4C5F7D), // default = white for logo
-                  const Color(0xFF4C5F7D)
-              ),
+                  const Color(0xFF4C5F7D)),
             ],
-          )
-
-      ),
+          )),
     );
   }
-  Widget _buildTab(
-      int index,
-      String svgPath,
-      String text,
-      Color iconColor,
-      Color textColor,
 
-      ) {
+  Widget _buildTab(
+    int index,
+    String svgPath,
+    String text,
+    Color iconColor,
+    Color textColor,
+  ) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     bool isSelected = _selectedTabIndex == index;
 
     return Expanded(
       child: GestureDetector(
-
         onTap: () {
           setState(() {
             _selectedTabIndex = index;
             if (index != 2) _isEnteringItemPrice = false;
           });
         },
-        child: SizedBox( // 🔒 LOCK HEIGHT
+        child: SizedBox(
+          // 🔒 LOCK HEIGHT
           //height: 80,
           //width: 20,
           // adjust if needed (same for all tabs)
           child: Container(
             width: double.infinity,
             decoration: BoxDecoration(
-
               //   color: isSelected
               //       ? (themeHelper.themeMode == ThemeMode.dark
               //       ? ThemeNotifier.primaryBackground
@@ -434,17 +448,14 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               // ),//**8Raghu modified the code below, with blue cards when selected it shows white
 
               color: isSelected
-                  ? const Color(0xFFFFFFFF)  // selected light color
-                  : const Color(0xFFECF1FF),  // unselected blue
+                  ? const Color(0xFFFFFFFF) // selected light color
+                  : const Color(0xFFECF1FF), // unselected blue
               //borderRadius: BorderRadius.circular(2.0),
               /// borderRadius: BorderRadius.circular(0), // REMOVE rounded corners for now
             ),
-
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
-
               children: [
-
                 SvgPicture.asset(
                   svgPath,
                   height: 32,
@@ -473,7 +484,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                     //isSelected ? FontWeight.bold : FontWeight.bold,
                   ),
                 ),
-
               ],
             ),
           ),
@@ -481,7 +491,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       ),
     );
   }
-
 
   Widget _buildTabContent() {
     switch (_selectedTabIndex) {
@@ -527,14 +536,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
           // 💬 Discount Entry Field (Styled like payout, centered)
           Container(
-            width: MediaQuery
-                .of(context)
-                .size
-                .width / 2.75,
-            height: MediaQuery
-                .of(context)
-                .size
-                .height / 12,
+            width: MediaQuery.of(context).size.width / 2.75,
+            height: MediaQuery.of(context).size.height / 12,
             margin: const EdgeInsets.only(top: 10),
             child: TextField(
               readOnly: true,
@@ -543,8 +546,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               controller: TextEditingController(
                 text: _isPercentageSelected
                     ? "${_discountValue.replaceAll('%', '')}%"
-                    : "${TextConstants.currencySymbol}${_discountValue
-                    .replaceAll(TextConstants.currencySymbol, '')}",
+                    : "${TextConstants.currencySymbol}${_discountValue.replaceAll(TextConstants.currencySymbol, '')}",
               ),
               style: TextStyle(
                 fontSize: 24,
@@ -567,8 +569,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   return (clean == "0.00" || clean.isEmpty)
                       ? Colors.grey.shade400
                       : (themeHelper.themeMode == ThemeMode.dark
-                      ? ThemeNotifier.textDark
-                      : const Color(0xFF1E2745));
+                          ? ThemeNotifier.textDark
+                          : const Color(0xFF1E2745));
                 })(),
               ),
 
@@ -578,7 +580,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                     ? ThemeNotifier.paymentEntryContainerColor
                     : Colors.white,
                 contentPadding:
-                const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                    const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: const BorderSide(
@@ -601,14 +603,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
           // 🔢 Custom Numpad
           SizedBox(
-            width: MediaQuery
-                .of(context)
-                .size
-                .width / 2.75,
-            height: MediaQuery
-                .of(context)
-                .size
-                .height / 2.85,
+            width: MediaQuery.of(context).size.width / 2.75,
+            height: MediaQuery.of(context).size.height / 2.85,
             child: CustomNumPad(
               onDigitPressed: (digit) {
                 setState(() {
@@ -618,7 +614,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                       .trim();
 
                   int rawValue =
-                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                      ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
 
                   // ✅ Handle both "digit" and "00" properly like payout tab
                   if (digit == '00') {
@@ -636,7 +632,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   }
                 });
               },
-
               onDeletePressed: () {
                 setState(() {
                   String cleanValue = _discountValue
@@ -645,7 +640,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                       .trim();
 
                   int rawValue =
-                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                      ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
                   rawValue = rawValue ~/ 10;
 
                   double displayValue = rawValue / 100.0;
@@ -656,7 +651,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   }
                 });
               },
-
               onClearPressed: () {
                 setState(() {
                   _discountValue = "0.00";
@@ -665,7 +659,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   }
                 });
               },
-
               actionButtonType: ActionButtonType.add,
               onAddPressed: _handleAddDiscount,
               isLoading: _isDiscountLoading,
@@ -809,37 +802,28 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               ],
             ),
 
-
           // 💰 Payout Display
           Container(
-            width: MediaQuery
-                .of(context)
-                .size
-                .width / 2.75,
-            height: MediaQuery
-                .of(context)
-                .size
-                .height / 12,
+            width: MediaQuery.of(context).size.width / 2.75,
+            height: MediaQuery.of(context).size.height / 12,
             margin: const EdgeInsets.only(top: 10),
             child: TextField(
               readOnly: true,
               controller: TextEditingController(
                 // ✅ Add the symbol only here
                 text:
-                "${TextConstants.currencySymbol}${_cashbackAmount.isEmpty
-                    ? "0.00"
-                    : _cashbackAmount}",
+                    "${TextConstants.currencySymbol}${_cashbackAmount.isEmpty ? "0.00" : _cashbackAmount}",
               ),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 24,
                 fontWeight:
-                _isAmountEntered ? FontWeight.bold : FontWeight.normal,
+                    _isAmountEntered ? FontWeight.bold : FontWeight.normal,
                 color: _cashbackAmount.isEmpty
                     ? Colors.grey.shade400
                     : themeHelper.themeMode == ThemeMode.dark
-                    ? ThemeNotifier.textDark
-                    : const Color(0xFF1E2745),
+                        ? ThemeNotifier.textDark
+                        : const Color(0xFF1E2745),
               ),
               decoration: InputDecoration(
                 filled: true,
@@ -869,21 +853,16 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
           // 🔢 Custom Numpad
           SizedBox(
-            width: MediaQuery
-                .of(context)
-                .size
-                .width / 2.75,
-            height: MediaQuery
-                .of(context)
-                .size
-                .height / 2.25,
+            width: MediaQuery.of(context).size.width / 2.75,
+            height: MediaQuery.of(context).size.height / 2.25,
             child: CustomNumPad(
               onDigitPressed: (digit) {
                 setState(() {
                   // Clean numeric part only
-                  String cleanValue = _cashbackAmount.replaceAll(',', '').trim();
+                  String cleanValue =
+                      _cashbackAmount.replaceAll(',', '').trim();
                   int rawAmount =
-                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                      ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
 
                   if (digit == '00') {
                     rawAmount = (rawAmount * 100) % 100000000;
@@ -898,12 +877,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   _isAmountEntered = rawAmount != 0;
                 });
               },
-
               onDeletePressed: () {
                 setState(() {
-                  String cleanValue = _cashbackAmount.replaceAll(',', '').trim();
+                  String cleanValue =
+                      _cashbackAmount.replaceAll(',', '').trim();
                   int rawAmount =
-                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                      ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
                   rawAmount = rawAmount ~/ 10;
 
                   double displayValue = rawAmount / 100.0;
@@ -912,14 +891,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   _isAmountEntered = rawAmount != 0;
                 });
               },
-
               onClearPressed: () {
                 setState(() {
                   _cashbackAmount = "0.00"; // ✅ no symbol
                   _isAmountEntered = false;
                 });
               },
-
               actionButtonType: ActionButtonType.add,
               onAddPressed: _handleCashbackpayout,
               isLoading: _isCashbackLoading,
@@ -1177,14 +1154,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
   // CUSTOM ITEM TAB
   Widget _buildCustomItemTab(BuildContext context) {
-    final screenWidth = MediaQuery
-        .of(context)
-        .size
-        .width;
-    final screenHeight = MediaQuery
-        .of(context)
-        .size
-        .height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
     // return Container(
@@ -1204,8 +1175,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                  .textDark : Color(0xFF1E2745),
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.textDark
+                  : Color(0xFF1E2745),
             ),
           ),
           const SizedBox(height: 5),
@@ -1217,6 +1189,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                 title: TextConstants.nameText,
                 hintText: TextConstants.customItemName,
                 controller: _customItemNameController,
+                focusNode: _nameFocusNode,
               ),
               const SizedBox(width: 20),
               _buildSkuField(),
@@ -1233,7 +1206,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                 //TextConstants.enterThePrice,
                 controller: _customItemPriceController,
                 readOnly: true,
-                isHighlighted: _isEnteringItemPrice, // Use dynamic highlighting instead of hardcoded true
+                isHighlighted:
+                    _isEnteringItemPrice, // Use dynamic highlighting instead of hardcoded true
               ),
               const SizedBox(width: 20),
               _buildTaxDropdown(),
@@ -1249,24 +1223,18 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   Widget _buildCustomNumpad(BuildContext context) {
     return Center(
       child: SizedBox(
-        width: MediaQuery
-            .of(context)
-            .size
-            .width / 2.75,
-        height: MediaQuery
-            .of(context)
-            .size
-            .height / 2.75,
+        width: MediaQuery.of(context).size.width / 2.75,
+        height: MediaQuery.of(context).size.height / 2.75,
         child: CustomNumPad(
           onDigitPressed: (digit) {
             setState(() {
               // Extract numeric part from current value (ignore ₹ or commas)
-              String cleanValue = _customItemPrice.replaceAll(
-                  RegExp(r'[^\d.]'), '');
+              String cleanValue =
+                  _customItemPrice.replaceAll(RegExp(r'[^\d.]'), '');
 
               // Convert current value (e.g. "12.34") to integer cents → 1234
-              int rawAmount = ((double.tryParse(cleanValue) ?? 0.0) * 100)
-                  .round();
+              int rawAmount =
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
 
               // Append digit(s)
               if (digit == '00') {
@@ -1284,31 +1252,29 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               // Update both internal value and controller text
               _customItemPrice = displayValue.toStringAsFixed(2);
               _customItemPriceController.text =
-              "${TextConstants.currencySymbol}${_customItemPrice}";
+                  "${TextConstants.currencySymbol}${_customItemPrice}";
 
               // Highlight only when price > 0
               _isEnteringItemPrice = rawAmount > 0;
             });
           },
-
           onClearPressed: () {
             setState(() {
               _customItemPrice = "0.00";
               _customItemPriceController.text =
-              "${TextConstants.currencySymbol}0.00";
+                  "${TextConstants.currencySymbol}0.00";
               _isEnteringItemPrice = false;
             });
           },
-
           onDeletePressed: () {
             setState(() {
               // Extract numeric value (ignore ₹ or commas)
-              String cleanValue = _customItemPrice.replaceAll(
-                  RegExp(r'[^\d.]'), '');
+              String cleanValue =
+                  _customItemPrice.replaceAll(RegExp(r'[^\d.]'), '');
 
               // Convert to integer cents
-              int rawAmount = ((double.tryParse(cleanValue) ?? 0.0) * 100)
-                  .round();
+              int rawAmount =
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
 
               // Remove one digit from the end
               rawAmount = rawAmount ~/ 10;
@@ -1319,12 +1285,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               // Update UI + controller
               _customItemPrice = displayValue.toStringAsFixed(2);
               _customItemPriceController.text =
-              "${TextConstants.currencySymbol}${_customItemPrice}";
+                  "${TextConstants.currencySymbol}${_customItemPrice}";
 
               _isEnteringItemPrice = rawAmount > 0;
             });
           },
-
           actionButtonType: ActionButtonType.add,
           onAddPressed: () {
             if (kDebugMode) {
@@ -1336,8 +1301,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
             });
 
             // Remove symbols, spaces, etc.
-            final cleanedPrice = _customItemPrice.replaceAll(
-                RegExp(r'[^0-9.]'), '');
+            final cleanedPrice =
+                _customItemPrice.replaceAll(RegExp(r'[^0-9.]'), '');
             double? price = double.tryParse(cleanedPrice);
 
             if (price == null || price <= 0) {
@@ -1352,7 +1317,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
             _handleAddCustomItem();
           },
-
           isLoading: _isCustomItemLoading,
           isDarkTheme: true,
           numPadType: NumPadType.payment,
@@ -1368,56 +1332,57 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     required TextEditingController controller,
     bool readOnly = false,
     bool isHighlighted = false,
+    FocusNode? focusNode,
   }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     // Conditionally set the border color and width based on the highlight status
     final borderColor = isHighlighted
         ? Colors.deepPurpleAccent
         : (themeHelper.themeMode == ThemeMode.dark
-        ? ThemeNotifier.borderColor
-        : Colors.grey.shade300);
+            ? ThemeNotifier.borderColor
+            : Colors.grey.shade300);
     final borderWidth = isHighlighted ? 2.0 : 1.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       // mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        SizedBox(height: 5,),
+        SizedBox(
+          height: 5,
+        ),
         Text(
           title,
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 14,
-            color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                .textDark : Color(0xFF1E2745),
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.textDark
+                : Color(0xFF1E2745),
           ),
         ),
         const SizedBox(height: 5),
         Container(
-          height: MediaQuery
-              .of(context)
-              .size
-              .height / 14,
-          width: MediaQuery
-              .of(context)
-              .size
-              .width * 0.2,
+          height: MediaQuery.of(context).size.height / 14,
+          width: MediaQuery.of(context).size.width * 0.2,
           padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 10),
           decoration: BoxDecoration(
-            color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                .paymentEntryContainerColor : null,
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.paymentEntryContainerColor
+                : null,
             border: Border.all(color: borderColor, width: borderWidth),
             borderRadius: BorderRadius.circular(10),
           ),
           child: TextField(
             controller: controller,
+            focusNode: focusNode,
             readOnly: readOnly,
             textAlign: TextAlign.start,
             decoration: InputDecoration(
               border: InputBorder.none,
               hintText: hintText,
               hintStyle: TextStyle(
-                  color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                      .textDark : Colors.grey),
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.textDark
+                      : Colors.grey),
             ),
           ),
         ),
@@ -1430,32 +1395,31 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(height: 5,),
+        SizedBox(
+          height: 5,
+        ),
         Text(
           TextConstants.sku,
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 14,
-            color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                .textDark : Color(0xFF1E2745),
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.textDark
+                : Color(0xFF1E2745),
           ),
         ),
         const SizedBox(height: 5),
         Container(
-          height: MediaQuery
-              .of(context)
-              .size
-              .height / 14,
-          width: MediaQuery
-              .of(context)
-              .size
-              .width * 0.2,
+          height: MediaQuery.of(context).size.height / 14,
+          width: MediaQuery.of(context).size.width * 0.2,
           decoration: BoxDecoration(
             border: Border.all(
-                color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                    .borderColor : Colors.grey.shade300),
-            color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                .paymentEntryContainerColor : Color(0xFFECE9E9),
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.borderColor
+                    : Colors.grey.shade300),
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.paymentEntryContainerColor
+                : Color(0xFFECE9E9),
             // Custom background color,
             borderRadius: BorderRadius.circular(10),
           ),
@@ -1468,8 +1432,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   textAlign: TextAlign.start,
                   decoration: InputDecoration(
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 9),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                     hintText: TextConstants.generateTheSku,
                     hintStyle: TextStyle(
                         color: themeHelper.themeMode == ThemeMode.dark
@@ -1484,8 +1448,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   onPressed: _isItemNameEmpty() ? null : _generateSku,
                   // Disable functionality if item name is empty,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _isItemNameEmpty() ? Colors.grey : Colors
-                        .redAccent, // Change color based on button state
+                    backgroundColor: _isItemNameEmpty()
+                        ? Colors.grey
+                        : Colors
+                            .redAccent, // Change color based on button state
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     shape: RoundedRectangleBorder(
@@ -1496,7 +1462,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   child: const Text(
                     TextConstants.generate,
                     style: TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.bold,),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               )
@@ -1543,55 +1511,57 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
           child: _isTaxLoading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
               : DropdownButtonFormField<TaxModel>(
-            value: _selectedTax,
-            isExpanded: true,
-            dropdownColor: themeHelper.themeMode == ThemeMode.dark
-                ? ThemeNotifier.primaryBackground
-                : null,
-            icon: const Icon(Icons.keyboard_arrow_down),
-            items: _taxList.map((tax) {
-              return DropdownMenuItem<TaxModel>(
-                value: tax,
-                child: Text(
-                  tax.name, // ✅ DISPLAY NAME FROM API
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: themeHelper.themeMode == ThemeMode.dark
-                        ? ThemeNotifier.textDark
-                        : const Color(0xFF1E2745),
+                  value: _selectedTax,
+                  isExpanded: true,
+                  dropdownColor: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.primaryBackground
+                      : null,
+                   icon: const Icon(Icons.keyboard_arrow_down),
+                  items: _taxList.map((tax) {
+                    return DropdownMenuItem<TaxModel>(
+                      value: tax,
+                      child: Text(
+                        tax.name, // ✅ DISPLAY NAME FROM API
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: themeHelper.themeMode == ThemeMode.dark
+                              ? ThemeNotifier.textDark
+                              : const Color(0xFF1E2745),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: _isTaxDropdownEnabled
+                      ? (value) {
+                          if (kDebugMode) {
+                            print(
+                                "✅ Selected Tax: ${value?.name} | Rate: ${value?.rate}");
+                          }
+                          setState(() {
+                            _selectedTax = value;
+                          });
+                        }
+                      : null,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                  ),
+                  hint: Text(
+                    TextConstants.chooseTaxSlab,
+                    style: TextStyle(
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.textDark
+                          : Colors.grey,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
-              );
-            }).toList(),
-            onChanged: (value) {
-              if (kDebugMode) {
-                print("✅ Selected Tax: ${value?.name} | Rate: ${value?.rate}");
-              }
-              setState(() {
-                _selectedTax = value;
-              });
-            },
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-            ),
-            hint: Text(
-              TextConstants.chooseTaxSlab,
-              style: TextStyle(
-                color: themeHelper.themeMode == ThemeMode.dark
-                    ? ThemeNotifier.textDark
-                    : Colors.grey,
-                fontSize: 14,
-              ),
-            ),
-          ),
         ),
       ],
     );
   }
-
 
   Widget _buildPayoutsTab() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -1614,34 +1584,26 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
           // 💰 Payout Display
           Container(
-            width: MediaQuery
-                .of(context)
-                .size
-                .width / 2.75,
-            height: MediaQuery
-                .of(context)
-                .size
-                .height / 12,
+            width: MediaQuery.of(context).size.width / 2.75,
+            height: MediaQuery.of(context).size.height / 12,
             margin: const EdgeInsets.only(top: 10),
             child: TextField(
               readOnly: true,
               controller: TextEditingController(
                 // ✅ Add the symbol only here
                 text:
-                "${TextConstants.currencySymbol}${_payoutAmount.isEmpty
-                    ? "0.00"
-                    : _payoutAmount}",
+                    "${TextConstants.currencySymbol}${_payoutAmount.isEmpty ? "0.00" : _payoutAmount}",
               ),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 24,
                 fontWeight:
-                _isAmountEntered ? FontWeight.bold : FontWeight.normal,
+                    _isAmountEntered ? FontWeight.bold : FontWeight.normal,
                 color: _payoutAmount.isEmpty
                     ? Colors.grey.shade400
                     : themeHelper.themeMode == ThemeMode.dark
-                    ? ThemeNotifier.textDark
-                    : const Color(0xFF1E2745),
+                        ? ThemeNotifier.textDark
+                        : const Color(0xFF1E2745),
               ),
               decoration: InputDecoration(
                 filled: true,
@@ -1671,21 +1633,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
           // 🔢 Custom Numpad
           SizedBox(
-            width: MediaQuery
-                .of(context)
-                .size
-                .width / 2.75,
-            height: MediaQuery
-                .of(context)
-                .size
-                .height / 2.25,
+            width: MediaQuery.of(context).size.width / 2.75,
+            height: MediaQuery.of(context).size.height / 2.25,
             child: CustomNumPad(
               onDigitPressed: (digit) {
                 setState(() {
                   // Clean numeric part only
                   String cleanValue = _payoutAmount.replaceAll(',', '').trim();
                   int rawAmount =
-                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                      ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
 
                   if (digit == '00') {
                     rawAmount = (rawAmount * 100) % 100000000;
@@ -1700,12 +1656,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   _isAmountEntered = rawAmount != 0;
                 });
               },
-
               onDeletePressed: () {
                 setState(() {
                   String cleanValue = _payoutAmount.replaceAll(',', '').trim();
                   int rawAmount =
-                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                      ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
                   rawAmount = rawAmount ~/ 10;
 
                   double displayValue = rawAmount / 100.0;
@@ -1714,14 +1669,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   _isAmountEntered = rawAmount != 0;
                 });
               },
-
               onClearPressed: () {
                 setState(() {
                   _payoutAmount = "0.00"; // ✅ no symbol
                   _isAmountEntered = false;
                 });
               },
-
               actionButtonType: ActionButtonType.add,
               onAddPressed: _handleAddPayout,
               isLoading: _isPayoutLoading,
@@ -1738,11 +1691,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   // Generate SKU function
   void _generateSku() {
     // Simple SKU generation logic - prefix + timestamp
-    String timestamp = DateTime
-        .now()
-        .millisecondsSinceEpoch
-        .toString()
-        .substring(0, 12);
+    String timestamp =
+        DateTime.now().millisecondsSinceEpoch.toString().substring(0, 12);
     // String prefix = _customItemName.isNotEmpty
     //     ? _customItemName.substring(0, _customItemName.length > 3 ? 3 : _customItemName.length).toUpperCase()
     //     : "C";
@@ -1767,19 +1717,14 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   Widget _buildDiscountToggle() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return Container(
-      width: MediaQuery
-          .of(context)
-          .size
-          .width / 2.75,
-      height: MediaQuery
-          .of(context)
-          .size
-          .height / 14,
+      width: MediaQuery.of(context).size.width / 2.75,
+      height: MediaQuery.of(context).size.height / 14,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-            color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                .secondaryBackground : Colors.grey.shade300),
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.secondaryBackground
+                : Colors.grey.shade300),
       ),
       child: Row(
         children: [
@@ -1791,9 +1736,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   if (!_isPercentageSelected) {
                     _isPercentageSelected = true;
                     // Convert to percentage format
-                    _discountValue = "${_discountValue.replaceAll(
-                        TextConstants.currencySymbol,
-                        '')}%"; // Build #1.0.181: 1. Replaced Hard coded ‘\$’ with TextConstants.currencySymbol
+                    _discountValue =
+                        "${_discountValue.replaceAll(TextConstants.currencySymbol, '')}%"; // Build #1.0.181: 1. Replaced Hard coded ‘\$’ with TextConstants.currencySymbol
                   }
                 });
               },
@@ -1802,8 +1746,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                 decoration: BoxDecoration(
                   color: _isPercentageSelected
                       ? Colors.red.shade400
-                      : themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier
-                      .tabsBackground : Colors.white,
+                      : themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.tabsBackground
+                          : Colors.white,
                   borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(9),
                       bottomLeft: Radius.circular(9),
@@ -1816,10 +1761,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: _isPercentageSelected ? Colors.white : themeHelper
-                        .themeMode == ThemeMode.dark
-                        ? ThemeNotifier.textDark
-                        : Colors.black,
+                    color: _isPercentageSelected
+                        ? Colors.white
+                        : themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.textDark
+                            : Colors.black,
                   ),
                 ),
               ),
@@ -1841,10 +1787,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
-                  color:
-                  !_isPercentageSelected ? Colors.redAccent : themeHelper
-                      .themeMode == ThemeMode.dark ? ThemeNotifier
-                      .tabsBackground : Colors.white,
+                  color: !_isPercentageSelected
+                      ? Colors.redAccent
+                      : themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.tabsBackground
+                          : Colors.white,
                   borderRadius: const BorderRadius.only(
                     topRight: Radius.circular(9),
                     bottomRight: Radius.circular(9),
@@ -1858,10 +1805,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: !_isPercentageSelected ? Colors.white : themeHelper
-                        .themeMode == ThemeMode.dark
-                        ? ThemeNotifier.textDark
-                        : Colors.black,
+                    color: !_isPercentageSelected
+                        ? Colors.white
+                        : themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.textDark
+                            : Colors.black,
                   ),
                 ),
               ),
@@ -1875,13 +1823,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
   static bool _productMetaInitialized = false;
 
-
   Future<Map<String, dynamic>?> _getCashbackProductFromIsar() async {
     // ⚡ FAST PATH — already cached
     if (_productMetaInitialized && _productMetaCache.isNotEmpty) {
       for (final p in _productMetaCache.values) {
-        final name =
-        (p["fast_key_item_name"] ?? p["name"] ?? "")
+        final name = (p["fast_key_item_name"] ?? p["name"] ?? "")
             .toString()
             .toLowerCase();
 
@@ -1904,8 +1850,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
           if (raw is! Map) continue;
 
           final map = Map<String, dynamic>.from(raw);
-          final name =
-          (map["fast_key_item_name"] ?? map["name"] ?? "")
+          final name = (map["fast_key_item_name"] ?? map["name"] ?? "")
               .toString()
               .toLowerCase();
 
@@ -1928,13 +1873,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     return null;
   }
 
-
   Future<Map<String, dynamic>?> _getDiscountProductFromIsar() async {
     // 🔁 Fast path: already cached
     if (_productMetaInitialized && _productMetaCache.isNotEmpty) {
       for (final p in _productMetaCache.values) {
-        final name =
-        (p["fast_key_item_name"] ?? p["name"] ?? "")
+        final name = (p["fast_key_item_name"] ?? p["name"] ?? "")
             .toString()
             .toLowerCase();
         if (name.contains("discount")) return p;
@@ -1953,8 +1896,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
           if (raw is! Map) continue;
           final map = Map<String, dynamic>.from(raw);
 
-          final name =
-          (map["fast_key_item_name"] ?? map["name"] ?? "")
+          final name = (map["fast_key_item_name"] ?? map["name"] ?? "")
               .toString()
               .toLowerCase();
 
@@ -1978,7 +1920,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
     return null;
   }
-
 
   // Build the discount value display
 
@@ -2268,7 +2209,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   //   }
   // }
 
-
   Future<void> _handleAddDiscount() async {
     print("🟦 [DISCOUNT] START ---- _handleAddDiscount() ----");
 
@@ -2278,7 +2218,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     if (_discountValue.isEmpty ||
         _discountValue == "0" ||
         _discountValue == "0%" ||
-        double.tryParse(_discountValue.replaceAll('%', '').replaceAll("₹", "").trim()) == null) {
+        double.tryParse(_discountValue
+                .replaceAll('%', '')
+                .replaceAll("₹", "")
+                .trim()) ==
+            null) {
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(
           content: Text("Please enter a valid discount amount"),
@@ -2358,7 +2302,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         return;
       }
 
-      print("🟢 Discount product found → ${discountProduct['name'] ?? 'Discount'}");
+      print(
+          "🟢 Discount product found → ${discountProduct['name'] ?? 'Discount'}");
 
       // ────────────────────────────────────────
       // 4. Calculate current gross total (before discount)
@@ -2373,7 +2318,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         final orderItems = (existingOrder["order_items"] as List? ?? []);
         for (final oi in orderItems) {
           final map = Map<String, dynamic>.from(oi is Map ? oi : {});
-          final itemType = (map['item_type'] ?? map['type'] ?? '').toString().toLowerCase();
+          final itemType =
+              (map['item_type'] ?? map['type'] ?? '').toString().toLowerCase();
           if (itemType.contains('discount')) continue;
           products.add({
             ...map,
@@ -2405,7 +2351,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         grossTotal += price * qty;
       }
 
-      print("Current gross total before discount: ₹${grossTotal.toStringAsFixed(2)}");
+      print(
+          "Current gross total before discount: ₹${grossTotal.toStringAsFixed(2)}");
 
       // ────────────────────────────────────────
       // 5. Parse discount value
@@ -2419,9 +2366,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       double inputValue = double.parse(parsedValue);
       bool isPercentage = _isPercentageSelected;
 
-      double discountAmount = isPercentage
-          ? (inputValue / 100) * grossTotal
-          : inputValue;
+      double discountAmount =
+          isPercentage ? (inputValue / 100) * grossTotal : inputValue;
 
       if (discountAmount > grossTotal) {
         setState(() => _isDiscountLoading = false);
@@ -2444,8 +2390,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
             discountProduct["fast_key_product_id"],
         "name": discountProduct["fast_key_item_name"] ?? "Merchant Discount",
         "product_image": discountProduct["fast_key_item_image"] ?? "",
-        "discount_amount": -discountAmount,       // negative for accounting
-        "display_amount": discountAmount,         // positive for display
+        "discount_amount": -discountAmount, // negative for accounting
+        "display_amount": discountAmount, // positive for display
         "discount_type": isPercentage ? "percentage" : "fixed",
         "discount_percentage": isPercentage ? inputValue : 0.0,
         "original_input": _discountValue,
@@ -2471,11 +2417,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         "net_payable": grossTotal - discountAmount,
 
         // ──────── Fields for dynamic recalculation ────────
-        "merchantDiscount": discountAmount,                    // current calculated value
+        "merchantDiscount": discountAmount, // current calculated value
         "merchantDiscountType": isPercentage ? "percentage" : "fixed",
         "merchantDiscountPercentage": isPercentage ? inputValue : 0.0,
         "merchantDiscountFixed": isPercentage ? 0.0 : discountAmount,
-        "merchantDiscountBaseGross": grossTotal,               // snapshot of total when applied
+        "merchantDiscountBaseGross":
+            grossTotal, // snapshot of total when applied
         "merchantDiscountIds": [
           discountProduct["product_id"] ??
               discountProduct["id"] ??
@@ -2489,7 +2436,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       print("   • Type:        ${updatedOrder['merchantDiscountType']}");
       print("   • Percentage:  ${updatedOrder['merchantDiscountPercentage']}%");
       print("   • Fixed:       ₹${updatedOrder['merchantDiscountFixed']}");
-      print("   • Current amt: ₹${updatedOrder['merchantDiscount']?.toStringAsFixed(2)}");
+      print(
+          "   • Current amt: ₹${updatedOrder['merchantDiscount']?.toStringAsFixed(2)}");
 
       // ────────────────────────────────────────
       // 8. UI feedback & cleanup
@@ -2505,7 +2453,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       widget.refreshOrderList?.call();
 
       print(" [DISCOUNT] DONE ---- _handleAddDiscount() ----");
-
     } catch (e, stack) {
       print("🟥 [DISCOUNT] ERROR: $e");
       print("Stack trace: $stack");
@@ -2750,15 +2697,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       final key = orderId.toString();
       final rawKey = await offlineBox.get(key);
       final existingOrder =
-      Map<String, dynamic>.from(rawKey is Map ? rawKey : {});
+          Map<String, dynamic>.from(rawKey is Map ? rawKey : {});
 
       // -------------------------------------------------------
 // 🚫 STOP Cashback if order panel has EBT eligible product
 // -------------------------------------------------------
       final List<Map<String, dynamic>> existingProducts =
-      (existingOrder["products"] as List? ?? [])
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
+          (existingOrder["products"] as List? ?? [])
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
 
       bool hasEbtProduct = existingProducts.any((p) {
         return p["is_ebt_eligible"] == true;
@@ -2769,7 +2716,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
-            content: Text("Cashback is not allowed when EBT products are in the order."),
+            content: Text(
+                "Cashback is not allowed when EBT products are in the order."),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 2),
           ),
@@ -2778,11 +2726,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         return; // ❗ STOP here — Do NOT add cashback
       }
 
-
       final List<Map<String, dynamic>> cashbacks =
-      (existingOrder["cashbacks"] as List? ?? [])
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
+          (existingOrder["cashbacks"] as List? ?? [])
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
 
       // ❌ Only 1 cashback allowed
       if (cashbacks.isNotEmpty) {
@@ -2868,8 +2815,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       //
       // print("🟢 FOUND CASHBACK PRODUCT → $cashbackProduct");
 
-
-
       // -------------------------------------------------------
       // 🧾 PREPARE CASHBACK ENTRY
       // -------------------------------------------------------
@@ -2877,23 +2822,21 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         "order_id": orderId,
         "cashback_product_id": cashbackProduct["fast_key_product_id"],
         "product_name": cashbackProduct["fast_key_item_name"],
-        "product_image": "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/cashback-line-item.jpg",
-
+        "product_image":
+            "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/cashback-line-item.jpg",
 
         // ---- your amount ----
         "amount": cashbackAmount,
 
         // ---- REQUIRED FOR ORDER PANEL ----
-        AppDBConst.itemPrice: cashbackAmount.abs(),          // ⭐ MUST
-        AppDBConst.itemSumPrice: cashbackAmount.abs(),       // ⭐ MUST
-        AppDBConst.itemCount: 1,                             // ⭐ MUST
-        AppDBConst.itemName: "Cashback",                     // optional but clean
+        AppDBConst.itemPrice: cashbackAmount.abs(), // ⭐ MUST
+        AppDBConst.itemSumPrice: cashbackAmount.abs(), // ⭐ MUST
+        AppDBConst.itemCount: 1, // ⭐ MUST
+        AppDBConst.itemName: "Cashback", // optional but clean
         AppDBConst.itemType: "cashback",
 
         "timestamp": DateTime.now().toIso8601String(),
       };
-
-
 
       cashbacks.add(cashbackEntry);
 
@@ -2903,15 +2846,14 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       // 🔄 Recalculate total
       // -------------------------------------------------------
       final List<Map<String, dynamic>> products =
-      (existingOrder["products"] as List? ?? [])
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
+          (existingOrder["products"] as List? ?? [])
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
 
       double productsTotal = 0.0;
       for (var p in products) {
-        productsTotal +=
-            (double.tryParse(p["price"].toString()) ?? 0.0) *
-                (double.tryParse(p["quantity"].toString()) ?? 1.0);
+        productsTotal += (double.tryParse(p["price"].toString()) ?? 0.0) *
+            (double.tryParse(p["quantity"].toString()) ?? 1.0);
       }
 
       // Cashback reduces total
@@ -2926,13 +2868,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         "cashbacks": cashbacks,
 
         // 2️⃣ Cashback reduces total, fee increases total
-        "gross_total": productsTotal + cashbackAmount ,
+        "gross_total": productsTotal + cashbackAmount,
 
         // 3️⃣ Store cashback fee (NOT cashbackAmount)
         "cashbackFee": fee,
         AppDBConst.orderCashbackFee: fee,
       };
-
 
       await offlineBox.put(key, updatedOrder);
       print("🟩 SAVED ORDER → $updatedOrder");
@@ -2943,9 +2884,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       final existingExtras = await extrasBox.get(orderId.toString());
 
       final double finalCashbackFee =
-      existingExtras != null && existingExtras['cashback_fee'] != null
-          ? (existingExtras['cashback_fee'] as num).toDouble()
-          : fee;
+          existingExtras != null && existingExtras['cashback_fee'] != null
+              ? (existingExtras['cashback_fee'] as num).toDouble()
+              : fee;
 
       await extrasBox.put(orderId.toString(), {
         "local_order_id": orderId,
@@ -2963,7 +2904,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   Cashback Fee  : $finalCashbackFee
 """);
       }
-
 
       // -------------------------------------------------------
       // ✔ UI feedback
@@ -2984,18 +2924,16 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       await _loadOrderData();
       OrderHelper.notifyOrderPanelToRefresh();
       widget.refreshOrderList?.call();
-
     } catch (e, s) {
       print("🟥 [CASHBACK ERROR] $e\n$s");
       setState(() => _isCashbackLoading = false);
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        SnackBar(content: Text("Error adding cashback: $e"), backgroundColor: Colors.red),
+        SnackBar(
+            content: Text("Error adding cashback: $e"),
+            backgroundColor: Colors.red),
       );
     }
   }
-
-
-
 
   // Handle adding the custom item
   //Build #1.0.78: Explanation!
@@ -3008,7 +2946,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
   // Preserved success toast, UI refresh, and field clearing logic.
   // Removed commented-out navigation code, as it’s marked as not working.
   Future<void> _handleAddCustomItem() async {
-
     final orderHelper = OrderHelper();
 
     final int? ensuredOrderId = await orderHelper.ensureOrderExists();
@@ -3112,7 +3049,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       final int serverOrderId = ensuredOrderId;
       orderHelper.activeOrderId = serverOrderId;
 
-
       if (kDebugMode) {
         print("   • Existing activeOrderId: ${orderHelper.activeOrderId}");
         print("   • Using serverOrderId:    $serverOrderId");
@@ -3125,7 +3061,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       if (!(await box.containsKey(orderKey))) {
         if (kDebugMode) {
-          print("   • No existing offline order for $orderKey, creating new...");
+          print(
+              "   • No existing offline order for $orderKey, creating new...");
         }
         await box.put(orderKey, {
           "order_id": serverOrderId,
@@ -3147,7 +3084,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       }
 
       final Map<String, dynamic> orderData =
-      Map<String, dynamic>.from(_convertToJsonSafe(rawOrder));
+          Map<String, dynamic>.from(_convertToJsonSafe(rawOrder));
 
       final List products = (orderData["products"] ?? [])
           .map((e) => Map<String, dynamic>.from(_convertToJsonSafe(e)))
@@ -3156,7 +3093,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       if (kDebugMode) {
         print("   • Current products count: ${products.length}");
         for (var p in products) {
-          print("     - Product in order: sku=${p['sku']}, qty=${p['quantity']}");
+          print(
+              "     - Product in order: sku=${p['sku']}, qty=${p['quantity']}");
         }
       }
 
@@ -3178,7 +3116,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         return;
       }
 
-
       // -----------------------------
       // TAX SLAB
       // -----------------------------
@@ -3190,7 +3127,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
             "${taxes.map((t) => '${t.name}(${t.slug})').join(', ')}");
         print("   • Selected tax slab: $_selectedTaxSlab");
       }
-
 
       // if (_selectedTaxSlab.isNotEmpty) {
       //   final selectedTax = taxes.firstWhere(
@@ -3218,8 +3154,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       if (_selectedTax != null) {
         taxStatus = TextConstants.taxable;
-        taxClass  = _selectedTax!.taxClass; // ✅ FROM API
-        taxRate   = _selectedTax!.rate;     // ✅ FROM API
+        taxClass = _selectedTax!.taxClass; // ✅ FROM API
+        taxRate = _selectedTax!.rate; // ✅ FROM API
       }
 
       if (kDebugMode) {
@@ -3227,8 +3163,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         print("   • Tax Class  : $taxClass");
         print("   • Tax Rate   : $taxRate%");
       }
-
-
 
       // -----------------------------
       // NORMALIZE SKU
@@ -3273,8 +3207,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
         final customItem = {
           "server_item_id": null,
-          // "product_id": normalizedSku.hashCode,
-          // "variation_id": -1,
+          "product_id": 0,
+          "variation_id": 0,
           "type": "custom",
           "name": _customItemName.trim(),
           "price": double.parse(_customItemPrice),
@@ -3286,6 +3220,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
           "tax_rate": taxRate,
           "tags": [TextConstants.customItem],
           "quantity": 1,
+
           /// 🔥 FIXED IMAGE KEYS → MUST MATCH YOUR ORDER PANEL UI
           AppDBConst.itemImage: "assets/custom.png",
           "item_image": "assets/custom.png",
@@ -3325,9 +3260,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       final productBox = StorageProvider.productCache;
       final cacheKey = "sku_$normalizedSku";
       final cacheItem = {
-        // "id": normalizedSku.hashCode,
-        // "product_id": normalizedSku.hashCode,
-        // "variation_id": -1,
+        "id": 0,
+        "product_id": 0,
+        "variation_id": 0,
         "name": _customItemName.trim(),
         "type": "custom",
         "is_custom_item": true,
@@ -3351,10 +3286,13 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         AppDBConst.itemType: TextConstants.customItemText,
       };
 
-      await productBox.put(cacheKey, {"products": [cacheItem]});
+      await productBox.put(cacheKey, {
+        "products": [cacheItem]
+      });
 
       if (kDebugMode) {
-        print("   • productCache[$cacheKey] = ${await productBox.get(cacheKey)}");
+        print(
+            "   • productCache[$cacheKey] = ${await productBox.get(cacheKey)}");
       }
 
       // -----------------------------
@@ -3396,7 +3334,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         _customItemPriceController.clear();
         _skuController.clear();
         _selectedTaxSlab =
-        _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
+            _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
+        _isTaxDropdownEnabled = false;
       });
 
       await _orderHelper.loadData();
@@ -3442,12 +3381,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
       return value; // primitives remain unchanged
     }
   }
+
   Future<Map<String, dynamic>?> _getPayoutProductFromIsar() async {
     // ⚡ FAST PATH — in-memory cache
     if (_productMetaInitialized && _productMetaCache.isNotEmpty) {
       for (final p in _productMetaCache.values) {
-        final name =
-        (p["fast_key_item_name"] ?? p["name"] ?? "")
+        final name = (p["fast_key_item_name"] ?? p["name"] ?? "")
             .toString()
             .toLowerCase();
 
@@ -3469,8 +3408,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
           if (raw is! Map) continue;
 
           final map = Map<String, dynamic>.from(raw);
-          final name =
-          (map["fast_key_item_name"] ?? map["name"] ?? "")
+          final name = (map["fast_key_item_name"] ?? map["name"] ?? "")
               .toString()
               .toLowerCase();
 
@@ -3542,7 +3480,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         return;
       }
 
-
       if (kDebugMode) {
         print("🆔 [PAYOUT] Active Order ID (ensured): $ensuredOrderId");
       }
@@ -3551,7 +3488,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
 
       final key = orderId.toString();
       final rawExisting = await offlineBox.get(key);
-      final existingOrder = Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+      final existingOrder =
+          Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
 
       final payouts = (existingOrder["payouts"] as List? ?? [])
           .map((e) => Map<String, dynamic>.from(e as Map))
@@ -3566,8 +3504,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         );
         return;
       }
-      Map<String, dynamic>? payoutProduct =
-      await _getPayoutProductFromIsar();
+      Map<String, dynamic>? payoutProduct = await _getPayoutProductFromIsar();
 
 // Fallback only if not found in catalog
       payoutProduct ??= {
@@ -3575,7 +3512,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
         "fast_key_item_name": "Payout",
         "fast_key_item_price": 0,
         "fast_key_item_image":
-        "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/payout-2-1.png",
+            "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/payout-2-1.png",
         "type": "simple",
       };
 
@@ -3640,6 +3577,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget> with LayoutSele
     }
   }
 }
+
 class TabSideClipper extends CustomClipper<Path> {
   final int selectedIndex;
 
@@ -3661,9 +3599,7 @@ class TabSideClipper extends CustomClipper<Path> {
       path.lineTo(size.width, selectedTabTop - curveRadius);
       // Smooth curve into the tab indent
       path.quadraticBezierTo(
-          size.width, selectedTabTop,
-          size.width - curveRadius, selectedTabTop
-      );
+          size.width, selectedTabTop, size.width - curveRadius, selectedTabTop);
       path.lineTo(size.width - curveRadius, selectedTabTop);
     } else {
       // If first tab is selected, start the indent from top
@@ -3676,10 +3612,8 @@ class TabSideClipper extends CustomClipper<Path> {
     // Bottom curve around selected tab
     if (selectedIndex < 4) {
       // Smooth curve out of the tab indent
-      path.quadraticBezierTo(
-          size.width, selectedTabBottom,
-          size.width, selectedTabBottom + curveRadius
-      );
+      path.quadraticBezierTo(size.width, selectedTabBottom, size.width,
+          selectedTabBottom + curveRadius);
       path.lineTo(size.width, size.height);
     } else {
       // If last tab is selected, end the indent at bottom
@@ -3695,7 +3629,6 @@ class TabSideClipper extends CustomClipper<Path> {
   @override
   bool shouldReclip(CustomClipper<Path> oldClipper) => true;
 }
-
 
 class ContentSideClipper extends CustomClipper<Path> {
   final int selectedIndex;
@@ -3720,19 +3653,23 @@ class ContentSideClipper extends CustomClipper<Path> {
       path.lineTo(0, selectedTabTop - cornerRadius);
       // Smooth curve into the indent (curves inward)
       path.quadraticBezierTo(0, selectedTabTop, cornerRadius, selectedTabTop);
-      path.quadraticBezierTo(indentDepth, selectedTabTop + cornerRadius, indentDepth, selectedTabTop + cornerRadius * 2);
+      path.quadraticBezierTo(indentDepth, selectedTabTop + cornerRadius,
+          indentDepth, selectedTabTop + cornerRadius * 2);
     } else {
       // If first tab is selected, start indent from top
       path.lineTo(0, cornerRadius);
-      path.quadraticBezierTo(cornerRadius, cornerRadius, indentDepth, cornerRadius * 2);
+      path.quadraticBezierTo(
+          cornerRadius, cornerRadius, indentDepth, cornerRadius * 2);
     }
 
     // Middle of the indent (straight line)
     path.lineTo(indentDepth, selectedTabBottom - cornerRadius * 2);
 
     // Bottom part - curve out of the selected tab indent
-    path.quadraticBezierTo(indentDepth, selectedTabBottom - cornerRadius, cornerRadius, selectedTabBottom);
-    path.quadraticBezierTo(0, selectedTabBottom, 0, selectedTabBottom + cornerRadius);
+    path.quadraticBezierTo(indentDepth, selectedTabBottom - cornerRadius,
+        cornerRadius, selectedTabBottom);
+    path.quadraticBezierTo(
+        0, selectedTabBottom, 0, selectedTabBottom + cornerRadius);
 
     // Now add the outward bulge for the tab below the selected one
     if (selectedIndex < 3) {
@@ -3741,9 +3678,11 @@ class ContentSideClipper extends CustomClipper<Path> {
 
       // Go down a bit then curve outward (bulge)
       path.lineTo(0, nextTabTop);
-      path.quadraticBezierTo(-cornerRadius, nextTabTop + cornerRadius, -cornerRadius, nextTabTop + cornerRadius * 2);
+      path.quadraticBezierTo(-cornerRadius, nextTabTop + cornerRadius,
+          -cornerRadius, nextTabTop + cornerRadius * 2);
       path.lineTo(-cornerRadius, nextTabBottom - cornerRadius);
-      path.quadraticBezierTo(-cornerRadius, nextTabBottom, 0, nextTabBottom + cornerRadius);
+      path.quadraticBezierTo(
+          -cornerRadius, nextTabBottom, 0, nextTabBottom + cornerRadius);
 
       if (selectedIndex < 2) {
         // Continue to bottom if not the second-to-last tab
