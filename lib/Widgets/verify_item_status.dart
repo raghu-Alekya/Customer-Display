@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../Repositories/Orders/Full_order_RefundOrderRepository.dart';
+import '../Repositories/Orders/partial_order_reund_repository.dart';
+import '../Screens/Home/total_orders_screen.dart';
 import '../Screens/refund_screen.dart';
 
 class VerifyItemStatusDialog extends StatefulWidget {
   final dynamic order;
-  const VerifyItemStatusDialog({super.key,  required this.order,});
+  final List<dynamic> selectedItems;
+  const VerifyItemStatusDialog({super.key,  required this.order, required this.selectedItems,});
 
   @override
   State<VerifyItemStatusDialog> createState() =>
@@ -15,6 +18,7 @@ class VerifyItemStatusDialog extends StatefulWidget {
 class _VerifyItemStatusDialogState extends State<VerifyItemStatusDialog> {
   int? selectedOption;
   bool isLoading = false; // 👈 Add this in your State class
+
   Widget _optionTile({
     required int value,
     required String title,
@@ -171,31 +175,124 @@ class _VerifyItemStatusDialogState extends State<VerifyItemStatusDialog> {
                       onPressed: selectedOption == null || isLoading
                           ? null
                           : () async {
+
+                        print("========= SUBMIT CLICKED =========");
+                        print("Selected Option: $selectedOption");
+                        print("Selected Items Raw: ${widget.selectedItems}");
+
                         setState(() => isLoading = true);
 
                         try {
-                          final repo = RefundOrderRepository(
+                          final fullRepo = RefundOrderRepository(
                             baseUrl: "https://merchantretail.alektasolutions.com",
                           );
 
-                          final itemsReusableValue = selectedOption == 1 ? "yes" : "no";
-
-                          bool success = await repo.fullOrderRefund(
-                            orderId: widget.order.orderId,
-                            amount: widget.order.total.toDouble(),
-                            reason: selectedOption == 1 ? "items are resalable" : "items are damaged",
-                            itemsReusable: itemsReusableValue,
+                          final partialRepo = PartialRefundRepository(
+                            baseUrl: "https://merchantretail.alektasolutions.com",
                           );
+
+                          bool success = false;
+
+                          /// 🔹 Determine if FULL or PARTIAL refund
+                          final bool isFullRefund =
+                              widget.selectedItems.length == widget.order.items.length;
+
+                          print("Is Full Refund: $isFullRefund");
+
+                          /// 🔹 Determine item condition
+                          final String itemsReusableValue =
+                          selectedOption == 1 ? "yes" : "no";
+
+                          final String reason =
+                          selectedOption == 1
+                              ? "items are resalable"
+                              : "items are damaged";
+
+                          /// ================= FULL REFUND =================
+                          if (isFullRefund) {
+
+                            print("---- FULL REFUND FLOW ----");
+                            print("Order ID: ${widget.order.orderId}");
+                            print("Amount: ${widget.order.total}");
+
+                            success = await fullRepo.fullOrderRefund(
+                              orderId: widget.order.orderId,
+                              amount: widget.order.total.toDouble(),
+                              reason: reason,
+                              itemsReusable: itemsReusableValue,
+                            );
+                          }
+
+                          /// ================= PARTIAL REFUND =================
+                          else {
+
+                            print("---- PARTIAL REFUND FLOW ----");
+
+                            if (widget.selectedItems.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("No items selected for partial refund"),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                              setState(() => isLoading = false);
+                              return;
+                            }
+
+                            final List<Map<String, dynamic>> itemsToRefund =
+                            widget.selectedItems.map((item) {
+
+                              final rawAmount = item['amount']?.toString() ?? "0";
+
+                              final double amount = double.tryParse(
+                                rawAmount.replaceAll(RegExp(r'[^0-9.]'), ''),
+                              ) ??
+                                  0.0;
+
+                              return {
+                                "order_item_id": item['order_item_id'],
+                                "qty": item['qty'],
+                                "refundable_amount": amount, // ✅ USE PARSED VALUE
+                              };
+
+                            }).toList();
+
+                            print("Partial Refund Payload: $itemsToRefund");
+
+                            success = await partialRepo.partialOrderRefund(
+                              orderId: widget.order.orderId,
+                              reason: reason,
+                              itemsReusable: itemsReusableValue,
+                              items: itemsToRefund,
+                            );
+                          }
+
+                          print("Refund API Success: $success");
 
                           if (!mounted) return;
 
                           if (success) {
-                            Navigator.pop(context);
+
+                            // Show success message first
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text("Refund Successful"),
                                 backgroundColor: Colors.green,
+                                duration: Duration(seconds: 2),
                               ),
+                            );
+
+                            // Wait for snackbar to finish, then navigate
+                            // await Future.delayed(const Duration(seconds: 2));
+
+                            if (!mounted) return;
+
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const TotalOrdersScreen(),
+                              ),
+                                  (route) => false,
                             );
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -205,15 +302,23 @@ class _VerifyItemStatusDialogState extends State<VerifyItemStatusDialog> {
                               ),
                             );
                           }
-                        } catch (e) {
+
+                        } catch (e, stackTrace) {
+
+                          print("🔥 ERROR: $e");
+                          print("StackTrace: $stackTrace");
+
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text("Error: $e"),
                               backgroundColor: Colors.red,
                             ),
                           );
+
                         } finally {
-                          if (mounted) setState(() => isLoading = false);
+                          if (mounted) {
+                            setState(() => isLoading = false);
+                          }
                         }
                       },
                       child: isLoading
@@ -231,7 +336,7 @@ class _VerifyItemStatusDialogState extends State<VerifyItemStatusDialog> {
                       ),
                     ),
                   ),
-                ),
+                )
               ],
             ),
           ],

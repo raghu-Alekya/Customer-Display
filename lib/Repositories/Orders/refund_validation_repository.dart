@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import '../../Database/db_helper.dart';
+import '../../Helper/url_helper.dart';
 
 class RefundValidationRepository {
   final String baseUrl;
@@ -17,9 +18,8 @@ class RefundValidationRepository {
     }
 
     final token = await _getTokenFromDb();
-
     final uri = Uri.parse(
-      '$baseUrl/wp-json/pinaka-pos/v1/orders/refund-valid-user',
+      '${UrlHelper.baseUrl}pinaka-pos/v1/orders/refund-valid-user',
     );
 
     if (kDebugMode) {

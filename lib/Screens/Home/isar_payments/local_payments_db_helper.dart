@@ -15,7 +15,23 @@ class LocalPaymentDBHelper {
     _instance ??= LocalPaymentDBHelper._();
     return _instance!;
   }
+  Future<void> updateStatus(int paymentId, PaymentDbStatus status) async {
+    final db = await isar;  // ← use 'isar' getter, NOT '_isar'
 
+    await db.writeTxn(() async {
+      final payment = await db.collection<LocalPayment>().get(paymentId);
+      if (payment != null) {
+        payment.status = status;
+        await db.collection<LocalPayment>().put(payment);
+
+        if (kDebugMode) {
+          print("\n PAYMENT STATUS UPDATED");
+          print("   Payment ID: $paymentId");
+          print("   New Status: ${status.name}\n");
+        }
+      }
+    });
+  }
 
   // ✅ Get all payments in database
   Future<List<LocalPayment>> getAllPayments() async {

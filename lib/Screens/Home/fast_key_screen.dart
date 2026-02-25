@@ -1,196 +1,3 @@
-// import 'package:flutter/foundation.dart';
-// import 'package:flutter/material.dart';
-// import 'package:intl/intl.dart';
-// import '../../Database/order_panel_db_helper.dart';
-// import '../../Widgets/widget_category_list.dart';
-// import '../../Widgets/widget_nested_grid_layout.dart';
-// import '../../Widgets/widget_order_panel.dart';
-// import '../../Widgets/widget_topbar.dart';
-// import '../../Widgets/widget_navigation_bar.dart' as custom_widgets;
-//
-// // Enum for sidebar position
-// enum SidebarPosition { left, right, bottom }
-// // Enum for order panel position
-// enum OrderPanelPosition { left, right }
-//
-// class FastKeyScreen extends StatefulWidget {
-//   final int? lastSelectedIndex; //Build #1.0.7: Make it nullable
-//
-//   const FastKeyScreen({super.key, this.lastSelectedIndex}); // Optional, no default value
-//
-//   @override
-//   State<FastKeyScreen> createState() => _FastKeyScreenState();
-// }
-//
-// class _FastKeyScreenState extends State<FastKeyScreen> {
-//   final List<String> items = List.generate(18, (index) => 'Bud Light');
-//   int _selectedSidebarIndex = 0; //Build #1.0.2 : By default fast key should be selected after login
-//   DateTime now = DateTime.now();
-//   List<int> quantities = [1, 1, 1, 1];
-//   SidebarPosition sidebarPosition = SidebarPosition.left; // Default to bottom sidebar
-//   OrderPanelPosition orderPanelPosition = OrderPanelPosition.right; // Default to right
-//   bool isLoading = true; // Add a loading state
-//   final ValueNotifier<int?> fastKeyTabIdNotifier = ValueNotifier<int?>(null); // Add this
-//   final OrderHelper orderHelper = OrderHelper();
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//     _selectedSidebarIndex = widget.lastSelectedIndex ?? 0; // Build #1.0.7: Restore previous selection
-//
-//     // Simulate a loading delay
-//     Future.delayed(const Duration(seconds: 3), () {
-//       if(mounted) {
-//         setState(() {
-//           isLoading = false; // Set loading to false after 3 seconds
-//         });
-//       }
-//     });
-//   }
-//
-//   void _refreshOrderList() { // Build #1.0.10 - Naveen: This will trigger a rebuild of the RightOrderPanel (Callback)
-//     setState(() {
-//       if (kDebugMode) {
-//         print("###### FastKeyScreen _refreshOrderList");
-//       }
-//     });
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     final screenWidth = MediaQuery.of(context).size.width;
-//     String formattedDate = DateFormat("EEE, MMM d' ${now.year}'").format(now);
-//     String formattedTime = DateFormat('hh:mm a').format(now);
-//
-//     return Scaffold(
-//       body: Column(
-//         children: [
-//           // Top Bar
-//           TopBar(
-//             onModeChanged: () {
-//               setState(() {
-//                 if (sidebarPosition == SidebarPosition.left) {
-//                   sidebarPosition = SidebarPosition.right;
-//                 } else if (sidebarPosition == SidebarPosition.right) {
-//                   sidebarPosition = SidebarPosition.bottom;
-//                 } else {
-//                   sidebarPosition = SidebarPosition.left;
-//                 }
-//               });
-//             },
-//             onProductSelected: (product) { // Build #1.0.13 : Added product search
-//               // Convert price from String to double safely
-//               double price;
-//               try {
-//                 price = double.tryParse(product.price ?? '0.00') ?? 0.00;
-//               } catch (e) {
-//                 price = 0.00;
-//               }
-//
-//               orderHelper.addItemToOrder(
-//                 product.name ?? 'Unknown',
-//                 product.images?.isNotEmpty == true ? product.images!.first : '',
-//                 price, // Now properly converted to double
-//                 1, // quantity
-//                 'SKU${product.name}', // SKU
-//               );
-//             },
-//           ),
-//           Divider( // Build #1.0.6
-//             color: Colors.grey,
-//             thickness: 0.4,
-//             height: 1,
-//           ),
-//           // Main Content
-//           Expanded(
-//             child: Row(
-//               children: [
-//                 // Left Sidebar (Conditional)
-//                 if (sidebarPosition == SidebarPosition.left)
-//                   custom_widgets.NavigationBar( //Build #1.0.4 : Updated class name LeftSidebar to NavigationBar
-//                     selectedSidebarIndex: _selectedSidebarIndex,
-//                     onSidebarItemSelected: (index) {
-//                       setState(() {
-//                         _selectedSidebarIndex = index;
-//                       });
-//                     },
-//                     isVertical: true, // Vertical layout for left sidebar
-//                   ),
-//
-//                 // Order Panel on the Left (Conditional: Only when sidebar is right or bottom with left order panel)
-//                 if (sidebarPosition == SidebarPosition.right ||
-//                     (sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
-//                   RightOrderPanel(
-//                     formattedDate: formattedDate,
-//                     formattedTime: formattedTime,
-//                     quantities: quantities,
-//                     refreshOrderList: _refreshOrderList, // Pass the callback
-//                   ),
-//
-//                 // Main Content (Horizontal Scroll and Grid View)
-//                 Expanded(
-//                   child: Column(
-//                     children: [
-//                       // Add the CategoryScroll widget here
-//                       CategoryList(isHorizontal: true, isLoading: isLoading,isAddButtonEnabled: true, fastKeyTabIdNotifier: fastKeyTabIdNotifier),// Build #1.0.7
-//
-//                       // Grid Layout
-//                       ValueListenableBuilder<int?>( // Build #1.0.11 : Added Notifier for update list and counts
-//                         valueListenable: fastKeyTabIdNotifier,
-//                         builder: (context, fastKeyTabId, child) {
-//                           return NestedGridWidget(
-//                             isHorizontal: true,
-//                             isLoading: isLoading,
-//                             onItemAdded: _refreshOrderList,
-//                             fastKeyTabIdNotifier: fastKeyTabIdNotifier,
-//                           );
-//                         },
-//                       ),
-//                     ],
-//                   ),
-//                 ),
-//
-//                 // Order Panel on the Right (Conditional: Only when sidebar is left or bottom with right order panel)
-//                 if (sidebarPosition != SidebarPosition.right &&
-//                     !(sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
-//                   RightOrderPanel(
-//                     formattedDate: formattedDate,
-//                     formattedTime: formattedTime,
-//                     quantities: quantities,
-//                     refreshOrderList: _refreshOrderList, // Pass the callback
-//                   ),
-//
-//                 // Right Sidebar (Conditional)
-//                 if (sidebarPosition == SidebarPosition.right)
-//                   custom_widgets.NavigationBar( //Build #1.0.4 : Updated class name LeftSidebar to NavigationBar
-//                     selectedSidebarIndex: _selectedSidebarIndex,
-//                     onSidebarItemSelected: (index) {
-//                       setState(() {
-//                         _selectedSidebarIndex = index;
-//                       });
-//                     },
-//                     isVertical: true, // Vertical layout for right sidebar
-//                   ),
-//               ],
-//             ),
-//           ),
-//
-//           // Bottom Sidebar (Conditional)
-//           if (sidebarPosition == SidebarPosition.bottom)
-//             custom_widgets.NavigationBar( //Build #1.0.4 : Updated class name LeftSidebar to NavigationBar
-//               selectedSidebarIndex: _selectedSidebarIndex,
-//               onSidebarItemSelected: (index) {
-//                 setState(() {
-//                   _selectedSidebarIndex = index;
-//                 });
-//               },
-//               isVertical: false, // Horizontal layout for bottom sidebar
-//             ),
-//         ],
-//       ),
-//     );
-//   }
-// }
 import 'dart:async';
 import 'dart:convert';
 
@@ -1417,6 +1224,29 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
     }
   }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// PATCH: Replace ONLY _showAddItemDialog() in _FastKeyScreenState.
+//
+// WHAT IS CHANGED (only 2 things):
+//   1. Data source: ProductBloc API  →  local Isar cache (same as TopBar)
+//   2. Search filtering: StreamBuilder  →  in-memory filter on _filteredList
+//
+// WHAT IS NOT CHANGED (zero UI or logic differences):
+//   • AlertDialog layout, title, backgroundColor
+//   • Left TextField widget (same decoration, same controller)
+//   • Right side Container + Scrollbar + ListView
+//   • ListTile: image, title, subtitle, selectedTileColor — all identical
+//   • Multi-select: selectedProducts list, isSelected check, onTap logic
+//   • Cancel button
+//   • "Add Selected" button: label, disabled state, entire onPressed block
+//     (isBulkAdding, existingIds duplicate guard, _addFastKeyTabItem,
+//      _refreshFastKeyTabItems, _getCachedProductFromIsar, _resolveFastKeyMeta)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── ADD this import at the top of fastkey_screen.dart (if not already) ───────
+// import 'package:pinaka_pos/Repositories/Category/category_repository.dart';
+// ─────────────────────────────────────────────────────────────────────────────
+
   Future<void> _showAddItemDialog() async {
     var size = MediaQuery.of(context).size;
     searchController.clear();
@@ -1457,31 +1287,31 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
 
     // ── NEW: build sorted + deduplicated filtered list (mirrors TopBar) ─────
     List<dynamic> _buildFiltered(String query) {
-      if (query.isEmpty) return [];
+      // Print what the user typed
+      debugPrint('Raw user query: "$query"');
+
+      // Use query as-is for strict matching
+      final searchQuery = query;
+      debugPrint('Processed search query: "$searchQuery"');
+
+      if (searchQuery.isEmpty) return [];
 
       final Map<String, dynamic> unique = {};
 
-      // 🔥 Remove ONLY trailing spaces for comparison (not modifying original input)
-      final searchQuery = query.replaceAll(RegExp(r'\s+$'), '');
-
       for (final p in _allCached) {
-        final name =
-        (p['fast_key_item_name'] ?? '').toString().toLowerCase();
-
+        final name = (p['fast_key_item_name'] ?? '').toString();
         if (name.isEmpty) continue;
 
-        //  Match even if user typed extra spaces at end
-        if (!name.contains(searchQuery)) continue;
+        // ✅ strict contains: will NOT match if trailing spaces exist
+        if (!name.toLowerCase().contains(searchQuery)) continue;
 
         unique[name] = p;
       }
 
-      return unique.values.toList()
+      final result = unique.values.toList()
         ..sort((a, b) {
-          final na =
-          (a['fast_key_item_name'] ?? '').toString().toLowerCase();
-          final nb =
-          (b['fast_key_item_name'] ?? '').toString().toLowerCase();
+          final na = (a['fast_key_item_name'] ?? '').toString().toLowerCase();
+          final nb = (b['fast_key_item_name'] ?? '').toString().toLowerCase();
 
           final sa = na.startsWith(searchQuery);
           final sb = nb.startsWith(searchQuery);
@@ -1490,6 +1320,10 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
           if (!sa && sb) return 1;
           return na.compareTo(nb);
         });
+
+      debugPrint('Filtered products count: ${result.length}');
+
+      return result;
     }
 
     return showDialog<void>(
@@ -1516,10 +1350,8 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                   width: 700,
                   child: Row(
                     children: [
-                      /// 🔍 SEARCH FIELD
-                      /// UI: unchanged (same InputDecoration, same controller)
-                      /// Logic: onChanged now filters _allCached instead of
-                      ///        calling productBloc.fetchProducts()
+                      ///  SEARCH FIELD
+
                       Expanded(
                         child: TextField(
                           controller: searchController,
@@ -1531,7 +1363,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                             // ── CHANGED: local filter instead of API call ───
                             setStateDialog(() {
                               _filteredList =
-                                  _buildFiltered(value.trim().toLowerCase());
+                                  _buildFiltered(value.toLowerCase());
                             });
                           },
                         ),
@@ -1540,9 +1372,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                       const SizedBox(width: 8),
 
                       /// 📦 PRODUCT LIST
-                      /// UI: identical Container / Scrollbar / ListView /
-                      ///     ListTile structure as original.
-                      /// Logic: reads _filteredList instead of a StreamBuilder.
+
                       Expanded(
                         child: Builder(builder: (_) {
                           // Empty search box → same "no products" state as
@@ -1653,7 +1483,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
 
               /// ── UNCHANGED: action buttons ──────────────────────────────────
               actions: [
-                /// ❌ CANCEL — unchanged
+                ///  CANCEL — unchanged
                 TextButton(
                   onPressed: () {
                     Navigator.of(dialogContext).pop();
@@ -1661,7 +1491,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                   child: const Text(TextConstants.cancelText),
                 ),
 
-                /// ➕ ADD SELECTED — entire onPressed block unchanged
+                /// ADD SELECTED — entire onPressed block unchanged
                 TextButton(
                   onPressed: selectedProducts.isNotEmpty
                       ? () {
@@ -1720,6 +1550,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
       },
     );
   }
+
 
 
   void _showCategoryDialog({required BuildContext context, int? index}) {
@@ -2616,38 +2447,38 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
               builder: (context, fastKeyTabId, child) {
                 return fastKeyTabId != null
                     ? NestedGridWidget(
-                        productBloc: productBloc,
-                        orderHelper: orderHelper,
-                        isPaginating: _isPaginating,
-                        isHorizontal: true,
-                        isLoading: isTabsLoading || isItemsLoading,
-                        showAddButton: showAddButton,
-                        items: fastKeyProductItems,
-                        selectedItemIndex: selectedItemIndex,
-                        reorderedIndices: reorderedIndices,
-                        onAddButtonPressed: () => _showAddItemDialog(),
-                        onItemTapped: (index, {bool? variantAdded}) => _onItemSelected(index, showAddButton, variantAdded ?? false),
-                        onReorder: (oldIndex, newIndex) {
-                          if (oldIndex == 0 || newIndex == 0) return;
-                          final adjustedOldIndex = oldIndex - 1;
-                          final adjustedNewIndex = newIndex - 1;
-                          if (adjustedOldIndex < 0 || adjustedNewIndex < 0 || adjustedOldIndex >= fastKeyProductItems.length || adjustedNewIndex >= fastKeyProductItems.length) return;
-                          setState(() {
-                            fastKeyProductItems = List<Map<String, dynamic>>.from(fastKeyProductItems);
-                            final item = fastKeyProductItems.removeAt(adjustedOldIndex);
-                            fastKeyProductItems.insert(adjustedNewIndex, item);
-                            reorderedIndices = List.filled(fastKeyProductItems.length, null);
-                            reorderedIndices[adjustedNewIndex] = adjustedNewIndex;
-                            selectedItemIndex = adjustedNewIndex;
-                          });
-                          fastKeyDBHelper.updateFastKeyItemOrder(_fastKeyTabId!, fastKeyProductItems);
-                        },
-                        onDeleteItem: (index) => _showDeleteConfirmationDialog(itemIndex: index),
-                        onCancelReorder: _onCancelReorder,
-                        showBackButton: false,
-                        enableIcons: enableIcons,
-                        onLongPress: _onLongPress,
-                      )
+                  productBloc: productBloc,
+                  orderHelper: orderHelper,
+                  isPaginating: _isPaginating,
+                  isHorizontal: true,
+                  isLoading: isTabsLoading || isItemsLoading,
+                  showAddButton: showAddButton,
+                  items: fastKeyProductItems,
+                  selectedItemIndex: selectedItemIndex,
+                  reorderedIndices: reorderedIndices,
+                  onAddButtonPressed: () => _showAddItemDialog(),
+                  onItemTapped: (index, {bool? variantAdded}) => _onItemSelected(index, showAddButton, variantAdded ?? false),
+                  onReorder: (oldIndex, newIndex) {
+                    if (oldIndex == 0 || newIndex == 0) return;
+                    final adjustedOldIndex = oldIndex - 1;
+                    final adjustedNewIndex = newIndex - 1;
+                    if (adjustedOldIndex < 0 || adjustedNewIndex < 0 || adjustedOldIndex >= fastKeyProductItems.length || adjustedNewIndex >= fastKeyProductItems.length) return;
+                    setState(() {
+                      fastKeyProductItems = List<Map<String, dynamic>>.from(fastKeyProductItems);
+                      final item = fastKeyProductItems.removeAt(adjustedOldIndex);
+                      fastKeyProductItems.insert(adjustedNewIndex, item);
+                      reorderedIndices = List.filled(fastKeyProductItems.length, null);
+                      reorderedIndices[adjustedNewIndex] = adjustedNewIndex;
+                      selectedItemIndex = adjustedNewIndex;
+                    });
+                    fastKeyDBHelper.updateFastKeyItemOrder(_fastKeyTabId!, fastKeyProductItems);
+                  },
+                  onDeleteItem: (index) => _showDeleteConfirmationDialog(itemIndex: index),
+                  onCancelReorder: _onCancelReorder,
+                  showBackButton: false,
+                  enableIcons: enableIcons,
+                  onLongPress: _onLongPress,
+                )
                     : Container();
               },
             ),

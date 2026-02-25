@@ -469,7 +469,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final actualBalance = computedNetPayable - totalPaid;
     final displayBalance = actualBalance > 0 ? actualBalance : 0.0;
 
-    print("-" * 70);
+    print("--" * 70);
     print("SESSION SUMMARY:");
     print("Net Payable: \$${computedNetPayable.toStringAsFixed(2)}");
     print("Total Paid: \$${totalPaid.toStringAsFixed(2)}");
@@ -940,7 +940,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       isSynced: false,
       createdAt: DateTime.now(),
       remainingBalance: balanceAmount - widget.netPayable,
-      status: balanceAmount - widget.netPayable <= 0 ? PaymentDbStatus.completed : PaymentDbStatus.pending,
+      // status: balanceAmount - widget.netPayable <= 0 ? PaymentDbStatus.completed : PaymentDbStatus.pending,
+      status: PaymentDbStatus.pending,  // line in _callCreatePaymentAPI
+
     );
 
     try {
@@ -3428,7 +3430,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         notes: "offline payment - ${now.toIso8601String()}",
         isSynced: false,
         createdAt: now,
-        status: isFullPayment ? PaymentDbStatus.completed : PaymentDbStatus.pending,
+        // status: isFullPayment ? PaymentDbStatus.completed : PaymentDbStatus.pending,
+        status: PaymentDbStatus.pending,
         remainingBalance: newBalance,
       );
 
@@ -6147,8 +6150,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                 numPadType: CustomTypeNumPad.payment,
                                                 isDarkTheme: themeHelper.themeMode == ThemeMode.dark,
                                                 getPaidAmount: () => amountController.text,
-                                                balanceAmount: _currentPaymentRemainingBalance ?? balanceAmount,
-
+                                                balanceAmount: selectedPaymentMethod == TextConstants.ebtText
+                                                    ? min(
+                                                  ebtTotal,
+                                                  _currentPaymentRemainingBalance ?? balanceAmount,
+                                                )
+                                                    : (_currentPaymentRemainingBalance ?? balanceAmount),
                                                 onDigitPressed: (value) {
                                                   _userManuallyEnteredAmount = true; // User touched → block future auto-fill
 
@@ -8237,7 +8244,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       isSynced: false,
       createdAt: now,
       remainingBalance: (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
-      status: PaymentDbStatus.voided,
+      status: PaymentDbStatus.pending,
       serverPaymentId: int.tryParse(_lastPayment?.paymentId ?? "0"),
     );
 
@@ -8644,6 +8651,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //   );
   // }
 
+
   Future<void> _syncCurrentOfflineOrder() async {
     try {
       final box = StorageProvider.offlineOrders;
@@ -8663,6 +8671,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final order = Map<String, dynamic>.from(raw);
 
+      // ✅ KEY FIX: Check if already synced to Woo
+      final existingWooId = order['wooOrderId'];
+      if (existingWooId != null && int.tryParse(existingWooId.toString()) != null) {
+        final int wooId = int.parse(existingWooId.toString());
+        if (wooId > 0) {
+          print("🔄 Order already exists on Woo → will UPDATE (ID: $wooId), not create new");
+          // order already has wooOrderId, so syncSingleOfflineOrder will do PUT
+        }
+      }
+
       final int? localOrderId = int.tryParse(orderKey);
       if (localOrderId == null) return;
 
@@ -8679,7 +8697,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         if (kDebugMode) {
           print("❌ Invalid Woo response for order → $orderKey");
         }
-        return; // replaced 'continue' with return
+        return;
       }
 
       final Map<String, dynamic> woo = Map<String, dynamic>.from(result);
@@ -8695,20 +8713,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         await LocalPaymentDBHelper.instance.markAsSynced(p.id, wooOrderId);
       }
 
-      // DELETE IMMEDIATELY if Woo says COMPLETED
-      if (wooStatus == 'completed' || wooStatus == 'pending') {
+      // ✅ DELETE only if Woo confirms COMPLETED
+      if (wooStatus == 'completed') {
         await box.delete(orderKey);
         await box.delete(wooOrderId.toString());
 
         if (kDebugMode) {
-          print(
-            " Offline order deleted → local:$orderKey woo:$wooOrderId",
-          );
+          print("🗑 Offline order deleted → local:$orderKey woo:$wooOrderId");
         }
         return;
       }
 
-      // 🔁 Otherwise keep order for retry
+      // 🔁 Otherwise keep for next sync with wooOrderId saved
       order['wooOrderId'] = wooOrderId;
       order['wooStatus'] = wooStatus;
       order['synced'] = true;
@@ -8716,10 +8732,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       await box.put(orderKey, order);
 
-      print("✅ Single order synced successfully");
+      print("✅ Single order synced successfully (wooOrderId: $wooOrderId)");
 
     } catch (e) {
-      print("❌ Single order sync error: $e");
+      print(" Single order sync error: $e");
     }
   }
 
@@ -8782,11 +8798,29 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           });
         },
 
+        // onNoReceipt: () async {
+        //   print(">>> NoReceipt pressed");
+        //
+        //   Navigator.of(dialogCtx, rootNavigator: false).pop();
+        //
+        //   await _updateCustomerDisplayWelcome(storeInfo);
+        //   changeStatusToCompletedAndExit(false);
+        // },
+
         onNoReceipt: () async {
-          print(">>> NoReceipt pressed");
-
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
-
+          // ✅ ADD THIS: Mark last payment as completed since user confirmed (no void)
+          if (orderId != null && orderId! > 0) {
+            final payments = await LocalPaymentDBHelper.instance
+                .getPaymentsByOrderId(orderId!);
+            for (final p in payments) {
+              if (p.amount > 0 && p.status == PaymentDbStatus.pending) {
+                await LocalPaymentDBHelper.instance.updateStatus(
+                  p.id,
+                  PaymentDbStatus.completed,
+                );
+              }
+            }
+          }
           await _updateCustomerDisplayWelcome(storeInfo);
           changeStatusToCompletedAndExit(false);
         },
@@ -8829,6 +8863,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
           await _updateCustomerDisplayWelcome(storeInfo);
           changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
+
         },
       ),
     ).then((_) {
@@ -8842,6 +8877,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     });
 
   }
+
 
   void showVoidExitConfirmation(BuildContext context, bool isPartial) {
     print("showVoidExitConfirmation → isPartial: $isPartial, orderId: $orderId");
@@ -9466,8 +9502,20 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         onNoReceipt: () {
           changeStatusToCompletedAndExit(false);
         },
-        onDone: (selectedOption, {String? email}) {
+        onDone: (selectedOption, {String? email}) async {
           // Build #1.0.159: Integrated Send Email Order Details API
+          if (orderId != null && orderId! > 0) {
+            final payments = await LocalPaymentDBHelper.instance
+                .getPaymentsByOrderId(orderId!);
+            for (final p in payments) {
+              if (p.amount > 0 && p.status == PaymentDbStatus.pending) {
+                await LocalPaymentDBHelper.instance.updateStatus(
+                  p.id,
+                  PaymentDbStatus.completed,
+                );
+              }
+            }
+          }
           if (kDebugMode) {
             print("DEBUG 0011 : $selectedOption, $email, ${email?.isNotEmpty}");
           }

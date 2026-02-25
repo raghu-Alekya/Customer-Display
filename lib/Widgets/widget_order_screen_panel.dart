@@ -368,14 +368,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
             (_order["cashback_fee"] as num?)?.toDouble() ??
             (_order[AppDBConst.orderCashbackFee] as num?)?.toDouble() ??
             0.0;
-        if (existingFee <= 0) {
-          final fee = await loadCashbackFee(offlineOrderId: widget.activeOrderId.toString());
-          if (fee > 0) {
-            _order["cashbackFee"] = fee;
-            _order["cashback_fee"] = fee;
-            _order[AppDBConst.orderCashbackFee] = fee;
-          }
-        }
+        // if (existingFee <= 0) {
+        //   final fee = await loadCashbackFee(offlineOrderId: widget.activeOrderId.toString());
+        //   if (fee > 0) {
+        //     _order["cashbackFee"] = fee;
+        //     _order["cashback_fee"] = fee;
+        //     _order[AppDBConst.orderCashbackFee] = fee;
+        //   }
+        // }
 
         // Enrich from offline order (discount, balance for pending orders)
         final sqliteOrderDiscount =
@@ -940,29 +940,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       }
     }
   }
-  Future<double> loadCashbackFee({
-    required String offlineOrderId,
-  }) async {
-    // 🟢 1️⃣ orderExtras (persistent, survives sync & delete)
-    final extras = await StorageProvider.orderExtras.get(offlineOrderId);
-    if (extras != null && extras is Map && extras["cashback_fee"] != null) {
-      final cashback = (extras["cashback_fee"] as num).toDouble();
-      debugPrint("💰 Cashback from orderExtras (local) → $cashback");
-      return cashback;
-    }
-
-    // 🟡 2️⃣ offlineOrders (while order exists)
-    final offline = await StorageProvider.offlineOrders.get(offlineOrderId);
-    if (offline != null && offline is Map && offline["cashback_fee"] != null) {
-      final cashback = (offline["cashback_fee"] as num).toDouble();
-      debugPrint("💰 Cashback from offlineOrders → $cashback");
-      return cashback;
-    }
-
-    debugPrint("💰 Cashback not found → 0.0");
-    return 0.0;
-  }
-
 
 
   Widget buildCurrentOrder() {

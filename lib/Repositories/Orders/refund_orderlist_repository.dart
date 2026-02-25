@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import '../../Database/db_helper.dart';
+import '../../Helper/url_helper.dart';
 import '../../Models/Orders/refund_orderlist_model.dart';
 
 class CompletedOrdersRepository {
@@ -23,21 +24,15 @@ class CompletedOrdersRepository {
     // ✅ Build query parameters dynamically
     final queryParams = {
       'page': page.toString(),
-      'per_page': perPage.toString(),
+      if (perPage != null) 'per_page': perPage.toString(),
       if (authorId != null) 'author': authorId.toString(),
       if (from != null && from.isNotEmpty) 'after': from,
       if (to != null && to.isNotEmpty) 'before': to,
     };
 
     final uri = Uri.parse(
-      '$baseUrl/wp-json/pinaka-pos/v1/orders/completed-orders',
+      '${UrlHelper.baseUrl}pinaka-pos/v1/orders/completed-orders',
     ).replace(queryParameters: queryParams);
-
-    if (kDebugMode) {
-      print("========== COMPLETED ORDERS API ==========");
-      print("URL: $uri");
-      print("Using Token: ${token.substring(0, 20)}...");
-    }
 
     final response = await http.get(
       uri,
@@ -46,7 +41,6 @@ class CompletedOrdersRepository {
         'Accept': 'application/json',
       },
     );
-
     if (kDebugMode) {
       print("Status Code: ${response.statusCode}");
       print("Body: ${response.body}");
@@ -106,7 +100,7 @@ class CompletedOrdersRepository {
     final token = await _getTokenFromDb();
 
     final uri = Uri.parse(
-      '$baseUrl/wp-json/pinaka-pos/v1/orders/get-amt-by-paymethod',
+      '${UrlHelper.baseUrl}pinaka-pos/v1/orders/get-amt-by-paymethod',
     );
 
     final Map<String, dynamic> body = {

@@ -27,7 +27,7 @@ class RefundScreen extends StatefulWidget {
 class _RefundScreenState extends State<RefundScreen> {
 
   String? selectedReason;
-  String selectedPayment = "Cash";
+  String? selectedPayment; // instead of "Cash"
   int _selectedSidebarIndex = 5; // Refund index
   bool isExpanded = false;
   bool isConfirmEnabled = false;
@@ -41,6 +41,8 @@ class _RefundScreenState extends State<RefundScreen> {
       _showFullSummary = !_showFullSummary;
     });
   }
+
+  bool isReasonEnabled = false;
   double get grossTotal => selectedOrder.amount;
 
   double get taxTotal => selectedOrder.tax;
@@ -55,10 +57,7 @@ class _RefundScreenState extends State<RefundScreen> {
   double get refundGross {
     double sum = 0;
     for (var item in selectedItems) {
-      sum += double.tryParse(
-        item['amount'].toString().replaceAll("₹", ""),
-      ) ??
-          0;
+      sum += (item['unit_price'] * item['qty']);
     }
     return sum;
   }
@@ -66,10 +65,7 @@ class _RefundScreenState extends State<RefundScreen> {
   double get refundTax {
     double sum = 0;
     for (var item in selectedItems) {
-      sum += double.tryParse(
-        item['tax'].toString().replaceAll("₹", ""),
-      ) ??
-          0;
+      sum += item['tax'];
     }
     return sum;
   }
@@ -82,7 +78,6 @@ class _RefundScreenState extends State<RefundScreen> {
   }
 
   double get totalRefund => refundNetTotal - refundDiscount;
-
   @override
   void initState() {
     super.initState();
@@ -206,21 +201,22 @@ class _RefundScreenState extends State<RefundScreen> {
                                                   isAllSelected = !isAllSelected;
 
                                                   if (isAllSelected) {
-                                                    // Select all
                                                     selectedItems.clear();
 
                                                     for (var item in selectedOrder.items) {
-                                                      final unitPrice =
-                                                      (item.total / item.quantity).toStringAsFixed(2);
+                                                      final double unitPrice = item.total / item.quantity;
 
                                                       selectedItems.add({
+                                                        'order_item_id': item.id,
                                                         'name': item.name,
-                                                        'price': "₹$unitPrice ×${item.quantity}",
-                                                        'tax': "₹${item.totalTax.toStringAsFixed(2)}", // Update if tax available
-                                                        'amount': "₹${item.total.toStringAsFixed(2)}",
+                                                        'unit_price': unitPrice,
+                                                        'qty': item.quantity,
+                                                        'tax': item.totalTax,
+                                                        'amount': item.total + item.totalTax,
                                                       });
                                                     }
-                                                  } else {
+                                                  }
+                                                  else {
                                                     // Unselect all
                                                     selectedItems.clear();
                                                   }
@@ -300,11 +296,12 @@ class _RefundScreenState extends State<RefundScreen> {
                                               (item.total / item.quantity).toStringAsFixed(2);
 
                                               return _refundRow(
+                                                item.id,
                                                 item.name,
                                                 "\$$unitPrice ×${item.quantity}",
                                                 "\$${item.totalTax.toStringAsFixed(2)}", // if tax exists in model
                                                 item.quantity,
-                                                "\$${item.total.toStringAsFixed(2)}",
+                                                "\$${(item.total + item.totalTax).toStringAsFixed(2)}",
                                                 hasDiscount: item.isItemsHasDiscount == "Yes",
                                                 discountType: item.itemDiscountType,
                                               );
@@ -323,56 +320,75 @@ class _RefundScreenState extends State<RefundScreen> {
                               ),
                               const SizedBox(height: 10),
                               // Enter Reason
+                              // Enter Reason
                               Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 12),
-                                decoration: _boxDecoration(),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: isReasonEnabled
+                                      ? Colors.white
+                                      : Colors.grey.shade200, // ✅ Grey when disabled
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: isReasonEnabled
+                                        ? Colors.grey
+                                        : Colors.grey.shade300,
+                                  ),
+                                ),
                                 child: Row(
                                   children: [
-                                    const Text(
+                                    Text(
                                       "Enter Reason :",
                                       style: TextStyle(
-                                          fontWeight: FontWeight.bold,fontSize: 16),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                        color: isReasonEnabled
+                                            ? Colors.black
+                                            : Colors.grey, // ✅ Grey text when disabled
+                                      ),
                                     ),
                                     const SizedBox(width: 16),
+
                                     SizedBox(
-                                      width: MediaQuery.of(context).size.width *
-                                          0.42,
+                                      width: MediaQuery.of(context).size.width * 0.42,
                                       child: DropdownButtonFormField<String>(
                                         value: selectedReason,
                                         hint: const Text("Select Reason"),
                                         decoration: InputDecoration(
                                           isDense: true,
-                                          contentPadding: const EdgeInsets.symmetric(
-                                              horizontal: 12, vertical: 12),
-
+                                          contentPadding:
+                                          const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                          filled: true,
+                                          fillColor: isReasonEnabled
+                                              ? Colors.white
+                                              : Colors.grey.shade100, // ✅ grey dropdown
                                           border: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(10),
                                           ),
-
                                           enabledBorder: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(10),
-                                            borderSide: const BorderSide(color: Colors.grey),
-                                          ),
-
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(10),
-                                            borderSide: const BorderSide(
-                                              color: Color(0xFFB9B9B9),
-                                              width: 1,
+                                            borderSide: BorderSide(
+                                              color: isReasonEnabled
+                                                  ? Colors.grey
+                                                  : Colors.grey.shade300,
                                             ),
                                           ),
                                         ),
 
-                                        items: [" Customer changed Opinion", "Expired product "]
+                                        items: [
+                                          "Customer changed Opinion",
+                                          "Expired product"
+                                        ]
                                             .map((e) => DropdownMenuItem(
                                           value: e,
                                           child: Text(e),
                                         ))
                                             .toList(),
-                                        onChanged: (val) {
+
+                                        onChanged: isReasonEnabled
+                                            ? (val) {
                                           setState(() => selectedReason = val);
-                                        },
+                                        }
+                                            : null, // 🔒 disables dropdown
                                       ),
                                     ),
                                   ],
@@ -458,7 +474,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                 // Locate the Stack inside the Summary Panel (around line 348)
                                 Container(
                                   width: double.infinity,
-                                  height: 270,
+                                  height: 370,
                                   clipBehavior: Clip.antiAlias,
                                   decoration: BoxDecoration(
                                     color: isDark
@@ -519,37 +535,40 @@ class _RefundScreenState extends State<RefundScreen> {
                                               ),
                                               child: Row(
                                                 children: [
+                                                  /// Item Name
                                                   Expanded(
                                                     flex: 3,
                                                     child: Text(
                                                       item['name'],
-                                                      style:
-                                                      const TextStyle(fontSize: 12),
+                                                      style: const TextStyle(fontSize: 12),
                                                     ),
                                                   ),
+
+                                                  /// Price × Qty
                                                   Expanded(
                                                     flex: 2,
                                                     child: Text(
-                                                      item['price'],
-                                                      style:
-                                                      const TextStyle(fontSize: 12),
+                                                      "₹${item['unit_price'].toStringAsFixed(2)} ×${item['qty']}",
+                                                      style: const TextStyle(fontSize: 12),
                                                     ),
                                                   ),
+
+                                                  /// Tax
                                                   Expanded(
                                                     flex: 1,
                                                     child: Text(
-                                                      item['tax'],
-                                                      style:
-                                                      const TextStyle(fontSize: 12),
+                                                      "₹${item['tax'].toStringAsFixed(2)}",
+                                                      style: const TextStyle(fontSize: 12),
                                                     ),
                                                   ),
+
+                                                  /// Amount
                                                   Expanded(
                                                     flex: 1,
                                                     child: Text(
-                                                      item['amount'],
+                                                      "₹${item['amount'].toStringAsFixed(2)}",
                                                       textAlign: TextAlign.right,
-                                                      style:
-                                                      const TextStyle(fontSize: 12),
+                                                      style: const TextStyle(fontSize: 12),
                                                     ),
                                                   ),
                                                 ],
@@ -830,38 +849,38 @@ class _RefundScreenState extends State<RefundScreen> {
                                                     const SizedBox(height: 8),
 
 
-                                                    Align(
-                                                      alignment: Alignment.centerLeft,
-                                                      child: const Text(
-                                                        "Refund Summary",
-                                                        style: TextStyle(
-                                                          fontWeight: FontWeight.w600,
-                                                          fontSize: 13,
-                                                        ),
-                                                      ),
-                                                    ),
+                                                    // Align(
+                                                    //   alignment: Alignment.centerLeft,
+                                                    //   child: const Text(
+                                                    //     "Refund Summary",
+                                                    //     style: TextStyle(
+                                                    //       fontWeight: FontWeight.w600,
+                                                    //       fontSize: 13,
+                                                    //     ),
+                                                    //   ),
+                                                    // ),
 
                                                     const SizedBox(height: 8),
 
+                                                    // _buildRow(
+                                                    //     "Refund Gross Total", "₹${refundGross.toStringAsFixed(2)}"),
+                                                    // _buildRow("Tax", "₹${refundTax.toStringAsFixed(2)}"),
+                                                    //
+                                                    // _buildDottedDivider(context),
+                                                    //
+                                                    // _buildRow(
+                                                    //     "Net Total", "₹${refundNetTotal.toStringAsFixed(2)}"),
+                                                    //
+                                                    // _buildRow(
+                                                    //   "Merchant Discount",
+                                                    //   "- ₹${refundDiscount.toStringAsFixed(2)}",
+                                                    //   valueColor: Colors.blue,
+                                                    // ),
+
+                                                    // _buildDottedDivider(context),
+
                                                     _buildRow(
-                                                        "Refund Gross Total", "₹${refundGross.toStringAsFixed(2)}"),
-                                                    _buildRow("Tax", "₹${refundTax.toStringAsFixed(2)}"),
-
-                                                    _buildDottedDivider(context),
-
-                                                    _buildRow(
-                                                        "Net Total", "₹${refundNetTotal.toStringAsFixed(2)}"),
-
-                                                    _buildRow(
-                                                      "Merchant Discount",
-                                                      "- ₹${refundDiscount.toStringAsFixed(2)}",
-                                                      valueColor: Colors.blue,
-                                                    ),
-
-                                                    _buildDottedDivider(context),
-
-                                                    _buildRow(
-                                                      "Total Refund",
+                                                      "Refund Amount",
                                                       "₹${totalRefund.toStringAsFixed(2)}",
                                                       isBold: true,
                                                     ),
@@ -875,18 +894,19 @@ class _RefundScreenState extends State<RefundScreen> {
                                 ),
 
                                 const SizedBox(height: 10),
-                                // const SizedBox(height: 10),
                                 GestureDetector(
                                   onTap: () async {
-                                    if (selectedReason != null) {
-                                      // ✅ Reason is selected, show dialog
-                                      await showDialog(
-                                        context: context,
-                                        barrierDismissible: false,
-                                        builder: (_) => VerifyItemStatusDialog(order: selectedOrder),
+                                    if (selectedItems.isEmpty) {
+                                      // ⚠️ No items selected
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text("No items selected for refund"),
+                                          backgroundColor: Colors.red,
+                                          duration: Duration(seconds: 2),
+                                        ),
                                       );
-                                    } else {
-                                      // ⚠️ No reason selected, show Snackbar
+                                    } else if (selectedReason == null) {
+                                      // ⚠️ Reason not selected
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(
                                           content: Text("Please select a reason before confirming refund"),
@@ -894,13 +914,22 @@ class _RefundScreenState extends State<RefundScreen> {
                                           duration: Duration(seconds: 2),
                                         ),
                                       );
+                                    } else {
+                                      // ✅ Items & reason selected → show dialog
+                                      await showDialog(
+                                        context: context,
+                                        barrierDismissible: false,
+                                        builder: (_) => VerifyItemStatusDialog(order: selectedOrder,  selectedItems: selectedItems,),
+                                      );
                                     }
                                   },
                                   child: Container(
                                     width: double.infinity,
                                     height: 45,
                                     decoration: BoxDecoration(
-                                      color: selectedReason != null ? Colors.red : Colors.grey.shade400,
+                                      color: (selectedItems.isNotEmpty && selectedReason != null)
+                                          ? Colors.red
+                                          : Colors.grey.shade400,
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: const Center(
@@ -988,6 +1017,7 @@ class _RefundScreenState extends State<RefundScreen> {
     );
   }
   Widget _refundRow(
+      int orderItemId,
       String itemName,
       String unitPrice,
       String tax,
@@ -997,7 +1027,9 @@ class _RefundScreenState extends State<RefundScreen> {
         String discountType = "",
       }) {
     // Check if this specific item is already in the selected list
-    bool isChecked = selectedItems.any((item) => item['name'] == itemName);
+    bool isChecked = selectedItems.any(
+            (item) => item['order_item_id'] == orderItemId
+    );
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1027,11 +1059,12 @@ class _RefundScreenState extends State<RefundScreen> {
                 setState(() {
                   if (value == true) {
                     selectedItems.add({
+                      'order_item_id': orderItemId,
                       'name': itemName,
-                      'price': unitPrice,
-                      'tax': tax,
+                      'unit_price': double.parse(unitPrice.split("×")[0].replaceAll("\$", "")),
                       'qty': qty,
-                      'amount': amount,
+                      'tax': double.parse(tax.replaceAll("\$", "")),
+                      'amount': double.parse(amount.replaceAll("\$", "")),
                     });
                   } else {
                     selectedItems.removeWhere((item) => item['name'] == itemName);
@@ -1223,6 +1256,7 @@ class _RefundScreenState extends State<RefundScreen> {
                 onContinue: () {
                   setState(() {
                     isConfirmEnabled = true;
+                    isReasonEnabled = true;
                   });
                 },
               ),

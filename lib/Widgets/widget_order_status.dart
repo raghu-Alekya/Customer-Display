@@ -29,6 +29,8 @@ class StatusWidget extends StatelessWidget {
         return Colors.red.shade600;
       case 'failed':
         return Colors.red.shade600;
+      case 'partial-refund':
+        return Colors.orange.shade600;
       default:
         return Colors.grey.shade600;
     }
@@ -51,6 +53,9 @@ class StatusWidget extends StatelessWidget {
         return Colors.red.shade700;
       case 'failed':
         return Colors.red.shade800;
+      case 'partial-refund':
+        return Colors.orange.shade600;
+
       default:
         return Colors.grey.shade700;
     }
@@ -73,6 +78,8 @@ class StatusWidget extends StatelessWidget {
         return Colors.red.shade50;
       case 'failed':
         return Colors.red.shade50;
+      case 'partial-refund':
+        return Colors.orange.shade100;
       default:
         return Colors.grey.shade50;
     }
