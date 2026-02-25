@@ -216,7 +216,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                                       selectedItems.add({
                                                         'name': item.name,
                                                         'price': "₹$unitPrice ×${item.quantity}",
-                                                        'tax': "₹0.00", // Update if tax available
+                                                        'tax': "₹${item.totalTax.toStringAsFixed(2)}", // Update if tax available
                                                         'amount': "₹${item.total.toStringAsFixed(2)}",
                                                       });
                                                     }
@@ -402,7 +402,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                           TextSpan(
                                             text: "Order ID: ",
                                             style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
+                                              fontWeight: FontWeight.normal,
                                               fontSize: 14,
                                               color: Color(0xFF83868C), // Color for "Order ID:"
                                             ),
@@ -875,22 +875,32 @@ class _RefundScreenState extends State<RefundScreen> {
                                 ),
 
                                 const SizedBox(height: 10),
-                                InkWell(
-                                  borderRadius: BorderRadius.circular(10),
-                                  onTap: () {
-                                    showDialog(
-                                      context: context,
-                                      barrierDismissible: false,
-                                      builder: (_) => VerifyItemStatusDialog(
-                                        // order: widget.order, // pass order if needed
-                                      ),
-                                    );
+                                // const SizedBox(height: 10),
+                                GestureDetector(
+                                  onTap: () async {
+                                    if (selectedReason != null) {
+                                      // ✅ Reason is selected, show dialog
+                                      await showDialog(
+                                        context: context,
+                                        barrierDismissible: false,
+                                        builder: (_) => VerifyItemStatusDialog(order: selectedOrder),
+                                      );
+                                    } else {
+                                      // ⚠️ No reason selected, show Snackbar
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text("Please select a reason before confirming refund"),
+                                          backgroundColor: Colors.red,
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
                                   },
                                   child: Container(
                                     width: double.infinity,
                                     height: 45,
                                     decoration: BoxDecoration(
-                                      color: Colors.grey.shade600, // enabled look
+                                      color: selectedReason != null ? Colors.red : Colors.grey.shade400,
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: const Center(
@@ -903,7 +913,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                       ),
                                     ),
                                   ),
-                                ),
+                                )
                               ],
                             ),
                           ),
@@ -1222,12 +1232,13 @@ class _RefundScreenState extends State<RefundScreen> {
           print("=========== REFUND DEBUG END ===========");
         },
         child: Container(
-          height: 40,
+          height: 45,
           decoration: BoxDecoration(
-            color: isSelected ? color.withOpacity(0.2) : Colors.white,
+            color: isSelected ? color : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isSelected ? color : Colors.grey.shade300,
+              color: color,
+              width: 1.5,
             ),
           ),
           child: Row(
@@ -1235,21 +1246,37 @@ class _RefundScreenState extends State<RefundScreen> {
             children: [
               /// Circle Indicator (filled as before)
               Container(
-                width: 10,
-                height: 10,
+                width: 16, // Slightly larger to fit the outer white border
+                height: 16,
                 margin: const EdgeInsets.only(right: 8),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isSelected ? color : Colors.grey.shade400,
+                  border: Border.all(
+                    color: isSelected ? Colors.white : color, // Outer border
+                    width: 1,
+                  ),
+                ),
+                child: Center(
+                  child: Container(
+                    width: 10, // Inner colored circle
+                    height: 10,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isSelected ? color : Colors.transparent, // Fill only if selected
+                      border: isSelected
+                          ? Border.all(color: Colors.white, width: 6) // Optional: white inner border
+                          : null,
+                    ),
+                  ),
                 ),
               ),
-
-              /// Text
+              // Text
               Text(
                 type,
                 style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  color: isSelected ? color : Colors.black,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? Colors.white : color,
+                  fontSize: 16,
                 ),
               ),
             ],

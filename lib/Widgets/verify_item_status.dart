@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../Repositories/Orders/Full_order_RefundOrderRepository.dart';
 import '../Screens/refund_screen.dart';
 
 class VerifyItemStatusDialog extends StatefulWidget {
-  const VerifyItemStatusDialog({super.key});
+  final dynamic order;
+  const VerifyItemStatusDialog({super.key,  required this.order,});
 
   @override
   State<VerifyItemStatusDialog> createState() =>
@@ -12,7 +14,7 @@ class VerifyItemStatusDialog extends StatefulWidget {
 
 class _VerifyItemStatusDialogState extends State<VerifyItemStatusDialog> {
   int? selectedOption;
-
+  bool isLoading = false; // 👈 Add this in your State class
   Widget _optionTile({
     required int value,
     required String title,
@@ -166,21 +168,64 @@ class _VerifyItemStatusDialogState extends State<VerifyItemStatusDialog> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      onPressed: selectedOption == null
+                      onPressed: selectedOption == null || isLoading
                           ? null
-                          : () {
-                        // 1️⃣ Close dialog
-                        Navigator.pop(context);
+                          : () async {
+                        setState(() => isLoading = true);
 
-                        // 2️⃣ Navigate to CompletedOrdersScreen
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const CompletedOrdersScreen(lastSelectedIndex: 0),
-                          ),
-                        );
+                        try {
+                          final repo = RefundOrderRepository(
+                            baseUrl: "https://merchantretail.alektasolutions.com",
+                          );
+
+                          final itemsReusableValue = selectedOption == 1 ? "yes" : "no";
+
+                          bool success = await repo.fullOrderRefund(
+                            orderId: widget.order.orderId,
+                            amount: widget.order.total.toDouble(),
+                            reason: selectedOption == 1 ? "items are resalable" : "items are damaged",
+                            itemsReusable: itemsReusableValue,
+                          );
+
+                          if (!mounted) return;
+
+                          if (success) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Refund Successful"),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Refund Failed"),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text("Error: $e"),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        } finally {
+                          if (mounted) setState(() => isLoading = false);
+                        }
                       },
-                      child: const Text(
+                      child: isLoading
+                          ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                          : const Text(
                         "Submit",
                         style: TextStyle(fontSize: 16),
                       ),

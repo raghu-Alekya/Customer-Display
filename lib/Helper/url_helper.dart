@@ -21,9 +21,7 @@ class UrlHelper {
   ///DEV = dev testing
   ///
   /// Note: change _uat to _prod in release build
-
-  //static const String pinakaBaseUrl = kDebugMode ? _dev : _uat  ;  ////release
-  static const String pinakaBaseUrl = kDebugMode ? _uat : _dev  ;  //debug
+  static const String pinakaBaseUrl =  _uat ;
 
   static const String validateMerchant =  "$pinakaBaseUrl/wp-json/custom/v1/validate-merchant";  //Build #1.0.42
 
@@ -40,31 +38,16 @@ class UrlHelper {
   static String? _baseUrl;
   // Initialize base URL from database
   static Future<void> initializeBaseUrl() async {
-    if (kDebugMode) {
-      print("#### UrlHelper: Initializing base URL from database");
-    }
     _baseUrl = await AssetDBHelper.instance.getAppBaseUrl();
     if (_baseUrl == null) {
-      if (kDebugMode) {
-        print("#### UrlHelper: No base URL in database, falling back to DEV: $_dev");
-      }
       _baseUrl = await StoreDbHelper.instance.getStoreBaseUrl(); //Build #1.0.126: Fallback to dev URL if database is empty
-    }
-    if (kDebugMode) {
-      print("#### UrlHelper: Base URL set to: $_baseUrl");
     }
   }
   static String get wooBaseUrl {
     if (_baseUrl == null || _baseUrl!.isEmpty) {
-      if (kDebugMode) {
-        print("⚠️ UrlHelper: _baseUrl is null — using fallback DEV URL.");
-      }
-      _baseUrl = _dev; // fallback to dev environment
+      _baseUrl = _uat; // fallback to dev environment
     }
     final url = '$_baseUrl/wp-json/wc/v3/';
-    if (kDebugMode) {
-      print("#### UrlHelper: Providing Woo base URL: $url");
-    }
     return url;
   }
 
@@ -72,9 +55,6 @@ class UrlHelper {
   //Build #1.0.54: Getter for base URL with /wp-json/ appended
   static String get baseUrl {
     final url = '$_baseUrl/$wpJson';
-    if (kDebugMode) {
-      print("#### UrlHelper: Providing base URL: $url");
-    }
     return url;
   }
 /////START: make changes here to switch environment
@@ -194,3 +174,84 @@ class EndUrlConstants { // Build #1.0.13
 
 
 }
+
+// import 'dart:io';
+// import 'package:flutter/foundation.dart';
+// import '../Database/assets_db_helper.dart';
+// import '../Database/store_db_helper.dart';
+//
+// class UrlHelper {
+//   static const Map<String, String> environment = {
+//     _dev : "DEV",
+//     _prod : "PROD",
+//     _uat : "UAT",
+//     _AndroidApiKey : "ANDROID"
+//   };
+// //Hosts
+//   static const String _dev = 'https://mg.techkumard.com';//"https://pinakapos.techkumard.com"; // Build #1.1.36: Base URL without /wp-json/
+//   static const  String _uat = "https://test.alekyatechsolutions.com";
+//   static const  String _prod = "http://api.pinaka.com/";
+//
+//   ///Update the environment URL in below API
+//   ///PROD = use for production release
+//   ///UAT = uat testing
+//   ///DEV = dev testing
+//   ///
+//   /// Note: change _uat to _prod in release build
+//   static const String pinakaBaseUrl =  _uat ;
+//
+//   static const String validateMerchant =  "$pinakaBaseUrl/wp-json/custom/v1/validate-merchant";  //Build #1.0.42
+//
+//   //API keys
+//   static const  String _AndroidApiKey = "?apikey=987654321";
+//   static const  String _iOSApiKey = "?apikey=123456789";
+//
+//   // API path components
+//   static const String pinakaPosV1 = "pinaka-pos/v1/"; // New variable for pinaka-pos/v1
+//   static const String wooCommerceV3 = "wc/v3/"; // New variable for wc/v3
+//   static const String wpJson = "wp-json/"; // WP JSON API base path
+//
+//   //Build #1.0.54: added Dynamic base URL initialized from database
+//   static String? _baseUrl;
+//   // Initialize base URL from database
+//   static Future<void> initializeBaseUrl() async {
+//     _baseUrl = await AssetDBHelper.instance.getAppBaseUrl();
+//     if (_baseUrl == null) {
+//       _baseUrl = await StoreDbHelper.instance.getStoreBaseUrl(); //Build #1.0.126: Fallback to dev URL if database is empty
+//     }
+//   }
+//   static String get wooBaseUrl {
+//     if (_baseUrl == null || _baseUrl!.isEmpty) {
+//       _baseUrl = _uat; // fallback to dev environment
+//     }
+//     final url = '$_baseUrl/wp-json/wc/v3/';
+//     return url;
+//   }
+//
+//
+//   //Build #1.0.54: Getter for base URL with /wp-json/ appended
+//   static String get baseUrl {
+//     final url = '$_baseUrl/$wpJson';
+//     return url;
+//   }
+// /////START: make changes here to switch environment
+// //   static const  String host = _dev ;
+// //   static const  String baseUrl = host;
+//   static const String componentVersionUrl = pinakaPosV1; // Default to pinaka-pos/v1 for existing APIs
+//   // static const  String apiKey = _devApiKey ;
+//   static final String apiKey = Platform.isIOS ? _iOSApiKey : _AndroidApiKey; // Build #1.0.8, Naveen updated this line
+//
+//   // static String get apiKey => _apiKey;///do not change this setting in any circumstances
+//   //
+//   // static set apiKey(String value) {
+//   //   if(Platform.isIOS) {
+//   //     _apiKey = _iOSApiKey;
+//   //   } else if(Platform.isAndroid) {
+//   //     _apiKey = _AndroidApiKey;
+//   //   }
+//   // }
+//   /////END: make changes here to switch environment
+//
+//   static const  String clientID = "IOS";
+//   static String confirmSuccessUrl = baseUrl;
+//   static String markerUrl =  baseUrl;

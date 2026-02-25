@@ -187,6 +187,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
   }
 
+
+
   double getCurrentMerchantDiscount(Map<String, dynamic> order) {
     // If any required key is missing, return 0 immediately
     if (!order.containsKey('merchantDiscountType') &&
@@ -206,11 +208,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
     final type = order['merchantDiscountType']?.toString() ?? 'fixed';
     final perc = double.tryParse(
-            order['merchantDiscountPercentage']?.toString() ?? '0') ??
-        0.0;
-    final fixed =
-        double.tryParse(order['merchantDiscountFixed']?.toString() ?? '0') ??
-            0.0;
+        order['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
+    final fixed = double.tryParse(
+        order['merchantDiscountFixed']?.toString() ?? '0') ?? 0.0;
 
     double result = 0.0;
     if (type == 'percentage' && perc > 0) {
