@@ -1323,6 +1323,18 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                     ? null // variant not selected yet
                     : null;
 
+            final taxStatus = isCustomItem
+                ? (resolvedProductMap?['tax_status'] ?? '').toString()
+                : (product.taxStatus ?? '');
+            final taxClass = isCustomItem
+                ? (resolvedProductMap?['tax_class'] ?? '').toString()
+                : (product.taxClass ?? '');
+            final taxRate = isCustomItem
+                ? double.tryParse(
+                        resolvedProductMap?['tax_rate']?.toString() ?? '0') ??
+                    0.0
+                : 0.0;
+
 // 🖼 Image
             String image = "";
             if ((product.images ?? []).isNotEmpty) {
@@ -1410,6 +1422,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                 productId: productId,
                 isEbtEligible: isEbtEligible,
                 variationId: 0,
+                taxStatus: taxStatus,
+                taxClass: taxClass,
+                taxRate: taxRate,
               );
 
               await fetchOrderItems();
@@ -1468,6 +1483,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                   productId: productId,
                   variationId: 0,
                   isEbtEligible: isEbtEligible,
+                  taxStatus: taxStatus,
+                  taxClass: taxClass,
+                  taxRate: taxRate,
                 );
 
                 print("🛒 Product added to order");
@@ -1783,6 +1801,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               productId: productId,
               variationId: 0,
               isEbtEligible: isEbtEligible,
+              taxStatus: taxStatus,
+              taxClass: taxClass,
+              taxRate: taxRate,
             );
 
             await fetchOrderItems();

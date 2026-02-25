@@ -186,8 +186,18 @@ class OrderHelper {
       final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
       grossTotal += price * qty;
 
-      final pid = int.tryParse((p['product_id'] ?? p['id']).toString()) ?? 0;
-      orderTax += getProductTaxFromHive(pid, price, qty);
+      // Build #1.0.280: If tax_rate is present on the product map (custom items), use it directly.
+      final taxRate = double.tryParse(p['tax_rate']?.toString() ?? '0') ?? 0.0;
+      if (taxRate > 0) {
+        final double rawItemTax = (price * taxRate) / 100;
+        final double roundedItemTax = (rawItemTax * 100).roundToDouble() / 100;
+        orderTax += roundedItemTax * qty;
+      } else {
+        final pid = int.tryParse((p['product_id'] ?? p['id']).toString()) ?? 0;
+        if (pid > 0) {
+          orderTax += getProductTaxFromHive(pid, price, qty);
+        }
+      }
     }
 
     // 2. Custom Items
@@ -1903,6 +1913,9 @@ class OrderHelper {
     double? regularPrice,
     double? unitPrice,
     bool isEbtEligible = false,
+    String? taxStatus,
+    String? taxClass,
+    double? taxRate,
   }) async {
     print("🍏 addItemToOrder() CALLED for: $name | EBT: $isEbtEligible");
 
@@ -2008,6 +2021,9 @@ class OrderHelper {
 
           /// ⭐ NOW SAVED CORRECTLY
           'is_ebt_eligible': isEbtEligible,
+          'tax_status': taxStatus,
+          'tax_class': taxClass,
+          'tax_rate': taxRate,
 
           // Discount fields (0 for new items; preserve when merged from existing)
           'auto_discount': 0.0,

@@ -1516,7 +1516,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                   dropdownColor: themeHelper.themeMode == ThemeMode.dark
                       ? ThemeNotifier.primaryBackground
                       : null,
-                   icon: const Icon(Icons.keyboard_arrow_down),
+                  icon: const Icon(Icons.keyboard_arrow_down),
                   items: _taxList.map((tax) {
                     return DropdownMenuItem<TaxModel>(
                       value: tax,
@@ -3245,7 +3245,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       if (kDebugMode) print("🟡 [STEP 6] SAVE ORDER BACK TO HIVE");
 
       orderData["products"] = products;
-      await box.put(orderKey, orderData);
+      await orderHelper.saveOfflineOrder(serverOrderId, orderData);
 
       if (kDebugMode) {
         final debugOrder = await box.get(orderKey);
