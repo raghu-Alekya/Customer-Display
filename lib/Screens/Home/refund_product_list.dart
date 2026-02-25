@@ -474,7 +474,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                 // Locate the Stack inside the Summary Panel (around line 348)
                                 Container(
                                   width: double.infinity,
-                                  height: 370,
+                                  height: 280,
                                   clipBehavior: Clip.antiAlias,
                                   decoration: BoxDecoration(
                                     color: isDark
