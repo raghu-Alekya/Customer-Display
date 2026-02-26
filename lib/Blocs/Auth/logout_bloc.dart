@@ -41,7 +41,7 @@ class LogoutBloc {
       // Call repository to perform logout
       String response = await _logoutRepository.logout();
       LogoutResponse logoutResponse = LogoutResponse.fromJson(json.decode(response));
-
+      await UserDbHelper().logout();
       if (kDebugMode) {
         print("LogoutBloc - Logout response: ${logoutResponse.message}");
       }
