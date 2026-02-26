@@ -297,7 +297,7 @@ class OrderHelper {
     final queryResult = await db.query(
       AppDBConst.orderTable,
       where: '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} = ?',
-      whereArgs: [activeUserId ?? 1, 'processing'],
+      whereArgs: [activeUserId ?? 0, 'processing'],
 
       /// Build #1.0.161
       /// If required "asc" orders list, un-comment this line (order id's order low to high)
@@ -350,11 +350,38 @@ class OrderHelper {
     final box = StorageProvider.offlineOrders;
     final allOfflineOrders = await box.toMap();
 
-    final validEntries = allOfflineOrders.entries
-        .where((entry) =>
-            entry.value is Map &&
-            !(entry.value as Map).containsKey('map_to_local'))
-        .map((entry) {
+    // Build #1.0.285: Strict user isolation & session safety
+    if (activeUserId == null || activeUserId == 0) {
+      if (kDebugMode) {
+        print(
+            "#### loadData: No active user ID found ($activeUserId). Clearing orders for safety.");
+      }
+      orderIds = [];
+      orders = [];
+      activeOrderId =
+          null; // ✅ Reset activeOrderId to avoid pointing to stale order
+      return;
+    }
+
+    final validEntries = allOfflineOrders.entries.where((entry) {
+      if (entry.value is! Map) return false;
+      final order = entry.value as Map;
+      if (order.containsKey('map_to_local')) return false;
+
+      // Extract user ID from order (handles multiple possible keys)
+      final dynamic rawOrderUserId =
+          order['user_id'] ?? order[AppDBConst.userId];
+
+      // Strict comparison using toString() to guard against int/string mismatch in Hive
+      if (rawOrderUserId?.toString() != activeUserId.toString()) {
+        if (kDebugMode) {
+          print(
+              "#### loadData: Filtered out order for another user. Current: $activeUserId, Order: $rawOrderUserId");
+        }
+        return false;
+      }
+      return true;
+    }).map((entry) {
       // ✅ Normalize the root map
       final normalized = Map<String, dynamic>.from(entry.value as Map);
 
@@ -417,7 +444,28 @@ class OrderHelper {
           .whereType<int>()
           .toList();
 
-      // ✅ Set active order ID if not found
+      // Build #1.0.285: Validate if restored activeOrderId belongs to current user
+      if (activeOrderId != null) {
+        final box = StorageProvider.offlineOrders;
+        final raw = await box.get(activeOrderId.toString());
+        if (raw != null && raw is Map) {
+          final dynamic orderUserId = raw['user_id'] ?? raw[AppDBConst.userId];
+          if (orderUserId?.toString() != activeUserId.toString()) {
+            if (kDebugMode)
+              print(
+                  "🚫 Restored Order $activeOrderId filtered: Wrong User $orderUserId");
+            activeOrderId = null;
+          }
+        } else {
+          // check DB if not in hive
+          final dbOrders = await getOrderById(activeOrderId!);
+          if (dbOrders.isEmpty) {
+            activeOrderId = null;
+          }
+        }
+      }
+
+      // ✅ Set active order ID if not found or invalid
       if (activeOrderId == null || !orderIds.contains(activeOrderId)) {
         activeOrderId = orderIds.isNotEmpty ? orderIds.last : null;
         if (activeOrderId != null) {
@@ -437,6 +485,86 @@ class OrderHelper {
       print("Order IDs: $orderIds");
       print("Total Orders Loaded: ${orders.length}");
     }
+  }
+
+  // Build #1.0.281: Check if there are any active orders that should block closing shift
+  Future<bool> hasActiveOrders() async {
+    await loadData(); // Ensure we have latest data
+
+    if (orders.isEmpty) {
+      if (kDebugMode)
+        print(
+            "#### hasActiveOrders: No orders found for current user $activeUserId after filtering.");
+      return false;
+    }
+
+    if (kDebugMode)
+      print(
+          "#### hasActiveOrders: Checking ${orders.length} orders for user $activeUserId");
+
+    for (var order in orders) {
+      final int? orderId = order[AppDBConst.orderServerId] as int? ??
+          order['order_id'] as int? ??
+          order[AppDBConst.orderId] as int? ??
+          order['id'] as int?;
+
+      if (kDebugMode)
+        print(
+            "#### hasActiveOrders: Validating Order $orderId (User: $activeUserId)");
+
+      // Check for products
+      final List products = order['products'] as List? ?? [];
+      if (products.isNotEmpty) {
+        if (kDebugMode)
+          print(
+              "#### hasActiveOrders: BLOCKED - Order $orderId has ${products.length} products");
+        return true;
+      }
+
+      // Check for custom items
+      final List customItems = order['custom_items'] as List? ?? [];
+      if (customItems.isNotEmpty) {
+        if (kDebugMode)
+          print(
+              "#### hasActiveOrders: BLOCKED - Order $orderId has ${customItems.length} custom items");
+        return true;
+      }
+
+      // Check for payouts
+      final List payouts = order['payouts'] as List? ?? [];
+      if (payouts.isNotEmpty) {
+        if (kDebugMode)
+          print(
+              "#### hasActiveOrders: BLOCKED - Order $orderId has ${payouts.length} payouts");
+        return true;
+      }
+
+      // Check for cashbacks
+      final List cashbacks = order['cashbacks'] as List? ?? [];
+      if (cashbacks.isNotEmpty) {
+        if (kDebugMode)
+          print(
+              "#### hasActiveOrders: BLOCKED - Order $orderId has ${cashbacks.length} cashbacks");
+        return true;
+      }
+
+      // Check for payments (even if items were removed, payments must be handled)
+      if (orderId != null && orderId != 0) {
+        final Map<String, dynamic> summary = await LocalPaymentDBHelper.instance
+            .getPaymentStatusSummary(orderId, userId: activeUserId);
+        if (summary['hasPayments'] == true) {
+          if (kDebugMode)
+            print(
+                "#### hasActiveOrders: BLOCKED - Order $orderId has existing payments in Isar for user $activeUserId");
+          return true;
+        }
+      }
+    }
+
+    if (kDebugMode)
+      print(
+          "#### hasActiveOrders: SUCCESS - All user orders are empty placeholders.");
+    return false;
   }
 
   Future<int> getUserIdFromDB() async {
@@ -545,7 +673,7 @@ class OrderHelper {
 
       if (kDebugMode) {
         print(
-            "#### DEBUG: syncOrdersFromApi - API orders count: $apiOrdersCount, DB orders count: ${dbOrdersCount.length}, activeUserId :${activeUserId ?? 1}");
+            "#### DEBUG: syncOrdersFromApi - API orders count: $apiOrdersCount, DB orders count: ${dbOrdersCount.length}, activeUserId :${activeUserId ?? 0}");
       }
 
       // Check if counts match
@@ -574,7 +702,7 @@ class OrderHelper {
           await db.delete(
             AppDBConst.orderTable,
             where: '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} = ?',
-            whereArgs: [activeUserId ?? 1, 'processing'],
+            whereArgs: [activeUserId ?? 0, 'processing'],
           );
         } else {
           // If syncing non-processing orders, only delete non-processing orders
@@ -583,7 +711,7 @@ class OrderHelper {
             AppDBConst.orderTable,
             where:
                 '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} != ?',
-            whereArgs: [activeUserId ?? 1, 'processing'],
+            whereArgs: [activeUserId ?? 0, 'processing'],
           );
         }
       } else {
@@ -670,7 +798,7 @@ class OrderHelper {
         } else {
           await db.insert(AppDBConst.orderTable, {
             // AppDBConst.orderId: apiOrder.id,
-            AppDBConst.userId: activeUserId ?? 1,
+            AppDBConst.userId: activeUserId ?? 0,
             AppDBConst.orderServerId: apiOrder.id,
             AppDBConst.orderTotal: double.tryParse(apiOrder.total) ?? 0.0,
             AppDBConst.orderStatus: apiOrder.status,
@@ -1434,6 +1562,13 @@ class OrderHelper {
   Future<int?> _doEnsureOrderExists() async {
     lastEnsureOrderError = null;
 
+    // 1️⃣ Reset if no user logged in
+    final uId = await getUserIdFromDB();
+    if (uId == 0) {
+      if (kDebugMode) print("⛔ ensureOrderExists blocked: No user ID active");
+      return null;
+    }
+
     // 1️⃣ If already active
     if (activeOrderId != null) return activeOrderId;
 
@@ -1506,8 +1641,8 @@ class OrderHelper {
     if (serverOrderId != null) {
       final existing = await db.query(
         AppDBConst.orderTable,
-        where: '${AppDBConst.orderServerId} = ?',
-        whereArgs: [serverOrderId],
+        where: '${AppDBConst.orderServerId} = ? AND ${AppDBConst.userId} = ?',
+        whereArgs: [serverOrderId, activeUserId ?? 0],
       );
       if (existing.isNotEmpty) {
         activeOrderId = serverOrderId;
@@ -1518,6 +1653,8 @@ class OrderHelper {
           final minimalOrder = {
             'order_id': serverOrderId,
             'id': serverOrderId,
+            'user_id': activeUserId ??
+                0, // Build #1.0.285: Do NOT default to 1, use current user
             AppDBConst.orderServerId: serverOrderId,
             'products': <Map<String, dynamic>>[],
           };
@@ -1534,7 +1671,7 @@ class OrderHelper {
 
     activeOrderId = serverOrderId;
     await db.insert(AppDBConst.orderTable, {
-      AppDBConst.userId: activeUserId ?? 1,
+      AppDBConst.userId: activeUserId ?? 0,
       if (serverOrderId != null) AppDBConst.orderServerId: serverOrderId,
       AppDBConst.orderTotal: 0.0,
       AppDBConst.orderStatus: "processing",
@@ -1547,7 +1684,7 @@ class OrderHelper {
     UPDATE ${AppDBConst.userTable}
     SET ${AppDBConst.userOrderCount} = ${AppDBConst.userOrderCount} + 1
     WHERE ${AppDBConst.userId} = ?
-    ''', [activeUserId ?? 1]);
+    ''', [activeUserId ?? 0]);
 
     // When order was created on server/offline, ensure storage has it (only if not already)
     if (serverOrderId != null) {
@@ -1676,20 +1813,30 @@ class OrderHelper {
     );
   }
 
-  // Fetch order for a specific orderId
+  // Fetch order for a specific orderId - Build #1.0.285: Filter by user ID
   Future<List<Map<String, dynamic>>> getOrderById(int orderId) async {
-    // Build #1.0.11 : added here from db_helper
     final db = await DBHelper.instance.database;
+    final uId = await getUserIdFromDB();
     return await db.query(
       AppDBConst.orderTable,
-      where: '${AppDBConst.orderServerId} = ?',
-      whereArgs: [orderId],
+      where: '${AppDBConst.orderServerId} = ? AND ${AppDBConst.userId} = ?',
+      whereArgs: [orderId, uId],
     );
   }
 
-// Fetch all items for a specific order
+  // Fetch all items for a specific order - Build #1.0.285: Verify order ownership
   Future<List<Map<String, dynamic>>> getOrderItems(int orderID) async {
     final db = await DBHelper.instance.database;
+    final uId = await getUserIdFromDB();
+
+    final order = await db.query(
+      AppDBConst.orderTable,
+      where: '${AppDBConst.orderServerId} = ? AND ${AppDBConst.userId} = ?',
+      whereArgs: [orderID, uId],
+    );
+
+    if (order.isEmpty) return [];
+
     return await db.query(
       AppDBConst.purchasedItemsTable,
       where: '${AppDBConst.orderIdForeignKey} = ?',
@@ -1714,9 +1861,20 @@ class OrderHelper {
   Future<List<Map<String, dynamic>>> getOrderItemsFromOffline(
       int orderID) async {
     final box = StorageProvider.offlineOrders;
-    final raw = await box.get(orderID.toString());
+    final dynamic raw = await box.get(orderID.toString());
     if (raw == null || raw is! Map) return [];
+
+    // Build #1.0.285: STRICT User check
     final order = Map<String, dynamic>.from(raw);
+    final currentUserId = await getUserIdFromDB();
+    final dynamic orderUserId = order['user_id'] ?? order[AppDBConst.userId];
+
+    if (orderUserId?.toString() != currentUserId.toString()) {
+      if (kDebugMode)
+        print(
+            "⛔ getOrderItemsFromOffline blocked: Order $orderID belongs to another user ($orderUserId). Requested by $currentUserId.");
+      return [];
+    }
 
     final List<Map<String, dynamic>> items = [];
 

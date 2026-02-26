@@ -15,8 +15,9 @@ class LocalPaymentDBHelper {
     _instance ??= LocalPaymentDBHelper._();
     return _instance!;
   }
+
   Future<void> updateStatus(int paymentId, PaymentDbStatus status) async {
-    final db = await isar;  // ← use 'isar' getter, NOT '_isar'
+    final db = await isar; // ← use 'isar' getter, NOT '_isar'
 
     await db.writeTxn(() async {
       final payment = await db.collection<LocalPayment>().get(paymentId);
@@ -82,7 +83,8 @@ class LocalPaymentDBHelper {
   }
 
   // ✅ Get payment status summary for an order
-  Future<Map<String, dynamic>> getPaymentStatusSummary(int orderId) async {
+  Future<Map<String, dynamic>> getPaymentStatusSummary(int orderId,
+      {int? userId}) async {
     if (orderId == 0) {
       return {
         'hasPayments': false,
@@ -93,7 +95,7 @@ class LocalPaymentDBHelper {
     }
 
     try {
-      final payments = await getPaymentsByOrderId(orderId);
+      final payments = await getPaymentsByOrderId(orderId, userId: userId);
 
       if (payments.isEmpty) {
         return {
@@ -104,23 +106,26 @@ class LocalPaymentDBHelper {
         };
       }
 
-      // Sort by createdAt descending (newest first)
+      // Sort by createdAt descending to get the latest payment state
       payments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       final lastPayment = payments.first;
 
       final bool isFullyPaid = lastPayment.remainingBalance <= 0;
-      final String status = isFullyPaid ? TextConstants.processing : TextConstants.pending;
+      final String status =
+          isFullyPaid ? TextConstants.processing : TextConstants.pending;
 
       if (kDebugMode) {
         print("\n" + "📋" * 30);
-        print("PAYMENT STATUS SUMMARY FOR ORDER #$orderId");
+        print(
+            "PAYMENT STATUS SUMMARY FOR ORDER #$orderId (User: ${userId ?? 'any'})");
         print("📋" * 30);
         print("   Has Payments: true");
         print("   Total Payments: ${payments.length}");
         print("   Fully Paid: $isFullyPaid");
         print("   Order Status: $status");
-        print("   Last Payment Status: ${lastPayment.status?.name ?? 'null'}");
-        print("   Remaining Balance: \$${lastPayment.remainingBalance.toStringAsFixed(2)}");
+        print("   Last Payment Status: ${lastPayment.status.name}");
+        print(
+            "   Remaining Balance: \$${lastPayment.remainingBalance.toStringAsFixed(2)}");
         print("📋" * 30 + "\n");
       }
 
@@ -128,11 +133,10 @@ class LocalPaymentDBHelper {
         'hasPayments': true,
         'isFullyPaid': isFullyPaid,
         'status': status,
-        'lastPaymentStatus': lastPayment.status?.name ?? 'pending',
+        'lastPaymentStatus': lastPayment.status.name,
         'remainingBalance': lastPayment.remainingBalance,
         'totalPayments': payments.length,
       };
-
     } catch (e) {
       if (kDebugMode) print("❌ Error getting payment status: $e");
       return {
@@ -145,61 +149,54 @@ class LocalPaymentDBHelper {
   }
 
   // ✅ Get payments by order ID
-  // Future<List<LocalPayment>> getPaymentsByOrderId(int orderId) async {
-  //   final db = await isar;
-  //   final payments = await db.collection<LocalPayment>()
-  //       .filter()
-  //       .orderIdEqualTo(orderId)
-  //       .findAll();
-  //
-  //   if (kDebugMode) {
-  //     print("\n📊 PAYMENTS FOR ORDER #$orderId: ${payments.length}");
-  //     for (var p in payments) {
-  //       print("  → ID: ${p.id} | Order ID: ${p.orderId} | ${p.paymentMethod}: \$${p.amount.toStringAsFixed(2)} | Synced: ${p.isSynced} | Status: ${p.status?.name ?? 'null'}");
-  //     }
-  //     print("");
-  //   }
-  //
-  //   return payments;
-  // }
-
-// In LocalPaymentDBHelper class:
-  Future<List<LocalPayment>> getPaymentsByOrderId(int orderId) async {
+  Future<List<LocalPayment>> getPaymentsByOrderId(int orderId,
+      {int? userId}) async {
     try {
-      final isar = await this.isar;
+      final db = await isar;
 
-      // Get ALL payments
-      final allPayments = await isar.collection<LocalPayment>().where().findAll();
+      QueryBuilder<LocalPayment, LocalPayment, QAfterFilterCondition> query =
+          db.collection<LocalPayment>().filter().orderIdEqualTo(orderId);
 
-      // Filter manually by orderId
-      final filtered = allPayments.where((p) => p.orderId == orderId).toList();
+      if (userId != null && userId != 0) {
+        query = query.and().userIdEqualTo(userId);
+      }
 
-      return filtered;
+      final payments = await query.findAll();
+
+      if (kDebugMode && payments.isNotEmpty) {
+        print(
+            "\n📊 PAYMENTS FOR ORDER #$orderId (User: ${userId ?? 'any'}): ${payments.length}");
+        for (var p in payments) {
+          print(
+              "  → ID: ${p.id} | Order ID: ${p.orderId} | ${p.paymentMethod}: \$${p.amount.toStringAsFixed(2)} | Synced: ${p.isSynced} | Status: ${p.status?.name ?? 'null'}");
+        }
+        print("");
+      }
+
+      return payments;
     } catch (e) {
-      print("❌ Error getting payments by order ID: $e");
+      if (kDebugMode) print("❌ Error getting payments by order ID: $e");
       return [];
     }
   }
 
   // ✅ Get current balance for order
-  Future<double?> getCurrentBalanceForOrder(int orderId) async {
-    final db = await isar;
-    final payments = await db.collection<LocalPayment>()
-        .filter()
-        .orderIdEqualTo(orderId)
-        .findAll();
+  Future<double?> getCurrentBalanceForOrder(int orderId, {int? userId}) async {
+    final payments = await getPaymentsByOrderId(orderId, userId: userId);
 
     if (payments.isEmpty) return null;
 
-    // Sort by createdAt and get last
+    // Sort by createdAt and get last (newest first)
     payments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     final lastPayment = payments.first;
 
     if (kDebugMode) {
-      print("\n💰 CURRENT BALANCE FOR ORDER #$orderId:");
+      print(
+          "\n💰 CURRENT BALANCE FOR ORDER #$orderId (User: ${userId ?? 'any'}):");
       print("   Last Payment: \$${lastPayment.amount.toStringAsFixed(2)}");
-      print("   Remaining: \$${lastPayment.remainingBalance.toStringAsFixed(2)}");
-      print("   Status: ${lastPayment.status?.name ?? 'null'}");
+      print(
+          "   Remaining: \$${lastPayment.remainingBalance.toStringAsFixed(2)}");
+      print("   Status: ${lastPayment.status.name}");
       print("");
     }
 
@@ -229,7 +226,8 @@ class LocalPaymentDBHelper {
   // Get unsynced payments
   Future<List<LocalPayment>> getUnsyncedPayments() async {
     final db = await isar;
-    final payments = await db.collection<LocalPayment>()
+    final payments = await db
+        .collection<LocalPayment>()
         .filter()
         .isSyncedEqualTo(false)
         .findAll();
@@ -237,7 +235,8 @@ class LocalPaymentDBHelper {
     if (kDebugMode) {
       print("\n⏳ UNSYNCED PAYMENTS: ${payments.length}");
       for (var p in payments) {
-        print("  → ID: ${p.id} | Order: #${p.orderId} | ${p.paymentMethod}: \$${p.amount.toStringAsFixed(2)} | Attempts: ${p.syncAttempts}");
+        print(
+            "  → ID: ${p.id} | Order: #${p.orderId} | ${p.paymentMethod}: \$${p.amount.toStringAsFixed(2)} | Attempts: ${p.syncAttempts}");
       }
       print("");
     }
@@ -288,8 +287,6 @@ class LocalPaymentDBHelper {
     });
   }
 
-
-
   // ✅ Delete payment
   Future<bool> deletePayment(int paymentId) async {
     final db = await isar;
@@ -300,7 +297,9 @@ class LocalPaymentDBHelper {
     });
 
     if (kDebugMode) {
-      print(deleted ? "✅ Payment $paymentId deleted" : "⚠️ Payment $paymentId not found");
+      print(deleted
+          ? "✅ Payment $paymentId deleted"
+          : "⚠️ Payment $paymentId not found");
     }
 
     return deleted;
@@ -309,7 +308,8 @@ class LocalPaymentDBHelper {
   // ✅ Get last payment for order
   Future<LocalPayment?> getLastPaymentForOrder(int orderId) async {
     final db = await isar;
-    final payments = await db.collection<LocalPayment>()
+    final payments = await db
+        .collection<LocalPayment>()
         .filter()
         .orderIdEqualTo(orderId)
         .findAll();
@@ -360,8 +360,9 @@ class LocalPaymentDBHelper {
         print("   Order: #${p.orderId}");
         print("   Method: ${p.paymentMethod}");
         print("   Amount: \$${p.amount.toStringAsFixed(2)}");
-        print("   Remaining Balance: \$${p.remainingBalance.toStringAsFixed(2)}");
-        print("   Status: ${p.status?.name ?? 'null'}");
+        print(
+            "   Remaining Balance: \$${p.remainingBalance.toStringAsFixed(2)}");
+        print("   Status: ${p.status.name}");
         print("   Created: ${p.createdAt}");
 
         if (p.isSynced) {
@@ -384,7 +385,8 @@ class LocalPaymentDBHelper {
     final db = await isar;
 
     await db.writeTxn(() async {
-      final payments = await db.collection<LocalPayment>()
+      final payments = await db
+          .collection<LocalPayment>()
           .filter()
           .orderIdEqualTo(orderId)
           .findAll();
@@ -404,16 +406,17 @@ class LocalPaymentDBHelper {
 // ✅ Get single payment by order ID (returns first/only one)
   Future<LocalPayment?> getPaymentByOrderId(int orderId) async {
     final db = await isar;
-    final payment = await db.collection<LocalPayment>()
+    final payment = await db
+        .collection<LocalPayment>()
         .filter()
         .orderIdEqualTo(orderId)
-        .findFirst();  // ← Get only ONE
+        .findFirst(); // ← Get only ONE
 
     if (kDebugMode && payment != null) {
       print("\n🔍 FOUND EXISTING PAYMENT FOR ORDER #$orderId:");
       print("   Payment ID: ${payment.id}");
       print("   Amount: \$${payment.amount.toStringAsFixed(2)}");
-      print("   Status: ${payment.status?.name}");
+      print("   Status: ${payment.status.name}");
       print("");
     }
 
@@ -438,5 +441,4 @@ class LocalPaymentDBHelper {
 
     return payment;
   }
-
 }

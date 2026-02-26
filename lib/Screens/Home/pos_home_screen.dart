@@ -27,6 +27,7 @@ class POSHomeScreen extends StatefulWidget {
 
 class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin {
   int _selectedSidebarIndex = 0;
+  int _activeTabIndex = 0; // Build #1.0.283: Separate tab index from selection highlight
   int _refreshCounter = 0;
   final OrderHelper orderHelper = OrderHelper();
   final List<int> quantities = [1, 1, 1, 1];
@@ -35,6 +36,7 @@ class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin
   void initState() {
     super.initState();
     _selectedSidebarIndex = widget.lastSelectedIndex ?? 0;
+    _activeTabIndex = _selectedSidebarIndex.clamp(0, 2);
   }
 
   void _refreshOrderList() {
@@ -61,7 +63,7 @@ class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin
         child: Column(
           children: [
             TopBar(
-              screen: _getScreenForIndex(_selectedSidebarIndex.clamp(0, 2)),
+              screen: _getScreenForIndex(_activeTabIndex),
               onModeChanged: () async {
                 String newLayout;
                 if (sidebarPosition == SidebarPosition.left) {
@@ -102,7 +104,14 @@ class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin
                   if (sidebarPosition == SidebarPosition.left)
                     custom_widgets.NavigationBar(
                       selectedSidebarIndex: _selectedSidebarIndex,
-                      onSidebarItemSelected: (index) => setState(() => _selectedSidebarIndex = index),
+                      onSidebarItemSelected: (index) {
+                        setState(() {
+                          _selectedSidebarIndex = index;
+                          if (index < 3) {
+                            _activeTabIndex = index;
+                          }
+                        });
+                      },
                       isVertical: true,
                       callbackOnlyIndices: const {0, 1, 2},
                     ),
@@ -116,7 +125,7 @@ class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin
                     ),
                   Expanded(
                     child: IndexedStack(
-                      index: _selectedSidebarIndex.clamp(0, 2),
+                      index: _activeTabIndex,
                       children: [
                         FastKeyScreen(embedInShell: true),
                         CategoriesScreen(embedInShell: true),
@@ -135,7 +144,14 @@ class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin
                   if (sidebarPosition == SidebarPosition.right)
                     custom_widgets.NavigationBar(
                       selectedSidebarIndex: _selectedSidebarIndex,
-                      onSidebarItemSelected: (index) => setState(() => _selectedSidebarIndex = index),
+                      onSidebarItemSelected: (index) {
+                        setState(() {
+                          _selectedSidebarIndex = index;
+                          if (index < 3) {
+                            _activeTabIndex = index;
+                          }
+                        });
+                      },
                       isVertical: true,
                       callbackOnlyIndices: const {0, 1, 2},
                     ),
@@ -145,7 +161,14 @@ class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin
             if (sidebarPosition == SidebarPosition.bottom)
               custom_widgets.NavigationBar(
                 selectedSidebarIndex: _selectedSidebarIndex,
-                onSidebarItemSelected: (index) => setState(() => _selectedSidebarIndex = index),
+                onSidebarItemSelected: (index) {
+                  setState(() {
+                    _selectedSidebarIndex = index;
+                    if (index < 3) {
+                      _activeTabIndex = index;
+                    }
+                  });
+                },
                 isVertical: false,
                 callbackOnlyIndices: const {0, 1, 2},
               ),

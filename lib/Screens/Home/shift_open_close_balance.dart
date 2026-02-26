@@ -34,15 +34,15 @@ import 'pos_home_screen.dart';
 
 class ShiftOpenCloseBalanceScreen extends StatefulWidget {
   final int? lastSelectedIndex;
-  const ShiftOpenCloseBalanceScreen(
-      {super.key, this.lastSelectedIndex});
+  const ShiftOpenCloseBalanceScreen({super.key, this.lastSelectedIndex});
 
   @override
-  State<ShiftOpenCloseBalanceScreen> createState() => _ShiftOpenCloseBalanceScreenState();
+  State<ShiftOpenCloseBalanceScreen> createState() =>
+      _ShiftOpenCloseBalanceScreenState();
 }
 
-class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScreen> with LayoutSelectionMixin {
-
+class _ShiftOpenCloseBalanceScreenState
+    extends State<ShiftOpenCloseBalanceScreen> with LayoutSelectionMixin {
   bool isLoading = true;
 
   int _selectedSidebarIndex = 4;
@@ -71,9 +71,11 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
     super.initState();
     _loadSafeEnable();
     _shiftBloc = ShiftBloc(ShiftRepository());
-    _selectedSidebarIndex = widget.lastSelectedIndex ?? 4; // Build #1.0.7: Restore previous selection
+    _selectedSidebarIndex = widget.lastSelectedIndex ??
+        4; // Build #1.0.7: Restore previous selection
     _checkShiftId();
-    WidgetsBinding.instance.addPostFrameCallback((_) {  // Build #1.0.70
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Build #1.0.70
       _checkPreviousScreen();
     });
     // Fetch notes and coins denominations from AssetDBHelper
@@ -81,7 +83,8 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
 
     // Simulate a loading delay
     Future.delayed(const Duration(seconds: 3), () {
-      if(mounted) { /// add to fix memory leaks
+      if (mounted) {
+        /// add to fix memory leaks
         setState(() {
           isLoading = false; // Set loading to false after 3 seconds
         });
@@ -119,13 +122,15 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
     });
   }
 
-  Future<void> _checkShiftId() async {  // Build #1.0.70
+  Future<void> _checkShiftId() async {
+    // Build #1.0.70
 
     /// ADDED TESTING PURPOSE -> REMOVE
     // final prefs = await SharedPreferences.getInstance();
     // await prefs.remove(TextConstants.shiftId);
 
-    int? shiftId = await UserDbHelper().getUserShiftId(); // Build #1.0.149 : using from db
+    int? shiftId =
+        await UserDbHelper().getUserShiftId(); // Build #1.0.149 : using from db
     if (shiftId != null) {
       _shiftId = shiftId.toString();
     }
@@ -136,13 +141,15 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
 
   // Build #1.0.70: Added _checkPreviousScreen method
   void _checkPreviousScreen() {
-    final previousScreen = ModalRoute.of(context)?.settings.arguments as String?;
+    final previousScreen =
+        ModalRoute.of(context)?.settings.arguments as String?;
     _originScreen = previousScreen;
     if (previousScreen == TextConstants.navLogout) {
       setState(() {
         screenTitle = TextConstants.shiftClose;
       });
-    } else if (previousScreen == TextConstants.navShiftHistory) { //Build #1.0.74
+    } else if (previousScreen == TextConstants.navShiftHistory) {
+      //Build #1.0.74
       setState(() {
         screenTitle = TextConstants.shiftBal;
       });
@@ -186,7 +193,8 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
         _coinDenominations[denom.denom.toString()] = double.parse(denom.denom);
         _noteTotals[denom.denom.toString()] = 0.0;
         _controllers[denom.denom.toString()] = TextEditingController();
-        _controllers[denom.denom.toString()]!.addListener(() => _updateTotal(denom.denom.toString(), _controllers[denom.denom.toString()]!));
+        _controllers[denom.denom.toString()]!.addListener(() => _updateTotal(
+            denom.denom.toString(), _controllers[denom.denom.toString()]!));
       });
 
       _coinsDenominations.forEach((denom) {
@@ -196,7 +204,9 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
         _coinDenominations[denom.denom.toString()] = double.parse(denom.denom);
         _coinTotals[denom.denom.toString()] = 0.0;
         _coinControllers[denom.denom.toString()] = TextEditingController();
-        _coinControllers[denom.denom.toString()]!.addListener(() => _updateCoinTotal(denom.denom.toString(), _coinControllers[denom.denom.toString()]!));
+        _coinControllers[denom.denom.toString()]!.addListener(() =>
+            _updateCoinTotal(denom.denom.toString(),
+                _coinControllers[denom.denom.toString()]!));
       });
     });
   }
@@ -277,17 +287,23 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
     });
   }
 
-
   ShiftRequest _buildShiftRequest({int? shiftId, String? status}) {
     List<Denomination> drawerDenoms = [];
 
     _notesDenominations.forEach((denom) {
-      int count = int.tryParse(_controllers[denom.denom.toString()]?.text ?? '0') ?? 0;
-      drawerDenoms.add(Denomination(denomination: num.tryParse(denom.denom.toString()) ?? 0, denomCount: count));
+      int count =
+          int.tryParse(_controllers[denom.denom.toString()]?.text ?? '0') ?? 0;
+      drawerDenoms.add(Denomination(
+          denomination: num.tryParse(denom.denom.toString()) ?? 0,
+          denomCount: count));
     });
     _coinsDenominations.forEach((denom) {
-      int count = int.tryParse(_coinControllers[denom.denom.toString()]?.text ?? '0') ?? 0;
-      drawerDenoms.add(Denomination(denomination: num.tryParse(denom.denom.toString()) ?? 0, denomCount: count));
+      int count =
+          int.tryParse(_coinControllers[denom.denom.toString()]?.text ?? '0') ??
+              0;
+      drawerDenoms.add(Denomination(
+          denomination: num.tryParse(denom.denom.toString()) ?? 0,
+          denomCount: count));
     });
 
     List<TubeDenomination> tubeDenoms = [];
@@ -354,8 +370,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
             bool? result;
 
             if (status == TextConstants.open) {
-              await UserDbHelper()
-                  .updateUserShiftId(response.data!.shiftId);
+              await UserDbHelper().updateUserShiftId(response.data!.shiftId);
 
               result = await CustomDialog.showStartShiftVerification(
                 context,
@@ -375,15 +390,14 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (_) => POSHomeScreen()),
-                    (_) => false,
+                (_) => false,
               );
             }
             return;
           }
 
           // ---------------- CLOSE SHIFT ----------------
-          bool? confirmClose =
-          await CustomDialog.showCloseShiftVerification(
+          bool? confirmClose = await CustomDialog.showCloseShiftVerification(
             context,
             totalAmount: totalAmount,
             overShort: response.data!.overShort.toDouble(),
@@ -407,10 +421,10 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
           );
           _calculateGrandTotal();
 
-
           _shiftBloc.manageShift(closeRequest);
 
-          _shiftSubscription = _shiftBloc.shiftStream.listen((closeResponse) async {
+          _shiftSubscription =
+              _shiftBloc.shiftStream.listen((closeResponse) async {
             if (closeResponse.status == Status.COMPLETED) {
               if (mounted) Navigator.of(context).pop(); // close loader
               await UserDbHelper().updateUserShiftId(null);
@@ -427,6 +441,15 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                   );
                 }
               });
+            } else if (closeResponse.status == Status.ERROR) {
+              if (mounted) Navigator.of(context).pop(); // close loader
+              setState(() => _isSubmitting = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(TextConstants.failedCloseShift),
+                  backgroundColor: Colors.red,
+                ),
+              );
             }
           });
         }
@@ -447,13 +470,10 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
     }
   }
 
-
   void _calculateGrandTotal() {
-    final double noteTotal =
-    _noteTotals.values.fold(0.0, (a, b) => a + b);
+    final double noteTotal = _noteTotals.values.fold(0.0, (a, b) => a + b);
 
-    final double coinTotal =
-    _coinTotals.values.fold(0.0, (a, b) => a + b);
+    final double coinTotal = _coinTotals.values.fold(0.0, (a, b) => a + b);
 
     cashNotesCoin = noteTotal + coinTotal;
     totalAmount = cashNotesCoin + cashTubes;
@@ -467,7 +487,6 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
       print("🧮 TOTAL: $totalAmount");
     }
   }
-
 
   void _clearCounts() {
     _controllers.forEach((key, controller) => controller.clear());
@@ -490,7 +509,6 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
   TextEditingController _getControllerForCoinDenomination(String denomination) {
     return _coinControllers[denomination] ?? TextEditingController();
   }
-
 
   @override
   void dispose() {
@@ -536,7 +554,8 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
 
   @override
   Widget build(BuildContext context) {
-    final previousScreen = ModalRoute.of(context)?.settings.arguments as String?; //Build #1.0.74
+    final previousScreen =
+        ModalRoute.of(context)?.settings.arguments as String?; //Build #1.0.74
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return Scaffold(
       body: SafeArea(
@@ -544,7 +563,8 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
           children: [
             TopBar(
               screen: Screen.SHIFT,
-              onModeChanged: () async{ /// Build #1.0.192: Fixed -> Exception -> setState() callback argument returned a Future. (onModeChanged in all screens)
+              onModeChanged: () async {
+                /// Build #1.0.192: Fixed -> Exception -> setState() callback argument returned a Future. (onModeChanged in all screens)
                 String newLayout;
                 if (sidebarPosition == SidebarPosition.left) {
                   newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
@@ -561,7 +581,9 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                 // No need to call saveLayoutSelection here as it's handled in the notifier
                 //  _preferences.saveLayoutSelection(newLayout);
                 //Build #1.0.122: update layout mode change selection to DB
-                await UserDbHelper().saveUserSettings({AppDBConst.layoutSelection: newLayout}, modeChange: true);
+                await UserDbHelper().saveUserSettings(
+                    {AppDBConst.layoutSelection: newLayout},
+                    modeChange: true);
                 // update UI
                 setState(() {});
               },
@@ -586,7 +608,6 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                       isShiftScreen: true, // 🔥 THIS FIXES HEIGHT JUMP
                     ),
 
-
                   Expanded(
                       child: Padding(
                           padding: EdgeInsets.fromLTRB(8, 12, 12, 12),
@@ -595,88 +616,161 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(5),
                               color: themeHelper.themeMode == ThemeMode.dark
-                                  ? ThemeNotifier.primaryBackground : Colors.white,
+                                  ? ThemeNotifier.primaryBackground
+                                  : Colors.white,
                             ),
                             child: SingleChildScrollView(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Padding(
-                                    padding: const EdgeInsets.only(top: 16,right: 16,left: 16),
+                                    padding: const EdgeInsets.only(
+                                        top: 16, right: 16, left: 16),
                                     child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
                                       children: [
                                         Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
                                           children: [
                                             Text(
                                               screenTitle,
-                                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                              style: TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold),
                                             ),
                                             // const SizedBox(height: 4),
                                             const Text(
                                               TextConstants.shiftSubTitle,
-                                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                                              style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey),
                                             ),
                                           ],
                                         ),
                                         // Bottom buttons - Removed "Back" button
                                         Row(
-                                          mainAxisAlignment: MainAxisAlignment.end,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.end,
                                           children: [
-                                            SizedBox(  // Build #1.0.70: updated code
-                                              height: MediaQuery.of(context).size.height * 0.06,
-                                              width: MediaQuery.of(context).size.width * 0.1,
+                                            SizedBox(
+                                              // Build #1.0.70: updated code
+                                              height: MediaQuery.of(context)
+                                                      .size
+                                                      .height *
+                                                  0.06,
+                                              width: MediaQuery.of(context)
+                                                      .size
+                                                      .width *
+                                                  0.1,
                                               child: OutlinedButton(
-                                                onPressed: ((_shiftId == null || _shiftId!.isEmpty) && (previousScreen != TextConstants.navCashier)) ? null : () {
-
-                                                  // Build #1.0.221 : Fixed Issue
-                                                  // enable back button for close and update time and show "are you sure ? " dialog then exit to fast key screen
-                                                  CustomDialog.showAreYouSure(
-                                                    context,
-                                                    confirm: () {
-                                                      if (kDebugMode) {
-                                                        print("##### DEBUG Back Button confirm Tapped");
-                                                      }
-                                                      //  Navigator.pop(context); // Close the dialog
-                                                      // Use a slight delay to ensure dialog is fully closed before navigating
-                                                      Future.delayed(Duration(milliseconds: 100), () {
-                                                        Navigator.push(
+                                                onPressed: ((_shiftId == null ||
+                                                            _shiftId!
+                                                                .isEmpty) &&
+                                                        (previousScreen !=
+                                                            TextConstants
+                                                                .navCashier))
+                                                    ? null
+                                                    : () {
+                                                        // Build #1.0.221 : Fixed Issue
+                                                        // enable back button for close and update time and show "are you sure ? " dialog then exit to fast key screen
+                                                        CustomDialog
+                                                            .showAreYouSure(
                                                           context,
-                                                          MaterialPageRoute(builder: (context) => POSHomeScreen(lastSelectedIndex: 0)),
+                                                          confirm: () {
+                                                            if (kDebugMode) {
+                                                              print(
+                                                                  "##### DEBUG Back Button confirm Tapped");
+                                                            }
+                                                            //  Navigator.pop(context); // Close the dialog
+                                                            // Use a slight delay to ensure dialog is fully closed before navigating
+                                                            Future.delayed(
+                                                                Duration(
+                                                                    milliseconds:
+                                                                        100),
+                                                                () {
+                                                              Navigator.push(
+                                                                context,
+                                                                MaterialPageRoute(
+                                                                    builder: (context) =>
+                                                                        POSHomeScreen(
+                                                                            lastSelectedIndex:
+                                                                                0)),
+                                                              );
+                                                            });
+                                                          },
+                                                          description: TextConstants
+                                                              .areYouSureExitShiftDescription,
+                                                          confirmText:
+                                                              TextConstants
+                                                                  .yesExit,
+                                                          cancelText:
+                                                              TextConstants
+                                                                  .noStay,
                                                         );
-                                                      });
-                                                    },
-                                                    description: TextConstants.areYouSureExitShiftDescription,
-                                                    confirmText: TextConstants.yesExit,
-                                                    cancelText: TextConstants.noStay,
-                                                  );
-                                                },
+                                                      },
                                                 style: OutlinedButton.styleFrom(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 16,
+                                                      vertical: 8),
                                                   side: BorderSide(
-                                                    color: ((_shiftId == null || _shiftId!.isEmpty) && (previousScreen != TextConstants.navCashier))
-                                                        ? Colors.grey.shade400 // Greyed-out border when disabled
-                                                        : Colors.grey.shade300, // Active border
+                                                    color: ((_shiftId == null ||
+                                                                _shiftId!
+                                                                    .isEmpty) &&
+                                                            (previousScreen !=
+                                                                TextConstants
+                                                                    .navCashier))
+                                                        ? Colors.grey
+                                                            .shade400 // Greyed-out border when disabled
+                                                        : Colors.grey
+                                                            .shade300, // Active border
                                                   ),
                                                   shape: RoundedRectangleBorder(
-                                                    borderRadius: BorderRadius.circular(8),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            8),
                                                   ),
-                                                  foregroundColor: ((_shiftId == null || _shiftId!.isEmpty) && (previousScreen != TextConstants.navCashier))
-                                                      ? Colors.grey.shade400  // Greyed-out text when disabled
-                                                      : Colors.blueGrey, // Active text color
-                                                  backgroundColor: ((_shiftId == null || _shiftId!.isEmpty) && (previousScreen != TextConstants.navCashier))
-                                                      ? Colors.grey.shade100 // Subtle background when disabled
-                                                      : Colors.transparent, // No background when active
+                                                  foregroundColor: ((_shiftId ==
+                                                                  null ||
+                                                              _shiftId!
+                                                                  .isEmpty) &&
+                                                          (previousScreen !=
+                                                              TextConstants
+                                                                  .navCashier))
+                                                      ? Colors.grey
+                                                          .shade400 // Greyed-out text when disabled
+                                                      : Colors
+                                                          .blueGrey, // Active text color
+                                                  backgroundColor: ((_shiftId ==
+                                                                  null ||
+                                                              _shiftId!
+                                                                  .isEmpty) &&
+                                                          (previousScreen !=
+                                                              TextConstants
+                                                                  .navCashier))
+                                                      ? Colors.grey
+                                                          .shade100 // Subtle background when disabled
+                                                      : Colors
+                                                          .transparent, // No background when active
                                                 ),
                                                 child: Text(
                                                   TextConstants.backText,
                                                   style: TextStyle(
-                                                    color: (_shiftId == null || _shiftId!.isEmpty)
-                                                        ? Colors.grey.shade400 // Greyed-out text
-                                                        :  themeHelper.themeMode == ThemeMode.dark
-                                                        ? ThemeNotifier.textDark : Colors.blueGrey, // Active text
+                                                    color: (_shiftId == null ||
+                                                            _shiftId!.isEmpty)
+                                                        ? Colors.grey
+                                                            .shade400 // Greyed-out text
+                                                        : themeHelper
+                                                                    .themeMode ==
+                                                                ThemeMode.dark
+                                                            ? ThemeNotifier
+                                                                .textDark
+                                                            : Colors
+                                                                .blueGrey, // Active text
                                                     fontSize: 14,
                                                   ),
                                                 ),
@@ -684,9 +778,16 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                             ),
                                             const SizedBox(width: 20),
                                             SizedBox(
-                                              height: MediaQuery.of(context).size.height * 0.06,
-                                              width: MediaQuery.of(context).size.width * 0.1,
-                                              child: ElevatedButton(  // Build #1.0.70
+                                              height: MediaQuery.of(context)
+                                                      .size
+                                                      .height *
+                                                  0.06,
+                                              width: MediaQuery.of(context)
+                                                      .size
+                                                      .width *
+                                                  0.1,
+                                              child: ElevatedButton(
+                                                // Build #1.0.70
                                                 // onPressed: () {
                                                 //   // Add this line to close the keypad
                                                 //   FocusScope.of(context).unfocus();
@@ -713,7 +814,8 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                                 // },
 
                                                 onPressed: () async {
-                                                  FocusScope.of(context).unfocus();
+                                                  FocusScope.of(context)
+                                                      .unfocus();
 
                                                   if (_isSafeEnabled) {
                                                     // ✅ SAFE ENABLE = 1 → go to SafeOpenScreen
@@ -721,25 +823,36 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                                       context,
                                                       SlideRightRoute(
                                                         page: SafeOpenScreen(
-                                                          cashNotesCoins: _grandTotal,
+                                                          cashNotesCoins:
+                                                              _grandTotal,
                                                           previousScreen:
-                                                          _originScreen ?? TextConstants.navShiftHistory,
+                                                              _originScreen ??
+                                                                  TextConstants
+                                                                      .navShiftHistory,
                                                         ),
-                                                        arguments: TextConstants.navShiftHistory,
+                                                        arguments: TextConstants
+                                                            .navShiftHistory,
                                                       ),
                                                     );
                                                   } else {
                                                     // ❌ SAFE NOT ENABLED → normal flow
-                                                    await _handleShiftSubmit(navigateNext: true);
+                                                    await _handleShiftSubmit(
+                                                        navigateNext: true);
                                                   }
                                                 },
 
                                                 style: ElevatedButton.styleFrom(
-                                                  backgroundColor: Color(0xFFFF6B6B),
+                                                  backgroundColor:
+                                                      Color(0xFFFF6B6B),
                                                   foregroundColor: Colors.white,
-                                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 16,
+                                                      vertical: 8),
                                                   shape: RoundedRectangleBorder(
-                                                    borderRadius: BorderRadius.circular(8),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            8),
                                                   ),
                                                 ),
                                                 child: const Text('Submit',
@@ -755,21 +868,38 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                   const SizedBox(height: 10),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.start,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Container(
-                                        margin: EdgeInsets.only(left: 16, right: 8),
+                                        margin:
+                                            EdgeInsets.only(left: 16, right: 8),
                                         padding: EdgeInsets.all(8),
-                                        width: MediaQuery.of(context).size.width * 0.425,
-                                        height: sidebarPosition == SidebarPosition.bottom
-                                            ? MediaQuery.of(context).size.height * 0.625  // Reduced height for bottom nav
-                                            :MediaQuery.of(context).size.height * 0.7,
+                                        width:
+                                            MediaQuery.of(context).size.width *
+                                                0.425,
+                                        height: sidebarPosition ==
+                                                SidebarPosition.bottom
+                                            ? MediaQuery.of(context)
+                                                    .size
+                                                    .height *
+                                                0.625 // Reduced height for bottom nav
+                                            : MediaQuery.of(context)
+                                                    .size
+                                                    .height *
+                                                0.7,
                                         decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(5),
-                                          color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground :  Colors.grey.shade100,
-                                          boxShadow:[
+                                          borderRadius:
+                                              BorderRadius.circular(5),
+                                          color: themeHelper.themeMode ==
+                                                  ThemeMode.dark
+                                              ? ThemeNotifier
+                                                  .secondaryBackground
+                                              : Colors.grey.shade100,
+                                          boxShadow: [
                                             BoxShadow(
-                                              color: Colors.black.withValues(alpha: 0.1),
+                                              color: Colors.black
+                                                  .withValues(alpha: 0.1),
                                               blurRadius: 2,
                                               spreadRadius: 2,
                                               offset: const Offset(0, 0),
@@ -777,26 +907,35 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                           ],
                                         ),
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.center,
                                           children: [
                                             const Text(
                                               TextConstants.notes,
-                                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                              style: TextStyle(
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.bold),
                                             ).poppins(),
                                             const SizedBox(height: 5),
 
                                             // Table headers
                                             Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
                                               children: [
                                                 Expanded(
                                                   flex: 2,
                                                   child: Text(
                                                     TextConstants.type,
                                                     style: TextStyle(
-                                                      fontWeight: FontWeight.w500,
-                                                      color: themeHelper.themeMode == ThemeMode.dark
-                                                          ? ThemeNotifier.textDark : Colors.grey[700],
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      color: themeHelper
+                                                                  .themeMode ==
+                                                              ThemeMode.dark
+                                                          ? ThemeNotifier
+                                                              .textDark
+                                                          : Colors.grey[700],
                                                     ),
                                                   ),
                                                 ),
@@ -805,20 +944,31 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                                   child: Text(
                                                     TextConstants.noOfNotes,
                                                     style: TextStyle(
-                                                      fontWeight: FontWeight.w500,
-                                                      color:  themeHelper.themeMode == ThemeMode.dark
-                                                          ? ThemeNotifier.textDark : Colors.grey[700],
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      color: themeHelper
+                                                                  .themeMode ==
+                                                              ThemeMode.dark
+                                                          ? ThemeNotifier
+                                                              .textDark
+                                                          : Colors.grey[700],
                                                     ),
                                                   ),
                                                 ),
                                                 Expanded(
                                                   flex: 3,
                                                   child: Text(
-                                                    TextConstants.totalAmountText,
+                                                    TextConstants
+                                                        .totalAmountText,
                                                     style: TextStyle(
-                                                      fontWeight: FontWeight.w500,
-                                                      color: themeHelper.themeMode == ThemeMode.dark
-                                                          ? ThemeNotifier.textDark : Colors.grey[700],
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      color: themeHelper
+                                                                  .themeMode ==
+                                                              ThemeMode.dark
+                                                          ? ThemeNotifier
+                                                              .textDark
+                                                          : Colors.grey[700],
                                                     ),
                                                   ),
                                                 ),
@@ -835,83 +985,212 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                                 // physics: AlwaysScrollableScrollPhysics(),
                                                 // children: _notesDenominations.map((denom) {
                                                 //   String denomination = denom.denom.toString();
-                                                itemCount: _notesDenominations.length,
-                                                physics: const AlwaysScrollableScrollPhysics(),
-                                                padding: EdgeInsets.zero, // Remove default padding
+                                                itemCount:
+                                                    _notesDenominations.length,
+                                                physics:
+                                                    const AlwaysScrollableScrollPhysics(),
+                                                padding: EdgeInsets
+                                                    .zero, // Remove default padding
                                                 itemBuilder: (context, index) {
-                                                  final denom = _notesDenominations[index];
-                                                  String denomination = denom.denom.toString();
+                                                  final denom =
+                                                      _notesDenominations[
+                                                          index];
+                                                  String denomination =
+                                                      denom.denom.toString();
                                                   return Padding(
-                                                    padding: const EdgeInsets.symmetric(vertical: 7.0, horizontal: 7.0),
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        vertical: 7.0,
+                                                        horizontal: 7.0),
                                                     child: Row(
                                                       children: [
                                                         _loadSvg(
-                                                          denom.image ?? 'assets/svg/1.svg',
+                                                          denom.image ??
+                                                              'assets/svg/1.svg',
                                                           24,
                                                           24,
                                                         ),
                                                         Padding(
-                                                          padding: EdgeInsets.symmetric(horizontal: 12.0),
+                                                          padding: EdgeInsets
+                                                              .symmetric(
+                                                                  horizontal:
+                                                                      12.0),
                                                           child: Text(
                                                             '×',
-                                                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.normal, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey),
+                                                            style: TextStyle(
+                                                                fontSize: 18,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .normal,
+                                                                color: themeHelper
+                                                                            .themeMode ==
+                                                                        ThemeMode
+                                                                            .dark
+                                                                    ? ThemeNotifier
+                                                                        .textDark
+                                                                    : Colors
+                                                                        .grey),
                                                           ),
                                                         ),
                                                         Container(
-                                                          height: MediaQuery.of(context).size.height * 0.06,
-                                                          width: MediaQuery.of(context).size.width * 0.15,
+                                                          height: MediaQuery.of(
+                                                                      context)
+                                                                  .size
+                                                                  .height *
+                                                              0.06,
+                                                          width: MediaQuery.of(
+                                                                      context)
+                                                                  .size
+                                                                  .width *
+                                                              0.15,
                                                           decoration: BoxDecoration(
-                                                              shape: BoxShape.rectangle,
-                                                              border: Border.all(color:  themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.borderColor : Colors.grey.shade300),
-                                                              borderRadius: BorderRadius.circular(5),
-                                                              color:  themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.paymentEntryContainerColor :Colors.white
-                                                          ),
+                                                              shape: BoxShape
+                                                                  .rectangle,
+                                                              border: Border.all(
+                                                                  color: themeHelper
+                                                                              .themeMode ==
+                                                                          ThemeMode
+                                                                              .dark
+                                                                      ? ThemeNotifier
+                                                                          .borderColor
+                                                                      : Colors
+                                                                          .grey
+                                                                          .shade300),
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                      5),
+                                                              color: themeHelper
+                                                                          .themeMode ==
+                                                                      ThemeMode
+                                                                          .dark
+                                                                  ? ThemeNotifier
+                                                                      .paymentEntryContainerColor
+                                                                  : Colors
+                                                                      .white),
                                                           child: TextField(
-                                                            controller: _getControllerForDenomination(denomination),
-                                                            keyboardType: TextInputType.number,
-                                                            textInputAction: TextInputAction.next,
+                                                            controller:
+                                                                _getControllerForDenomination(
+                                                                    denomination),
+                                                            keyboardType:
+                                                                TextInputType
+                                                                    .number,
+                                                            textInputAction:
+                                                                TextInputAction
+                                                                    .next,
                                                             inputFormatters: [
-                                                              FilteringTextInputFormatter.digitsOnly,
+                                                              FilteringTextInputFormatter
+                                                                  .digitsOnly,
                                                             ],
-                                                            onSubmitted: (value){
-                                                              FocusScope.of(context).nextFocus();
+                                                            onSubmitted:
+                                                                (value) {
+                                                              FocusScope.of(
+                                                                      context)
+                                                                  .nextFocus();
                                                             },
-                                                            decoration: InputDecoration(
+                                                            decoration:
+                                                                InputDecoration(
                                                               hintText: '0',
-                                                              hintStyle: TextStyle(color: themeHelper.themeMode == ThemeMode.dark
-                                                                  ? ThemeNotifier.textDark : Colors.grey),
-                                                              border: InputBorder.none,
-                                                              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9.0),
+                                                              hintStyle: TextStyle(
+                                                                  color: themeHelper
+                                                                              .themeMode ==
+                                                                          ThemeMode
+                                                                              .dark
+                                                                      ? ThemeNotifier
+                                                                          .textDark
+                                                                      : Colors
+                                                                          .grey),
+                                                              border:
+                                                                  InputBorder
+                                                                      .none,
+                                                              contentPadding:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
+                                                                      horizontal:
+                                                                          8,
+                                                                      vertical:
+                                                                          9.0),
                                                             ),
                                                           ),
                                                         ),
                                                         Padding(
-                                                          padding: EdgeInsets.symmetric(horizontal: 12.0),
+                                                          padding: EdgeInsets
+                                                              .symmetric(
+                                                                  horizontal:
+                                                                      12.0),
                                                           child: Text(
                                                             '=',
-                                                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color:  themeHelper.themeMode == ThemeMode.dark
-                                                                ? ThemeNotifier.textDark : Colors.grey),
+                                                            style: TextStyle(
+                                                                fontSize: 16,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                                color: themeHelper
+                                                                            .themeMode ==
+                                                                        ThemeMode
+                                                                            .dark
+                                                                    ? ThemeNotifier
+                                                                        .textDark
+                                                                    : Colors
+                                                                        .grey),
                                                           ),
                                                         ),
                                                         Container(
-                                                          height: MediaQuery.of(context).size.height * 0.06,
-                                                          width: MediaQuery.of(context).size.width * 0.15,
-                                                          alignment: Alignment.centerRight,
-                                                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                                                          decoration: BoxDecoration(
-                                                            border: Border.all(color:  themeHelper.themeMode == ThemeMode.dark
-                                                                ? ThemeNotifier.borderColor : Colors.grey.shade400),
-                                                            borderRadius: BorderRadius.circular(4),
-                                                            color:  themeHelper.themeMode == ThemeMode.dark
-                                                                ? ThemeNotifier.orderPanelTabBackground :Colors.grey.shade300,
+                                                          height: MediaQuery.of(
+                                                                      context)
+                                                                  .size
+                                                                  .height *
+                                                              0.06,
+                                                          width: MediaQuery.of(
+                                                                      context)
+                                                                  .size
+                                                                  .width *
+                                                              0.15,
+                                                          alignment: Alignment
+                                                              .centerRight,
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .symmetric(
+                                                                  horizontal:
+                                                                      8),
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            border: Border.all(
+                                                                color: themeHelper
+                                                                            .themeMode ==
+                                                                        ThemeMode
+                                                                            .dark
+                                                                    ? ThemeNotifier
+                                                                        .borderColor
+                                                                    : Colors
+                                                                        .grey
+                                                                        .shade400),
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        4),
+                                                            color: themeHelper
+                                                                        .themeMode ==
+                                                                    ThemeMode
+                                                                        .dark
+                                                                ? ThemeNotifier
+                                                                    .orderPanelTabBackground
+                                                                : Colors.grey
+                                                                    .shade300,
                                                           ),
                                                           child: Text(
                                                             '${TextConstants.currencySymbol}${_noteTotals[denomination]!.toStringAsFixed(2)}',
                                                             style: TextStyle(
                                                               fontSize: 16,
-                                                              color:  themeHelper.themeMode == ThemeMode.dark
-                                                                  ? ThemeNotifier.textDark : Colors.grey,
-                                                              fontWeight: FontWeight.bold,
+                                                              color: themeHelper
+                                                                          .themeMode ==
+                                                                      ThemeMode
+                                                                          .dark
+                                                                  ? ThemeNotifier
+                                                                      .textDark
+                                                                  : Colors.grey,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
                                                             ),
                                                           ),
                                                         ),
@@ -926,23 +1205,42 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                       ),
                                       // Coins Container and Total Section
                                       Column(
-                                        mainAxisAlignment: MainAxisAlignment.start,
-                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
                                         children: [
                                           // Coins Container
                                           Container(
-                                            margin: EdgeInsets.only(left: 16, right: 8),
+                                            margin: EdgeInsets.only(
+                                                left: 16, right: 8),
                                             padding: EdgeInsets.all(8),
-                                            width: MediaQuery.of(context).size.width * 0.425,
-                                            height: sidebarPosition == SidebarPosition.bottom
-                                                ? MediaQuery.of(context).size.height * 0.45  // Reduced height for bottom nav
-                                                :MediaQuery.of(context).size.height * 0.45,
+                                            width: MediaQuery.of(context)
+                                                    .size
+                                                    .width *
+                                                0.425,
+                                            height: sidebarPosition ==
+                                                    SidebarPosition.bottom
+                                                ? MediaQuery.of(context)
+                                                        .size
+                                                        .height *
+                                                    0.45 // Reduced height for bottom nav
+                                                : MediaQuery.of(context)
+                                                        .size
+                                                        .height *
+                                                    0.45,
                                             decoration: BoxDecoration(
-                                              borderRadius: BorderRadius.circular(5),
-                                              color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.grey.shade100,
-                                              boxShadow:[
+                                              borderRadius:
+                                                  BorderRadius.circular(5),
+                                              color: themeHelper.themeMode ==
+                                                      ThemeMode.dark
+                                                  ? ThemeNotifier
+                                                      .secondaryBackground
+                                                  : Colors.grey.shade100,
+                                              boxShadow: [
                                                 BoxShadow(
-                                                  color: Colors.black.withValues(alpha: 0.1),
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.1),
                                                   blurRadius: 2,
                                                   spreadRadius: 2,
                                                   offset: const Offset(0, 0),
@@ -950,27 +1248,39 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                               ],
                                             ),
                                             child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.center,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
                                               children: [
                                                 const Text(
                                                   TextConstants.coins,
-                                                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                                  style: TextStyle(
+                                                      fontSize: 20,
+                                                      fontWeight:
+                                                          FontWeight.bold),
                                                 ).poppins(),
                                                 const SizedBox(height: 5),
 
                                                 // Table headers
                                                 Row(
-                                                  mainAxisAlignment: MainAxisAlignment.center,
-                                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.center,
                                                   children: [
                                                     Expanded(
-                                                      flex:2,
+                                                      flex: 2,
                                                       child: Text(
                                                         TextConstants.type,
                                                         style: TextStyle(
-                                                          fontWeight: FontWeight.w500,
-                                                          color: themeHelper.themeMode == ThemeMode.dark
-                                                              ? ThemeNotifier.textDark : Colors.grey[700],
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                          color: themeHelper
+                                                                      .themeMode ==
+                                                                  ThemeMode.dark
+                                                              ? ThemeNotifier
+                                                                  .textDark
+                                                              : Colors
+                                                                  .grey[700],
                                                         ),
                                                       ),
                                                     ),
@@ -979,20 +1289,33 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                                       child: Text(
                                                         TextConstants.noOfCoins,
                                                         style: TextStyle(
-                                                          fontWeight: FontWeight.w500,
-                                                          color: themeHelper.themeMode == ThemeMode.dark
-                                                              ? ThemeNotifier.textDark : Colors.grey[700],
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                          color: themeHelper
+                                                                      .themeMode ==
+                                                                  ThemeMode.dark
+                                                              ? ThemeNotifier
+                                                                  .textDark
+                                                              : Colors
+                                                                  .grey[700],
                                                         ),
                                                       ),
                                                     ),
                                                     Expanded(
                                                       flex: 3,
                                                       child: Text(
-                                                        TextConstants.totalAmountText,
+                                                        TextConstants
+                                                            .totalAmountText,
                                                         style: TextStyle(
-                                                          fontWeight: FontWeight.w500,
-                                                          color: themeHelper.themeMode == ThemeMode.dark
-                                                              ? ThemeNotifier.textDark : Colors.grey[700],
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                          color: themeHelper
+                                                                      .themeMode ==
+                                                                  ThemeMode.dark
+                                                              ? ThemeNotifier
+                                                                  .textDark
+                                                              : Colors
+                                                                  .grey[700],
                                                         ),
                                                       ),
                                                     ),
@@ -1005,87 +1328,222 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                                 // Coin rows - Use fetched denominations
                                                 Expanded(
                                                   child: ListView.builder(
-                                                    itemCount: _coinsDenominations.length,
-                                                    physics: const AlwaysScrollableScrollPhysics(),
-                                                    padding: EdgeInsets.zero, // Remove default padding
-                                                    itemBuilder: (context, index) {
-                                                      final denom = _coinsDenominations[index];
-                                                      String denomination = denom.denom.toString();
+                                                    itemCount:
+                                                        _coinsDenominations
+                                                            .length,
+                                                    physics:
+                                                        const AlwaysScrollableScrollPhysics(),
+                                                    padding: EdgeInsets
+                                                        .zero, // Remove default padding
+                                                    itemBuilder:
+                                                        (context, index) {
+                                                      final denom =
+                                                          _coinsDenominations[
+                                                              index];
+                                                      String denomination =
+                                                          denom.denom
+                                                              .toString();
 
                                                       // scrollDirection: Axis.vertical,
                                                       // physics: AlwaysScrollableScrollPhysics(),
                                                       // children: _coinsDenominations.map((denom) {
                                                       //   String denomination = denom.denom.toString();
                                                       return Padding(
-                                                        padding: const EdgeInsets.symmetric(vertical: 7.0, horizontal: 7.0),
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                vertical: 7.0,
+                                                                horizontal:
+                                                                    7.0),
                                                         child: Row(
                                                           children: [
                                                             _loadSvg(
-                                                              denom.image ?? 'assets/svg/50_cents.svg',
+                                                              denom.image ??
+                                                                  'assets/svg/50_cents.svg',
                                                               24,
                                                               24,
                                                             ),
                                                             Padding(
-                                                              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
+                                                                      horizontal:
+                                                                          12.0),
                                                               child: Text(
                                                                 '×',
-                                                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.normal, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey),
+                                                                style: TextStyle(
+                                                                    fontSize:
+                                                                        18,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .normal,
+                                                                    color: themeHelper.themeMode ==
+                                                                            ThemeMode
+                                                                                .dark
+                                                                        ? ThemeNotifier
+                                                                            .textDark
+                                                                        : Colors
+                                                                            .grey),
                                                               ),
                                                             ),
                                                             Container(
-                                                              height: MediaQuery.of(context).size.height * 0.06,
-                                                              width: MediaQuery.of(context).size.width * 0.15,
+                                                              height: MediaQuery.of(
+                                                                          context)
+                                                                      .size
+                                                                      .height *
+                                                                  0.06,
+                                                              width: MediaQuery.of(
+                                                                          context)
+                                                                      .size
+                                                                      .width *
+                                                                  0.15,
                                                               decoration: BoxDecoration(
-                                                                  shape: BoxShape.rectangle,
-                                                                  border: Border.all(color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.borderColor : Colors.grey.shade300),
-                                                                  borderRadius: BorderRadius.circular(5),
-                                                                  color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.paymentEntryContainerColor : Colors.white
-                                                              ),
+                                                                  shape: BoxShape
+                                                                      .rectangle,
+                                                                  border: Border.all(
+                                                                      color: themeHelper.themeMode == ThemeMode.dark
+                                                                          ? ThemeNotifier
+                                                                              .borderColor
+                                                                          : Colors
+                                                                              .grey
+                                                                              .shade300),
+                                                                  borderRadius:
+                                                                      BorderRadius
+                                                                          .circular(
+                                                                              5),
+                                                                  color: themeHelper
+                                                                              .themeMode ==
+                                                                          ThemeMode
+                                                                              .dark
+                                                                      ? ThemeNotifier
+                                                                          .paymentEntryContainerColor
+                                                                      : Colors
+                                                                          .white),
                                                               child: TextField(
-                                                                controller: _getControllerForCoinDenomination(denomination),
-                                                                keyboardType: TextInputType.number,
-                                                                textInputAction: TextInputAction.next, // This adds the "Enter" button
+                                                                controller:
+                                                                    _getControllerForCoinDenomination(
+                                                                        denomination),
+                                                                keyboardType:
+                                                                    TextInputType
+                                                                        .number,
+                                                                textInputAction:
+                                                                    TextInputAction
+                                                                        .next, // This adds the "Enter" button
                                                                 inputFormatters: [
-                                                                  FilteringTextInputFormatter.digitsOnly,
+                                                                  FilteringTextInputFormatter
+                                                                      .digitsOnly,
                                                                 ],
-                                                                onSubmitted: (value) {
-                                                                  FocusScope.of(context).nextFocus();
+                                                                onSubmitted:
+                                                                    (value) {
+                                                                  FocusScope.of(
+                                                                          context)
+                                                                      .nextFocus();
                                                                 },
-                                                                decoration: InputDecoration(
+                                                                decoration:
+                                                                    InputDecoration(
                                                                   hintText: '0',
-                                                                  hintStyle: TextStyle(color: themeHelper.themeMode == ThemeMode.dark
-                                                                      ? ThemeNotifier.textDark : Colors.grey),
-                                                                  border: InputBorder.none,
-                                                                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 9.0),
+                                                                  hintStyle: TextStyle(
+                                                                      color: themeHelper.themeMode ==
+                                                                              ThemeMode
+                                                                                  .dark
+                                                                          ? ThemeNotifier
+                                                                              .textDark
+                                                                          : Colors
+                                                                              .grey),
+                                                                  border:
+                                                                      InputBorder
+                                                                          .none,
+                                                                  contentPadding:
+                                                                      EdgeInsets.symmetric(
+                                                                          horizontal:
+                                                                              8,
+                                                                          vertical:
+                                                                              9.0),
                                                                 ),
                                                               ),
                                                             ),
                                                             Padding(
-                                                              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
+                                                                      horizontal:
+                                                                          12.0),
                                                               child: Text(
                                                                 '=',
-                                                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey),
+                                                                style: TextStyle(
+                                                                    fontSize:
+                                                                        16,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .bold,
+                                                                    color: themeHelper.themeMode ==
+                                                                            ThemeMode
+                                                                                .dark
+                                                                        ? ThemeNotifier
+                                                                            .textDark
+                                                                        : Colors
+                                                                            .grey),
                                                               ),
                                                             ),
                                                             Container(
-                                                              height: MediaQuery.of(context).size.height * 0.06,
-                                                              width: MediaQuery.of(context).size.width * 0.15,
-                                                              alignment: Alignment.centerRight,
-                                                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                                                              decoration: BoxDecoration(
-                                                                border: Border.all(color: themeHelper.themeMode == ThemeMode.dark
-                                                                    ? ThemeNotifier.borderColor : Colors.grey.shade400),
-                                                                borderRadius: BorderRadius.circular(4),
-                                                                color: themeHelper.themeMode == ThemeMode.dark
-                                                                    ? ThemeNotifier.orderPanelTabBackground : Colors.grey.shade300,
+                                                              height: MediaQuery.of(
+                                                                          context)
+                                                                      .size
+                                                                      .height *
+                                                                  0.06,
+                                                              width: MediaQuery.of(
+                                                                          context)
+                                                                      .size
+                                                                      .width *
+                                                                  0.15,
+                                                              alignment: Alignment
+                                                                  .centerRight,
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
+                                                                      horizontal:
+                                                                          8),
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                border: Border.all(
+                                                                    color: themeHelper.themeMode ==
+                                                                            ThemeMode
+                                                                                .dark
+                                                                        ? ThemeNotifier
+                                                                            .borderColor
+                                                                        : Colors
+                                                                            .grey
+                                                                            .shade400),
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            4),
+                                                                color: themeHelper
+                                                                            .themeMode ==
+                                                                        ThemeMode
+                                                                            .dark
+                                                                    ? ThemeNotifier
+                                                                        .orderPanelTabBackground
+                                                                    : Colors
+                                                                        .grey
+                                                                        .shade300,
                                                               ),
                                                               child: Text(
                                                                 '${TextConstants.currencySymbol}${_coinTotals[denomination]!.toStringAsFixed(2)}',
-                                                                style: TextStyle(
+                                                                style:
+                                                                    TextStyle(
                                                                   fontSize: 16,
-                                                                  color: themeHelper.themeMode == ThemeMode.dark
-                                                                      ? ThemeNotifier.textDark : Colors.grey,
-                                                                  fontWeight: FontWeight.bold,
+                                                                  color: themeHelper
+                                                                              .themeMode ==
+                                                                          ThemeMode
+                                                                              .dark
+                                                                      ? ThemeNotifier
+                                                                          .textDark
+                                                                      : Colors
+                                                                          .grey,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
                                                                 ),
                                                               ),
                                                             ),
@@ -1105,9 +1563,11 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                             onPressed: _clearCounts,
                                             style: TextButton.styleFrom(
                                               foregroundColor: Colors.red,
-                                              side: const BorderSide(color: Colors.grey),
+                                              side: const BorderSide(
+                                                  color: Colors.grey),
                                               shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(8),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
                                               ),
                                             ),
                                             child: const Text('CLEAR COUNTS'),
@@ -1125,22 +1585,39 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                                 ),
                                               ),
                                               Container(
-                                                height: MediaQuery.of(context).size.height * 0.06,
-                                                width: MediaQuery.of(context).size.width * 0.25,
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                                height: MediaQuery.of(context)
+                                                        .size
+                                                        .height *
+                                                    0.06,
+                                                width: MediaQuery.of(context)
+                                                        .size
+                                                        .width *
+                                                    0.25,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 8),
                                                 decoration: BoxDecoration(
-                                                  border: Border.all(color: Colors.grey.shade300),
-                                                  borderRadius: BorderRadius.circular(5),
+                                                  border: Border.all(
+                                                      color:
+                                                          Colors.grey.shade300),
+                                                  borderRadius:
+                                                      BorderRadius.circular(5),
                                                 ),
-                                                alignment: Alignment.centerRight,
+                                                alignment:
+                                                    Alignment.centerRight,
                                                 child: Text(
                                                   '${TextConstants.currencySymbol}${_grandTotal.toStringAsFixed(2)}',
                                                   style: TextStyle(
                                                       fontSize: 18,
-                                                      fontWeight: FontWeight.bold,
-                                                      color: themeHelper.themeMode == ThemeMode.dark
-                                                          ? ThemeNotifier.textDark : Colors.grey
-                                                  ),
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: themeHelper
+                                                                  .themeMode ==
+                                                              ThemeMode.dark
+                                                          ? ThemeNotifier
+                                                              .textDark
+                                                          : Colors.grey),
                                                 ),
                                               ),
                                             ],
@@ -1152,9 +1629,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                                 ],
                               ),
                             ),
-                          )
-                      )
-                  ),
+                          ))),
 
                   // Right Sidebar (Conditional)
                   if (sidebarPosition == SidebarPosition.right)
@@ -1167,7 +1642,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                         });
                       },
                       isVertical: true,
-                      isShiftScreen: true,// Vertical layout for right sidebar
+                      isShiftScreen: true, // Vertical layout for right sidebar
                     ),
                 ],
               ),
@@ -1183,7 +1658,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
                   });
                 },
                 isVertical: false,
-                isShiftScreen: true,// Horizontal layout for bottom sidebar
+                isShiftScreen: true, // Horizontal layout for bottom sidebar
               ),
           ],
         ),
@@ -1197,22 +1672,26 @@ class SlideRightRoute extends PageRouteBuilder {
   final String arguments; // Build #1.0.226: Added this parameter
   SlideRightRoute({required this.page, this.arguments = ''})
       : super(
-    pageBuilder: (context, animation, secondaryAnimation) => page,
-    transitionDuration: const Duration(milliseconds: 1000), // Control the speed
-    reverseTransitionDuration: const Duration(milliseconds: 1000),
-    transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      const begin = Offset(1.0, 0.0); // Start position (from the right)
-      const end = Offset.zero; // End position (center)
-      const curve = Curves.easeInOut;
+          pageBuilder: (context, animation, secondaryAnimation) => page,
+          transitionDuration:
+              const Duration(milliseconds: 1000), // Control the speed
+          reverseTransitionDuration: const Duration(milliseconds: 1000),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            const begin = Offset(1.0, 0.0); // Start position (from the right)
+            const end = Offset.zero; // End position (center)
+            const curve = Curves.easeInOut;
 
-      var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-      var offsetAnimation = animation.drive(tween);
+            var tween =
+                Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+            var offsetAnimation = animation.drive(tween);
 
-      return SlideTransition(
-        position: offsetAnimation,
-        child: child,
-      );
-    },
-    settings: RouteSettings(arguments: arguments), // Build #1.0.226: Fixed Issue -> Menu items are not disabled in shift closing/update time in second screen
-  );
+            return SlideTransition(
+              position: offsetAnimation,
+              child: child,
+            );
+          },
+          settings: RouteSettings(
+              arguments:
+                  arguments), // Build #1.0.226: Fixed Issue -> Menu items are not disabled in shift closing/update time in second screen
+        );
 }
