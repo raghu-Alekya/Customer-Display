@@ -2234,8 +2234,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                     SizedBox(
                                       height: 2,
                                     ),
-
- 
                                     // Builder(
                                     //   builder: (context) {
                                     //     return Row(
