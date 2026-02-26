@@ -1777,7 +1777,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final int enteredCents = (amount * 100).round();
     final int ebtCents = (ebtTotal * 100).round();
 
-    // ❌ Basic validation
+    //  Basic validation
     if (enteredCents <= 0 && computedNetPayable > 0) {
       setState(() {
         _amountErrorText = TextConstants.amountValidation;
@@ -5849,6 +5849,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final themeHelper = Provider.of<ThemeNotifier>(context);
     bool hasEbtItem = orderItems.any((item) => item["is_ebt_eligible"] == true);
+    final bool hasOnlyCashbackOrPayoutItems = orderItems.isNotEmpty &&
+        orderItems.every((item) {
+          final type = (item['item_type'] ?? item['type'] ?? '')
+              .toString()
+              .toLowerCase();
+
+          return type == 'cashback' || type == 'payout';
+        });
     return Container(
       // Remove the fixed height constraint to let it match the left container
       margin: EdgeInsets.only(
@@ -6156,6 +6164,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   _currentPaymentRemainingBalance ?? balanceAmount,
                                                 )
                                                     : (_currentPaymentRemainingBalance ?? balanceAmount),
+
                                                 onDigitPressed: (value) {
                                                   _userManuallyEnteredAmount = true; // User touched → block future auto-fill
 
@@ -6873,14 +6882,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                 isActive: redeemedValue == 0 &&
                                     !isPaymentStarted &&
                                     !hasEbtItem &&
-                                    !isOrderPending,
+                                    !isOrderPending &&
+                                    !hasOnlyCashbackOrPayoutItems,   // ✅ NEW CONDITION
                                 onTap: () {
                                   if (hasEbtItem ||
                                       redeemedValue > 0 ||
                                       isPaymentStarted ||
-                                      isOrderPending) {
+                                      isOrderPending ||
+                                      hasOnlyCashbackOrPayoutItems) {   // ✅ BLOCK TAP
                                     return;
                                   }
+
                                   _openCouponPopup();
                                 },
                               ),
@@ -8448,6 +8460,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           Navigator.of(dialogCtx).pop();
 
           // 2. Show void confirmation
+          if (!_isShowingPartialDialog) {
+            showVoidExitConfirmation(context, false); // false = not partial
+          }
           await _showVoidConfirmation(context, isPartial: true);
         },
         onNextPayment: () {
@@ -8467,9 +8482,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       context: context,
       barrierDismissible: false,
       builder: (dialogCtx) => PaymentDialog.voidConfirmation(
-        onVoidCancel: () {
+        onVoidCancel: () async {
           print("❌ VOID CANCELED BY USER");
+
           Navigator.of(dialogCtx).pop();
+
+          // await _handleVoidPayment(context, isPartial: true);
+          // _isVoiding = false;
         },
         onVoidConfirm: () async {
           // 1. Immediately close confirmation dialog
@@ -8651,52 +8670,107 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //   );
   // }
 
+  Future<void> _updatePaymentStatusInHive(int localOrderId, int paymentLocalId, String newStatus) async {
+    try {
+      final box = StorageProvider.offlineOrders;
+      final String hiveKey = localOrderId.toString(); // key is the local order ID
+
+      if (!(await box.containsKey(hiveKey))) return;
+
+      final raw = await box.get(hiveKey);
+      final order = Map<String, dynamic>.from(raw is Map ? raw : {});
+
+      final List<dynamic> payments = order['payments'] ?? [];
+      bool updated = false;
+
+      for (int i = 0; i < payments.length; i++) {
+        final p = payments[i] as Map<String, dynamic>;
+        if (p['local_id'] == paymentLocalId) {
+          p['status'] = newStatus;
+          updated = true;
+          break;
+        }
+      }
+
+      if (updated) {
+        order['payments'] = payments;
+        await box.put(hiveKey, order);
+        print("✅ Hive payment #$paymentLocalId status updated to '$newStatus'");
+      }
+    } catch (e) {
+      print("❌ Error updating Hive payment status: $e");
+    }
+  }
 
   Future<void> _syncCurrentOfflineOrder() async {
     try {
       final box = StorageProvider.offlineOrders;
 
-      final String orderKey = widget.orderId?.toString() ??
+      final String hiveKey = widget.orderId?.toString() ??
           widget.offlineOrderId?.toString() ??
           orderId?.toString() ??
           "";
 
-      if (orderKey.isEmpty) {
+      if (hiveKey.isEmpty) {
         print("❌ No order key found for sync");
         return;
       }
 
-      final raw = await box.get(orderKey);
+      final raw = await box.get(hiveKey);
       if (raw is! Map) return;
 
       final order = Map<String, dynamic>.from(raw);
 
-      // ✅ KEY FIX: Check if already synced to Woo
+      // FIX: try all possible order_id keys
+      final int serverOrderId =
+          (order['order_id'] as num?)?.toInt() ??
+              (order['orderId'] as num?)?.toInt() ??
+              orderId ?? 0;
+
+      if (serverOrderId == 0) {
+        print("❌ Could not determine server order ID for payments");
+        return;
+      }
+
+      // Fetch ALL payments from Isar using the server ID
+      final payments =
+      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(serverOrderId);
+
+      // FIX: include BOTH 'local_id' and 'id' keys so onDone Hive lookup works
+      order['payments'] = payments.map((p) => {
+        'local_id': p.id,           // ← KEY FIX: was 'id', now 'local_id' for onDone lookup
+        'id': p.id,                 // ← keep for backward compat
+        'amount': p.amount,
+        'method': p.paymentMethod,
+        'paymentMethod': p.paymentMethod, // ← alias so both key variants work
+        'datetime': p.datetime,
+        'status': p.status?.name,
+        'isSynced': p.isSynced,
+        'serverPaymentId': p.serverPaymentId,
+      }).toList();
+
+      // Recalculate totals
+      final double totalPaid = payments.fold(0.0, (sum, p) => sum + p.amount);
+      order['total_paid'] = totalPaid;
+      order['remaining_balance'] =
+          ((order['net_payable'] ?? computedNetPayable) as num).toDouble() - totalPaid;
+      order['order_status'] =
+      order['remaining_balance'] <= 0 ? 'processing' : 'pending_offline';
+
+      // Check if already synced to Woo
       final existingWooId = order['wooOrderId'];
       if (existingWooId != null && int.tryParse(existingWooId.toString()) != null) {
         final int wooId = int.parse(existingWooId.toString());
         if (wooId > 0) {
-          print("🔄 Order already exists on Woo → will UPDATE (ID: $wooId), not create new");
-          // order already has wooOrderId, so syncSingleOfflineOrder will do PUT
+          print("🔄 Order already exists on Woo → will UPDATE (ID: $wooId)");
         }
       }
 
-      final int? localOrderId = int.tryParse(orderKey);
-      if (localOrderId == null) return;
-
-      final payments = (await LocalPaymentDBHelper.instance
-          .getPaymentsByOrderId(localOrderId))
-          .where((p) => !p.isSynced)
-          .toList();
-
-      print("💰 Single sync payments attached → ${payments.length}");
-
+      // Sync to server
       final result = await OrderRepository().syncSingleOfflineOrder(order);
 
       if (result == null || result is! Map) {
-        if (kDebugMode) {
-          print("❌ Invalid Woo response for order → $orderKey");
-        }
+        print("❌ Invalid Woo response for order → $hiveKey");
         return;
       }
 
@@ -8704,38 +8778,32 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final int wooOrderId = woo['id'] ?? 0;
       final String wooStatus = woo['status']?.toString().toLowerCase() ?? '';
 
-      if (kDebugMode) {
-        print("🟣 Woo response → order:$wooOrderId status:$wooStatus");
-      }
+      print("🟣 Woo response → order:$wooOrderId status:$wooStatus");
 
-      // ✅ Mark payments as synced
-      for (final p in payments) {
+      // Mark payments as synced in Isar
+      for (final p in payments.where((p) => !p.isSynced)) {
         await LocalPaymentDBHelper.instance.markAsSynced(p.id, wooOrderId);
       }
 
-      // ✅ DELETE only if Woo confirms COMPLETED
+      // Delete offline order if Woo confirms completed
       if (wooStatus == 'completed') {
-        await box.delete(orderKey);
+        await box.delete(hiveKey);
         await box.delete(wooOrderId.toString());
-
-        if (kDebugMode) {
-          print("🗑 Offline order deleted → local:$orderKey woo:$wooOrderId");
-        }
+        print("🗑 Offline order deleted → local:$hiveKey woo:$wooOrderId");
         return;
       }
 
-      // 🔁 Otherwise keep for next sync with wooOrderId saved
+      // Otherwise keep it updated for next sync
       order['wooOrderId'] = wooOrderId;
       order['wooStatus'] = wooStatus;
       order['synced'] = true;
       order['sync_at'] = DateTime.now().toIso8601String();
 
-      await box.put(orderKey, order);
-
+      await box.put(hiveKey, order);
       print("✅ Single order synced successfully (wooOrderId: $wooOrderId)");
 
     } catch (e) {
-      print(" Single order sync error: $e");
+      print("❌ Single order sync error: $e");
     }
   }
 
@@ -8755,7 +8823,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final storeInfo = PinakaPreferences.getLoggedInStore();
 
-    Future<void> _updateCustomerDisplayWelcome(Map<String, String?> storeInfo) async {
+    Future<void> _updateCustomerDisplayWelcome(
+        Map<String, String?> storeInfo) async {
       if (storeInfo.isNotEmpty) {
         print(">>> Updating Customer Display with store info");
         await CustomerDisplayHelper.updateWelcomeWithStore(
@@ -8788,36 +8857,40 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         onVoid: () {
           print("Void tapped from FULL payment success dialog");
-
           Navigator.of(dialogCtx, rootNavigator: false).pop();
-
           SchedulerBinding.instance.addPostFrameCallback((_) {
             if (!_isShowingPartialDialog) {
-              showVoidExitConfirmation(context, false); // false = not partial
+              showVoidExitConfirmation(context, false);
             }
           });
         },
 
-        // onNoReceipt: () async {
-        //   print(">>> NoReceipt pressed");
-        //
-        //   Navigator.of(dialogCtx, rootNavigator: false).pop();
-        //
-        //   await _updateCustomerDisplayWelcome(storeInfo);
-        //   changeStatusToCompletedAndExit(false);
-        // },
-
+        // ✅ WORKING - unchanged
         onNoReceipt: () async {
-          // ✅ ADD THIS: Mark last payment as completed since user confirmed (no void)
+          await Future.delayed(const Duration(milliseconds: 300));
           if (orderId != null && orderId! > 0) {
-            final payments = await LocalPaymentDBHelper.instance
-                .getPaymentsByOrderId(orderId!);
-            for (final p in payments) {
-              if (p.amount > 0 && p.status == PaymentDbStatus.pending) {
-                await LocalPaymentDBHelper.instance.updateStatus(
-                  p.id,
-                  PaymentDbStatus.completed,
-                );
+            int retries = 3;
+            while (retries > 0) {
+              final payments = await LocalPaymentDBHelper.instance
+                  .getPaymentsByOrderId(orderId!);
+              final pendingPayments = payments
+                  .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
+                  .toList();
+              if (pendingPayments.isNotEmpty) {
+                for (final p in pendingPayments) {
+                  await LocalPaymentDBHelper.instance.updateStatus(
+                    p.id,
+                    PaymentDbStatus.completed,
+                  );
+                }
+                print("✅ Marked ${pendingPayments.length} payments as completed");
+                break;
+              } else {
+                retries--;
+                if (retries > 0) {
+                  print("⏳ No pending payments found, retrying... ($retries left)");
+                  await Future.delayed(const Duration(milliseconds: 200));
+                }
               }
             }
           }
@@ -8825,11 +8898,45 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           changeStatusToCompletedAndExit(false);
         },
 
+        // ✅ FIXED - exact same inline pattern as onNoReceipt
+        // markPaymentsCompleted runs BEFORE Navigator.pop()
         onDone: (selectedOption, {String? email}) async {
-          print("DEBUG : onDone → $selectedOption, email=$email");
+          print("onDone → $selectedOption, email=$email");
 
+          // ✅ KEY FIX: mark completed FIRST — same inline pattern as onNoReceipt
+          await Future.delayed(const Duration(milliseconds: 300));
+          if (orderId != null && orderId! > 0) {
+            int retries = 3;
+            while (retries > 0) {
+              final payments = await LocalPaymentDBHelper.instance
+                  .getPaymentsByOrderId(orderId!);
+              final pendingPayments = payments
+                  .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
+                  .toList();
+              if (pendingPayments.isNotEmpty) {
+                for (final p in pendingPayments) {
+                  await LocalPaymentDBHelper.instance.updateStatus(
+                    p.id,
+                    PaymentDbStatus.completed,
+                  );
+                }
+                print("✅ Marked ${pendingPayments.length} payments as completed");
+                break;
+              } else {
+                retries--;
+                if (retries > 0) {
+                  print("⏳ No pending payments found, retrying... ($retries left)");
+                  await Future.delayed(const Duration(milliseconds: 200));
+                }
+              }
+            }
+          }
+
+          // ✅ NOW close dialog (triggers .then() → _syncCurrentOfflineOrder)
+          // Isar already updated above so sync will see "completed"
           Navigator.of(dialogCtx, rootNavigator: false).pop();
 
+          // Handle email option
           if (selectedOption == TextConstants.email &&
               email != null &&
               email.isNotEmpty) {
@@ -8843,18 +8950,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               );
               return;
             }
-
             paymentBloc.sendOrderDetails(orderId!, email);
             StreamSubscription? subscription;
-            subscription = paymentBloc.sendOrderDetailsStream.listen((response) async {
-              subscription?.cancel();
-              print(">>> Email sent, updating customer display");
-              await _updateCustomerDisplayWelcome(storeInfo);
-              changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
-            });
+            subscription =
+                paymentBloc.sendOrderDetailsStream.listen((response) async {
+                  subscription?.cancel();
+                  print(">>> Email sent, updating customer display");
+                  await _updateCustomerDisplayWelcome(storeInfo);
+                  changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
+                });
             return;
           }
 
+          // Handle print option
           if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
             print(">>> Printing receipt");
             await _preparePrintTicket();
@@ -8863,7 +8971,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
           await _updateCustomerDisplayWelcome(storeInfo);
           changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
-
         },
       ),
     ).then((_) {
@@ -8875,9 +8982,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         await _syncCurrentOfflineOrder();
       });
     });
-
   }
-
 
   void showVoidExitConfirmation(BuildContext context, bool isPartial) {
     print("showVoidExitConfirmation → isPartial: $isPartial, orderId: $orderId");
@@ -8895,13 +9000,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       useRootNavigator: false,
       builder: (dialogCtx) => PaymentDialog.voidConfirmation(
         onVoidCancel: () {
-          print("❌ VOID CANCELED BY USER");
+          print(" VOID CANCELED BY USER");
           Navigator.of(dialogCtx, rootNavigator: false).pop();
           _isVoiding = false;
         },
 
         onVoidConfirm: () async {
-          print("✅ VOID CONFIRMED");
+          print(" VOID CONFIRMED");
 
           Navigator.of(dialogCtx, rootNavigator: false).pop();
 
@@ -8985,6 +9090,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
     return printerDB.first;
   }
+
   Future _preparePrintTicket() async {
     if (kDebugMode) {
       print("OrderSummaryScreen _preparePrintTicket call print receipt");
@@ -9499,23 +9605,72 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           }
         },
         onSMS: (phone) {},
-        onNoReceipt: () {
+        onNoReceipt: () async {
+          await Future.delayed(const Duration(milliseconds: 300));
+          if (orderId != null && orderId! > 0) {
+            int retries = 3;
+            while (retries > 0) {
+              final payments = await LocalPaymentDBHelper.instance
+                  .getPaymentsByOrderId(orderId!);
+              final pendingPayments = payments
+                  .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
+                  .toList();
+              if (pendingPayments.isNotEmpty) {
+                for (final p in pendingPayments) {
+                  await LocalPaymentDBHelper.instance.updateStatus(
+                    p.id,
+                    PaymentDbStatus.completed,
+                  );
+                }
+                print("✅ Marked ${pendingPayments.length} payments as completed");
+                break;
+              } else {
+                retries--;
+                if (retries > 0) {
+                  print("⏳ No pending payments found, retrying... ($retries left)");
+                  await Future.delayed(const Duration(milliseconds: 200));
+                }
+              }
+            }
+          }
           changeStatusToCompletedAndExit(false);
         },
         onDone: (selectedOption, {String? email}) async {
           // Build #1.0.159: Integrated Send Email Order Details API
+          print("onDone → $selectedOption, email=$email");
+
+          // ✅ KEY FIX: mark completed FIRST — same inline pattern as onNoReceipt
+          await Future.delayed(const Duration(milliseconds: 300));
           if (orderId != null && orderId! > 0) {
-            final payments = await LocalPaymentDBHelper.instance
-                .getPaymentsByOrderId(orderId!);
-            for (final p in payments) {
-              if (p.amount > 0 && p.status == PaymentDbStatus.pending) {
-                await LocalPaymentDBHelper.instance.updateStatus(
-                  p.id,
-                  PaymentDbStatus.completed,
-                );
+            int retries = 3;
+            while (retries > 0) {
+              final payments = await LocalPaymentDBHelper.instance
+                  .getPaymentsByOrderId(orderId!);
+              final pendingPayments = payments
+                  .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
+                  .toList();
+              if (pendingPayments.isNotEmpty) {
+                for (final p in pendingPayments) {
+                  await LocalPaymentDBHelper.instance.updateStatus(
+                    p.id,
+                    PaymentDbStatus.completed,
+                  );
+                }
+                print("✅ Marked ${pendingPayments.length} payments as completed");
+                break;
+              } else {
+                retries--;
+                if (retries > 0) {
+                  print("⏳ No pending payments found, retrying... ($retries left)");
+                  await Future.delayed(const Duration(milliseconds: 200));
+                }
               }
             }
           }
+
+          // ✅ NOW close dialog (triggers .then() → _syncCurrentOfflineOrder)
+          // Isar already updated above so sync will see "completed"
+          // Navigator.of(dialogCtx, rootNavigator: false).pop();
           if (kDebugMode) {
             print("DEBUG 0011 : $selectedOption, $email, ${email?.isNotEmpty}");
           }

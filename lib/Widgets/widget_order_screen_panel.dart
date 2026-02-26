@@ -222,125 +222,96 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
   }
 
-  // Build #1.0.221 Process payment list and update UI
+// Build #1.0.221 Process payment list and update UI
   void _processPaymentList(List<PaymentListModel> payments) {
     double cashTotal = 0.0;
     double otherTotal = 0.0;
 
     for (var payment in payments) {
       double amount = double.tryParse(payment.amount) ?? 0.0;
-      if (payment.paymentMethod == TextConstants.cash && payment.voidStatus == false) {
-        cashTotal += amount;
-      } else if (payment.paymentMethod != TextConstants.cash && payment.voidStatus == false) {
-        otherTotal += amount;
-      }
-    }
 
-    if (kDebugMode) {
-      print("###### _processPaymentList - OrderScreenPanel");
-      print("###### activeOrderIdddddddddd: ${widget}- OrderScreenPanel");
-      print("###### Cash Total: $cashTotal, Other Total: $otherTotal");
+      if (amount > 0 && payment.voidStatus == false) {   // ← only positive non-void
+        if (payment.paymentMethod == TextConstants.cash) {
+          cashTotal += amount;
+        } else {
+          otherTotal += amount;
+        }
+      }
     }
 
     setState(() {
       payByCash = cashTotal;
       payByOther = otherTotal;
-      tenderAmount = payByCash + payByOther;
 
-      // -------------------------------
-      // ⭐ READ ALL NECESSARY TOTAL FIELDS
-      // -------------------------------
-      double grossTotal = (_order["grossTotal"] as num?)?.toDouble() ?? 0.0;
-      double merchantDiscount = (_order["merchantDiscount"] as num?)?.toDouble() ?? 0.0;
-      double cashbackFee = (_order["cashbackFee"] as num?)?.toDouble() ?? 0.0;
-      double couponDiscount = (_order["couponDiscount"] as num?)?.toDouble() ?? 0.0;
-      double redeemedValue = (_order["redeemedValue"] as num?)?.toDouble() ?? 0.0;
+      // Here tenderAmount is calculated
+      tenderAmount = (payByCash + payByOther).clamp(0.0, double.infinity);
 
-      // If grossTotal missing → fallback to old orderTotal (net)
-      if (grossTotal <= 0) {
-        grossTotal = (_order[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0;
-      }
-
-      // -------------------------------
-      // ⭐ EFFECTIVE ORDER TOTAL (USE NET PAYABLE, NOT GROSS)
-      // -------------------------------
       double effectiveOrderTotal = (_order["payable"] as num?)?.toDouble() ??
           (_order["net_payable"] as num?)?.toDouble() ??
-          grossTotal;
+          uiNetPayable ??
+          0.0;
 
-      // -------------------------------
-      // ⭐ REMAINING BALANCE
-      // -------------------------------
-      balanceAmount = effectiveOrderTotal - tenderAmount;
+      // Here balanceAmount is calculated
+      balanceAmount = (effectiveOrderTotal - tenderAmount).clamp(0.0, double.infinity);
 
-      // -------------------------------
-      // ⭐ CHANGE CALCULATION
-      // -------------------------------
       if (balanceAmount <= 0) {
-        if (orderStatus != TextConstants.processing) {
-          changeAmount = balanceAmount.abs();
-          balanceAmount = 0;
-        } else {
-          changeAmount = 0;
-        }
+        changeAmount = (tenderAmount - effectiveOrderTotal).clamp(0.0, double.infinity);
+        balanceAmount = 0;
       } else {
         changeAmount = 0;
       }
+
+      // ← This print is already there — look at console
+      if (kDebugMode) {
+        print("Tendered amount (forced ≥ 0): $tenderAmount");
+        print("Balance: $balanceAmount   |   Change: $changeAmount");
+      }
     });
-
-
-
-    if (kDebugMode) {
-      print("##### AFTER API REFRESH — remainingBalance = $balanceAmount");
-
-      print("###### Updated values - PayByCash: $payByCash, PayByOther: $payByOther");
-      print("###### TenderAmount: $tenderAmount, ChangeAmount: $changeAmount, BalanceAmount: $balanceAmount");
-    }
   }
 
   /// Load balance from LocalPayment when API returns empty (payments not yet synced).
   /// Prevents balance from incorrectly showing full net payable instead of remaining amount.
   Future<void> _loadBalanceFromLocalPayment() async {
     if (widget.activeOrderId == null || !mounted) return;
+
     try {
       final summary = await LocalPaymentDBHelper.instance.getPaymentSummaryForOrder(widget.activeOrderId!);
       final paymentCount = (summary['paymentCount'] ?? 0.0).toDouble();
+
       if (paymentCount > 0) {
-        final totalPaid = (summary['totalPaid'] ?? 0.0).toDouble();
-        final remaining = summary['remainingBalance'];
-        if (!mounted) return;
+        double totalPaid = (summary['totalPaid'] ?? 0.0).toDouble();
+
         setState(() {
-          tenderAmount = totalPaid;
-          payByOther = totalPaid;
+          // Very important: never allow negative tender from local db
+          tenderAmount = totalPaid.clamp(0.0, double.infinity);
+          payByOther = tenderAmount;  // adjust if you split cash/other later
           payByCash = 0.0;
+
+          final remaining = summary['remainingBalance'];
           if (remaining != null) {
-            balanceAmount = (remaining as num).toDouble();
+            balanceAmount = (remaining as num).toDouble().clamp(0.0, double.infinity);
           } else {
-            final netPay = (_order["payable"] ?? _order["net_payable"]) as num?;
-            if (netPay != null) {
-              balanceAmount = (netPay.toDouble() - tenderAmount).clamp(0.0, double.infinity);
-            }
+            final netPay = (_order["payable"] as num?)?.toDouble() ??
+                (_order["net_payable"] as num?)?.toDouble() ??
+                uiNetPayable ??
+                0.0;
+            balanceAmount = (netPay - tenderAmount).clamp(0.0, double.infinity);
           }
+
           if (balanceAmount <= 0) {
-            if (orderStatus != TextConstants.processing) {
-              changeAmount = balanceAmount.abs();
-              balanceAmount = 0;
-            } else {
-              changeAmount = 0;
-            }
+            changeAmount = (tenderAmount - (_order["payable"] ?? 0.0)).clamp(0.0, double.infinity);
+            balanceAmount = 0.0;
           } else {
-            changeAmount = 0;
+            changeAmount = 0.0;
           }
+
+          print("Local payments → tender clamped = $tenderAmount | balance = $balanceAmount");
         });
-        if (kDebugMode) {
-          print("##### _loadBalanceFromLocalPayment — tenderAmount: $tenderAmount, balanceAmount: $balanceAmount");
-        }
       }
     } catch (e) {
-      if (kDebugMode) print("##### _loadBalanceFromLocalPayment error: $e");
+      if (kDebugMode) print("LocalPayment error: $e");
     }
   }
-
   Future<void> loadPrinterData() async {
     var printerDB = await PrinterDBHelper().getPrinterFromDB();
     if(printerDB.isEmpty){
@@ -2263,28 +2234,31 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                     SizedBox(
                                       height: 2,
                                     ),
-                                    Builder(
-                                      builder: (context) {
-                                        return Row(
-                                          mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                          crossAxisAlignment: CrossAxisAlignment.center,
-                                          children: [
-                                            Text(TextConstants.amountTendered,
-                                                style: TextStyle(
-                                                    fontWeight: FontWeight.bold)),
-                                            Text(
-                                                "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
-                                                style: TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    color: themeHelper.themeMode ==
-                                                        ThemeMode.dark
-                                                        ? ThemeNotifier.textDark
-                                                        : ThemeNotifier.textLight)),
-                                          ],
-                                        );
-                                      },
-                                    ),
+
+ 
+                                    // Builder(
+                                    //   builder: (context) {
+                                    //     return Row(
+                                    //       mainAxisAlignment:
+                                    //       MainAxisAlignment.spaceBetween,
+                                    //       crossAxisAlignment: CrossAxisAlignment.center,
+                                    //       children: [
+                                    //         Text(TextConstants.amountTendered,
+                                    //             style: TextStyle(
+                                    //                 fontWeight: FontWeight.bold)),
+                                    //         Text(
+                                    //             "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
+                                    //             style: TextStyle(
+                                    //                 fontWeight: FontWeight.bold,
+                                    //                 color: themeHelper.themeMode ==
+                                    //                     ThemeMode.dark
+                                    //                     ? ThemeNotifier.textDark
+                                    //                     : ThemeNotifier.textLight)),
+                                    //       ],
+                                    //     );
+                                    //   },
+                                    // ),
+
                                     SizedBox(
                                       height: 2,
                                     ),
@@ -2353,15 +2327,20 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                             Row(
                               children: [
-                                Builder(
-                                  builder: (context) {
-                                    final displayAmount = (netPayable - tenderAmount).clamp(0.0, double.infinity);
-                                    return Text(
-                                        _showFullSummary
-                                            ? '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}'
-                                            : '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}',
-                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold));
-                                  },
+                                // Builder(
+                                //   builder: (context) {
+                                //     final displayAmount = (netPayable - tenderAmount).clamp(0.0, double.infinity);
+                                //     return Text(
+                                //         _showFullSummary
+                                //             ? '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}'
+                                //             : '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}',
+                                //         style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold));
+                                //   },
+                                // ),
+
+                                Text(
+                                  '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                                 ),
                                 const SizedBox(width: 8),
                                 Icon(_showFullSummary ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up),
