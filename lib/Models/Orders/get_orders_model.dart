@@ -50,6 +50,10 @@ class OrderModel {
   final String? autoDiscountMeta;
 
   final double orderLevelAutoDiscountAmount;
+  final double refundTotal;
+  final double refundOrderTotal;
+  final double netPayment;
+
 
   OrderModel({
     required this.id,
@@ -86,6 +90,9 @@ class OrderModel {
     this.getTime,
     this.autoDiscountMeta,
     required this.orderLevelAutoDiscountAmount,
+    required this.refundTotal,
+    required this.refundOrderTotal,
+    required this.netPayment,
   });
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
@@ -110,6 +117,14 @@ class OrderModel {
 
     final orderDiscountStr = getOrderMetaValue('_discount_amount');
     final orderLevelAutoDiscountAmount = double.tryParse(orderDiscountStr ?? '0') ?? 0.0;
+    final refundTotal =
+        double.tryParse(json['refund_total']?.toString() ?? '0') ?? 0.0;
+
+    final refundOrderTotal =
+        double.tryParse(json['refund_order_total']?.toString() ?? '0') ?? 0.0;
+
+    final netPayment =
+        double.tryParse(json['net_payment']?.toString() ?? '0') ?? 0.0;
 
     return OrderModel(
       id: json['id'] ?? 0,
@@ -161,6 +176,9 @@ class OrderModel {
       getTime: json['get_time'] as String?,
       autoDiscountMeta: json['auto_discount_meta'] as String?,
       orderLevelAutoDiscountAmount: orderLevelAutoDiscountAmount,
+      refundTotal: refundTotal,
+      refundOrderTotal: refundOrderTotal,
+      netPayment: netPayment,
     );
   }
 
@@ -346,6 +364,7 @@ class LineItem {
   final ImageData image;
   final ProductData productData;
   final ProductVariationData? productVariationData;
+  final bool isRefundItem;
 
   // Multipack legacy fields
   final String? originalSubtotal;
@@ -391,6 +410,7 @@ class LineItem {
     required this.comboDiscountAmount,
     required this.comboDiscountApplied,
     required this.displayAutoDiscountAmount,
+    required this.isRefundItem,
   });
 
   factory LineItem.fromJson(Map<String, dynamic> json) {
@@ -503,6 +523,7 @@ class LineItem {
       comboDiscountAmount: comboDiscountAmount,
       comboDiscountApplied: comboDiscountApplied,
       displayAutoDiscountAmount: displayAutoDiscountAmount,
+      isRefundItem: json['is_refund_item'] ?? false,
     );
   }
 

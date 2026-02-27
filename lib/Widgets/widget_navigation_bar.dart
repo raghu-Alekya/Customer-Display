@@ -364,38 +364,39 @@ class NavigationBar extends StatelessWidget {
           const SizedBox(height: 10),
 
           SidebarButton(
-            imageAsset: 'assets/refund.png', // ✅ REFUND ICON ADDED
+            imageAsset: 'assets/refund.png',
             label: "Refund",
             isSelected: selectedSidebarIndex == 5,
-            isDisabled: false,
-            onTap: selectedSidebarIndex == 5
+            isDisabled: isShiftInvalid || isShiftScreen, // ✅ FIXED
+            onTap: (isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5)
                 ? () {}
                 : () {
-                    if (kDebugMode) {
-                      print("##### Refund button tapped");
-                    }
+              if (kDebugMode) {
+                print("##### Refund button tapped");
+              }
 
-                    lastSelectedIndex = 5;
-                    onSidebarItemSelected(5);
+              lastSelectedIndex = 5;
+              onSidebarItemSelected(5);
 
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => BlocProvider(
-                          create: (context) => CompletedOrdersBloc(
-                            context.read<CompletedOrdersRepository>(),
-                          )..add(
-                              FetchCompletedOrders(
-                                page: 1,
-                                perPage: 10, // 🔴 IMPORTANT (don’t forget this)
-                              ),
-                            ),
-                          child:
-                              const CompletedOrdersScreen(lastSelectedIndex: 5),
-                        ),
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => BlocProvider(
+                    create: (context) => CompletedOrdersBloc(
+                      context.read<CompletedOrdersRepository>(),
+                    )..add(
+                      FetchCompletedOrders(
+                        page: 1,
+                        perPage: 10,
                       ),
-                    );
-                  },
+                    ),
+                    child: const CompletedOrdersScreen(
+                      lastSelectedIndex: 5,
+                    ),
+                  ),
+                ),
+              );
+            },
             isVertical: isVertical,
           ),
 

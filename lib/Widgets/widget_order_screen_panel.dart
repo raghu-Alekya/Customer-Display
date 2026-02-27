@@ -964,6 +964,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       // ❌ SKIP unwanted items
       final name = item["item_name"]?.toString().toLowerCase() ?? "";
       final type = item["item_type"]?.toString().toLowerCase() ?? "";
+      final isRefunded =
+          item[AppDBConst.isRefundItem] == 1 ||
+              item[AppDBConst.isRefundItem] == true;
 
 
 
@@ -979,8 +982,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
               type.contains("loyalty") ||     // FIXED
               type.contains("points");
 
-      if (skip) {
-        print("🚫 EXCLUDED FROM GROSS TOTAL → ${item["item_name"]}");
+      if (skip || isRefunded) {
+        print("🚫 EXCLUDED (Refund/Skip) → ${item["item_name"]}");
         continue;
       }
 
@@ -1242,6 +1245,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                       },
                       itemBuilder: (context, index) {
                         final orderItem = orderItems[index];
+                        final dynamic refundValue = orderItem[AppDBConst.isRefundItem];
+
+                        final bool isRefunded =
+                            refundValue == true ||
+                                refundValue == 1 ||
+                                refundValue == '1' ||
+                                refundValue == 'true';
+                        print("Refund value from DB: ${orderItem[AppDBConst.isRefundItem]}");
 
 
                         final itemTypeRaw = orderItem[AppDBConst.itemType]
@@ -1443,66 +1454,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                 ),
                                 child: GestureDetector(
                                   onTap: () {
-                                    if (isPayoutOrCouponOrCustomItem) return;
-                                    // Navigator.push(
-                                    //   context,
-                                    //   MaterialPageRoute(
-                                    //     builder: (context) => EditProductScreen(
-                                    //       orderItem: orderItem,
-                                    //       onQuantityUpdated: (newQuantity) async {
-                                    //
-                                    //         if (orderHelper.activeOrderId != null) {
-                                    //           final order = orderHelper.orders.firstWhere(
-                                    //                 (order) => order[AppDBConst.orderId] == orderHelper.activeOrderId,
-                                    //             orElse: () => {},
-                                    //           );
-                                    //           final serverOrderId = order[AppDBConst.orderServerId] as int?;
-                                    //           final dbOrderId = orderHelper.activeOrderId;
-                                    //           // final lineItemId = orderItem[AppDBConst.itemServerId] as int?;
-                                    //           final productId = orderItem[AppDBConst.itemServerId] as int?;
-                                    //
-                                    //           if (serverOrderId != null && dbOrderId != null && productId != null) {
-                                    //             _updateOrderSubscription?.cancel();
-                                    //             _updateOrderSubscription = orderBloc.updateOrderStream.listen((response) async {
-                                    //               if (response.status == Status.COMPLETED) {
-                                    //                 await orderHelper.updateItemQuantity(
-                                    //                   orderItem[AppDBConst.itemId],
-                                    //                   newQuantity,
-                                    //                 );
-                                    //                 await fetchOrderItems();
-                                    //               } else if (response.status == Status.ERROR) {
-                                    //                 _scaffoldMessenger.showSnackBar(
-                                    //                   SnackBar(
-                                    //                     content: Text(response.message ?? "Failed to update quantity"),
-                                    //                     backgroundColor: Colors.red,
-                                    //                     duration: const Duration(seconds: 2),
-                                    //                   ),
-                                    //                 );
-                                    //               }
-                                    //             });
-                                    //             // API CALL WHILE EDITING THE PRODUCT QUANTITY
-                                    //             await orderBloc.updateOrderProducts(
-                                    //               orderId: serverOrderId,
-                                    //               dbOrderId: dbOrderId,
-                                    //               lineItems: [
-                                    //                 OrderLineItem(
-                                    //                   productId: productId,
-                                    //                   quantity: newQuantity,
-                                    //                 ),
-                                    //               ],
-                                    //             );
-                                    //           } else {
-                                    //             await orderHelper.updateItemQuantity(
-                                    //               orderItem[AppDBConst.itemId],
-                                    //               newQuantity,
-                                    //             );
-                                    //             await fetchOrderItems();
-                                    //           }
-                                    //         }
-                                    //       },
-                                    //     ),
-                                    //   ),
-                                    // );
+                                    if (isRefunded || isPayoutOrCouponOrCustomItem) return;
+
+                                    // Your edit logic here
                                   },
                                   child: Container(
                                     margin: const EdgeInsets.symmetric(
@@ -1569,18 +1523,18 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                         TextSpan(
                                                           text: displayName,
                                                           style: TextStyle(
-                                                              fontFamily: 'inter',
-                                                              fontSize: 12,
-                                                              fontWeight:
-                                                              FontWeight.w700,
-                                                              color: themeHelper
-                                                                  .themeMode ==
-                                                                  ThemeMode
-                                                                      .dark
-                                                                  ? ThemeNotifier
-                                                                  .textDark
-                                                                  : ThemeNotifier
-                                                                  .textLight),
+                                                            fontFamily: 'inter',
+                                                            fontSize: 12,
+                                                            fontWeight: FontWeight.w700,
+                                                            color: isRefunded
+                                                                ? Colors.grey
+                                                                : (themeHelper.themeMode == ThemeMode.dark
+                                                                ? ThemeNotifier.textDark
+                                                                : ThemeNotifier.textLight),
+                                                            decoration: isRefunded
+                                                                ? TextDecoration.lineThrough
+                                                                : TextDecoration.none,
+                                                          ),
                                                         ),
 
 
@@ -1881,9 +1835,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                                   : (themeHelper.themeMode == ThemeMode.dark
                                                                   ? ThemeNotifier.textDark
                                                                   : ThemeNotifier.textLight)),
+                                                              decoration: isRefunded
+                                                                  ? TextDecoration.lineThrough
+                                                                  : TextDecoration.none,
                                                             ),
                                                           ),
-                                                          if (showStrikethrough)
+                                                          if (!isRefunded && showStrikethrough)
                                                             Padding(
                                                               padding: const EdgeInsets.only(top: 2),
                                                               child: Text(
@@ -2197,6 +2154,29 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                     SizedBox(
                                       height: 2,
                                     ),
+                                    if ((_wooOrder?.refundTotal ?? 0) > 0)
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            "Refund Amount",
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                              color: Colors.red,
+                                            ),
+                                          ),
+                                          Text(
+                                            "- ${TextConstants.currencySymbol}${(_wooOrder?.refundTotal ?? 0).toStringAsFixed(2)}",
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.red,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    SizedBox(height: 2),
                                     //const DottedLine(),
                                     ShaderMask(
                                       shaderCallback: (Rect bounds) {
@@ -2230,6 +2210,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                             : Colors
                                             .black, // ✅ ensures gradient works correctly
                                       ),
+
                                     ),
                                     SizedBox(
                                       height: 2,
@@ -2287,6 +2268,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                 ),
                               )))
                           : SizedBox.shrink()
+
 
                   ),
                   if(widget.activeOrderId != null)

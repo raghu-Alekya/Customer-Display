@@ -489,81 +489,70 @@ class OrderHelper {
 
   // Build #1.0.281: Check if there are any active orders that should block closing shift
   Future<bool> hasActiveOrders() async {
-    await loadData(); // Ensure we have latest data
+    await loadData(); // Load offline orders
 
     if (orders.isEmpty) {
-      if (kDebugMode)
-        print(
-            "#### hasActiveOrders: No orders found for current user $activeUserId after filtering.");
+      if (kDebugMode) print("#### No orders found for user $activeUserId");
       return false;
     }
 
-    if (kDebugMode)
-      print(
-          "#### hasActiveOrders: Checking ${orders.length} orders for user $activeUserId");
-
     for (var order in orders) {
+      // Determine order ID
       final int? orderId = order[AppDBConst.orderServerId] as int? ??
           order['order_id'] as int? ??
           order[AppDBConst.orderId] as int? ??
           order['id'] as int?;
 
-      if (kDebugMode)
-        print(
-            "#### hasActiveOrders: Validating Order $orderId (User: $activeUserId)");
-
-      // Check for products
+      // Get all order items
       final List products = order['products'] as List? ?? [];
-      if (products.isNotEmpty) {
-        if (kDebugMode)
-          print(
-              "#### hasActiveOrders: BLOCKED - Order $orderId has ${products.length} products");
-        return true;
-      }
-
-      // Check for custom items
       final List customItems = order['custom_items'] as List? ?? [];
-      if (customItems.isNotEmpty) {
-        if (kDebugMode)
-          print(
-              "#### hasActiveOrders: BLOCKED - Order $orderId has ${customItems.length} custom items");
-        return true;
-      }
-
-      // Check for payouts
       final List payouts = order['payouts'] as List? ?? [];
-      if (payouts.isNotEmpty) {
-        if (kDebugMode)
-          print(
-              "#### hasActiveOrders: BLOCKED - Order $orderId has ${payouts.length} payouts");
-        return true;
-      }
-
-      // Check for cashbacks
       final List cashbacks = order['cashbacks'] as List? ?? [];
-      if (cashbacks.isNotEmpty) {
-        if (kDebugMode)
-          print(
-              "#### hasActiveOrders: BLOCKED - Order $orderId has ${cashbacks.length} cashbacks");
+
+      final bool hasItems = [products, customItems, payouts, cashbacks]
+          .any((list) => list.isNotEmpty);
+
+      if (!hasItems) {
+        if (kDebugMode) print("#### Order skipped — no items (orderId=$orderId)");
+        continue; // skip empty orders
+      }
+
+      // Invalid order ID with items → block immediately
+      if (orderId == null || orderId == 0) {
+        print("#### BLOCKED - Order has invalid ID but contains items");
         return true;
       }
 
-      // Check for payments (even if items were removed, payments must be handled)
-      if (orderId != null && orderId != 0) {
-        final Map<String, dynamic> summary = await LocalPaymentDBHelper.instance
-            .getPaymentStatusSummary(orderId, userId: activeUserId);
-        if (summary['hasPayments'] == true) {
-          if (kDebugMode)
-            print(
-                "#### hasActiveOrders: BLOCKED - Order $orderId has existing payments in Isar for user $activeUserId");
-          return true;
-        }
+      // ✅ Get payment summary for the order
+      final summary = await LocalPaymentDBHelper.instance
+          .getPaymentStatusSummary(orderId, userId: activeUserId);
+
+      final bool fullyPaid = summary['fullyPaid'] as bool? ?? false;
+      final double remaining = (summary['remainingBalance'] ?? 0).toDouble();
+      final double total = (summary['orderTotal'] ?? 0).toDouble();
+
+      if (kDebugMode) {
+        print(
+            "#### Order $orderId → fullyPaid: $fullyPaid, remaining: $remaining, total: $total");
       }
+
+      // Block if completely unpaid
+      if (!fullyPaid && remaining == total) {
+        print("#### BLOCKED - Order $orderId has items but no payment at all");
+        return true;
+      }
+
+      // Partially paid → allow
+      if (!fullyPaid && remaining < total) {
+        print("#### Order $orderId partially paid → allowed to close shift");
+        continue;
+      }
+
+      // Fully paid → allow
+      print("#### Order $orderId fully paid → allowed to close shift");
     }
 
-    if (kDebugMode)
-      print(
-          "#### hasActiveOrders: SUCCESS - All user orders are empty placeholders.");
+    print("#### SUCCESS - All orders settled/partially paid. Shift can close.");
     return false;
   }
 
@@ -910,12 +899,15 @@ class OrderHelper {
       print(
           "#### DEBUG: updateOrderItems - Processing ${apiItems.length} items for order $orderId, existing items: ${existingItemsMap.length}");
     }
+    // final bool isRefunded = apiItem.isRefundItem == true;
 
     for (var apiItem in apiItems) {
+
       if (apiItem.name.contains('Payout') ||
           apiItem.name == TextConstants.discountText) {
         continue;
       }
+      final bool isRefunded = apiItem.isRefundItem == true;
       final itemId = apiItem.id.toString();
       final double itemPrice = apiItem.productData.price == ''
           ? double.parse(apiItem.productData.price ?? '0.0')
@@ -1007,6 +999,7 @@ class OrderHelper {
             // NEW: Add combo discount and display auto discount
             AppDBConst.comboDiscountTotal: apiItem.comboDiscountAmount,
             AppDBConst.displayAutoDiscount: apiItem.displayAutoDiscountAmount,
+            AppDBConst.isRefundItem: isRefunded ? 1 : 0,
           },
           where: '${AppDBConst.itemServerId} = ?',
           whereArgs: [existingItem[AppDBConst.itemServerId]],
@@ -1048,6 +1041,7 @@ class OrderHelper {
           // NEW: Add combo discount and display auto discount
           AppDBConst.comboDiscountTotal: apiItem.comboDiscountAmount,
           AppDBConst.displayAutoDiscount: apiItem.displayAutoDiscountAmount,
+          AppDBConst.isRefundItem: isRefunded ? 1 : 0,
         });
         if (kDebugMode) {
           print("#### DEBUG: Inserted new item ID: $itemId for order $orderId");

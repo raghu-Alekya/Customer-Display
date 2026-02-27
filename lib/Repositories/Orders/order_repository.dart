@@ -1619,8 +1619,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       final response = await _helper.get(url, true);
 
       if (kDebugMode) {
-        print("OrderRepository - Raw Response Type: ${response.runtimeType}");
-        print("OrderRepository - Raw Response: ${response.toString()}");
+        printFullJson(
+          "OrderRepository Raw Response",
+          response,
+        );
       }
 
       dynamic decoded;

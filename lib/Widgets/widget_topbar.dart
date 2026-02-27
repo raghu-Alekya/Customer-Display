@@ -385,7 +385,14 @@ class _TopBarState extends State<TopBar> {
       }
     }
   }
+  static void clearUserCache() {
+    _cachedUserData = null;
+    _isUserDataLoaded = false;
+    _initialUserFuture = null;
+    if (kDebugMode) print("🧹 TopBar user data cache cleared");
+  }
 
+  // @override
   @override
   void dispose() {
     _debounce?.cancel();
@@ -397,6 +404,7 @@ class _TopBarState extends State<TopBar> {
     _removeOverlay();
     _disconnectScaleSafe(); // safe: uses cached _weightProvider, not context
     super.dispose();
+    TopBar.clearUserCache();
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -1491,95 +1499,95 @@ class _TopBarState extends State<TopBar> {
           const SizedBox(width: 50),
 
           // ── Scale weight display ──────────────────────────────────────────
-          Consumer<WeightProvider>(
-            builder: (context, weightProvider, _) {
-              final bool connected = weightProvider.isConnected;
-              final isDark = themeHelper.themeMode == ThemeMode.dark;
-
-              final parts    = weightProvider.weightText.trim().split(' ');
-              final numPart  = parts.isNotEmpty ? parts[0] : '0.00';
-              final unitPart = parts.length > 1  ? parts[1] : 'lb';
-
-              return GestureDetector(
-                onLongPress: _reconnectScale, // long-press to force reconnect
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (connected) ...[
-                      // Grey pill: 7-segment number
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFEAEAEA),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: SevenSegmentDisplay(
-                          text:        numPart,
-                          digitHeight: 28,
-                          onColor:  isDark ? const Color(0xFFEEEEEE) : const Color(0xFF1A1A1A),
-                          offColor: isDark ? const Color(0xFF444444) : const Color(0xFFD0D0D0),
-                          spacing: 3,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      // Dark pill: unit label
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF444444) : const Color(0xFF3A3A3A),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          unitPart,
-                          style: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w600,
-                            color: Colors.white, letterSpacing: 0.5, height: 1.0,
-                          ),
-                        ),
-                      ),
-                    ] else ...[
-                      // Disconnected / Connecting state
-                      GestureDetector(
-                        onTap: _isConnecting ? null : _reconnectScale,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? ThemeNotifier.secondaryBackground
-                                : Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_isConnecting)
-                                SizedBox(
-                                  width: 14, height: 14,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 1.5,
-                                    color: Colors.grey.shade400,
-                                  ),
-                                )
-                              else
-                                Icon(Icons.scale, size: 16, color: Colors.grey.shade400),
-                              const SizedBox(width: 6),
-                              Text(
-                                _isConnecting ? 'Connecting...' : 'Scale disconnected',
-                                style: TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w500,
-                                  color: Colors.grey.shade500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            },
-          ),
+          // Consumer<WeightProvider>(
+          //   builder: (context, weightProvider, _) {
+          //     final bool connected = weightProvider.isConnected;
+          //     final isDark = themeHelper.themeMode == ThemeMode.dark;
+          //
+          //     final parts    = weightProvider.weightText.trim().split(' ');
+          //     final numPart  = parts.isNotEmpty ? parts[0] : '0.00';
+          //     final unitPart = parts.length > 1  ? parts[1] : 'lb';
+          //
+          //     return GestureDetector(
+          //       onLongPress: _reconnectScale, // long-press to force reconnect
+          //       child: Row(
+          //         mainAxisSize: MainAxisSize.min,
+          //         children: [
+          //           if (connected) ...[
+          //             // Grey pill: 7-segment number
+          //             Container(
+          //               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          //               decoration: BoxDecoration(
+          //                 color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFEAEAEA),
+          //                 borderRadius: BorderRadius.circular(8),
+          //               ),
+          //               child: SevenSegmentDisplay(
+          //                 text:        numPart,
+          //                 digitHeight: 28,
+          //                 onColor:  isDark ? const Color(0xFFEEEEEE) : const Color(0xFF1A1A1A),
+          //                 offColor: isDark ? const Color(0xFF444444) : const Color(0xFFD0D0D0),
+          //                 spacing: 3,
+          //               ),
+          //             ),
+          //             const SizedBox(width: 6),
+          //             // Dark pill: unit label
+          //             Container(
+          //               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+          //               decoration: BoxDecoration(
+          //                 color: isDark ? const Color(0xFF444444) : const Color(0xFF3A3A3A),
+          //                 borderRadius: BorderRadius.circular(8),
+          //               ),
+          //               child: Text(
+          //                 unitPart,
+          //                 style: const TextStyle(
+          //                   fontSize: 15, fontWeight: FontWeight.w600,
+          //                   color: Colors.white, letterSpacing: 0.5, height: 1.0,
+          //                 ),
+          //               ),
+          //             ),
+          //           ] else ...[
+          //             // Disconnected / Connecting state
+          //             GestureDetector(
+          //               onTap: _isConnecting ? null : _reconnectScale,
+          //               child: Container(
+          //                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          //                 decoration: BoxDecoration(
+          //                   color: isDark
+          //                       ? ThemeNotifier.secondaryBackground
+          //                       : Colors.grey.shade100,
+          //                   borderRadius: BorderRadius.circular(8),
+          //                 ),
+          //                 child: Row(
+          //                   mainAxisSize: MainAxisSize.min,
+          //                   children: [
+          //                     if (_isConnecting)
+          //                       SizedBox(
+          //                         width: 14, height: 14,
+          //                         child: CircularProgressIndicator(
+          //                           strokeWidth: 1.5,
+          //                           color: Colors.grey.shade400,
+          //                         ),
+          //                       )
+          //                     else
+          //                       Icon(Icons.scale, size: 16, color: Colors.grey.shade400),
+          //                     const SizedBox(width: 6),
+          //                     Text(
+          //                       _isConnecting ? 'Connecting...' : 'Scale disconnected',
+          //                       style: TextStyle(
+          //                         fontSize: 13, fontWeight: FontWeight.w500,
+          //                         color: Colors.grey.shade500,
+          //                       ),
+          //                     ),
+          //                   ],
+          //                 ),
+          //               ),
+          //             ),
+          //           ],
+          //         ],
+          //       ),
+          //     );
+          //   },
+          // ),
           const SizedBox(width: 16),
 
           // ── Cash drawer ───────────────────────────────────────────────────

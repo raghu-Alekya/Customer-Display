@@ -92,6 +92,7 @@ class CompletedOrdersRepository {
 
     return token;
   }
+
   Future<Map<String, dynamic>> refundOrder({
     required int orderId,
     required String refundType, // "Full" or "Partial"
@@ -112,12 +113,6 @@ class CompletedOrdersRepository {
       body["items"] = items;
     }
 
-    if (kDebugMode) {
-      print("========== REFUND API ==========");
-      print("URL: $uri");
-      print("BODY: ${jsonEncode(body)}");
-    }
-
     final response = await http.post(
       uri,
       headers: {
@@ -127,14 +122,25 @@ class CompletedOrdersRepository {
       body: jsonEncode(body),
     );
 
-    if (kDebugMode) {
-      print("Status Code: ${response.statusCode}");
-      print("Response: ${response.body}");
-    }
-
     if (response.statusCode == 200) {
       final Map<String, dynamic> data = jsonDecode(response.body);
-      return data; // Return the parsed JSON
+
+      // 🔥 UPDATE SQLITE HERE
+      if (refundType == "Partial" && items != null) {
+        final db = await DBHelper.instance.database;
+
+        for (var item in items) {
+          final int serverId = item["line_item_id"];
+          // 👆 Make sure this key matches what you're sending
+
+          await db.rawUpdate(
+            'UPDATE order_items SET is_refund_item = 1 WHERE items_server_id = ?',
+            [serverId],
+          );
+        }
+      }
+
+      return data;
     } else {
       throw Exception(
         'Refund failed (status: ${response.statusCode})',

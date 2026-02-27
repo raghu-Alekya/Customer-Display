@@ -83,7 +83,8 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String itemCombo = 'item_combo'; // line_item -> meta_data->value contains (combo)
   static const String itemSalesPrice = 'item_sales_price'; // It is a Discounted price = line_item -> product_data-> sales price * quantity
   static const String itemRegularPrice = 'item_regular_price'; //It is a Regular price = line_item -> product_data-> regular price * quantity
-  static const String itemUnitPrice = 'item_unit_price'; // line_item -> product_data-> regular price
+  static const String itemUnitPrice = 'item_unit_price';
+  static const String isRefundItem = 'is_refund_item';// line_item -> product_data-> regular price
 
 
 
@@ -329,6 +330,7 @@ CREATE TABLE ${AppDBConst.orderTable} (
 
      ${AppDBConst.comboDiscountTotal} REAL DEFAULT 0, -- NEW: For "Discount Applied" combo discounts
      ${AppDBConst.displayAutoDiscount} REAL DEFAULT 0, -- NEW: For "auto_discount_amount" display discounts
+      is_refund_item INTEGER DEFAULT 0,
 
       FOREIGN KEY(${AppDBConst.orderIdForeignKey}) REFERENCES ${AppDBConst.orderTable}(${AppDBConst.orderServerId}) ON DELETE CASCADE
     )
@@ -345,6 +347,7 @@ CREATE TABLE ${AppDBConst.orderTable} (
       ${AppDBConst.fastKeyTabItemCount} INTEGER NOT NULL,
       ${AppDBConst.fastKeyTabIndex} TEXT NOT NULL,
       ${AppDBConst.fastKeyTabSynced} INTEGER DEFAULT 0, -- 0 = false, 1 = true
+      
       FOREIGN KEY(${AppDBConst.userIdForeignKey}) REFERENCES ${AppDBConst.userTable}(${AppDBConst.userId}) ON DELETE CASCADE
     )
     ''');
@@ -634,6 +637,7 @@ CREATE TABLE ${AppDBConst.orderTable} (
         AppDBConst.autoDiscountTotal: item['auto_discount_total'] ?? 0, // fixed
         AppDBConst.comboDiscountTotal: item['combo_discount_total'] ?? 0,
         AppDBConst.displayAutoDiscount: item['display_auto_discount'] ?? 0,
+        'is_refund_item': (item['is_refund_item'] ?? false) == true ? 1 : 0,
 
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
