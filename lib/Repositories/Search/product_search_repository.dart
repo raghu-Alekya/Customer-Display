@@ -190,76 +190,110 @@ class ProductRepository { // Build #1.0.13 : added product search repository
 
     return variations;
   }
-  Future<List<ProductBySkuResponse>> fetchProductBySku(String sku) async {
+  Future<List<ProductBySkuResponse>> fetchProductBySku(
+      String sku, {
+        bool forceRefresh = false,
+      }) async {
+
+    final productBox = StorageProvider.productCache;
+    final cacheKey = "sku_${sku.toLowerCase()}";
+
+    // ==========================================================
+    // 🧠 1️⃣ USE CACHE (IF NOT FORCE REFRESH)
+    // ==========================================================
+    if (!forceRefresh) {
+      final cached = await productBox.get(cacheKey);
+
+      if (cached != null && cached["products"] != null) {
+        if (kDebugMode) {
+          print("💾 SKU CACHE HIT → $sku");
+        }
+
+        final List<dynamic> list = cached["products"];
+
+        return list
+            .map((e) => ProductBySkuResponse.fromJson(e))
+            .toList();
+      }
+    }
+
+    // ==========================================================
+    // 🌐 2️⃣ FETCH FROM BACKEND
+    // ==========================================================
     final String url =
-        "${UrlHelper.wooCommerceV3}${UrlMethodConstants.products}${UrlParameterConstants.productBySku}$sku";
+        "${UrlHelper.wooCommerceV3}"
+        "${UrlMethodConstants.products}"
+        "${UrlParameterConstants.productBySku}$sku"
+        "&status=publish";
 
     if (kDebugMode) {
-      print("🔹 ProductRepository - FetchProductBySku URL: $url");
+      print("🌐 Fetching SKU from backend → $url");
     }
 
     final response = await _helper.get(url, true);
 
-    if (kDebugMode) {
-      print("🔹 ProductRepository - FetchProductBySku Raw Response: $response");
-    }
-
     List<dynamic> responseList = [];
 
-    // ✅ Handle multiple possible response types
     if (response is String) {
-      try {
-        responseList = json.decode(response);
-      } catch (e) {
-        if (kDebugMode) print("❌ JSON decode failed: $e");
-        throw Exception("Failed to parse product-by-SKU response");
-      }
+      responseList = json.decode(response);
     } else if (response is List) {
       responseList = response;
     } else if (response is Map<String, dynamic>) {
-      // In some edge WooCommerce responses, a single product might come as a Map
       responseList = [response];
     } else {
       throw Exception("Unexpected response type: ${response.runtimeType}");
     }
 
-    // ✅ Convert to model list
-    final List<ProductBySkuResponse> products =
+    final products =
     responseList.map((e) => ProductBySkuResponse.fromJson(e)).toList();
 
+    // ==========================================================
+    // 🚫 3️⃣ IF NOT FOUND → DELETE CACHE
+    // ==========================================================
     if (products.isEmpty) {
-      if (kDebugMode) print("⚠ No products found for SKU: $sku");
+      await productBox.delete(cacheKey);
+
+      if (kDebugMode) {
+        print("🗑 SKU deleted from backend → cache cleared");
+      }
+
       return [];
     }
 
-    // ✅ Store in Hive cache for offline lookup
-    try {
-      final productBox = StorageProvider.productCache;
-      final cacheKey = "sku_${sku.toLowerCase()}";
+    // ==========================================================
+    // 💾 4️⃣ CACHE VALID PRODUCT
+    // ==========================================================
+    final normalizedProducts = products.map((p) {
+      return {
+        "id": p.id ?? 0,
+        "name": p.name ?? "Unnamed Product",
+        "price": p.price ?? "0.0",
+        "sku": p.sku ?? sku,
+        "type": p.type ?? "simple",
+        "images": p.images?.map((img) => img.toJson()).toList() ?? [],
+        "variations": p.variations ?? [],
+        "tags": p.tags
+            ?.map((t) => {
+          "id": t.id,
+          "name": t.name,
+          "slug": t.slug,
+        })
+            .toList(),
+        "meta_data": p.metaData
+            ?.map((m) => {
+          "key": m.key,
+          "value": m.value,
+        })
+            .toList(),
+      };
+    }).toList();
 
-      // Normalize the structure to match what onBarcodeScanned expects
-      final normalizedProducts = products.map((p) {
-        return {
-          "id": p.id ?? 0,
-          "name": p.name ?? "Unnamed Product",
-          "price": p.price ?? "0.0",
-          "sku": p.sku ?? sku,
-          "type": p.type ?? "simple",
-          "images": p.images?.map((img) => img.toJson()).toList() ?? [],
-          "variations": p.variations ?? [],
-        };
-      }).toList();
+    await productBox.put(cacheKey, {
+      "products": normalizedProducts,
+    });
 
-      await productBox.put(cacheKey, {
-        "products": normalizedProducts,
-      });
-
-      if (kDebugMode) {
-        print("💾 Cached product in Hive (key: $cacheKey)");
-        print("🔹 Count: ${products.length}, First Product: ${products.first.name}");
-      }
-    } catch (e) {
-      if (kDebugMode) print("⚠ Failed to cache product-by-SKU: $e");
+    if (kDebugMode) {
+      print("💾 SKU cached → $cacheKey");
     }
 
     return products;

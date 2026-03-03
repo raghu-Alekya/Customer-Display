@@ -7811,23 +7811,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         isCouponAppliedFromApi = true;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: const [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 10),
-              Text("Coupon applied successfully"),
-            ],
-          ),
-          backgroundColor: Colors.green.shade600,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
 
       print("✅ Coupon Applied:");
       print("➡ Discount: $newDiscount");
@@ -8747,6 +8730,26 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
+  Future<void> _markHiveOrderCompleted(int localOrderId) async {
+    try {
+      final box = StorageProvider.offlineOrders;
+      final String key = localOrderId.toString();
+
+      if (!(await box.containsKey(key))) return;
+
+      final raw = await box.get(key);
+      final order = Map<String, dynamic>.from(raw is Map ? raw : {});
+
+      order['order_status'] = 'processing';
+      order['updated_at'] = DateTime.now().toIso8601String();
+
+      await box.put(key, order);
+      print("✅ Hive order #$localOrderId marked as processing");
+    } catch (e) {
+      print("❌ _markHiveOrderCompleted error: $e");
+    }
+  }
+
   Future<void> _syncCurrentOfflineOrder() async {
     try {
       final box = StorageProvider.offlineOrders;
@@ -8857,6 +8860,30 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
     }
 
+    // Shared helper: mark Isar pending payments as completed
+    Future<void> markIsarPaymentsCompleted() async {
+      if (orderId == null || orderId! <= 0) return;
+      await Future.delayed(const Duration(milliseconds: 300));
+      int retries = 3;
+      while (retries > 0) {
+        final payments = await LocalPaymentDBHelper.instance
+            .getPaymentsByOrderId(orderId!);
+        final pending = payments
+            .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
+            .toList();
+        if (pending.isNotEmpty) {
+          for (final p in pending) {
+            await LocalPaymentDBHelper.instance
+                .updateStatus(p.id, PaymentDbStatus.completed);
+          }
+          print("✅ Marked ${pending.length} Isar payments as completed");
+          return;
+        }
+        retries--;
+        if (retries > 0) await Future.delayed(const Duration(milliseconds: 200));
+      }
+    }
+
     try {
       await CustomerDisplayService.showThankYou();
     } catch (e) {
@@ -8884,78 +8911,49 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           });
         },
 
-        // ✅ WORKING - unchanged
+        // FIX: mark Isar → mark Hive → sync ONCE → navigate
         onNoReceipt: () async {
-          await Future.delayed(const Duration(milliseconds: 300));
-          if (orderId != null && orderId! > 0) {
-            int retries = 3;
-            while (retries > 0) {
-              final payments = await LocalPaymentDBHelper.instance
-                  .getPaymentsByOrderId(orderId!);
-              final pendingPayments = payments
-                  .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
-                  .toList();
-              if (pendingPayments.isNotEmpty) {
-                for (final p in pendingPayments) {
-                  await LocalPaymentDBHelper.instance.updateStatus(
-                    p.id,
-                    PaymentDbStatus.completed,
-                  );
-                }
-                print("✅ Marked ${pendingPayments.length} payments as completed");
-                break;
-              } else {
-                retries--;
-                if (retries > 0) {
-                  print("⏳ No pending payments found, retrying... ($retries left)");
-                  await Future.delayed(const Duration(milliseconds: 200));
-                }
-              }
-            }
+          // 1. Mark Isar payments completed
+          await markIsarPaymentsCompleted();
+
+          // 2. Update Hive order status BEFORE sync
+          if (orderId != null) await _markHiveOrderCompleted(orderId!);
+
+          // 3. Sync ONCE to backend
+          try {
+            await _syncCurrentOfflineOrder();
+            print("✅ onNoReceipt → order synced");
+          } catch (e) {
+            print("❌ onNoReceipt → sync failed: $e");
           }
+
+          // 4. Update customer display & exit
           await _updateCustomerDisplayWelcome(storeInfo);
           changeStatusToCompletedAndExit(false);
         },
 
-        // ✅ FIXED - exact same inline pattern as onNoReceipt
-        // markPaymentsCompleted runs BEFORE Navigator.pop()
+        // FIX: same pattern as onNoReceipt
         onDone: (selectedOption, {String? email}) async {
           print("onDone → $selectedOption, email=$email");
 
-          // ✅ KEY FIX: mark completed FIRST — same inline pattern as onNoReceipt
-          await Future.delayed(const Duration(milliseconds: 300));
-          if (orderId != null && orderId! > 0) {
-            int retries = 3;
-            while (retries > 0) {
-              final payments = await LocalPaymentDBHelper.instance
-                  .getPaymentsByOrderId(orderId!);
-              final pendingPayments = payments
-                  .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
-                  .toList();
-              if (pendingPayments.isNotEmpty) {
-                for (final p in pendingPayments) {
-                  await LocalPaymentDBHelper.instance.updateStatus(
-                    p.id,
-                    PaymentDbStatus.completed,
-                  );
-                }
-                print("✅ Marked ${pendingPayments.length} payments as completed");
-                break;
-              } else {
-                retries--;
-                if (retries > 0) {
-                  print("⏳ No pending payments found, retrying... ($retries left)");
-                  await Future.delayed(const Duration(milliseconds: 200));
-                }
-              }
-            }
+          // 1. Mark Isar payments completed
+          await markIsarPaymentsCompleted();
+
+          // 2. Update Hive order status BEFORE sync
+          if (orderId != null) await _markHiveOrderCompleted(orderId!);
+
+          // 3. Sync ONCE to backend
+          try {
+            await _syncCurrentOfflineOrder();
+            print("✅ onDone → order synced");
+          } catch (e) {
+            print("❌ onDone → sync failed: $e");
           }
 
-          // ✅ NOW close dialog (triggers .then() → _syncCurrentOfflineOrder)
-          // Isar already updated above so sync will see "completed"
+          // 4. Close dialog
           Navigator.of(dialogCtx, rootNavigator: false).pop();
 
-          // Handle email option
+          // 5. Handle email option
           if (selectedOption == TextConstants.email &&
               email != null &&
               email.isNotEmpty) {
@@ -8976,30 +8974,30 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   subscription?.cancel();
                   print(">>> Email sent, updating customer display");
                   await _updateCustomerDisplayWelcome(storeInfo);
-                  changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
+                  changeStatusToCompletedAndExit(true,
+                      selectedOption: selectedOption);
                 });
             return;
           }
 
-          // Handle print option
+          // 6. Handle print option
           if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
             print(">>> Printing receipt");
             await _preparePrintTicket();
             await _printTicket(manual: true);
           }
 
+          // 7. Customer display & exit
           await _updateCustomerDisplayWelcome(storeInfo);
           changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
         },
       ),
     ).then((_) {
+      // ONLY reset guard — NO sync call here
+      // Sync is already done inside onNoReceipt / onDone above.
+      // Old code had _syncCurrentOfflineOrder() here which fired a SECOND time.
       _isShowingPaymentDialog = false;
       print("Payment dialog closed → guard reset");
-
-      SchedulerBinding.instance.addPostFrameCallback((_) async {
-        print("🔁 Triggering SINGLE offline order sync after payment dialog");
-        await _syncCurrentOfflineOrder();
-      });
     });
   }
 
@@ -9072,13 +9070,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
 
           // --- 3. Close the confirmation dialog (after all async work) ---
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
+          // Navigator.of(dialogCtx, rootNavigator: false).pop();
           _isVoiding = false;
 
           // --- 4. Navigate to home screen only if payments were updated ---
           if (updatedAny && mounted) {
             OrderHelper.isOrderPanelLoaded = false;
             OrderHelper.notifyOrderPanelToRefresh();
+            Navigator.pop(context);
 
             Navigator.pushReplacement(
               context,
@@ -9135,6 +9134,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     );
   }
 
+
   void _showExitPaymentConfirmation(BuildContext context) {
     if (_isVoiding) {
       print("Exit confirmation skipped → void just completed");
@@ -9148,13 +9148,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       useRootNavigator: false,
       builder: (dialogCtx) => PaymentDialog(
         status: PaymentStatus.exitConfirmation,
+
         onExitCancel: () {
           print("_showExitPaymentConfirmation → User canceled exit");
           Navigator.of(dialogCtx, rootNavigator: false).pop();
+          // NO sync on cancel — user is staying on screen
         },
-        onExitConfirm: () {
+
+        onExitConfirm: () async {
           print("_showExitPaymentConfirmation → User confirmed exit");
           Navigator.of(dialogCtx, rootNavigator: false).pop();
+
+          // Sync ONCE here (only when user actually confirms leaving)
+          try {
+            await _syncCurrentOfflineOrder();
+            print("✅ Synced on exit confirm");
+          } catch (e) {
+            print("❌ Sync on exit failed: $e");
+          }
 
           OrderHelper.isOrderPanelLoaded = false;
           OrderHelper.notifyOrderPanelToRefresh();
@@ -9166,14 +9177,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           );
         },
       ),
-    ).then((_) async {
-      /// 🔥 EXACT SAME BEHAVIOUR AS PAYMENT DIALOG
-      SchedulerBinding.instance.addPostFrameCallback((_) async {
-        print("🔁 Triggering SINGLE offline order sync after EXIT dialog");
-        await _syncCurrentOfflineOrder();
-      });
-    });
+    );
   }
+
 
   Future<Map<String, dynamic>?> loadPrinterData() async {
     var printerDB = await PrinterDBHelper().getPrinterFromDB();
@@ -9549,7 +9555,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
-////
+//////
 
   Future _printTicket({bool manual = false}) async {
     final ticket = await _printerSettings.getTicket();

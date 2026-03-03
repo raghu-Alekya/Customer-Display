@@ -572,7 +572,36 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       if (items.isNotEmpty) {
         print("🟦 SQLite Order Items Loaded: $items");
 
-        setState(() => orderItems = items);
+        List<Map<String, dynamic>> processedItems = [];
+
+        for (var item in items) {
+
+          final rawTotal = item[AppDBConst.itemSumPrice];
+          final rawQty   = item[AppDBConst.itemCount];
+
+          final double total = rawTotal is num
+              ? rawTotal.toDouble()
+              : double.tryParse(rawTotal?.toString() ?? "0") ?? 0.0;
+
+          final int qty = rawQty is int
+              ? rawQty
+              : int.tryParse(rawQty?.toString() ?? "1") ?? 1;
+
+          final double unitPrice = qty > 0 ? total / qty : 0.0;
+
+          processedItems.add({
+            ...item,
+            AppDBConst.itemPrice: unitPrice,
+            AppDBConst.itemSumPrice: total,
+
+            // // ✅ Keep discount info
+            // "multipack_discount_total": item["multipack_discount_total"] ?? 0.0,
+            // "auto_discount_total": item["auto_discount_total"] ?? 0.0,
+            // "combo_discount_total": item["combo_discount_total"] ?? 0.0,
+          });
+        }
+
+        setState(() => orderItems = processedItems);
         return;
       }
     } catch (_) {}
@@ -2491,6 +2520,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             }
 
                             final filteredItems = visibleLineItems(orderItems);
+                            print("🔎 BEFORE SUMMARY NAVIGATION");
+                            for (var item in filteredItems) {
+                              print("Name: ${item[AppDBConst.itemName]} "
+                                  "Price: ${item[AppDBConst.itemPrice]} "
+                                  "Qty: ${item[AppDBConst.itemCount]}");
+                            }
 
                             final result = await Navigator.push(
                               context,

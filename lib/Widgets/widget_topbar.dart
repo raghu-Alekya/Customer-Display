@@ -489,23 +489,25 @@ class _TopBarState extends State<TopBar> {
       final isar = await IsarService.instance;
 
       await isar.writeTxn(() async {
-        await isar.isarCacheEntrys.clear(); // 👈 your actual collection name
+        await isar.isarCacheEntrys
+            .filter()
+            .keyStartsWith("sku_")   // ✅ ONLY SKU CACHE
+            .deleteAll();
       });
 
-      print("🗑 Isar product cache cleared");
-
-      await ProductRepository().fetchProducts();
+      print("🗑 Only SKU cache cleared (sku_*)");
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Products refreshed successfully"),
+            content: Text("SKU products refreshed successfully"),
             backgroundColor: Colors.green,
           ),
         );
       }
+
     } catch (e) {
-      print("❌ Refresh error: $e");
+      print("❌ SKU Refresh error: $e");
     } finally {
       if (mounted) {
         setState(() => isLoading = false);

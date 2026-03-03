@@ -665,7 +665,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     _tabController = TabController(length: tabs.length, vsync: this);
 
     _tabController!.addListener(() async {
-      if (!_tabController!.indexIsChanging && mounted) {
+      if (!_tabController!.indexIsChanging &&
+          mounted &&
+          _tabController!.index < tabs.length) {
         int selectedIndex = _tabController!.index;
         int selectedOrderId = tabs[selectedIndex]["orderId"] as int;
         if (mounted) {
@@ -692,8 +694,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       if (idx != -1) {
         defaultIndex = idx;
       } else {
-        // 🚫 Do NOT override focus
-        return;
+        //  Active order not found → fallback to first tab
+        defaultIndex = 0;
+
+        final fallbackOrderId = tabs[0]["orderId"] as int;
+        await orderHelper.setActiveOrder(fallbackOrderId);
+        await orderHelper.saveLastActiveOrderId(fallbackOrderId);
       }
     }
 
@@ -704,7 +710,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       );
     }
   }
-
   // Build #1.0.10: Creates a new order and adds it as a new tab
   //Build #1.0.78: Explanation!
   // Removed orderHelper.createOrder and setActiveOrder as they’re now handled in OrderBloc.
@@ -1073,6 +1078,28 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
             SKU.ProductBySkuResponse? product;
             bool foundOffline = false;
+            final normalizedSku = OrderHelper.normalizeSku(trimmedBarcode);
+
+// 🔥 ALWAYS VALIDATE WITH BACKEND FIRST
+            final apiProducts = await ProductRepository()
+                .fetchProductBySku(normalizedSku, forceRefresh: true);
+
+            if (apiProducts.isEmpty) {
+              print("⛔ Backend confirms SKU deleted → clearing memory + cache");
+
+              // 🧠 Clear memory
+              OrderHelper.removeFromCache(normalizedSku);
+
+              // 💽 Clear Hive SKU
+              final productBox = StorageProvider.productCache;
+              await productBox.delete("sku_$normalizedSku");
+
+              _isLoading = false;
+              if (mounted) setState(() {});
+
+              await _openCustomItemDialog(context, trimmedBarcode);
+              return;
+            }
 
 //             // 🔥 FAST DELETION VALIDATION
 //             final isar = await IsarService.instance;
@@ -1436,14 +1463,14 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // ------------------------------------------------------------
             bool existsInBackend = false;
 
-            final normalizedSku = OrderHelper.normalizeSku(productSku);
-
             try {
-              final apiProducts =
-              await ProductRepository().fetchProductBySku(normalizedSku);
+              final apiProducts = await ProductRepository()
+                  .fetchProductBySku(normalizedBarcode, forceRefresh: true);
 
-              if (apiProducts.isNotEmpty) {
-                existsInBackend = true;
+              existsInBackend = apiProducts.isNotEmpty;
+
+              if (kDebugMode) {
+                print("🌐 Backend fresh validation → $existsInBackend");
               }
             } catch (e) {
               print("⚠ Backend validation failed: $e");
@@ -1453,10 +1480,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               print("⛔ Backend confirms product deleted → cleaning ALL local cache");
 
               // 🧠 MEMORY
-              OrderHelper.removeFromCache(normalizedSku);
+              OrderHelper.removeFromCache(normalizedBarcode);
 
               // 💽 SKU CACHE
-              await StorageProvider.productCache.delete("sku_$normalizedSku");
+              await StorageProvider.productCache.delete("sku_$normalizedBarcode");
 
               // 🗑 REMOVE FROM FULL LIST CACHE (SAFE VERSION)
               final allProducts =
@@ -1468,7 +1495,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                     // Case 1: Flat product map
                     if (item is Map && item["sku"] != null) {
                       final sku = item["sku"].toString().toLowerCase();
-                      return sku != normalizedSku.toLowerCase();
+                      return sku != normalizedBarcode.toLowerCase();
                     }
 
                     // Case 2: Wrapped inside {products:[...]}
@@ -1478,7 +1505,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                       final first = item["products"][0];
                       final sku =
                       (first["sku"] ?? "").toString().toLowerCase();
-                      return sku != normalizedSku.toLowerCase();
+                      return sku != normalizedBarcode.toLowerCase();
                     }
 
                     return true;
@@ -1491,7 +1518,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                     .put("all_products_list", updated);
               }
 
-              print("🧹 Local cache fully cleaned for SKU: $normalizedSku");
+              print("🧹 Local cache fully cleaned for SKU: $normalizedBarcode");
 
               _isLoading = false;
               if (mounted) setState(() {});
@@ -1977,19 +2004,19 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                       : List.generate(tabs.length, (index) {
                                     final int selectedIndex =
                                         _tabController?.index ?? 0;
-                                    final bool isSelected =
-                                        selectedIndex == index;
+                                    final isSelected =
+                                        tabs[index]["orderId"] == orderHelper.activeOrderId;
 
                                     return Padding(
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 4, vertical: 4),
                                       child: GestureDetector(
                                         onTap: () {
-                                          if (_tabController == null)
-                                            return;
-                                          setState(() {
-                                            _tabController!.index = index;
-                                          });
+                                          if (_tabController == null) return;
+
+                                          if (_tabController!.index != index) {
+                                            _tabController!.animateTo(index);
+                                          }
                                         },
                                         child: Container(
                                           height: 50,
