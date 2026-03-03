@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../Constants/text.dart';
 import '../../Database/db_helper.dart';
+import '../../Database/order_panel_db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import '../../Helper/api_helper.dart';
 import '../../Helper/customerdisplayhelper.dart';
@@ -328,6 +329,34 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         )}",
       );
     }
+  }
+  Future<void> _deleteProductLocally(String normalizedSku) async {
+
+    // 🧠 MEMORY
+    OrderHelper.removeFromCache(normalizedSku);
+
+    // 💽 SKU CACHE
+    await StorageProvider.productCache.delete("sku_$normalizedSku");
+
+    // 🗑 REMOVE FROM FULL LIST CACHE
+    final allProducts =
+    await StorageProvider.productCache.get("all_products_list");
+
+    if (allProducts is List) {
+      final updated = allProducts.where((item) {
+        try {
+          final sku = (item["sku"] ?? "").toString().toLowerCase();
+          return sku != normalizedSku.toLowerCase();
+        } catch (_) {
+          return true;
+        }
+      }).toList();
+
+      await StorageProvider.productCache
+          .put("all_products_list", updated);
+    }
+
+    print("🗑 Local product removed → $normalizedSku");
   }
 
 
@@ -1695,9 +1724,18 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
         final double price =
             double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+
         final double qty =
             double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
+
         final double total = price * qty;
+
+        // ✅ EXTRACT SKU SAFELY
+        final String sku =
+        (item["sku"] ??
+            item["product_sku"] ??
+            item["SKU"] ??
+            "").toString();
 
         final dynamic pidRaw =
             item["product_id"] ??
@@ -1710,20 +1748,23 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         pidRaw == null ? null : int.tryParse(pidRaw.toString());
 
         if (pid == null || pid == 0) {
-          // CUSTOM ITEM
+          // 🔹 CUSTOM ITEM
           lineItems.add({
             "name": item["name"] ?? "Custom Item",
             "quantity": qty,
             "price": price.toStringAsFixed(2),
             "tax_status": "taxable",
-            "type": "custom"
+            "type": "custom",
+            "sku": sku,
           });
           continue;
         }
 
+        // 🔹 NORMAL PRODUCT
         lineItems.add({
           "product_id": pid,
           "name": item["name"] ?? "",
+          "sku": sku, // ✅ NOW SKU SENT
           "quantity": qty,
           "subtotal": total.toStringAsFixed(2),
           "total": total.toStringAsFixed(2),
@@ -1842,6 +1883,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
 
     final body = {"orders": formattedOrders};
+    final List<String> deletedSkus = [];
 
     debugPrint(
       "📤 DELETE SYNC PAYLOAD:\n${JsonEncoder.withIndent('  ').convert(body)}",
@@ -1857,11 +1899,22 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
       final int? wooOrderId = result?["order_id"];
 
+      if (wooOrderId != null) {
+
+        // 🔥 CLEAN LOCAL PRODUCT CACHE
+        for (final sku in deletedSkus) {
+          await _deleteProductLocally(sku);
+        }
+
+        print("🧹 All deleted products removed from local cache");
+      }
+
       return {
         "success": true,
         "wooOrderId": wooOrderId,
       };
-    } catch (e) {
+    }
+    catch (e) {
       print("❌ Delete Sync Error: $e");
       return {
         "success": false,

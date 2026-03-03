@@ -8,6 +8,7 @@ import 'package:isar/isar.dart';
 
 import '../../Database/isar_cache_entry.dart';
 import '../../Database/isar_service.dart';
+import '../../Database/order_panel_db_helper.dart';
 import '../../Helper/api_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Category/category_model.dart';
@@ -274,29 +275,107 @@ class CategoryRepository {
   }
 
   Future<void> _cacheProductsAndVariations(
-      int categoryId, List<dynamic> productList, List<dynamic> normalizedProducts) async {
+      int categoryId,
+      List<dynamic> productList,
+      List<dynamic> normalizedProducts,
+      ) async {
+
     final isar = await IsarService.instance;
+    final cacheKey = "products_$categoryId";
+
+    // 🔥 STEP 1: Read existing cached products
+    final existingEntry = await isar.isarCacheEntrys
+        .where()
+        .keyEqualTo(cacheKey)
+        .findFirst();
+
+    Set<int> oldIds = {};
+    if (existingEntry != null) {
+      final List<dynamic> oldProducts = json.decode(existingEntry.json);
+      oldIds = oldProducts
+          .map((e) => e["fast_key_product_id"] as int)
+          .toSet();
+    }
+
+    // 🔥 STEP 2: Collect new API product IDs
+    final newIds = normalizedProducts
+        .map((e) => e["fast_key_product_id"] as int)
+        .toSet();
+
+    // 🔥 STEP 3: Detect deleted products
+    final deletedIds = oldIds.difference(newIds);
+
+    if (deletedIds.isNotEmpty) {
+      print("🗑️ Products deleted in backend → cleaning local cache: $deletedIds");
+
+      final productCacheBox = StorageProvider.productCache;
+
+      if (existingEntry != null) {
+        final List<dynamic> oldProducts =
+        json.decode(existingEntry.json);
+
+        for (final deletedId in deletedIds) {
+          try {
+            final deletedProduct = oldProducts.firstWhere(
+                  (p) => p["fast_key_product_id"] == deletedId,
+              orElse: () => null,
+            );
+
+            if (deletedProduct != null) {
+              final sku = deletedProduct["sku"];
+
+              if (sku != null && sku.toString().isNotEmpty) {
+                final normalizedSku =
+                OrderHelper.normalizeSku(sku.toString());
+
+                // 🔥 Remove SKU cache
+                await productCacheBox.delete("sku_$normalizedSku");
+                print("🗑️ Hive SKU removed → sku_$normalizedSku");
+
+                // 🔥 Remove variation cache
+                await productCacheBox.delete(
+                    "product_${deletedId}_variations");
+
+                print("🗑️ Variation cache removed → product_${deletedId}_variations");
+
+                // 🔥 Remove from memory cache
+                OrderHelper.removeFromCache(normalizedSku);
+              }
+            }
+          } catch (e) {
+            print("⚠️ Error cleaning deleted product $deletedId → $e");
+          }
+        }
+      }
+    }
+
+    // 🔥 STEP 4: Overwrite cache with fresh API data
     await isar.writeTxn(() async {
       await isar.isarCacheEntrys.put(
         IsarCacheEntry()
-          ..key = "products_$categoryId"
+          ..key = cacheKey
           ..json = json.encode(normalizedProducts)
           ..timestamp = DateTime.now(),
       );
     });
 
     if (kDebugMode) {
-      print("💾 Cached ${normalizedProducts.length} products with tax & age info (cat: $categoryId)");
+      print("💾 Cache synced for category $categoryId "
+          "(Total: ${normalizedProducts.length})");
     }
 
+    // ============================================================
+    // 🔽 KEEP YOUR EXISTING VARIATION CACHING LOGIC BELOW
+    // ============================================================
+
     final productRepo = ProductRepository();
-    // NOTE: keeping variations cache in Hive for now; only category/product list caching moved to Isar.
     final productCacheBox = StorageProvider.productCache;
 
     for (final product in productList) {
       final productId = product['id'];
       final hasEmbeddedVariants =
-          product['variations'] != null && product['variations'].isNotEmpty;
+          product['variations'] != null &&
+              product['variations'].isNotEmpty;
 
       final parentMinAge = product["fast_key_item_min_age"] ??
           product["min_age"] ??
@@ -312,19 +391,26 @@ class CategoryRepository {
         final normalized = variations
             .whereType<Map>()
             .map<Map<String, dynamic>>((v) {
-          final image = (v["image"] is Map && v["image"]["src"] != null)
+          final image = (v["image"] is Map &&
+              v["image"]["src"] != null)
               ? v["image"]["src"]
               : (v["image"] is String ? v["image"] : "");
-          final name = (v["name"] is Map && v["name"]["rendered"] != null)
+
+          final name = (v["name"] is Map &&
+              v["name"]["rendered"] != null)
               ? v["name"]["rendered"]
               : (v["name"] is String ? v["name"] : "Unnamed Variant");
+
           final price = v["price"]?.toString() ?? "0";
+
           final varMinAge = v["min_age"] ??
               v["fast_key_item_min_age"] ??
               parentMinAge ??
               0;
+
           final varHasAgeRestriction =
-              varMinAge != null && int.tryParse(varMinAge.toString())! > 0;
+              varMinAge != null &&
+                  (int.tryParse(varMinAge.toString()) ?? 0) > 0;
 
           return {
             "id": v["id"],
@@ -338,22 +424,25 @@ class CategoryRepository {
         }).toList();
 
         if (normalized.isNotEmpty) {
-          await productCacheBox.put("product_${productId}_variations", {
-            'variations': normalized,
-            'timestamp': DateTime.now().toIso8601String(),
-          });
+          await productCacheBox.put(
+            "product_${productId}_variations",
+            {
+              'variations': normalized,
+              'timestamp': DateTime.now().toIso8601String(),
+            },
+          );
         }
       } else {
         try {
           await productRepo.fetchProductVariations(productId);
         } catch (e) {
-          if (kDebugMode) print("⚠️ Failed to fetch variations for product $productId: $e");
+          if (kDebugMode) {
+            print("⚠️ Failed to fetch variations for product $productId: $e");
+          }
         }
       }
     }
-
   }
-
   /////
 
   // Future<List<dynamic>> getAllCachedProducts() async {

@@ -50,6 +50,7 @@ import '../Helper/api_response.dart';
 import '../Helper/customerdisplayhelper.dart';
 import '../Models/Assets/asset_model.dart';
 import '../Preferences/pinaka_preferences.dart';
+import '../Repositories/Category/category_repository.dart';
 import '../Screens/Auth/login_screen.dart';
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import '../Utilities/global_utility.dart';
@@ -140,6 +141,15 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       _showFullSummary = !_showFullSummary;
     });
   }
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
 
   static double _toDouble(dynamic value) {
     if (value == null) return 0.0;
@@ -150,10 +160,14 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   String normalizeSku(String sku) {
     return sku.trim().toLowerCase().replaceAll(" ", "");
   }
+  late final CategoryRepository _categoryRepository;
+
+
 
   @override
   void initState() {
     super.initState();
+    _categoryRepository = CategoryRepository();
     WidgetsBinding.instance.addObserver(this);
     orderBloc = OrderBloc(OrderRepository());
     // Force full refresh when panel mounts (e.g. navigating from Orders tab) so we show
@@ -1060,6 +1074,42 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             SKU.ProductBySkuResponse? product;
             bool foundOffline = false;
 
+//             // 🔥 FAST DELETION VALIDATION
+//             final isar = await IsarService.instance;
+//
+//             final cachedEntries = await isar.isarCacheEntrys
+//                 .where()
+//                 .filter()
+//                 .keyStartsWith("products_")
+//                 .findAll();
+//
+//             bool existsInCache = false;
+//
+//             for (final entry in cachedEntries) {
+//               final List<dynamic> products = json.decode(entry.json);
+//
+//               for (final p in products) {
+//                 final sku = (p["sku"] ?? "").toString().toLowerCase();
+//
+//                 if (sku == normalizedBarcode.toLowerCase()) {
+//                   existsInCache = true;
+//                   break;
+//                 }
+//               }
+//
+//               if (existsInCache) break;
+//             }
+//
+// // 🔥 IF NOT FOUND → OPEN CUSTOM ITEM POPUP
+//             if (!existsInCache) {
+//               print("🔄 Product removed from backend → opening Custom Item popup");
+//
+//               _isLoading = false;
+//               if (mounted) setState(() {});
+//
+//               await _openCustomItemDialog(context, trimmedBarcode);
+//               return;
+//             }
             // ---------------------------------------------------------------------------
             // 1️⃣ MEMORY CACHE
             // ---------------------------------------------------------------------------
@@ -1381,6 +1431,74 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               activeOrderId,
               productSku,
             );
+            // ------------------------------------------------------------
+// 🔥 FINAL BACKEND EXISTENCE CHECK
+// ------------------------------------------------------------
+            bool existsInBackend = false;
+
+            final normalizedSku = OrderHelper.normalizeSku(productSku);
+
+            try {
+              final apiProducts =
+              await ProductRepository().fetchProductBySku(normalizedSku);
+
+              if (apiProducts.isNotEmpty) {
+                existsInBackend = true;
+              }
+            } catch (e) {
+              print("⚠ Backend validation failed: $e");
+            }
+// 🚨 If backend says product does NOT exist
+            if (!existsInBackend && !isCustomItem) {
+              print("⛔ Backend confirms product deleted → cleaning ALL local cache");
+
+              // 🧠 MEMORY
+              OrderHelper.removeFromCache(normalizedSku);
+
+              // 💽 SKU CACHE
+              await StorageProvider.productCache.delete("sku_$normalizedSku");
+
+              // 🗑 REMOVE FROM FULL LIST CACHE (SAFE VERSION)
+              final allProducts =
+              await StorageProvider.productCache.get("all_products_list");
+
+              if (allProducts is List) {
+                final updated = allProducts.where((item) {
+                  try {
+                    // Case 1: Flat product map
+                    if (item is Map && item["sku"] != null) {
+                      final sku = item["sku"].toString().toLowerCase();
+                      return sku != normalizedSku.toLowerCase();
+                    }
+
+                    // Case 2: Wrapped inside {products:[...]}
+                    if (item is Map &&
+                        item["products"] is List &&
+                        item["products"].isNotEmpty) {
+                      final first = item["products"][0];
+                      final sku =
+                      (first["sku"] ?? "").toString().toLowerCase();
+                      return sku != normalizedSku.toLowerCase();
+                    }
+
+                    return true;
+                  } catch (_) {
+                    return true;
+                  }
+                }).toList();
+
+                await StorageProvider.productCache
+                    .put("all_products_list", updated);
+              }
+
+              print("🧹 Local cache fully cleaned for SKU: $normalizedSku");
+
+              _isLoading = false;
+              if (mounted) setState(() {});
+
+              await _openCustomItemDialog(context, trimmedBarcode);
+              return;
+            }
 
             // ---------------------------------------------------------------------------
 // ⭐ FINAL EBT ELIGIBILITY CHECK (NOW PRODUCT IS LOADED) ✅

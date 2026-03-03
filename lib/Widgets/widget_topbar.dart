@@ -310,6 +310,7 @@ class _TopBarState extends State<TopBar> {
   int? userId;
   String? userRole;
   String? userDisplayName;
+  bool isLoading = false;
 
   bool _isSearchEnabled = true;
   var _printerSettings = PrinterSettings();
@@ -479,7 +480,38 @@ class _TopBarState extends State<TopBar> {
       if (mounted) setState(() => _isConnecting = false);
     }
   }
+  // bool isLoading = false; // 👈 Make sure this exists
 
+  Future<void> refreshProducts() async {
+    try {
+      setState(() => isLoading = true);
+
+      final isar = await IsarService.instance;
+
+      await isar.writeTxn(() async {
+        await isar.isarCacheEntrys.clear(); // 👈 your actual collection name
+      });
+
+      print("🗑 Isar product cache cleared");
+
+      await ProductRepository().fetchProducts();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Products refreshed successfully"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print("❌ Refresh error: $e");
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+    }
+  }
   /// Try opening [device] at [baud].
   /// Waits up to [_dataWaitTimeout] for actual bytes before committing.
   /// Returns true only when data starts flowing (confirms correct device/baud).
@@ -1708,6 +1740,16 @@ class _TopBarState extends State<TopBar> {
                     : Colors.black54),
           ),
           const SizedBox(width: 16),
+          IconButton(
+            icon: isLoading
+                ? const SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+                : const Icon(Icons.refresh),
+            onPressed: isLoading ? null : refreshProducts,
+          ),
 
           // ── User chip ─────────────────────────────────────────────────────
           Container(

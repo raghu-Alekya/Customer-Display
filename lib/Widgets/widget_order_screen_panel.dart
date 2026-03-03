@@ -5086,122 +5086,79 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     var logo = _printerReceipt?[AppDBConst.receiptIconPath] ?? "";
 
     if (kDebugMode) {
-      print("OrderSummaryScreen _preparePrintTicket call print receipt ---- $header");
-      print("OrderSummaryScreen _preparePrintTicket call print receipt ---- $footer");
-      print("OrderSummaryScreen _preparePrintTicket logo: $logo");
+      print("===== Preparing print ticket =====");
+      print("Header: $header | Footer: $footer | Logo: $logo");
     }
 
+    // Refresh summary values if needed
     if (_order != null) {
       setState(() {
-        var orderId = _order[AppDBConst.orderServerId] as int? ?? 0;
-        var orderDateTime = "${_order[AppDBConst.orderDate]} ${_order[AppDBConst.orderTime]}";
         balanceAmount = (_order[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0;
-        final discount = uiOrderDiscount;
-        final merchantDiscount = uiMerchantDiscount;
-        final tax = uiOrderTax;
-        final cashbackFee = uiCashbackFee;
-        var balanceAmt = total - discount - merchantDiscount + tax - cashbackFee;
-        if (kDebugMode) {
-          print("Fetched orderServerId: $orderId, Discount: $discount for activeOrderId: ${widget.activeOrderId}, Time: $orderDateTime");
-          print("Balance amount calculated is $balanceAmt and balance from API is $balanceAmount");
-        }
       });
-    } else {
-      if (kDebugMode) {
-        print("No orderServerId found for activeOrderId: ${widget.activeOrderId}");
-      }
     }
 
     bytes = [];
     final ticket = await _printerSettings.getTicket();
 
-    var dateToPrint = "";
-    var timeToPrint = "";
+    // ── Date & Time ────────────────────────────────────────
+    String dateToPrint = "";
+    String timeToPrint = "";
     if (_order.isNotEmpty && _order[AppDBConst.orderDate] != null) {
       try {
-        final DateTime createdDateTime = DateTime.parse(_order[AppDBConst.orderDate].toString());
-        dateToPrint = DateFormat(TextConstants.dateFormat).format(createdDateTime);
-        timeToPrint = DateFormat(TextConstants.timeFormat).format(createdDateTime);
+        final created = DateTime.parse(_order[AppDBConst.orderDate].toString());
+        dateToPrint = DateFormat(TextConstants.dateFormat).format(created);
+        timeToPrint = DateFormat(TextConstants.timeFormat).format(created);
       } catch (e) {
-        if (kDebugMode) {
-          print("Error parsing order creation date: $e");
-        }
+        if (kDebugMode) print("Date parse error: $e");
+        dateToPrint = "N/A";
+        timeToPrint = "N/A";
       }
     }
 
-    var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
-    var storeId = "${merchantDetails?[AppDBConst.storeId]}";
-    var storePhone = "${merchantDetails?[AppDBConst.storePhone]}";
-    var storeDetails = await AssetDBHelper.instance.getStoreDetails();
-    var storeName = "${storeDetails?.name}";
-    var address = "${storeDetails?.address},";
-    var cityStateZip = "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
-    var orderIdToPrint = '${widget.activeOrderId}';
+    // ── Store & User Info ──────────────────────────────────
+    final merchant = await StoreDbHelper.instance.getStoreValidationData();
+    final storeDetails = await AssetDBHelper.instance.getStoreDetails();
     final userData = await UserDbHelper().getUserData();
-    var cashierName = "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
-    var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
 
+    final storeId = "${merchant?[AppDBConst.storeId] ?? 'N/A'}";
+    final storePhone = "${merchant?[AppDBConst.storePhone] ?? 'N/A'}";
+    final storeName = "${storeDetails?.name ?? 'Store Name'}";
+    final address = "${storeDetails?.address ?? ''},";
+    final cityStateZip = "${storeDetails?.city ?? ''},${storeDetails?.state ?? ''}-${storeDetails?.zipCode ?? ''}";
+    final cashierName = "${userData?[AppDBConst.userDisplayName] ?? 'Cashier'}";
+    final cashierRole = "${userData?[AppDBConst.userRole] ?? 'Staff'}";
+
+    final orderIdToPrint = '${widget.activeOrderId ?? 'N/A'}';
+
+    // Summary values (from buildCurrentOrder)
     final grossTotal = uiGrossTotal;
     final discount = uiOrderDiscount;
     final merchantDiscount = uiMerchantDiscount;
     final tax = uiOrderTax;
     final cashbackFee = uiCashbackFee;
-    final hiveRedeemedValue = uiRedeemedValue;
-    final netpayable = uiNetPayable;
+    final redeemedValue = uiRedeemedValue;
+    final netPayable = uiNetPayable;
 
-    if (kDebugMode) {
-      print(" >>>>> PrintOrder dateToPrint $dateToPrint ");
-      print(" >>>>> PrintOrder timeToPrint $timeToPrint ");
-      print(" >>>>> PrintOrder storeId $storeId ");
-      print(" >>>>> PrintOrder storeName $storeName ");
-      print(" >>>>> PrintOrder address $address ");
-      print(" >>>>> PrintOrder cityStateZip $cityStateZip ");
-      print(" >>>>> PrintOrder storePhone $storePhone ");
-      print(" >>>>> PrintOrder orderIdToPrint $orderIdToPrint ");
-      print(" >>>>> PrintOrder cashierName $cashierName ");
-      print(" >>>>> PrintOrder cashierRole $cashierRole ");
-    }
-
-    if (kDebugMode) {
-      print("=============== 🧾 PRINT TICKET DEBUG INFO ===============");
-      // ... (your original debug prints remain unchanged)
-    }
-
-    // ---------------- HEADER PRINT ----------------
-    if (header != "") {
-      bytes += ticket.row([
-        PosColumn(
-            text: "$header",
-            width: 12,
-            styles: PosStyles(align: PosAlign.center)),
-      ]);
+    // ── HEADER ─────────────────────────────────────────────
+    if (header.isNotEmpty) {
+      bytes += ticket.row([PosColumn(text: header, width: 12, styles: PosStyles(align: PosAlign.center))]);
     }
     bytes += ticket.row([
-      PosColumn(
-        text: "***** INVOICE COPY *****",
-        width: 12,
-        styles: PosStyles(align: PosAlign.center, bold: true),
-      ),
+      PosColumn(text: "***** INVOICE COPY *****", width: 12, styles: PosStyles(align: PosAlign.center, bold: true)),
     ]);
     bytes += ticket.feed(1);
+
     bytes += ticket.row([
-      PosColumn(text: "$storeName", width: 12, styles: PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2)),
+      PosColumn(text: storeName, width: 12, styles: PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2)),
     ]);
     bytes += ticket.feed(1);
-    bytes += ticket.row([
-      PosColumn(text: "$address", width: 12, styles: PosStyles(align: PosAlign.center)),
-    ]);
-    bytes += ticket.row([
-      PosColumn(text: "$cityStateZip", width: 12, styles: PosStyles(align: PosAlign.center)),
-    ]);
-    bytes += ticket.row([
-      PosColumn(text: "Phone: $storePhone", width: 12, styles: PosStyles(align: PosAlign.center, bold: true)),
-    ]);
+    bytes += ticket.row([PosColumn(text: address, width: 12, styles: PosStyles(align: PosAlign.center))]);
+    bytes += ticket.row([PosColumn(text: cityStateZip, width: 12, styles: PosStyles(align: PosAlign.center))]);
+    bytes += ticket.row([PosColumn(text: "Phone: $storePhone", width: 12, styles: PosStyles(align: PosAlign.center, bold: true))]);
     bytes += ticket.feed(1);
-    bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
-    ]);
+    bytes += ticket.row([PosColumn(text: "-----------------------------------------------", width: 12)]);
     bytes += ticket.feed(1);
+
     bytes += ticket.row([
       PosColumn(text: "Date: $dateToPrint", width: 7, styles: PosStyles(align: PosAlign.left)),
       PosColumn(text: "Time: $timeToPrint", width: 5, styles: PosStyles(align: PosAlign.left)),
@@ -5215,192 +5172,121 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       PosColumn(text: "OrderID: $orderIdToPrint", width: 5, styles: PosStyles(align: PosAlign.left)),
     ]);
     bytes += ticket.feed(1);
-    bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
-    ]);
+    bytes += ticket.row([PosColumn(text: "-----------------------------------------------", width: 12)]);
 
-    // ---------------- ITEMS HEADER ----------------
+    // ── ITEMS HEADER ───────────────────────────────────────
     bytes += ticket.row([
       PosColumn(text: "#", width: 1, styles: PosStyles(align: PosAlign.left, bold: true)),
       PosColumn(text: "Description", width: 5, styles: PosStyles(align: PosAlign.left, bold: true)),
       PosColumn(text: "Qty", width: 1, styles: PosStyles(align: PosAlign.center, bold: true)),
       PosColumn(text: "Rate", width: 2, styles: PosStyles(align: PosAlign.right, bold: true)),
-      PosColumn(text: "Amt", width: 3, styles: PosStyles(align: PosAlign.right, bold: true)),
+      PosColumn(text: "Amount", width: 3, styles: PosStyles(align: PosAlign.right, bold: true)),
     ]);
     bytes += ticket.feed(1);
 
-    // 🔥 MULTIPACK DISCOUNT TOTAL
-    double totalMultipackDiscount = 0.0;
-    double totalComboDiscount = 0.0;
-    double totalAutoDiscount = 0.0;
+    // Track total item-level discounts for possible summary use
+    double totalMultipack = 0.0;
+    double totalCombo = 0.0;
+    double totalAuto = 0.0;
 
-    // ---------------- ITEMS LOOP (only cashback handling improved) ----------------
+    // ── ITEMS LOOP ─────────────────────────────────────────
     for (int i = 0; i < orderItems.length; i++) {
-      var orderItem = orderItems[i];
+      final item = orderItems[i];
 
-      final nameLower = orderItem[AppDBConst.itemName]?.toString().toLowerCase() ?? "";
-      final itemTypeLower = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? "";
+      final name = (item[AppDBConst.itemName]?.toString() ?? "").toLowerCase();
+      final type = (item[AppDBConst.itemType]?.toString() ?? "").toLowerCase();
 
-      bool hideItem = nameLower.contains("discount") ||
-          nameLower.contains("coupon") ||
-          nameLower.contains("loyalty") ||
-          nameLower.contains("redeemed") ||
-          nameLower.contains("points") ||
-          itemTypeLower.contains("discount") ||
-          itemTypeLower.contains("coupon") ||
-          itemTypeLower.contains("loyalty") ||
-          itemTypeLower.contains("points");
-
-      if (hideItem) {
-        if (kDebugMode) print("🚫 HIDDEN FROM PRINT → ${orderItem[AppDBConst.itemName]}");
+      // Skip discount/coupon/loyalty/redeem items in print
+      if (name.contains("discount") ||
+          name.contains("coupon") ||
+          name.contains("loyalty") ||
+          name.contains("redeemed") ||
+          name.contains("points") ||
+          type.contains("discount") ||
+          type.contains("coupon") ||
+          type.contains("loyalty") ||
+          type.contains("points")) {
         continue;
       }
 
-      final itemType = orderItem[AppDBConst.itemType]?.toString().toLowerCase() ?? '';
-      final isPayout = itemType.contains(TextConstants.payoutText);
-      final isCoupon = itemType.contains(TextConstants.couponText);
-      final isCashback = itemType.contains("cashback") || (nameLower == "cashback");
-      final isCouponOrPayout = isCoupon || isPayout;
+      final isPayout = type.contains(TextConstants.payoutText);
+      final isCoupon = type.contains(TextConstants.couponText);
+      final isCashback = type.contains("cashback") || name == "cashback";
 
-      final double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
+      final qty = (item[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
 
-      // ── Improved cashback value detection ───────────────────────────────
-      final double basePrice = (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
-      final double sumPrice = (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
-      final double cashbackValue = (orderItem['amount'] as num?)?.toDouble() ??
-          (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
-          sumPrice ??
-          0.0;
-
-      final double salesPrice =
-      (orderItem[AppDBConst.itemPrice] != null && qty > 0)
-          ? (orderItem[AppDBConst.itemPrice])
-          : 0.0;
-
-      final double cashbackPrice =
-      (orderItem[AppDBConst.itemSumPrice] != null && qty > 0)
-          ? (orderItem[AppDBConst.itemSumPrice])
-          : 0.0;
-
-      double rateValue;
-      double amountValue;
+      // ── Clean unit price (same logic as UI) ────────────────
+      double unitPrice = 0.0;
 
       if (isCashback) {
-        rateValue = (cashbackValue / qty).abs();     // Positive rate
-        amountValue = cashbackValue.abs();           // Positive total amount
-      } else if (isCouponOrPayout) {
-        rateValue = basePrice;                       // usually negative
-        amountValue = qty * basePrice;
+        unitPrice = (item['amount'] as num?)?.toDouble()?.abs() ??
+            (item[AppDBConst.itemSumPrice] as num?)?.toDouble()?.abs() ??
+            0.0;
       } else {
-        rateValue = basePrice;
-        amountValue = qty * basePrice;
+        unitPrice = (item[AppDBConst.itemPrice] as num?)?.toDouble() ??
+            (item[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
+            (item[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??
+            0.0;
+
+        // Fallback: derive from sum if needed
+        if (unitPrice == 0.0) {
+          final sum = (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
+          if (qty > 0) unitPrice = sum / qty;
+        }
       }
 
-      // 🔥 MULTIPACK / COMBO / AUTO DISCOUNT (only for normal items)
-      final double multipackDiscount = (orderItem[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
-      final double comboDiscount = (orderItem[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
-      final double autoDiscount = (orderItem[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
+      // This is what we ALWAYS show in Amount column: rate × qty
+      final originalAmount = qty * unitPrice;
+      final formattedAmount = "${TextConstants.currencySymbol}${originalAmount.toStringAsFixed(2)}";
+
+      // ── Item-level discounts (shown separately below) ──────
+      final multipackDiscount = (item[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
+      final comboDiscount = (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
+      final autoDiscount = (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
 
       if (!isPayout && !isCoupon && !isCashback) {
-        if (multipackDiscount > 0) {
-          amountValue -= multipackDiscount;
-          totalMultipackDiscount += multipackDiscount;
-        }
-        if (comboDiscount > 0) {
-          amountValue -= comboDiscount;
-          totalComboDiscount += comboDiscount;
-        }
-        if (autoDiscount > 0) {
-          amountValue -= autoDiscount;
-          totalAutoDiscount += autoDiscount;
-        }
+        totalMultipack += multipackDiscount;
+        totalCombo += comboDiscount;
+        totalAuto += autoDiscount;
       }
 
-      String formattedRate = rateValue < 0
-          ? "-${TextConstants.currencySymbol}${rateValue.abs().toStringAsFixed(2)}"
-          : "${TextConstants.currencySymbol}${rateValue.toStringAsFixed(2)}";
-
-      final double itemRowAmount = isCashback
-          ? cashbackPrice
-          : qty * salesPrice;
-
-      String formattedAmount = itemRowAmount < 0
-          ? "-${TextConstants.currencySymbol}${itemRowAmount
-          .abs()
-          .toStringAsFixed(2)}"
-          : "${TextConstants.currencySymbol}${itemRowAmount.toStringAsFixed(
-          2)}";
-
-      print(
-        'Rate: $rateValue → $formattedRate | Amounteeeee: $itemRowAmount → $formattedAmount',
-      );
-
-      // ---------------- ITEM ROW ----------------
+      // ── Print main item row (Amount = rate × qty) ──────────
       bytes += ticket.row([
         PosColumn(text: "${i + 1}", width: 1),
-        PosColumn(text: "${orderItem[AppDBConst.itemName]}", width: 5),
-        PosColumn(
-          text: qty.toInt().toString(),
-          width: 1,
-          styles: PosStyles(align: PosAlign.center),
-        ),
-        PosColumn(
-          text: formattedRate,
-          width: 2,
-          styles: PosStyles(align: PosAlign.right),
-        ),
-        PosColumn(
-          text: formattedAmount,
-          width: 3,
-          styles: PosStyles(align: PosAlign.right),
-        ),
+        PosColumn(text: item[AppDBConst.itemName] ?? "Item", width: 5),
+        PosColumn(text: qty.toInt().toString(), width: 1, styles: PosStyles(align: PosAlign.center)),
+        PosColumn(text: "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)}", width: 2, styles: PosStyles(align: PosAlign.right)),
+        PosColumn(text: formattedAmount, width: 3, styles: PosStyles(align: PosAlign.right)),
       ]);
 
-      // PRINT MULTIPACK DISCOUNT LINE
+      // Show discounts below the item (if any)
       if (multipackDiscount > 0) {
         bytes += ticket.row([
           PosColumn(text: "", width: 1),
-          PosColumn(text: "Multipack Discount", width: 7),
-          PosColumn(
-            text: "-${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}",
-            width: 4,
-            styles: PosStyles(align: PosAlign.right),
-          ),
+          PosColumn(text: "  Multipack Discount", width: 7),
+          PosColumn(text: "-${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
         ]);
       }
-
       if (comboDiscount > 0) {
         bytes += ticket.row([
           PosColumn(text: "", width: 1),
-          PosColumn(text: "Combo Discount", width: 7),
-          PosColumn(
-            text: "-${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}",
-            width: 4,
-            styles: PosStyles(align: PosAlign.right),
-          ),
+          PosColumn(text: "  Combo Discount", width: 7),
+          PosColumn(text: "-${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
         ]);
       }
-
       if (autoDiscount > 0) {
         bytes += ticket.row([
           PosColumn(text: "", width: 1),
-          PosColumn(text: "Auto Discount", width: 7),
-          PosColumn(
-            text: "-${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
-            width: 4,
-            styles: PosStyles(align: PosAlign.right),
-          ),
+          PosColumn(text: "  Auto Discount", width: 7),
+          PosColumn(text: "-${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
         ]);
       }
 
       bytes += ticket.emptyLines(1);
     }
 
-    // ---------------- SUMMARY ----------------
-    // ... (everything from here to the end remains 100% unchanged)
-    bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
-    ]);
+    // ── SUMMARY ────────────────────────────────────────────
+    bytes += ticket.row([PosColumn(text: "-----------------------------------------------", width: 12)]);
     bytes += ticket.row([
       PosColumn(text: TextConstants.grossTotal, width: 8),
       PosColumn(text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
@@ -5409,9 +5295,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       PosColumn(text: TextConstants.discountText, width: 8),
       PosColumn(text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
     ]);
-    bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
-    ]);
+    bytes += ticket.row([PosColumn(text: "-----------------------------------------------", width: 12)]);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.taxText, width: 8),
       PosColumn(text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
@@ -5428,19 +5313,17 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       PosColumn(text: TextConstants.servicecharges, width: 8),
       PosColumn(text: "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
     ]);
-    bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
-    ]);
+    bytes += ticket.row([PosColumn(text: "-----------------------------------------------", width: 12)]);
     bytes += ticket.feed(1);
 
-    // NET PAYABLE & PAYMENT
+    // ── FINAL TOTALS ───────────────────────────────────────
     bytes += ticket.row([
       PosColumn(text: TextConstants.netPayable, width: 8),
-      PosColumn(text: "${TextConstants.currencySymbol}${netpayable.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
     ]);
     bytes += ticket.row([
-      PosColumn(text: TextConstants.redeemPoints, width: 8),
-      PosColumn(text: "${TextConstants.currencySymbol}${hiveRedeemedValue.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: "Redeemed Value", width: 8),
+      PosColumn(text: "-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
     ]);
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByCash, width: 8),
@@ -5458,19 +5341,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       PosColumn(text: TextConstants.change, width: 8),
       PosColumn(text: "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
     ]);
+
     bytes += ticket.feed(2);
 
-    // ---------------- FOOTER ----------------
-    if (footer != "") {
-      bytes += ticket.row([
-        PosColumn(text: "$footer", width: 12, styles: PosStyles(align: PosAlign.center)),
-      ]);
+    if (footer.isNotEmpty) {
+      bytes += ticket.row([PosColumn(text: footer, width: 12, styles: PosStyles(align: PosAlign.center))]);
     }
     bytes += ticket.feed(2);
-    bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
-    ]);
+    bytes += ticket.row([PosColumn(text: "-----------------------------------------------", width: 12)]);
   }
+
 
 /////
 

@@ -2233,10 +2233,13 @@ class OrderHelper {
   }
 
   static void removeFromCache(String sku) {
-    final key = sku.trim().toLowerCase();
+    final key = normalizeSku(sku); // 🔥 USE SAME NORMALIZATION
+
     if (_inMemoryProductCache.containsKey(key)) {
       _inMemoryProductCache.remove(key);
       print("🧹 MEMORY CACHE CLEARED for SKU → $key");
+    } else {
+      print("⚠ MEMORY CACHE KEY NOT FOUND → $key");
     }
   }
 
