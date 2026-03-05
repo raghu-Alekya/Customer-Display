@@ -52,7 +52,11 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
       ),
       child: Text(
         index < pin.length ? "*" : "",
-        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        style: const TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+          color: Colors.black, // ✅ ADD THIS
+        ),
       ),
     );
   }
@@ -71,7 +75,11 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
         ),
         child: Text(
           text,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w500,
+            color: Colors.black, // ✅ ADD THIS
+          ),
         ),
       ),
     );
@@ -160,15 +168,14 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
 
                             const SizedBox(height: 20),
 
-                            const Text(
+                            Text(
                               "Continue Refund",
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
-                                color: Colors.black,
+                                color: Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
-
                             const SizedBox(height: 12),
 
                             Row(
@@ -204,8 +211,8 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
                                         style: TextStyle(
                                           fontSize: 13,
                                           color: refundOption == 1
-                                              ? Colors.black
-                                              : Colors.grey.shade600,
+                                              ? Theme.of(context).colorScheme.onSurface
+                                              : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                                         ),
                                       ),
                                     ],
@@ -245,8 +252,8 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
                                         style: TextStyle(
                                           fontSize: 13,
                                           color: refundOption == 2
-                                              ? Colors.black
-                                              : Colors.grey.shade600,
+                                              ? Theme.of(context).colorScheme.onSurface
+                                              : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                                         ),
                                       ),
                                     ],
@@ -365,6 +372,7 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
                                       child: const Icon(
                                         Icons.backspace_outlined,
                                         size: 22,
+                                        color: Colors.black,
                                       ),
                                     ),
                                   ),

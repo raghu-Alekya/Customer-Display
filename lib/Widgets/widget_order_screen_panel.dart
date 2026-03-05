@@ -270,48 +270,96 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
   }
 
   /// Load balance from LocalPayment when API returns empty (payments not yet synced).
-  /// Prevents balance from incorrectly showing full net payable instead of remaining amount.
   Future<void> _loadBalanceFromLocalPayment() async {
     if (widget.activeOrderId == null || !mounted) return;
 
     try {
-      final summary = await LocalPaymentDBHelper.instance.getPaymentSummaryForOrder(widget.activeOrderId!);
+      final orderId = widget.activeOrderId!;
+
+      // 1️⃣ Get summary
+      final summary =
+      await LocalPaymentDBHelper.instance.getPaymentSummaryForOrder(orderId);
+
+      print("========== Local Payment Summary ==========");
+      print("Full summary map: $summary");
+
+      if (summary != null) {
+        summary.forEach((key, value) {
+          print("Key: $key  =>  Value: $value");
+
+          if (key == 'paymentCount') {
+            final count = (value as num).toInt();
+            print("💳 Payment count: $count");
+          }
+        });
+      }
+      print("===========================================");
+
       final paymentCount = (summary['paymentCount'] ?? 0.0).toDouble();
 
+      // 2️⃣ Get all individual payments for this order
+      final payments =
+      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+
+      if (payments.isNotEmpty) {
+        print("========== Local Payment Records ==========");
+        for (var p in payments) {
+          final amountStr = p.amount >= 0
+              ? "Cash: \$${p.amount.toStringAsFixed(2)}"
+              : "void: \$${p.amount.toStringAsFixed(2)}";
+
+          print(
+              "→ ID: ${p.id} | Order ID: ${p.orderId} | $amountStr | Synced: ${p.isSynced} | Status: ${p.status.name}");
+        }
+        print("===========================================");
+      }
+
+      // 3️⃣ Compute tender, balance, and change
       if (paymentCount > 0) {
-        double totalPaid = (summary['totalPaid'] ?? 0.0).toDouble();
+        final totalPaid = (summary['totalPaid'] ?? 0.0).toDouble();
 
         setState(() {
-          // Very important: never allow negative tender from local db
           tenderAmount = totalPaid.clamp(0.0, double.infinity);
-          payByOther = tenderAmount;  // adjust if you split cash/other later
+          payByOther = tenderAmount;
           payByCash = 0.0;
 
           final remaining = summary['remainingBalance'];
           if (remaining != null) {
-            balanceAmount = (remaining as num).toDouble().clamp(0.0, double.infinity);
+            balanceAmount =
+                (remaining as num).toDouble().clamp(0.0, double.infinity);
           } else {
             final netPay = (_order["payable"] as num?)?.toDouble() ??
                 (_order["net_payable"] as num?)?.toDouble() ??
                 uiNetPayable ??
                 0.0;
+
             balanceAmount = (netPay - tenderAmount).clamp(0.0, double.infinity);
           }
 
           if (balanceAmount <= 0) {
-            changeAmount = (tenderAmount - (_order["payable"] ?? 0.0)).clamp(0.0, double.infinity);
+            changeAmount = (tenderAmount - (_order["payable"] ?? 0.0))
+                .clamp(0.0, double.infinity);
             balanceAmount = 0.0;
           } else {
             changeAmount = 0.0;
           }
 
-          print("Local payments → tender clamped = $tenderAmount | balance = $balanceAmount");
+          // ✅ Add this override to compute change using netPay
+          final netPay = (_order["payable"] as num?)?.toDouble() ??
+              (_order["net_payable"] as num?)?.toDouble() ??
+              uiNetPayable ??
+              0.0;
+          changeAmount = ( netPay).clamp(0.0, double.infinity);
+
+          print(
+              "Local payments → tender clamped = $tenderAmount | balance = $balanceAmount | change = $changeAmount");
         });
       }
     } catch (e) {
       if (kDebugMode) print("LocalPayment error: $e");
     }
   }
+
   Future<void> loadPrinterData() async {
     var printerDB = await PrinterDBHelper().getPrinterFromDB();
     if(printerDB.isEmpty){
@@ -2346,11 +2394,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                 //         style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold));
                                 //   },
                                 // ),
-
+                                // 1️⃣ Show changeAmount only if it's less than or equal to balanceAmount
                                 Text(
-                                  '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
+                                  '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${(balanceAmount < changeAmount ? balanceAmount : changeAmount).toStringAsFixed(2)}',
                                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                                 ),
+
                                 const SizedBox(width: 8),
                                 Icon(_showFullSummary ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up),
                               ],

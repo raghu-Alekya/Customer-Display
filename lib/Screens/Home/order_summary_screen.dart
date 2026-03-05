@@ -3850,6 +3850,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   // 3️⃣ Select EBT payment method with the allowed amount
                                   _selectPaymentMethod(
                                     TextConstants.ebtText,
+                                    autoFillAmount: true,
                                     maxAllowedAmount: allowedAmount,
                                   );
 
@@ -4213,6 +4214,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               ),
             ),
           ),
+
 
           const SizedBox(width: 70),
 
@@ -8828,11 +8830,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
-  // ============================================================
-// REPLACE your _showPaymentDialog method with this fixed version
-// KEY FIX: Close dialog IMMEDIATELY, then do async work in background
-// ============================================================
-
   void _showPaymentDialog(
       BuildContext context,
       double amount, {
@@ -8849,64 +8846,43 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final storeInfo = PinakaPreferences.getLoggedInStore();
 
-    // ── Helper: update customer display ──────────────────────
-    Future<void> updateCustomerDisplayWelcome() async {
-      try {
-        if (storeInfo.isNotEmpty) {
-          await CustomerDisplayHelper.updateWelcomeWithStore(
-            storeInfo['storeId'] ?? '0',
-            storeInfo['storeName'] ?? 'Store',
-            storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
-            storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
-          );
-        } else {
-          await CustomerDisplayService.showWelcome();
-        }
-      } catch (e) {
-        print(">>> Error updating customer display: $e");
+    Future<void> _updateCustomerDisplayWelcome(
+        Map<String, String?> storeInfo) async {
+      if (storeInfo.isNotEmpty) {
+        print(">>> Updating Customer Display with store info");
+        await CustomerDisplayHelper.updateWelcomeWithStore(
+          storeInfo['storeId'] ?? '0',
+          storeInfo['storeName'] ?? 'Store',
+          storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
+          storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
+        );
+      } else {
+        await CustomerDisplayService.showWelcome();
       }
     }
 
-    // ── Helper: background work (non-blocking) ───────────────
-    void doBackgroundWork() {
-      // Run all heavy async work AFTER dialog is already closed
-      Future(() async {
-        // 1. Mark Isar payments completed
-        if (orderId != null && orderId! > 0) {
-          int retries = 3;
-          while (retries > 0) {
-            final payments = await LocalPaymentDBHelper.instance
-                .getPaymentsByOrderId(orderId!);
-            final pending = payments
-                .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
-                .toList();
-            if (pending.isNotEmpty) {
-              for (final p in pending) {
-                await LocalPaymentDBHelper.instance
-                    .updateStatus(p.id, PaymentDbStatus.completed);
-              }
-              print("✅ Background: Marked ${pending.length} payments as completed");
-              break;
-            }
-            retries--;
-            if (retries > 0) await Future.delayed(const Duration(milliseconds: 200));
+    // Shared helper: mark Isar pending payments as completed
+    Future<void> markIsarPaymentsCompleted() async {
+      if (orderId == null || orderId! <= 0) return;
+      await Future.delayed(const Duration(milliseconds: 300));
+      int retries = 3;
+      while (retries > 0) {
+        final payments = await LocalPaymentDBHelper.instance
+            .getPaymentsByOrderId(orderId!);
+        final pending = payments
+            .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
+            .toList();
+        if (pending.isNotEmpty) {
+          for (final p in pending) {
+            await LocalPaymentDBHelper.instance
+                .updateStatus(p.id, PaymentDbStatus.completed);
           }
+          print("✅ Marked ${pending.length} Isar payments as completed");
+          return;
         }
-
-        // 2. Mark Hive order completed
-        if (orderId != null) await _markHiveOrderCompleted(orderId!);
-
-        // 3. Sync to backend
-        try {
-          await _syncCurrentOfflineOrder();
-          print("✅ Background: Order synced");
-        } catch (e) {
-          print("❌ Background: Sync failed: $e");
-        }
-
-        // 4. Update customer display
-        await updateCustomerDisplayWelcome();
-      });
+        retries--;
+        if (retries > 0) await Future.delayed(const Duration(milliseconds: 200));
+      }
     }
 
     try {
@@ -8926,12 +8902,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         changeAmount: showChange ? changeAmount : null,
         couponResponse: couponResponse,
 
-        // ── VOID ─────────────────────────────────────────────
         onVoid: () {
           print("Void tapped from FULL payment success dialog");
-          // Close immediately
           Navigator.of(dialogCtx, rootNavigator: false).pop();
-
           SchedulerBinding.instance.addPostFrameCallback((_) {
             if (!_isShowingPartialDialog) {
               showVoidExitConfirmation(context, false);
@@ -8939,35 +8912,52 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           });
         },
 
-        // ── NO RECEIPT ───────────────────────────────────────
-        onNoReceipt: () {
-          // ✅ CLOSE DIALOG IMMEDIATELY — no await before this
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
+        // FIX: mark Isar → mark Hive → sync ONCE → navigate
+        onNoReceipt: () async {
+          // 1. Mark Isar payments completed
+          await markIsarPaymentsCompleted();
 
-          // Do all heavy work in background AFTER dialog closes
-          doBackgroundWork();
+          // 2. Update Hive order status BEFORE sync
+          if (orderId != null) await _markHiveOrderCompleted(orderId!);
 
-          // Navigate immediately
-          OrderHelper.isOrderPanelLoaded = false;
-          OrderHelper.notifyOrderPanelToRefresh();
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => POSHomeScreen()),
-            result: TextConstants.refresh,
-          );
+          // 3. Sync ONCE to backend
+          try {
+            await _syncCurrentOfflineOrder();
+            print("✅ onNoReceipt → order synced");
+          } catch (e) {
+            print("❌ onNoReceipt → sync failed: $e");
+          }
+
+          // 4. Update customer display & exit
+          await _updateCustomerDisplayWelcome(storeInfo);
+          changeStatusToCompletedAndExit(false);
         },
 
-        // ── DONE (Print / Email / SMS) ────────────────────────
-        onDone: (selectedOption, {String? email}) {
+        // FIX: same pattern as onNoReceipt
+        onDone: (selectedOption, {String? email}) async {
           print("onDone → $selectedOption, email=$email");
 
-          // ── EMAIL: close dialog first, then send email ──────
+          // 1. Mark Isar payments completed
+          await markIsarPaymentsCompleted();
+
+          // 2. Update Hive order status BEFORE sync
+          if (orderId != null) await _markHiveOrderCompleted(orderId!);
+
+          // 3. Sync ONCE to backend
+          try {
+            await _syncCurrentOfflineOrder();
+            print("✅ onDone → order synced");
+          } catch (e) {
+            print("❌ onDone → sync failed: $e");
+          }
+
+          // 4. Close dialog
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
+
+          // 5. Handle email option
           if (selectedOption == TextConstants.email &&
               email != null &&
               email.isNotEmpty) {
-            // Close dialog immediately
-            Navigator.of(dialogCtx, rootNavigator: false).pop();
-
             if (orderId == null || orderId == 0) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -8976,119 +8966,44 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   duration: const Duration(milliseconds: 1500),
                 ),
               );
-              doBackgroundWork();
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => POSHomeScreen()),
-                result: TextConstants.refresh,
-              );
               return;
             }
-
-            // Send email in background
             paymentBloc.sendOrderDetails(orderId!, email);
             StreamSubscription? subscription;
-            subscription = paymentBloc.sendOrderDetailsStream.listen((response) {
-              subscription?.cancel();
-              print(">>> Email sent");
-            });
-
-            // Do background work and navigate
-            doBackgroundWork();
-            OrderHelper.isOrderPanelLoaded = false;
-            OrderHelper.notifyOrderPanelToRefresh();
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => POSHomeScreen()),
-              result: TextConstants.refresh,
-            );
+            subscription =
+                paymentBloc.sendOrderDetailsStream.listen((response) async {
+                  subscription?.cancel();
+                  print(">>> Email sent, updating customer display");
+                  await _updateCustomerDisplayWelcome(storeInfo);
+                  changeStatusToCompletedAndExit(true,
+                      selectedOption: selectedOption);
+                });
             return;
           }
 
-          // ── PRINT ───────────────────────────────────────────
-          // Close dialog immediately
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
-
+          // 6. Handle print option
           if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
-            // Print in background — don't block navigation
-            Future(() async {
-              await _preparePrintTicket();
-              await _printTicket(manual: true);
-            });
+            print(">>> Printing receipt");
+            await _preparePrintTicket();
+            await _printTicket(manual: true);
           }
 
-          // Do background sync work
-          doBackgroundWork();
-
-          // Navigate immediately
-          OrderHelper.isOrderPanelLoaded = false;
-          OrderHelper.notifyOrderPanelToRefresh();
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => POSHomeScreen()),
-            result: TextConstants.refresh,
-          );
+          // 7. Customer display & exit
+          await _updateCustomerDisplayWelcome(storeInfo);
+          changeStatusToCompletedAndExit(true, selectedOption: selectedOption);
         },
       ),
     ).then((_) {
+      // ONLY reset guard — NO sync call here
+      // Sync is already done inside onNoReceipt / onDone above.
+      // Old code had _syncCurrentOfflineOrder() here which fired a SECOND time.
       _isShowingPaymentDialog = false;
       print("Payment dialog closed → guard reset");
     });
   }
 
-
-// ============================================================
-// ALSO REPLACE _showPartialPaymentDialog with immediate close on Next Payment
-// ============================================================
-
-  // Future<void> _showPartialPaymentDialog(BuildContext context, double amount) async {
-  //   if (_isShowingPartialDialog) {
-  //     print("Partial dialog already showing → skipping duplicate call");
-  //     return;
-  //   }
-  //   _isShowingPartialDialog = true;
-  //
-  //   final double remainingToShow = _currentPaymentRemainingBalance ?? balanceAmount;
-  //   print("Showing Partial Payment Dialog → amount: $amount | remaining: $remainingToShow");
-  //
-  //   await showDialog(
-  //     context: context,
-  //     barrierDismissible: false,
-  //     builder: (dialogCtx) => PaymentDialog(
-  //       status: PaymentStatus.partial,
-  //       mode: PaymentMode.cash,
-  //       amount: amount,
-  //       remainingBalance: remainingToShow,
-  //
-  //       onVoid: () async {
-  //         // ✅ Close immediately
-  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
-  //         _isShowingPartialDialog = false;
-  //
-  //         await _showVoidConfirmation(context, isPartial: true);
-  //       },
-  //
-  //       onNextPayment: () {
-  //         // ✅ Close immediately — no async work needed
-  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
-  //         print("Next Payment tapped → partial dialog closed");
-  //       },
-  //     ),
-  //   );
-  //
-  //   _isShowingPartialDialog = false;
-  //   print("Partial dialog closed → guard reset");
-  // }
-
-
-// ============================================================
-// ALSO FIX showVoidExitConfirmation → onVoidCancel to close immediately
-// ============================================================
-
   void showVoidExitConfirmation(BuildContext context, bool isPartial) {
-    print("showVoidExitConfirmation → isPartial: $isPartial");
+    print("showVoidExitConfirmation → isPartial: $isPartial, orderId: $orderId");
 
     if (_isVoiding) {
       print("Void already in progress → skipping");
@@ -9102,64 +9017,95 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       useRootNavigator: false,
       builder: (dialogCtx) => PaymentDialog.voidConfirmation(
 
-        onVoidCancel: () {
-          // ✅ Close dialog IMMEDIATELY
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
-          _isVoiding = false;
+        onVoidCancel: () async {
+          print("❌ VOID CANCELED BY USEeeeR");
 
-          // Do background work (mark payments completed + sync) without blocking
-          Future(() async {
-            if (orderId != null && orderId! > 0) {
-              int retries = 3;
-              while (retries > 0) {
-                final payments = await LocalPaymentDBHelper.instance
-                    .getPaymentsByOrderId(orderId!);
-                final pendingPayments = payments
-                    .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
-                    .toList();
-                if (pendingPayments.isNotEmpty) {
-                  for (final p in pendingPayments) {
-                    await LocalPaymentDBHelper.instance.updateStatus(
-                      p.id,
-                      PaymentDbStatus.completed,
-                    );
-                  }
-                  print("✅ Background: Marked ${pendingPayments.length} payments as completed");
+          bool updatedAny = false;
 
-                  // Sync after marking complete
-                  try {
-                    await _syncCurrentOfflineOrder();
-                  } catch (e) {
-                    print("❌ Background sync failed: $e");
-                  }
+          // --- 1. Mark all pending payments as completed locally ---
+          if (orderId != null && orderId! > 0) {
+            int retries = 3;
+            while (retries > 0) {
+              final payments = await LocalPaymentDBHelper.instance
+                  .getPaymentsByOrderId(orderId!);
+              final pendingPayments = payments
+                  .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
+                  .toList();
 
-                  if (mounted) {
-                    OrderHelper.isOrderPanelLoaded = false;
-                    OrderHelper.notifyOrderPanelToRefresh();
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => POSHomeScreen()),
-                      result: TextConstants.refresh,
-                    );
-                  }
-                  return;
+              if (pendingPayments.isNotEmpty) {
+                for (final p in pendingPayments) {
+                  await LocalPaymentDBHelper.instance.updateStatus(
+                    p.id,
+                    PaymentDbStatus.completed,
+                  );
                 }
+                print("✅ Marked ${pendingPayments.length} payments as completed");
+                updatedAny = true;
+                break;
+              } else {
                 retries--;
-                if (retries > 0) await Future.delayed(const Duration(milliseconds: 200));
+                if (retries > 0) {
+                  print("⏳ No pending payments found, retrying... ($retries left)");
+                  await Future.delayed(const Duration(milliseconds: 200));
+                }
               }
             }
-          });
+
+          }
+
+          // --- 2. Sync the updated order to the backend ---
+          if (updatedAny && mounted) {
+            try {
+              await _syncCurrentOfflineOrder(); // This sends the order and completed payments to Woo
+              print("✅ Order synced to backend after completing pending payments");
+            } catch (e) {
+              print("❌ Failed to sync order: $e");
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("Order completed locally but sync failed: $e"),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            }
+          }
+
+
+          // --- 3. Close the confirmation dialog (after all async work) ---
+          // Navigator.of(dialogCtx, rootNavigator: false).pop();
+          _isVoiding = false;
+
+          // --- 4. Navigate to home screen only if payments were updated ---
+          if (updatedAny && mounted) {
+            OrderHelper.isOrderPanelLoaded = false;
+            OrderHelper.notifyOrderPanelToRefresh();
+            Navigator.pop(context);
+
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => POSHomeScreen()),
+              result: TextConstants.refresh,
+            );
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Payments completed and order finalized"),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
         },
 
         onVoidConfirm: () async {
-          // ✅ Close dialog IMMEDIATELY
+          // (unchanged – handles actual void)
+          print("✅ VOID CONFIRMED");
           Navigator.of(dialogCtx, rootNavigator: false).pop();
-          _isVoiding = false;
 
           if (_lastPayment == null) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text("No payment to void")),
             );
+            _isVoiding = false;
             return;
           }
 
@@ -9177,145 +9123,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             await _handleVoidPayment(context, isPartial: isPartial);
           }
 
-          print("Void completed – staying on OrderSummaryScreen");
-          if (mounted) setState(() {});
+          print("${isPartial ? 'Partial' : 'Full'} payment voided → staying on OrderSummaryScreen");
+
+          if (mounted) {
+            setState(() {});
+          }
+
+          _isVoiding = false;
         },
       ),
     );
   }
-
-  // void showVoidExitConfirmation(BuildContext context, bool isPartial) {
-  //   print("showVoidExitConfirmation → isPartial: $isPartial, orderId: $orderId");
-  //
-  //   if (_isVoiding) {
-  //     print("Void already in progress → skipping");
-  //     return;
-  //   }
-  //   _isVoiding = true;
-  //
-  //   showDialog(
-  //     context: context,
-  //     barrierDismissible: false,
-  //     useRootNavigator: false,
-  //     builder: (dialogCtx) => PaymentDialog.voidConfirmation(
-  //
-  //       onVoidCancel: () async {
-  //         print("❌ VOID CANCELED BY USEeeeR");
-  //
-  //         bool updatedAny = false;
-  //
-  //         // --- 1. Mark all pending payments as completed locally ---
-  //         if (orderId != null && orderId! > 0) {
-  //           int retries = 3;
-  //           while (retries > 0) {
-  //             final payments = await LocalPaymentDBHelper.instance
-  //                 .getPaymentsByOrderId(orderId!);
-  //             final pendingPayments = payments
-  //                 .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
-  //                 .toList();
-  //
-  //             if (pendingPayments.isNotEmpty) {
-  //               for (final p in pendingPayments) {
-  //                 await LocalPaymentDBHelper.instance.updateStatus(
-  //                   p.id,
-  //                   PaymentDbStatus.completed,
-  //                 );
-  //               }
-  //               print("✅ Marked ${pendingPayments.length} payments as completed");
-  //               updatedAny = true;
-  //               break;
-  //             } else {
-  //               retries--;
-  //               if (retries > 0) {
-  //                 print("⏳ No pending payments found, retrying... ($retries left)");
-  //                 await Future.delayed(const Duration(milliseconds: 200));
-  //               }
-  //             }
-  //           }
-  //
-  //         }
-  //
-  //         // --- 2. Sync the updated order to the backend ---
-  //         if (updatedAny && mounted) {
-  //           try {
-  //             await _syncCurrentOfflineOrder(); // This sends the order and completed payments to Woo
-  //             print("✅ Order synced to backend after completing pending payments");
-  //           } catch (e) {
-  //             print("❌ Failed to sync order: $e");
-  //             ScaffoldMessenger.of(context).showSnackBar(
-  //               SnackBar(
-  //                 content: Text("Order completed locally but sync failed: $e"),
-  //                 backgroundColor: Colors.orange,
-  //               ),
-  //             );
-  //           }
-  //         }
-  //
-  //
-  //         // --- 3. Close the confirmation dialog (after all async work) ---
-  //         // Navigator.of(dialogCtx, rootNavigator: false).pop();
-  //         _isVoiding = false;
-  //
-  //         // --- 4. Navigate to home screen only if payments were updated ---
-  //         if (updatedAny && mounted) {
-  //           OrderHelper.isOrderPanelLoaded = false;
-  //           OrderHelper.notifyOrderPanelToRefresh();
-  //           Navigator.pop(context);
-  //
-  //           Navigator.pushReplacement(
-  //             context,
-  //             MaterialPageRoute(builder: (_) => POSHomeScreen()),
-  //             result: TextConstants.refresh,
-  //           );
-  //
-  //           ScaffoldMessenger.of(context).showSnackBar(
-  //             const SnackBar(
-  //               content: Text("Payments completed and order finalized"),
-  //               backgroundColor: Colors.green,
-  //               duration: Duration(seconds: 2),
-  //             ),
-  //           );
-  //         }
-  //       },
-  //
-  //       onVoidConfirm: () async {
-  //         // (unchanged – handles actual void)
-  //         print("✅ VOID CONFIRMED");
-  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
-  //
-  //         if (_lastPayment == null) {
-  //           ScaffoldMessenger.of(context).showSnackBar(
-  //             const SnackBar(content: Text("No payment to void")),
-  //           );
-  //           _isVoiding = false;
-  //           return;
-  //         }
-  //
-  //         final method = _lastPayment!.method.toLowerCase();
-  //
-  //         if (method == TextConstants.card.toLowerCase() &&
-  //             _lastPayment!.sunmiTxnId != null &&
-  //             _lastPayment!.sunmiOrderId != null) {
-  //           await _openSunmiVoidScreen(
-  //             amount: _lastPayment!.amount,
-  //             orderId: _lastPayment!.sunmiOrderId!,
-  //             originTransactionId: _lastPayment!.sunmiTxnId!,
-  //           );
-  //         } else {
-  //           await _handleVoidPayment(context, isPartial: isPartial);
-  //         }
-  //
-  //         print("${isPartial ? 'Partial' : 'Full'} payment voided → staying on OrderSummaryScreen");
-  //
-  //         if (mounted) {
-  //           setState(() {});
-  //         }
-  //
-  //         _isVoiding = false;
-  //       },
-  //     ),
-  //   );
-  // }
 
 
   void _showExitPaymentConfirmation(BuildContext context) {

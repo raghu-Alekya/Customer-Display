@@ -223,7 +223,10 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
                             showDialog(
                               context: context,
                               barrierDismissible: false,
-                              builder: (_) => PaymentSuccessDialog (amount: totalRefund, onContinue: widget.onContinue,),
+                              builder: (_) => PaymentSuccessDialog(
+                                amount: double.tryParse(amount) ?? 0.0,
+                                onContinue: widget.onContinue,
+                              ),
                             );
                           },
                         ),

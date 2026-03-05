@@ -36,9 +36,10 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   int _currentPage = 1;
 
   int itemsPerPage = 10;
+  final List<int> _rowsPerPageOptions = [10, 20, 50, 100];
+  int _rowsPerPage = 10;
 
-
-  final int _rowsPerPage = 10;
+  // final int _rowsPerPage = 10;
   List<int> quantities = [];
 // int _currentPage = 1;
   List<CompletedOrder> _allOrders = [];
@@ -292,6 +293,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
         const Spacer(),
         SizedBox(
           width: 200,
+          height: 35,
           child: TextField(
             controller: searchController,
             onChanged: (value) {
@@ -339,14 +341,28 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade400),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outline,
+              ),
               borderRadius: BorderRadius.circular(6),
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.surface,
             ),
             child: DropdownButton<String>(
               value: selectedStatus,
               isDense: true,
-              icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+
+              icon: Icon(
+                Icons.keyboard_arrow_down,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+
+              dropdownColor: Theme.of(context).colorScheme.surface,
+
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+
               onChanged: (value) {
                 if (value == null) return;
 
@@ -361,9 +377,12 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                   _updatePagination();
                 });
               },
+
               items: const [
-                DropdownMenuItem(value: "Completed", child: Text("Completed")),
-                DropdownMenuItem(value: "Refund", child: Text("Refund")),
+                DropdownMenuItem(
+                    value: "Completed", child: Text("Completed")),
+                DropdownMenuItem(
+                    value: "Refund", child: Text("Refund")),
               ],
             ),
           ),
@@ -449,39 +468,60 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                             order.completedAt.toString().split(' ').first),
                         // _DataCell(order.transactionId),
                         Expanded(
-                          child: order.transactionId.isNotEmpty
-                              ? Text(order.transactionId)
-                              : DropdownButtonHideUnderline(
-                            child: Container(
-                              height: 32,
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey.shade400),
-                                borderRadius: BorderRadius.circular(6),
-                                color: Colors.white,
-                              ),
-                              child: DropdownButton<String>(
-                                hint: const Text(
-                                  "Select",
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                                value: selectedTxnPerOrder[order.orderId],
-                                isDense: true,
-                                icon: const Icon(Icons.keyboard_arrow_down, size: 16),
-                                onChanged: (value) {
-                                  setState(() {
-                                    selectedTxnPerOrder[order.orderId] = value;
-                                  });
-                                },
-                                items: transactionIdOptions.map((txn) {
-                                  return DropdownMenuItem<String>(
-                                    value: txn,
-                                    child: Text(
-                                      txn,
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
+                          child: GestureDetector(
+                            onTap: () {},
+                            behavior: HitTestBehavior.opaque,
+                            child: DropdownButtonHideUnderline(
+                              child: Builder(
+                                builder: (context) {
+                                  final List<String> itemsList = [
+                                    order.transactionId.toString(),
+                                    ...transactionIdOptions.map((e) => e.toString()),
+                                  ].toSet().toList();
+
+                                  // ✅ Show only first 2 IDs in display
+                                  String displayText = "";
+
+                                  if (itemsList.length == 1) {
+                                    displayText = itemsList[0];
+                                  } else if (itemsList.length == 2) {
+                                    displayText = "${itemsList[0]}, ${itemsList[1]}";
+                                  } else if (itemsList.length > 2) {
+                                    displayText = "${itemsList[0]}, ${itemsList[1]}...";
+                                  }
+                                  return DropdownButton<String>(
+                                    value: itemsList.first,
+                                    isDense: true,
+                                    isExpanded: true,
+                                    icon: const SizedBox.shrink(),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        selectedTxnPerOrder[order.orderId] = value!;
+                                      });
+                                    },
+                                    selectedItemBuilder: (context) {
+                                      return itemsList.map((e) {
+                                        return Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: Text(
+                                            displayText,
+                                            style: const TextStyle(fontSize: 14),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        );
+                                      }).toList();
+                                    },
+                                    items: itemsList.map((txn) {
+                                      return DropdownMenuItem<String>(
+                                        value: txn,
+                                        child: Text(
+                                          txn,
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      );
+                                    }).toList(),
                                   );
-                                }).toList(),
+                                },
                               ),
                             ),
                           ),
@@ -505,50 +545,94 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
     );
   }
   // ================= PAGINATION =================
-
   Widget _buildPagination() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        TextButton(
-          onPressed: _currentPage > 1
-              ? () => _loadPage(_currentPage - 1)
-              : null,
-          child: const Text("Previous"),
-        ),
+    final int totalItems = _allOrders.length; // make sure you have this
+    final int totalPages = _totalPages;
 
-        for (int i = 1; i <= _totalPages; i++)
-          InkWell(
-            onTap: () => _loadPage(i),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: _currentPage == i ? Colors.red : Colors.transparent,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: Colors.red),
-              ),
-              child: Text(
-                "$i",
-                style: TextStyle(
-                  color: _currentPage == i ? Colors.white : Colors.red,
-                ),
-              ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          const Text("Rows per page:"),
+          const SizedBox(width: 8),
+
+          // ---------------- ROWS PER PAGE ----------------
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8.0),
+              border: Border.all(color: Colors.grey.shade400),
+            ),
+            child: DropdownButton<int>(
+              value: _rowsPerPage,
+              underline: const SizedBox.shrink(),
+              items: _rowsPerPageOptions.map((int value) {
+                return DropdownMenuItem<int>(
+                  value: value,
+                  child: Text(value.toString()),
+                );
+              }).toList(),
+              onChanged: (int? newValue) {
+                if (newValue != null) {
+                  setState(() {
+                    _rowsPerPage = newValue;
+                    _currentPage = 1;
+                    _loadPage(1);
+                  });
+                }
+              },
             ),
           ),
 
-        TextButton(
-          onPressed: _currentPage < _totalPages
-              ? () => _loadPage(_currentPage + 1)
-              : null,
-          child: const Text("Next"),
-        ),
-      ],
+          const SizedBox(width: 24),
+
+          // ---------------- PAGE INFO ----------------
+          Text(
+            totalItems == 0
+                ? '0-0 of 0'
+                : '${(_currentPage - 1) * _rowsPerPage + 1}'
+                '-${(_currentPage * _rowsPerPage) > totalItems ? totalItems : (_currentPage * _rowsPerPage)}'
+                ' of $totalItems',
+          ),
+
+          const SizedBox(width: 24),
+
+          // ---------------- FIRST PAGE ----------------
+          IconButton(
+            icon: const Icon(Icons.first_page),
+            onPressed: _currentPage == 1 || totalItems == 0
+                ? null
+                : () => _loadPage(1),
+          ),
+
+          // ---------------- PREVIOUS PAGE ----------------
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            onPressed: _currentPage == 1 || totalItems == 0
+                ? null
+                : () => _loadPage(_currentPage - 1),
+          ),
+
+          // ---------------- NEXT PAGE ----------------
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            onPressed: _currentPage == totalPages || totalItems == 0
+                ? null
+                : () => _loadPage(_currentPage + 1),
+          ),
+
+          // ---------------- LAST PAGE ----------------
+          IconButton(
+            icon: const Icon(Icons.last_page),
+            onPressed: _currentPage == totalPages || totalItems == 0
+                ? null
+                : () => _loadPage(totalPages),
+          ),
+        ],
+      ),
     );
   }
-
-
-
   Widget _pageButton(int page) {
     final bool selected = _currentPage == page;
 

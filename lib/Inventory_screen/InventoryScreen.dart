@@ -43,7 +43,8 @@ class InventoryScreen extends StatefulWidget {
   State<InventoryScreen> createState() => _InventoryScreenState();
 }
 
-class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionMixin {
+class _InventoryScreenState extends State<InventoryScreen>
+    with LayoutSelectionMixin {
   final _formKey = GlobalKey<FormState>();
   InventoryAttributesEntity? _lastSelectedAttribute;
 
@@ -107,6 +108,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   // Controllers
   late TextEditingController _variantNameController;
   late TextEditingController _stockController;
+  late TextEditingController _variantRegularPriceController;
+  late TextEditingController _variantSalePriceController;
 
   List<TextEditingController> _attributeControllers = [];
 
@@ -124,15 +127,17 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     }
   ];
 
-
   late final ImageUploadRepository _imageUploadRepo;
-
 
   @override
   void initState() {
     super.initState();
     _variantNameController = TextEditingController(text: _currentVariantName);
     _stockController = TextEditingController(text: _currentStock);
+    _variantRegularPriceController =
+        TextEditingController(text: _currentRegularPrice);
+    _variantSalePriceController =
+        TextEditingController(text: _currentSalePrice);
     _updateAttributeControllers();
 
     _selectedSidebarIndex = widget.lastSelectedIndex ?? 4;
@@ -156,6 +161,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   void dispose() {
     _variantNameController.dispose();
     _stockController.dispose();
+    _variantRegularPriceController.dispose();
+    _variantSalePriceController.dispose();
     _regularPriceController.dispose();
     _salePriceController.dispose();
     for (var controller in _attributeControllers) {
@@ -173,15 +180,12 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   }
 
   Future<void> _pickImage() async {
-    final XFile? image = await _picker.pickImage(
-        source: ImageSource.gallery, imageQuality: 85);
+    final XFile? image =
+    await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
     if (image == null) return;
 
     final bytes = await image.readAsBytes();
-    final extension = image.path
-        .split('.')
-        .last
-        .toLowerCase();
+    final extension = image.path.split('.').last.toLowerCase();
 
     img.Image? decoded = img.decodeImage(bytes);
     if (decoded == null) return;
@@ -235,13 +239,10 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     return url;
   }
 
-
   String? _validateForm() {
     _fieldErrors.clear();
 
-    if (_nameController.text
-        .trim()
-        .isEmpty) {
+    if (_nameController.text.trim().isEmpty) {
       _fieldErrors['name'] = 'Product name is required';
     }
     // if (_selectedCategory == null) {
@@ -257,8 +258,12 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         'At least one variant is required for variable products';
       }
     } else {
-      // if (_regularPriceController.text.trim().isEmpty) {
-      //   _fieldErrors['regularPrice'] = 'Regular price is required';
+      final cleanReg = _regularPriceController.text
+          .trim()
+          .replaceAll(RegExp(r'[^0-9.]'), '');
+      final regPrice = double.tryParse(cleanReg) ?? 0.0;
+      // if (regPrice <= 0) {
+      //   _fieldErrors['regularPrice'] = 'Regular price must be greater than 0';
       // }
     }
 
@@ -505,7 +510,6 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   //   );
   // }
 
-
   Future<AddProductInventoryTaxEntity?> _buildProductEntity() async {
     final validationError = _validateForm();
     if (validationError != null) return null;
@@ -532,7 +536,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
 
     // ── Categories & Tags ─────────────────────────────────────────
     final List<Map<String, dynamic>> categories = _selectedCategory != null
-        ? [{'id': _selectedCategory.id ?? 0}]
+        ? [
+      {'id': _selectedCategory.id ?? 0}
+    ]
         : [];
 
     final List<Map<String, dynamic>> tags = [];
@@ -566,8 +572,10 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
       final stockQty = int.tryParse(_qtyController.text.trim()) ?? 0;
 
       // Clean prices
-      String cleanReg = (_regularPriceController.text.trim()).replaceAll(RegExp(r'[^0-9.]'), '');
-      String cleanSale = (_salePriceController.text.trim()).replaceAll(RegExp(r'[^0-9.]'), '');
+      String cleanReg = (_regularPriceController.text.trim())
+          .replaceAll(RegExp(r'[^0-9.]'), '');
+      String cleanSale =
+      (_salePriceController.text.trim()).replaceAll(RegExp(r'[^0-9.]'), '');
 
       double regPrice = double.tryParse(cleanReg) ?? 0.0;
       double? salePrice = double.tryParse(cleanSale);
@@ -580,7 +588,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
             ? _skuController.text.trim()
             : 'SKU${DateTime.now().millisecondsSinceEpoch}',
         regularPrice: regPrice.toStringAsFixed(2),
-        salePrice: salePrice != null && salePrice > 0 ? salePrice.toStringAsFixed(2) : '',
+        salePrice: salePrice != null && salePrice > 0
+            ? salePrice.toStringAsFixed(2)
+            : '',
         categories: categories,
         tags: tags,
         images: images,
@@ -612,7 +622,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         }
       }
       // Single attribute fallback
-      else if (variant['attribute'] != null && variant['attributeItem'] != null) {
+      else if (variant['attribute'] != null &&
+          variant['attributeItem'] != null) {
         final slug = (variant['attribute']['slug'] as String?)?.trim() ?? '';
         final value = (variant['attributeItem']['slug'] as String?)?.trim() ??
             (variant['attributeItem']['name'] as String?)?.trim() ??
@@ -624,7 +635,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     }
 
     // 2. Build top-level product.attributes (required!)
-    final List<Map<String, dynamic>> productAttributes = attributeOptionsMap.entries.map((entry) {
+    final List<Map<String, dynamic>> productAttributes =
+    attributeOptionsMap.entries.map((entry) {
       final slug = entry.key;
       final cleanName = slug.replaceFirst('pa_', '').replaceAll('-', ' ');
       final capitalized = cleanName
@@ -651,7 +663,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
       // Handle multiple attributes
       if (variant['attributes'] is List) {
         for (final attr in variant['attributes'] as List) {
-          final attrSlug = (attr['attribute']?['slug'] as String?)?.trim() ?? '';
+          final attrSlug =
+              (attr['attribute']?['slug'] as String?)?.trim() ?? '';
           final valueSlug = (attr['selectedSlug'] as String?)?.trim() ?? '';
           if (attrSlug.isNotEmpty && valueSlug.isNotEmpty) {
             attrs[attrSlug] = valueSlug;
@@ -659,7 +672,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         }
       }
       // Fallback single attribute
-      else if (variant['attribute'] != null && variant['attributeItem'] != null) {
+      else if (variant['attribute'] != null &&
+          variant['attributeItem'] != null) {
         final slug = variant['attribute']['slug']?.toString().trim() ?? '';
         final value = variant['attributeItem']['slug']?.toString().trim() ??
             variant['attributeItem']['name']?.toString().trim() ??
@@ -670,8 +684,10 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
       }
 
       // Clean prices → always string with 2 decimals
-      String cleanReg = (variant['regularPrice']?.toString() ?? '0').replaceAll(RegExp(r'[^0-9.]'), '');
-      String cleanSale = (variant['salePrice']?.toString() ?? '').replaceAll(RegExp(r'[^0-9.]'), '');
+      String cleanReg = (variant['regularPrice']?.toString() ?? '0')
+          .replaceAll(RegExp(r'[^0-9.]'), '');
+      String cleanSale = (variant['salePrice']?.toString() ?? '')
+          .replaceAll(RegExp(r'[^0-9.]'), '');
 
       double regPrice = double.tryParse(cleanReg) ?? 0.0;
       double? salePrice = double.tryParse(cleanSale);
@@ -706,7 +722,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         try {
           variantImageUrl = await _uploadImageForProduct(
             variant['imageFile'] as File,
-            customFileName: 'variant-${DateTime.now().millisecondsSinceEpoch}.jpg',
+            customFileName:
+            'variant-${DateTime.now().millisecondsSinceEpoch}.jpg',
           );
           if (variantImageUrl != null) {
             variation['image'] = {'src': variantImageUrl};
@@ -740,19 +757,18 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
           ? _skuController.text.trim()
           : 'SKU${DateTime.now().millisecondsSinceEpoch}',
       regularPrice: '', // empty for variable
-      salePrice: '',    // empty for variable
+      salePrice: '', // empty for variable
       categories: categories,
       tags: tags,
       images: images,
       metaData: metaData,
       attributes: productAttributes,
-      manageStock: false,   // Stock managed per variation
-      stockQuantity: 0,     // Stock managed per variation
+      manageStock: false, // Stock managed per variation
+      stockQuantity: 0, // Stock managed per variation
       taxStatus: _selectedTax != null ? 'taxable' : 'none',
       taxClass: _selectedTax?.taxClass ?? 'standard',
     );
   }
-
 
   void _printFormData() {
     print('=== FORM DATA ===');
@@ -836,7 +852,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         print('✗ Failed to build product entity');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to prepare product data'),
+            const SnackBar(
+                content: Text('Failed to prepare product data'),
                 backgroundColor: Colors.red),
           );
         }
@@ -848,7 +865,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Saving product...'),
+          const SnackBar(
+              content: Text('Saving product...'),
               backgroundColor: Colors.green),
         );
       }
@@ -922,8 +940,11 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         child: Text(
           text,
           style: TextStyle(
-            color: isSelected ? Colors.white : (themeHelper.themeMode ==
-                ThemeMode.dark ? Colors.white70 : Colors.black54),
+            color: isSelected
+                ? Colors.white
+                : (themeHelper.themeMode == ThemeMode.dark
+                ? Colors.white70
+                : Colors.black54),
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
           ),
@@ -936,10 +957,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   Widget build(BuildContext context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final isDark = themeHelper.themeMode == ThemeMode.dark;
-    final screenWidth = MediaQuery
-        .of(context)
-        .size
-        .width;
+    final screenWidth = MediaQuery.of(context).size.width;
 
     bool isSmallScreen = screenWidth < 768;
     bool isMediumScreen = screenWidth >= 768 && screenWidth < 1024;
@@ -952,13 +970,17 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
           setState(() {
             _isSaving = false;
           });
-          _clearForm();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Product Added: ${state.product.name}'),
-              backgroundColor: Colors.green,
-            ),
-          );
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context, true);
+          } else {
+            _clearForm();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Product Added: ${state.product.name}'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
         } else if (state is AddProductInventoryTaxError) {
           setState(() {
             _isSaving = false;
@@ -1018,22 +1040,23 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                         child: Column(
                           children: [
                             Padding(
-                              padding: EdgeInsets.all(
-                                  isSmallScreen ? 8.0 : 16.0),
+                              padding:
+                              EdgeInsets.all(isSmallScreen ? 8.0 : 16.0),
                               child: Row(
                                 children: [
                                   Container(
                                     height: 35,
                                     decoration: BoxDecoration(
                                         color: Color(0xFF3B4259),
-                                        borderRadius: BorderRadius.circular(
-                                            6.0)),
+                                        borderRadius:
+                                        BorderRadius.circular(6.0)),
                                     child: TextButton.icon(
                                       onPressed: () => Navigator.pop(context),
                                       icon: const Icon(Icons.arrow_back_rounded,
                                           color: Colors.white, size: 15),
                                       label: const Text('Back',
-                                          style: TextStyle(color: Colors.white,
+                                          style: TextStyle(
+                                              color: Colors.white,
                                               fontSize: 12,
                                               fontWeight: FontWeight.w600)),
                                       style: TextButton.styleFrom(
@@ -1045,8 +1068,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                   Container(
                                     height: 35,
                                     decoration: BoxDecoration(
-                                      color: isDark ? Color(0xFF252837) : Colors
-                                          .grey[200],
+                                      color: isDark
+                                          ? Color(0xFF252837)
+                                          : Colors.grey[200],
                                       borderRadius: BorderRadius.circular(6.0),
                                     ),
                                     child: Row(
@@ -1095,11 +1119,11 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     );
   }
 
-  Widget _buildAddProductTab(bool isDark, bool isSmallScreen,
-      bool isMediumScreen) {
+  Widget _buildAddProductTab(
+      bool isDark, bool isSmallScreen, bool isMediumScreen) {
     return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(
-          horizontal: isSmallScreen ? 8 : 16, vertical: 8),
+      padding:
+      EdgeInsets.symmetric(horizontal: isSmallScreen ? 8 : 16, vertical: 8),
       child: Form(
         key: _formKey,
         child: Column(
@@ -1203,9 +1227,11 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         SizedBox(height: 16),
         _buildSKUSection(isDark, isSmallScreen),
         SizedBox(height: 16),
-        Text('Product Name', style: TextStyle(fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87)),
+        Text('Product Name',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87)),
         SizedBox(height: 8),
         TextFormField(
           controller: _nameController,
@@ -1222,9 +1248,11 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
           style: TextStyle(color: isDark ? Colors.white : Colors.black87),
         ),
         SizedBox(height: 16),
-        Text('Category', style: TextStyle(fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87)),
+        Text('Category',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87)),
         SizedBox(height: 8),
         InventoryCategoriesDropdown(
           onCategorySelected: (category) {
@@ -1234,9 +1262,11 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
           },
         ),
         SizedBox(height: 16),
-        Text('Product Type', style: TextStyle(fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87)),
+        Text('Product Type',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87)),
         SizedBox(height: 8),
         InventoryGetProductTypesWidget(
           onTypeSelected: (selectedType) {
@@ -1248,9 +1278,11 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         SizedBox(height: 16),
         _buildPriceSection(isDark),
         SizedBox(height: 16),
-        Text('Tax', style: TextStyle(fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87)),
+        Text('Tax',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87)),
         SizedBox(height: 8),
         InventoryTaxDropdownWidget(
           onTaxSelected: (tax) {
@@ -1260,9 +1292,11 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
           },
         ),
         SizedBox(height: 16),
-        Text('Stock', style: TextStyle(fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87)),
+        Text('Stock',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87)),
         SizedBox(height: 8),
         TextFormField(
           controller: _qtyController,
@@ -1313,8 +1347,10 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                 ),
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(color: Color(0xFF2196F3), width: 2),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                  padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 30 : 50, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6)),
+                  padding: EdgeInsets.symmetric(
+                      horizontal: isSmallScreen ? 30 : 50, vertical: 10),
                 ),
               ),
               SizedBox(width: 16),
@@ -1326,7 +1362,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                   height: 15,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    valueColor:
+                    AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
                 )
                     : Text(
@@ -1339,8 +1376,10 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Color(0xFF2196F3),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                  padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 30 : 50, vertical: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6)),
+                  padding: EdgeInsets.symmetric(
+                      horizontal: isSmallScreen ? 30 : 50, vertical: 16),
                 ),
               ),
             ],
@@ -1379,9 +1418,12 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                         // HEADER
                         Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
                           decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF89B1EE) : const Color(0xFFF5F7FA),
+                            color: isDark
+                                ? const Color(0xFF89B1EE)
+                                : const Color(0xFFF5F7FA),
                             borderRadius: const BorderRadius.only(
                               topLeft: Radius.circular(12),
                               topRight: Radius.circular(12),
@@ -1400,24 +1442,27 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                         Expanded(
                           child: SingleChildScrollView(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              padding:
+                              const EdgeInsets.symmetric(horizontal: 20),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-
                                   /// PRODUCT IMAGE
                                   Text(
                                     'Product Image',
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w500,
-                                      color: isDark ? Colors.white70 : Colors.black87,
+                                      color: isDark
+                                          ? Colors.white70
+                                          : Colors.black87,
                                     ),
                                   ),
                                   const SizedBox(height: 6),
 
                                   Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                    CrossAxisAlignment.start,
                                     children: [
                                       GestureDetector(
                                         onTap: _pickImage,
@@ -1427,7 +1472,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                               width: 70,
                                               height: 70,
                                               decoration: BoxDecoration(
-                                                borderRadius: BorderRadius.circular(8),
+                                                borderRadius:
+                                                BorderRadius.circular(8),
                                                 border: Border.all(
                                                   color: isDark
                                                       ? const Color(0xFF3B4259)
@@ -1439,7 +1485,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                                     : Colors.white,
                                                 image: _imageFile != null
                                                     ? DecorationImage(
-                                                  image: FileImage(_imageFile!),
+                                                  image: FileImage(
+                                                      _imageFile!),
                                                   fit: BoxFit.cover,
                                                 )
                                                     : null,
@@ -1447,23 +1494,31 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                               child: _imageFile == null
                                                   ? Column(
                                                 mainAxisAlignment:
-                                                MainAxisAlignment.center,
+                                                MainAxisAlignment
+                                                    .center,
                                                 children: [
                                                   const Icon(
                                                     Icons.image_outlined,
-                                                    size:30,
-                                                    color: Color(0xFF2196F3),
+                                                    size: 30,
+                                                    color:
+                                                    Color(0xFF2196F3),
                                                   ),
-                                                  const SizedBox(height: 2),
+                                                  const SizedBox(
+                                                      height: 2),
                                                   Padding(
-                                                    padding: const EdgeInsets.only(left: 16.0),
+                                                    padding:
+                                                    const EdgeInsets
+                                                        .only(
+                                                        left: 16.0),
                                                     child: Text(
                                                       'Upload Image',
                                                       style: TextStyle(
                                                         fontSize: 11,
                                                         color: isDark
-                                                            ? Colors.white70
-                                                            : Colors.black54,
+                                                            ? Colors
+                                                            .white70
+                                                            : Colors
+                                                            .black54,
                                                       ),
                                                     ),
                                                   ),
@@ -1482,8 +1537,10 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                                     });
                                                   },
                                                   child: Container(
-                                                    padding: const EdgeInsets.all(4),
-                                                    decoration: const BoxDecoration(
+                                                    padding:
+                                                    const EdgeInsets.all(4),
+                                                    decoration:
+                                                    const BoxDecoration(
                                                       color: Colors.black54,
                                                       shape: BoxShape.circle,
                                                     ),
@@ -1504,8 +1561,10 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                       /// IMAGE TEXT INFO (Aligned)
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                           children: [
                                             Text(
                                               'Please upload a clear image of the item',
@@ -1533,7 +1592,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     ],
                                   ),
 
-                                  const SizedBox(height:6),
+                                  const SizedBox(height: 6),
 
                                   /// SKU
                                   Text(
@@ -1541,7 +1600,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w500,
-                                      color: isDark ? Colors.white70 : Colors.black87,
+                                      color: isDark
+                                          ? Colors.white70
+                                          : Colors.black87,
                                     ),
                                   ),
                                   const SizedBox(height: 6),
@@ -1549,8 +1610,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                   Container(
                                     height: 44, // FIXED HEIGHT
                                     decoration: BoxDecoration(
-                                      color:
-                                      isDark ? const Color(0xFF252837) : Colors.white,
+                                      color: isDark
+                                          ? const Color(0xFF252837)
+                                          : Colors.white,
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
                                         color: isDark
@@ -1559,14 +1621,16 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                       ),
                                     ),
                                     child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      crossAxisAlignment:
+                                      CrossAxisAlignment.center,
                                       children: [
                                         Expanded(
                                           child: TextFormField(
                                             controller: _skuController,
                                             style: TextStyle(
-                                              color:
-                                              isDark ? Colors.white : Colors.black87,
+                                              color: isDark
+                                                  ? Colors.white
+                                                  : Colors.black87,
                                               fontSize: 12,
                                             ),
                                             decoration: InputDecoration(
@@ -1580,26 +1644,34 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                               border: InputBorder.none,
                                               isDense: true,
                                               contentPadding:
-                                              const EdgeInsets.symmetric(horizontal: 14),
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 14),
                                             ),
                                           ),
                                         ),
 
-                                        /// GENERATE BUTTON (Centered)
+                                        /// GENERATE BUTTON (Centered, disabled when SKU present)
                                         InkWell(
-                                          onTap: () {
+                                          onTap:
+                                          _skuController.text.trim().isEmpty
+                                              ? () {
                                             setState(() {
                                               _skuController.text =
                                               'SKU${DateTime.now().millisecondsSinceEpoch}';
                                             });
-                                          },
+                                          }
+                                              : null,
                                           child: Container(
                                             height: double.infinity,
                                             alignment: Alignment.center,
-                                            padding:
-                                            const EdgeInsets.symmetric(horizontal: 20),
-                                            decoration: const BoxDecoration(
-                                              color: Color(0xFFE91E63),
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 20),
+                                            decoration: BoxDecoration(
+                                              color: _skuController.text
+                                                  .trim()
+                                                  .isEmpty
+                                                  ? const Color(0xFFE91E63)
+                                                  : Colors.grey.shade400,
                                               borderRadius: BorderRadius.only(
                                                 topRight: Radius.circular(8),
                                                 bottomRight: Radius.circular(8),
@@ -1619,7 +1691,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     ),
                                   ),
 
-                                  const SizedBox(height:6),
+                                  const SizedBox(height: 6),
 
                                   /// PRODUCT NAME
                                   Text(
@@ -1627,7 +1699,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w500,
-                                      color: isDark ? Colors.white70 : Colors.black87,
+                                      color: isDark
+                                          ? Colors.white70
+                                          : Colors.black87,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -1637,11 +1711,13 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                       hintText: 'Enter the name',
                                       isDense: true,
                                       border: OutlineInputBorder(),
-                                      contentPadding:
-                                      EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                      contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 14, vertical: 8),
                                     ),
                                     style: TextStyle(
-                                      color: isDark ? Colors.white : Colors.black87,
+                                      color: isDark
+                                          ? Colors.white
+                                          : Colors.black87,
                                     ),
                                   ),
 
@@ -1653,7 +1729,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w500,
-                                      color: isDark ? Colors.white70 : Colors.black87,
+                                      color: isDark
+                                          ? Colors.white70
+                                          : Colors.black87,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -1676,7 +1754,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w500,
-                                      color: isDark ? Colors.white70 : Colors.black87,
+                                      color: isDark
+                                          ? Colors.white70
+                                          : Colors.black87,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -1716,9 +1796,12 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                         // Header
                         Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 8),
                           decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFFDAC14A) : const Color(0xFFFFFBF0),
+                            color: isDark
+                                ? const Color(0xFFDAC14A)
+                                : const Color(0xFFFFFBF0),
                             borderRadius: const BorderRadius.only(
                               topLeft: Radius.circular(12),
                               topRight: Radius.circular(12),
@@ -1741,17 +1824,26 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                               padding: const EdgeInsets.all(12),
                               child: Builder(
                                 builder: (_) {
-                                  final bool isProductTypeVariable = _selectedProductType == 'variable';
-                                  final bool isPriceStockDisabled = _hasVariablePrice || isProductTypeVariable;
-                                  final bool isPriceStockDisabledStock = isProductTypeVariable;
-                                  final Color disabledFill = isDark ? const Color(0xFF2A2D3E) : Colors.grey.shade200;
-                                  final Color disabledText = isDark ? Colors.grey.shade500 : Colors.grey.shade500;
+                                  final bool isProductTypeVariable =
+                                      _selectedProductType == 'variable';
+                                  final bool isPriceStockDisabled =
+                                      _hasVariablePrice ||
+                                          isProductTypeVariable;
+                                  final bool isPriceStockDisabledStock =
+                                      isProductTypeVariable;
+                                  final Color disabledFill = isDark
+                                      ? const Color(0xFF2A2D3E)
+                                      : Colors.grey.shade200;
+                                  final Color disabledText = isDark
+                                      ? Colors.grey.shade500
+                                      : Colors.grey.shade500;
 
                                   // Unified height for all TextFormFields
                                   const double fieldHeight = 36;
 
                                   return Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                    CrossAxisAlignment.start,
                                     children: [
                                       // Prices Row
                                       Row(
@@ -1779,8 +1871,24 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                                     enabled: !isPriceStockDisabled,
                                                     keyboardType: TextInputType.number,
                                                     textAlign: TextAlign.right,
+                                                    inputFormatters: [
+                                                      TextInputFormatter.withFunction((oldValue, newValue) {
+                                                        // Remove all non-numeric characters
+                                                        final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+                                                        if (text.isEmpty) return const TextEditingValue(text: '');
+                                                        // Convert to double / 100 for decimal formatting
+                                                        final value = int.parse(text) / 100;
+                                                        final newText = value.toStringAsFixed(2);
+                                                        return TextEditingValue(
+                                                          text: newText,
+                                                          selection: TextSelection.collapsed(offset: newText.length),
+                                                        );
+                                                      }),
+                                                    ],
                                                     style: TextStyle(
-                                                      color: isPriceStockDisabled ? disabledText : (isDark ? Colors.white : Colors.black87),
+                                                      color: isPriceStockDisabled
+                                                          ? disabledText
+                                                          : (isDark ? Colors.white : Colors.black87),
                                                       fontSize: 12,
                                                     ),
                                                     decoration: InputDecoration(
@@ -1788,9 +1896,14 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                                       hintText: '0.00',
                                                       isDense: true,
                                                       filled: true,
-                                                      fillColor: isPriceStockDisabled ? disabledFill : Colors.transparent,
+                                                      fillColor: isPriceStockDisabled
+                                                          ? disabledFill
+                                                          : Colors.transparent,
                                                       border: const OutlineInputBorder(),
-                                                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                                      contentPadding: const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 8,
+                                                      ),
                                                     ),
                                                   ),
                                                 ),
@@ -1802,7 +1915,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                           // Sale Price
                                           Expanded(
                                             child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                               children: [
                                                 Text(
                                                   'Sale Price',
@@ -1811,40 +1925,76 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                                     fontWeight: FontWeight.w500,
                                                     color: isPriceStockDisabled
                                                         ? Colors.grey
-                                                        : (isDark ? Colors.white70 : Colors.black87),
+                                                        : (isDark
+                                                        ? Colors.white70
+                                                        : Colors.black87),
                                                   ),
                                                 ),
                                                 const SizedBox(height: 2),
                                                 SizedBox(
                                                   height: fieldHeight,
                                                   child: TextFormField(
-                                                    controller: _salePriceController,
-                                                    enabled: !isPriceStockDisabled,
-                                                    keyboardType: TextInputType.number,
+                                                    controller:
+                                                    _salePriceController,
+                                                    enabled:
+                                                    !isPriceStockDisabled,
+                                                    keyboardType:
+                                                    TextInputType.number,
                                                     textAlign: TextAlign.right,
                                                     inputFormatters: [
-                                                      TextInputFormatter.withFunction((oldValue, newValue) {
-                                                        final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-                                                        if (text.isEmpty) return const TextEditingValue(text: '');
-                                                        final value = int.parse(text) / 100;
-                                                        final newText = value.toStringAsFixed(2);
-                                                        return TextEditingValue(
-                                                          text: newText,
-                                                          selection: TextSelection.collapsed(offset: newText.length),
-                                                        );
-                                                      }),
+                                                      TextInputFormatter
+                                                          .withFunction(
+                                                              (oldValue,
+                                                              newValue) {
+                                                            final text = newValue
+                                                                .text
+                                                                .replaceAll(
+                                                                RegExp(
+                                                                    r'[^0-9]'),
+                                                                '');
+                                                            if (text.isEmpty)
+                                                              return const TextEditingValue(
+                                                                  text: '');
+                                                            final value =
+                                                                int.parse(text) /
+                                                                    100;
+                                                            final newText = value
+                                                                .toStringAsFixed(2);
+                                                            return TextEditingValue(
+                                                              text: newText,
+                                                              selection: TextSelection
+                                                                  .collapsed(
+                                                                  offset: newText
+                                                                      .length),
+                                                            );
+                                                          }),
                                                     ],
                                                     style: TextStyle(
-                                                      color: isPriceStockDisabled ? disabledText : (isDark ? Colors.white : Colors.black87),
+                                                      color:
+                                                      isPriceStockDisabled
+                                                          ? disabledText
+                                                          : (isDark
+                                                          ? Colors.white
+                                                          : Colors
+                                                          .black87),
                                                     ),
                                                     decoration: InputDecoration(
                                                       prefixText: '\$ ',
                                                       hintText: '0.00',
                                                       filled: true,
                                                       isDense: true,
-                                                      fillColor: isPriceStockDisabled ? disabledFill : Colors.transparent,
-                                                      border: const OutlineInputBorder(),
-                                                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                                      fillColor:
+                                                      isPriceStockDisabled
+                                                          ? disabledFill
+                                                          : Colors
+                                                          .transparent,
+                                                      border:
+                                                      const OutlineInputBorder(),
+                                                      contentPadding:
+                                                      const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 8,
+                                                          vertical: 8),
                                                     ),
                                                   ),
                                                 ),
@@ -1860,7 +2010,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                       IgnorePointer(
                                         ignoring: isProductTypeVariable,
                                         child: Opacity(
-                                          opacity: isProductTypeVariable ? 0.5 : 1,
+                                          opacity:
+                                          isProductTypeVariable ? 0.5 : 1,
                                           child: VariablePriceCheckboxWidget(
                                             value: _hasVariablePrice,
                                             isDark: isDark,
@@ -1870,17 +2021,20 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                               setState(() {
                                                 _hasVariablePrice = checked;
                                                 if (checked) {
-                                                  _regularPriceController.clear();
+                                                  _regularPriceController
+                                                      .clear();
                                                   _salePriceController.clear();
                                                   _qtyController.clear();
                                                 }
                                                 const slug = 'variable-product';
                                                 if (checked) {
-                                                  if (!_selectedTags.any((t) => t.slug == slug)) {
+                                                  if (!_selectedTags.any(
+                                                          (t) => t.slug == slug)) {
                                                     _selectedTags.add(
                                                       const Inventory_Tag_Entity(
                                                         id: 0,
-                                                        name: 'Variable Product',
+                                                        name:
+                                                        'Variable Product',
                                                         slug: slug,
                                                         description: '',
                                                         count: 0,
@@ -1888,7 +2042,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                                     );
                                                   }
                                                 } else {
-                                                  _selectedTags.removeWhere((t) => t.slug == slug);
+                                                  _selectedTags.removeWhere(
+                                                          (t) => t.slug == slug);
                                                 }
                                               });
                                             },
@@ -1905,8 +2060,12 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                           fontSize: 13,
                                           fontWeight: FontWeight.w500,
                                           color: isProductTypeVariable
-                                              ? (isDark ? Colors.grey.shade300 : Colors.black87)
-                                              : (isDark ? Colors.white70 : Colors.black87),
+                                              ? (isDark
+                                              ? Colors.grey.shade300
+                                              : Colors.black87)
+                                              : (isDark
+                                              ? Colors.white70
+                                              : Colors.black87),
                                         ),
                                       ),
                                       const SizedBox(height: 4),
@@ -1928,8 +2087,12 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                           fontSize: 12,
                                           fontWeight: FontWeight.w500,
                                           color: isPriceStockDisabledStock
-                                              ? (isDark ? Colors.grey.shade500 : Colors.grey)
-                                              : (isDark ? Colors.white70 : Colors.black87),
+                                              ? (isDark
+                                              ? Colors.grey.shade500
+                                              : Colors.grey)
+                                              : (isDark
+                                              ? Colors.white70
+                                              : Colors.black87),
                                         ),
                                       ),
                                       const SizedBox(height: 2),
@@ -1941,21 +2104,29 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                           keyboardType: TextInputType.number,
                                           textAlign: TextAlign.right,
                                           style: TextStyle(
-                                            color: isPriceStockDisabledStock ? disabledText : (isDark ? Colors.white : Colors.black87),
+                                            color: isPriceStockDisabledStock
+                                                ? disabledText
+                                                : (isDark
+                                                ? Colors.white
+                                                : Colors.black87),
                                             fontSize: 12,
                                           ),
                                           decoration: InputDecoration(
                                             hintText: '0',
                                             filled: true,
                                             isDense: true,
-                                            fillColor: isPriceStockDisabledStock ? disabledFill : Colors.transparent,
+                                            fillColor: isPriceStockDisabledStock
+                                                ? disabledFill
+                                                : Colors.transparent,
                                             border: const OutlineInputBorder(),
-                                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                            contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 8, vertical: 8),
                                           ),
                                         ),
                                       ),
 
-                                      const SizedBox(height:2),
+                                      const SizedBox(height: 2),
 
                                       // Tags
                                       Text(
@@ -1963,15 +2134,21 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w500,
-                                          color: isProductTypeVariable ? Colors.grey : (isDark ? Colors.white70 : Colors.black87),
+                                          color: isProductTypeVariable
+                                              ? Colors.grey
+                                              : (isDark
+                                              ? Colors.white70
+                                              : Colors.black87),
                                         ),
                                       ),
                                       const SizedBox(height: 6),
                                       SizedBox(
-                                        height: 100,
+                                        height: 133,
                                         child: InventoryTagMultiSelectWidget(
                                           onTypeSelected: (tag) {
-                                            if (tag != null) setState(() => _selectedTags.add(tag));
+                                            if (tag != null)
+                                              setState(
+                                                      () => _selectedTags.add(tag));
                                           },
                                         ),
                                       ),
@@ -2006,7 +2183,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                           padding: const EdgeInsets.symmetric(
                               horizontal: 20, vertical: 8),
                           decoration: BoxDecoration(
-                            color: isDark ? Color(0xFF4180DD) : Color(0xFFF5F7FA),
+                            color:
+                            isDark ? Color(0xFF4180DD) : Color(0xFFF5F7FA),
                             borderRadius: const BorderRadius.only(
                               topLeft: Radius.circular(12),
                               topRight: Radius.circular(12),
@@ -2026,7 +2204,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                 '(${_variants.length} added)',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: isDark ? Colors.white70 : Colors.black54,
+                                  color:
+                                  isDark ? Colors.white70 : Colors.black54,
                                 ),
                               ),
                             ],
@@ -2046,7 +2225,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
 
         // Add Save & Update button after cards
         Container(
-          padding: EdgeInsets.only(top:8),
+          padding: EdgeInsets.only(top: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -2062,7 +2241,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                 ),
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(color: Color(0xFF2196F3), width: 2),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6)),
                   padding: EdgeInsets.symmetric(horizontal: 50, vertical: 10),
                 ),
               ),
@@ -2075,7 +2255,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                   height: 20,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    valueColor:
+                    AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
                 )
                     : Text(
@@ -2088,7 +2269,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Color(0xFF2196F3),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6)),
                   padding: EdgeInsets.symmetric(horizontal: 50, vertical: 10),
                 ),
               ),
@@ -2103,9 +2285,11 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text('Product Image', style: TextStyle(fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87)),
+        Text('Product Image',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87)),
         SizedBox(height: 8),
         GestureDetector(
           onTap: _pickImage,
@@ -2128,10 +2312,12 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                 ? Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.image_outlined, size: 40, color: Color(0xFF2196F3)),
+                Icon(Icons.image_outlined,
+                    size: 40, color: Color(0xFF2196F3)),
                 SizedBox(height: 8),
                 Text('Upload Image',
-                    style: TextStyle(color: Color(0xFF2196F3), fontSize: 12)),
+                    style: TextStyle(
+                        color: Color(0xFF2196F3), fontSize: 12)),
               ],
             )
                 : null,
@@ -2148,12 +2334,16 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   }
 
   Widget _buildSKUSection(bool isDark, bool isSmallScreen) {
+    final bool canGenerateSku = _skuController.text.trim().isEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('SKU', style: TextStyle(fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87)),
+        Text('SKU',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87)),
         SizedBox(height: 8),
         Row(
           children: [
@@ -2163,8 +2353,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                 style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                 decoration: InputDecoration(
                   hintText: 'Generate the Sku',
-                  hintStyle: TextStyle(
-                      color: Colors.grey.shade400, fontSize: 13),
+                  hintStyle:
+                  TextStyle(color: Colors.grey.shade400, fontSize: 13),
                   filled: true,
                   fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
                   border: OutlineInputBorder(
@@ -2172,8 +2362,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                     borderSide: BorderSide(
                         color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0)),
                   ),
-                  contentPadding: EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
+                  contentPadding:
+                  EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 ),
               ),
             ),
@@ -2181,16 +2371,18 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
             Container(
               height: 48,
               child: ElevatedButton(
-                onPressed: () =>
-                    setState(() =>
-                    _skuController.text = 'SKU${DateTime
-                        .now()
-                        .millisecondsSinceEpoch}'),
-                child: Text('Generate', style: TextStyle(color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600)),
+                onPressed: canGenerateSku
+                    ? () => setState(() => _skuController.text =
+                'SKU${DateTime.now().millisecondsSinceEpoch}')
+                    : null,
+                child: Text('Generate',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xFFEA3D8F),
+                  backgroundColor:
+                  canGenerateSku ? Color(0xFFEA3D8F) : Colors.grey.shade400,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(6)),
                   padding: EdgeInsets.symmetric(horizontal: 24),
@@ -2203,22 +2395,25 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     );
   }
 
-
   Widget _buildPriceSection(bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Price', style: TextStyle(fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87)),
+        Text('Price',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87)),
         SizedBox(height: 12),
         Row(
           children: [
-            Expanded(child: _buildPriceField(
-                'Regular Price', _regularPriceController, isDark)),
+            Expanded(
+                child: _buildPriceField(
+                    'Regular Price', _regularPriceController, isDark)),
             SizedBox(width: 16),
-            Expanded(child: _buildPriceField(
-                'Sale Price', _salePriceController, isDark)),
+            Expanded(
+                child: _buildPriceField(
+                    'Sale Price', _salePriceController, isDark)),
           ],
         ),
         SizedBox(height: 8),
@@ -2234,7 +2429,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
             Expanded(
               child: Text(
                 'If the product has Variable Price',
-                style: TextStyle(fontSize: 12,
+                style: TextStyle(
+                    fontSize: 12,
                     color: isDark ? Colors.white70 : Colors.black54),
               ),
             ),
@@ -2244,21 +2440,41 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     );
   }
 
-  Widget _buildPriceField(String label, TextEditingController controller,
-      bool isDark) {
+  Widget _buildPriceField(
+      String label, TextEditingController controller, bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: isDark ? Colors.white70 : Colors.black54)),
+        Text(label,
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: isDark ? Colors.white70 : Colors.black54)),
         SizedBox(height: 8),
         TextFormField(
           controller: controller,
-          keyboardType: TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: false),
+          textAlign: TextAlign.right,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            TextInputFormatter.withFunction((oldValue, newValue) {
+              final rawText = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+              if (rawText.isEmpty) {
+                return const TextEditingValue(text: '');
+              }
+              final cents = int.tryParse(rawText) ?? 0;
+              final dollars = cents / 100;
+              final formatted = dollars.toStringAsFixed(2);
+              return TextEditingValue(
+                text: formatted,
+                selection: TextSelection.collapsed(offset: formatted.length),
+              );
+            }),
+          ],
           style: TextStyle(color: isDark ? Colors.white : Colors.black87),
           decoration: InputDecoration(
-            hintText: '\$ 00.00',
+            prefixText: '\$ ',
+            hintText: '0.00',
             hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 12),
             filled: true,
             fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
@@ -2289,7 +2505,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
   }
 
   Widget _buildVariantContent(bool isDark) {
-    final bool isVariantsEnabled = (_selectedProductType ?? '').toLowerCase() == 'variable';
+    final bool isVariantsEnabled =
+        (_selectedProductType ?? '').toLowerCase() == 'variable';
 
     // Helper to generate name from selected attributes
     String _generateVariantName() {
@@ -2301,14 +2518,15 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
         final attrName = attr['attribute']?['name'] as String?;
         final selectedSlug = attr['selectedSlug'] as String?;
 
-        if (attrName != null && selectedSlug != null && selectedSlug
-            .trim()
-            .isNotEmpty) {
+        if (attrName != null &&
+            selectedSlug != null &&
+            selectedSlug.trim().isNotEmpty) {
           // Make slug look nicer (capitalize words)
           final niceValue = selectedSlug
               .split('-')
-              .map((w) =>
-          w.isNotEmpty ? w[0].toUpperCase() + w.substring(1).toLowerCase() : '')
+              .map((w) => w.isNotEmpty
+              ? w[0].toUpperCase() + w.substring(1).toLowerCase()
+              : '')
               .join(' ');
 
           parts.add('$attrName: $niceValue');
@@ -2334,22 +2552,24 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                   padding: const EdgeInsets.all(12),
                   margin: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.red.withOpacity(0.12) : Colors.red
-                        .withOpacity(0.07),
+                    color: isDark
+                        ? Colors.red.withOpacity(0.12)
+                        : Colors.red.withOpacity(0.07),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.red.withOpacity(0.3)),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.info_outline, color: Colors.red.shade400,
-                          size: 20),
+                      Icon(Icons.info_outline,
+                          color: Colors.red.shade400, size: 20),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           'Variants are only available when Product Type is "Variable"',
                           style: TextStyle(
-                            color: isDark ? Colors.red.shade300 : Colors.red
-                                .shade700,
+                            color: isDark
+                                ? Colors.red.shade300
+                                : Colors.red.shade700,
                             fontSize: 12,
                           ),
                         ),
@@ -2357,15 +2577,12 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                     ],
                   ),
                 ),
-                const SizedBox(height:6),
+                const SizedBox(height: 6),
               ],
 
               // Existing variants list (unchanged)
               if (_variants.isNotEmpty) ...[
-                ..._variants
-                    .asMap()
-                    .entries
-                    .map((entry) {
+                ..._variants.asMap().entries.map((entry) {
                   int index = entry.key;
                   var variant = entry.value;
                   return Container(
@@ -2409,11 +2626,13 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                               height: 60,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(8),
-                                color: isDark ? Color(0xFF252837) : Color(
-                                    0xFFF8F9FA),
+                                color: isDark
+                                    ? Color(0xFF252837)
+                                    : Color(0xFFF8F9FA),
                                 border: Border.all(
-                                  color: isDark ? Color(0xFF3B4259) : Color(
-                                      0xFFE0E0E0),
+                                  color: isDark
+                                      ? Color(0xFF3B4259)
+                                      : Color(0xFFE0E0E0),
                                 ),
                               ),
                               child: variant['imageFile'] != null
@@ -2494,14 +2713,15 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                   // Regular price (always shown, crossed out if on sale)
                                   Builder(
                                     builder: (context) {
-                                      final regRaw = variant['regularPrice']
-                                          ?.toString() ?? '0';
+                                      final regRaw =
+                                          variant['regularPrice']?.toString() ??
+                                              '0';
                                       final regClean = regRaw.replaceAll(
                                           RegExp(r'[^0-9.]'), '');
-                                      final regValue = double.tryParse(
-                                          regClean) ?? 0.0;
-                                      final regFormatted = regValue
-                                          .toStringAsFixed(2);
+                                      final regValue =
+                                          double.tryParse(regClean) ?? 0.0;
+                                      final regFormatted =
+                                      regValue.toStringAsFixed(2);
 
                                       final hasSale = variant['salePrice'] !=
                                           null &&
@@ -2512,12 +2732,15 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                           double.tryParse(variant['salePrice']
                                               .toString()
                                               .replaceAll(
-                                              RegExp(r'[^0-9.]'), '')) !=
+                                              RegExp(r'[^0-9.]'),
+                                              '')) !=
                                               null &&
                                           double.tryParse(variant['salePrice']
                                               .toString()
                                               .replaceAll(
-                                              RegExp(r'[^0-9.]'), ''))! > 0;
+                                              RegExp(r'[^0-9.]'),
+                                              ''))! >
+                                              0;
 
                                       return Text(
                                         '\$$regFormatted',
@@ -2531,8 +2754,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                               : (isDark
                                               ? Colors.white70
                                               : Colors.black54),
-                                          decoration: hasSale ? TextDecoration
-                                              .lineThrough : null,
+                                          decoration: hasSale
+                                              ? TextDecoration.lineThrough
+                                              : null,
                                         ),
                                       );
                                     },
@@ -2547,12 +2771,12 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     const SizedBox(width: 8),
                                     Builder(
                                       builder: (context) {
-                                        final saleRaw = variant['salePrice']
-                                            .toString();
+                                        final saleRaw =
+                                        variant['salePrice'].toString();
                                         final saleClean = saleRaw.replaceAll(
                                             RegExp(r'[^0-9.]'), '');
-                                        final saleValue = double.tryParse(
-                                            saleClean) ?? 0.0;
+                                        final saleValue =
+                                            double.tryParse(saleClean) ?? 0.0;
 
                                         if (saleValue <= 0)
                                           return const SizedBox.shrink();
@@ -2562,9 +2786,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                           style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,
-                                            color: isDark ? Colors.orange
-                                                .shade300 : Colors.orange
-                                                .shade700,
+                                            color: isDark
+                                                ? Colors.orange.shade300
+                                                : Colors.orange.shade700,
                                           ),
                                         );
                                       },
@@ -2598,11 +2822,14 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     List<Map<String, dynamic>>.from(
                                         variant['attributes']);
                                   } else {
-                                    _variantAttributes = [{
-                                      'attribute': variant['attribute'],
-                                      'attributeItem': variant['attributeItem'],
-                                      'selectedSlug': variant['attributeItem']?['slug'],
-                                    }
+                                    _variantAttributes = [
+                                      {
+                                        'attribute': variant['attribute'],
+                                        'attributeItem':
+                                        variant['attributeItem'],
+                                        'selectedSlug': variant['attributeItem']
+                                        ?['slug'],
+                                      }
                                     ];
                                   }
 
@@ -2620,11 +2847,11 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                   color: Color(0xFF2196F3).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
-                                      color: Color(0xFF2196F3).withOpacity(
-                                          0.3)),
+                                      color:
+                                      Color(0xFF2196F3).withOpacity(0.3)),
                                 ),
-                                child: Icon(Icons.edit_outlined, size: 20,
-                                    color: Color(0xFF2196F3)),
+                                child: Icon(Icons.edit_outlined,
+                                    size: 20, color: Color(0xFF2196F3)),
                               ),
                             ),
                             SizedBox(width: 8),
@@ -2640,11 +2867,11 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                   color: Color(0xFFEF5350).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
-                                      color: Color(0xFFEF5350).withOpacity(
-                                          0.3)),
+                                      color:
+                                      Color(0xFFEF5350).withOpacity(0.3)),
                                 ),
-                                child: Icon(Icons.delete_outline, size: 20,
-                                    color: Color(0xFFEF5350)),
+                                child: Icon(Icons.delete_outline,
+                                    size: 20, color: Color(0xFFEF5350)),
                               ),
                             ),
                           ],
@@ -2655,7 +2882,6 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                 }).toList(),
                 SizedBox(height: 8),
               ],
-
 
               Container(
                 width: double.infinity,
@@ -2682,8 +2908,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                               'Variant Image',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: isDark ? Colors.grey.shade400 : Colors
-                                    .grey.shade600,
+                                color: isDark
+                                    ? Colors.grey.shade400
+                                    : Colors.grey.shade600,
                               ),
                             ),
                             SizedBox(height: 8),
@@ -2691,8 +2918,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                               children: [
                                 InkWell(
                                   onTap: () async {
-                                    final XFile? pickedFile = await _picker
-                                        .pickImage(
+                                    final XFile? pickedFile =
+                                    await _picker.pickImage(
                                       source: ImageSource.gallery,
                                       maxWidth: 200,
                                       maxHeight: 200,
@@ -2709,8 +2936,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     width: 100,
                                     height: 100,
                                     decoration: BoxDecoration(
-                                      color: isDark ? Color(0xFF252837) : Color(
-                                          0xFFF8F9FA),
+                                      color: isDark
+                                          ? Color(0xFF252837)
+                                          : Color(0xFFF8F9FA),
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
                                         color: isDark
@@ -2720,15 +2948,16 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     ),
                                     child: _currentImageFile != null
                                         ? ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
+                                      borderRadius:
+                                      BorderRadius.circular(8),
                                       child: Image.file(
                                         _currentImageFile!,
                                         fit: BoxFit.cover,
                                       ),
                                     )
                                         : Column(
-                                      mainAxisAlignment: MainAxisAlignment
-                                          .center,
+                                      mainAxisAlignment:
+                                      MainAxisAlignment.center,
                                       children: const [
                                         Icon(
                                           Icons.cloud_upload_outlined,
@@ -2775,7 +3004,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                             ),
                           ],
                         ),
-                        SizedBox(width:6),
+                        SizedBox(width: 6),
 
                         Expanded(
                           child: Column(
@@ -2784,8 +3013,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                 children: [
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment
-                                          .start,
+                                      crossAxisAlignment:
+                                      CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Variant Name',
@@ -2797,7 +3026,6 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                           ),
                                         ),
                                         SizedBox(height: 6),
-
                                         Container(
                                           height: 36,
                                           width: double.infinity,
@@ -2807,8 +3035,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                             color: isDark
                                                 ? Color(0xFF2A2D3E)
                                                 : Colors.grey.shade100,
-                                            borderRadius: BorderRadius.circular(
-                                                6),
+                                            borderRadius:
+                                            BorderRadius.circular(6),
                                             border: Border.all(
                                               color: isDark
                                                   ? Color(0xFF3B4259)
@@ -2828,10 +3056,11 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                                     ? (isDark
                                                     ? Colors.white70
                                                     : Colors.black54)
-                                                    : (isDark ? Colors.grey
-                                                    .shade500 : Colors.grey
-                                                    .shade600),
-                                                fontStyle: _generateVariantName()
+                                                    : (isDark
+                                                    ? Colors.grey.shade500
+                                                    : Colors.grey.shade600),
+                                                fontStyle:
+                                                _generateVariantName()
                                                     .isEmpty
                                                     ? FontStyle.italic
                                                     : null,
@@ -2847,8 +3076,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                   SizedBox(
                                     width: 100,
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment
-                                          .start,
+                                      crossAxisAlignment:
+                                      CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Stock',
@@ -2870,15 +3099,16 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                             decoration: InputDecoration(
                                               hintText: '0',
                                               filled: true,
-                                              fillColor: isDark ? Color(
-                                                  0xFF252837) : Color(
-                                                  0xFFF8F9FA),
+                                              fillColor: isDark
+                                                  ? Color(0xFF252837)
+                                                  : Color(0xFFF8F9FA),
                                               border: OutlineInputBorder(
-                                                  borderRadius: BorderRadius
-                                                      .circular(6)),
-                                              contentPadding: EdgeInsets
-                                                  .symmetric(
-                                                  horizontal: 12, vertical: 0),
+                                                  borderRadius:
+                                                  BorderRadius.circular(6)),
+                                              contentPadding:
+                                              EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 0),
                                             ),
                                             style: TextStyle(fontSize: 14),
                                           ),
@@ -2888,14 +3118,13 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                   ),
                                 ],
                               ),
-                              SizedBox(height:12),
-
+                              SizedBox(height: 12),
                               Row(
                                 children: [
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment
-                                          .start,
+                                      crossAxisAlignment:
+                                      CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Regular Price',
@@ -2918,42 +3147,45 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                             inputFormatters: [
                                               FilteringTextInputFormatter
                                                   .digitsOnly,
-                                              TextInputFormatter.withFunction((
-                                                  oldValue, newValue) {
-                                                final rawText = newValue.text
-                                                    .replaceAll(
-                                                    RegExp(r'[^0-9]'), '');
-                                                if (rawText.isEmpty)
-                                                  return const TextEditingValue(
-                                                      text: '');
-                                                final cents = int.tryParse(
-                                                    rawText) ?? 0;
-                                                final dollars = cents / 100;
-                                                final formatted = dollars
-                                                    .toStringAsFixed(2);
-                                                return TextEditingValue(
-                                                  text: formatted,
-                                                  selection: TextSelection
-                                                      .collapsed(
-                                                      offset: formatted.length),
-                                                );
-                                              }),
+                                              TextInputFormatter.withFunction(
+                                                      (oldValue, newValue) {
+                                                    final rawText = newValue.text
+                                                        .replaceAll(
+                                                        RegExp(r'[^0-9]'), '');
+                                                    if (rawText.isEmpty)
+                                                      return const TextEditingValue(
+                                                          text: '');
+                                                    final cents =
+                                                        int.tryParse(rawText) ?? 0;
+                                                    final dollars = cents / 100;
+                                                    final formatted =
+                                                    dollars.toStringAsFixed(2);
+                                                    return TextEditingValue(
+                                                      text: formatted,
+                                                      selection:
+                                                      TextSelection.collapsed(
+                                                          offset:
+                                                          formatted.length),
+                                                    );
+                                                  }),
                                             ],
                                             decoration: InputDecoration(
                                               prefixText: '\$ ',
                                               hintText: '0.00',
                                               filled: true,
-                                              fillColor: isDark ? Color(
-                                                  0xFF252837) : Color(
-                                                  0xFFF8F9FA),
+                                              fillColor: isDark
+                                                  ? Color(0xFF252837)
+                                                  : Color(0xFFF8F9FA),
                                               border: OutlineInputBorder(
-                                                  borderRadius: BorderRadius
-                                                      .circular(6)),
-                                              contentPadding: const EdgeInsets
-                                                  .symmetric(
-                                                  horizontal: 12, vertical: 0),
+                                                  borderRadius:
+                                                  BorderRadius.circular(6)),
+                                              contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 0),
                                             ),
-                                            style: TextStyle(fontSize: 14,
+                                            style: TextStyle(
+                                                fontSize: 14,
                                                 color: isDark
                                                     ? Colors.white
                                                     : Colors.black87),
@@ -2967,8 +3199,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                   SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment
-                                          .start,
+                                      crossAxisAlignment:
+                                      CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Sale Price',
@@ -2991,42 +3223,45 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                             inputFormatters: [
                                               FilteringTextInputFormatter
                                                   .digitsOnly,
-                                              TextInputFormatter.withFunction((
-                                                  oldValue, newValue) {
-                                                final rawText = newValue.text
-                                                    .replaceAll(
-                                                    RegExp(r'[^0-9]'), '');
-                                                if (rawText.isEmpty)
-                                                  return const TextEditingValue(
-                                                      text: '');
-                                                final cents = int.tryParse(
-                                                    rawText) ?? 0;
-                                                final dollars = cents / 100;
-                                                final formatted = dollars
-                                                    .toStringAsFixed(2);
-                                                return TextEditingValue(
-                                                  text: formatted,
-                                                  selection: TextSelection
-                                                      .collapsed(
-                                                      offset: formatted.length),
-                                                );
-                                              }),
+                                              TextInputFormatter.withFunction(
+                                                      (oldValue, newValue) {
+                                                    final rawText = newValue.text
+                                                        .replaceAll(
+                                                        RegExp(r'[^0-9]'), '');
+                                                    if (rawText.isEmpty)
+                                                      return const TextEditingValue(
+                                                          text: '');
+                                                    final cents =
+                                                        int.tryParse(rawText) ?? 0;
+                                                    final dollars = cents / 100;
+                                                    final formatted =
+                                                    dollars.toStringAsFixed(2);
+                                                    return TextEditingValue(
+                                                      text: formatted,
+                                                      selection:
+                                                      TextSelection.collapsed(
+                                                          offset:
+                                                          formatted.length),
+                                                    );
+                                                  }),
                                             ],
                                             decoration: InputDecoration(
                                               prefixText: '\$ ',
                                               hintText: '0.00',
                                               filled: true,
-                                              fillColor: isDark ? Color(
-                                                  0xFF252837) : Color(
-                                                  0xFFF8F9FA),
+                                              fillColor: isDark
+                                                  ? Color(0xFF252837)
+                                                  : Color(0xFFF8F9FA),
                                               border: OutlineInputBorder(
-                                                  borderRadius: BorderRadius
-                                                      .circular(6)),
-                                              contentPadding: const EdgeInsets
-                                                  .symmetric(
-                                                  horizontal: 12, vertical: 0),
+                                                  borderRadius:
+                                                  BorderRadius.circular(6)),
+                                              contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 0),
                                             ),
-                                            style: TextStyle(fontSize: 14,
+                                            style: TextStyle(
+                                                fontSize: 14,
                                                 color: isDark
                                                     ? Colors.white
                                                     : Colors.black87),
@@ -3044,9 +3279,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                         ),
                       ],
                     ),
-
                     SizedBox(height: 10),
-
                     Text(
                       'Attributes',
                       style: TextStyle(
@@ -3056,11 +3289,7 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                       ),
                     ),
                     SizedBox(height: 6),
-
-                    ..._variantAttributes
-                        .asMap()
-                        .entries
-                        .map((entry) {
+                    ..._variantAttributes.asMap().entries.map((entry) {
                       final idx = entry.key;
                       final attr = entry.value;
                       final isLast = idx == _variantAttributes.length - 1;
@@ -3109,8 +3338,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                   },
                                   onItemSlugSelected: (attribute, slug) {
                                     setState(() {
-                                      _variantAttributes[idx]['attributeItem'] =
-                                      {'slug': slug};
+                                      _variantAttributes[idx]
+                                      ['attributeItem'] = {'slug': slug};
                                       _variantAttributes[idx]['selectedSlug'] =
                                           slug;
                                     });
@@ -3123,8 +3352,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                               flex: 2,
                               child: Container(
                                 height: 40,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12),
+                                padding:
+                                const EdgeInsets.symmetric(horizontal: 12),
                                 decoration: BoxDecoration(
                                   color: isDark
                                       ? const Color(0xFF252837)
@@ -3142,8 +3371,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     attr['selectedSlug'] ?? 'Not selected',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: isDark ? Colors.white70 : Colors
-                                          .black54,
+                                      color: isDark
+                                          ? Colors.white70
+                                          : Colors.black54,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -3162,8 +3392,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                                     });
                                   });
                                 },
-                                icon: const Icon(
-                                    Icons.add, size: 15, color: Colors.grey),
+                                icon: const Icon(Icons.add,
+                                    size: 15, color: Colors.grey),
                                 label: const Text(
                                   'Add',
                                   style: TextStyle(
@@ -3202,16 +3432,15 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                         ),
                       );
                     }).toList(),
-
-                    SizedBox(height:6),
-
+                    SizedBox(height: 6),
                     SizedBox(
                       width: double.infinity,
                       height: 36,
                       child: ElevatedButton(
                         onPressed: isVariantsEnabled
                             ? () {
-                          final generatedName = _generateVariantName().trim();
+                          final generatedName =
+                          _generateVariantName().trim();
                           if (generatedName.isEmpty) {
                             return;
                           }
@@ -3226,7 +3455,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                               if (attr['attribute'] != null &&
                                   attr['attributeItem'] != null) {
                                 singleAttribute = attr['attribute'];
-                                singleAttributeItem = attr['attributeItem'];
+                                singleAttributeItem =
+                                attr['attributeItem'];
                                 break;
                               }
                             }
@@ -3236,7 +3466,8 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                               'stock': _currentStock.isNotEmpty
                                   ? _currentStock
                                   : '0',
-                              'regularPrice': _currentRegularPrice.isNotEmpty
+                              'regularPrice':
+                              _currentRegularPrice.isNotEmpty
                                   ? _currentRegularPrice
                                   : '0.00',
                               'salePrice': _currentSalePrice.isNotEmpty
@@ -3245,12 +3476,14 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                               'imageFile': _currentImageFile,
                               'attribute': singleAttribute,
                               'attributeItem': singleAttributeItem,
-                              'attributes': List<Map<String, dynamic>>.from(
+                              'attributes':
+                              List<Map<String, dynamic>>.from(
                                   _variantAttributes),
                             };
 
                             if (_currentVariantIndex >= 0) {
-                              _variants[_currentVariantIndex] = newVariant;
+                              _variants[_currentVariantIndex] =
+                                  newVariant;
                             } else {
                               _variants.add(newVariant);
                             }
@@ -3290,8 +3523,9 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              _currentVariantIndex >= 0 ? Icons.check : Icons
-                                  .add,
+                              _currentVariantIndex >= 0
+                                  ? Icons.check
+                                  : Icons.add,
                               size: 20,
                             ),
                             SizedBox(width: 8),
@@ -3316,7 +3550,6 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
     );
   }
 
-
   Widget _buildAuditListTab(bool isDark, bool isSmallScreen) {
     return Center(
       child: Text(
@@ -3328,7 +3561,4 @@ class _InventoryScreenState extends State<InventoryScreen> with LayoutSelectionM
       ),
     );
   }
-
 }
-
-
