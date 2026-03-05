@@ -270,6 +270,95 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
   }
 
   /// Load balance from LocalPayment when API returns empty (payments not yet synced).
+  // Future<void> _loadBalanceFromLocalPayment() async {
+  //   if (widget.activeOrderId == null || !mounted) return;
+  //
+  //   try {
+  //     final orderId = widget.activeOrderId!;
+  //
+  //     // 1️⃣ Get summary
+  //     final summary =
+  //     await LocalPaymentDBHelper.instance.getPaymentSummaryForOrder(orderId);
+  //
+  //     print("========== Local Payment Summary ==========");
+  //     print("Full summary map: $summary");
+  //
+  //     if (summary != null) {
+  //       summary.forEach((key, value) {
+  //         print("Key: $key  =>  Value: $value");
+  //
+  //         if (key == 'paymentCount') {
+  //           final count = (value as num).toInt();
+  //           print("💳 Payment count: $count");
+  //         }
+  //       });
+  //     }
+  //     print("===========================================");
+  //
+  //     final paymentCount = (summary['paymentCount'] ?? 0.0).toDouble();
+  //
+  //     // 2️⃣ Get all individual payments for this order
+  //     final payments =
+  //     await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+  //
+  //     if (payments.isNotEmpty) {
+  //       print("========== Local Payment Records ==========");
+  //       for (var p in payments) {
+  //         final amountStr = p.amount >= 0
+  //             ? "Cash: \$${p.amount.toStringAsFixed(2)}"
+  //             : "void: \$${p.amount.toStringAsFixed(2)}";
+  //
+  //         print(
+  //             "→ ID: ${p.id} | Order ID: ${p.orderId} | $amountStr | Synced: ${p.isSynced} | Status: ${p.status.name}");
+  //       }
+  //       print("===========================================");
+  //     }
+  //
+  //     // 3️⃣ Compute tender, balance, and change
+  //     if (paymentCount > 0) {
+  //       final totalPaid = (summary['totalPaid'] ?? 0.0).toDouble();
+  //
+  //       setState(() {
+  //         tenderAmount = totalPaid.clamp(0.0, double.infinity);
+  //         payByOther = tenderAmount;
+  //         payByCash = 0.0;
+  //
+  //         final remaining = summary['remainingBalance'];
+  //         if (remaining != null) {
+  //           balanceAmount =
+  //               (remaining as num).toDouble().clamp(0.0, double.infinity);
+  //         } else {
+  //           final netPay = (_order["payable"] as num?)?.toDouble() ??
+  //               (_order["net_payable"] as num?)?.toDouble() ??
+  //               uiNetPayable ??
+  //               0.0;
+  //
+  //           balanceAmount = (netPay - tenderAmount).clamp(0.0, double.infinity);
+  //         }
+  //
+  //         if (balanceAmount <= 0) {
+  //           changeAmount = (tenderAmount - (_order["payable"] ?? 0.0))
+  //               .clamp(0.0, double.infinity);
+  //           balanceAmount = 0.0;
+  //         } else {
+  //           changeAmount = 0.0;
+  //         }
+  //
+  //         // ✅ Add this override to compute change using netPay
+  //         final netPay = (_order["payable"] as num?)?.toDouble() ??
+  //             (_order["net_payable"] as num?)?.toDouble() ??
+  //             uiNetPayable ??
+  //             0.0;
+  //         changeAmount = ( netPay).clamp(0.0, double.infinity);
+  //
+  //         print(
+  //             "Local payments → tender clamped = $tenderAmount | balance = $balanceAmount | change = $changeAmount");
+  //       });
+  //     }
+  //   } catch (e) {
+  //     if (kDebugMode) print("LocalPayment error: $e");
+  //   }
+  // }
   Future<void> _loadBalanceFromLocalPayment() async {
     if (widget.activeOrderId == null || !mounted) return;
 
@@ -283,21 +372,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       print("========== Local Payment Summary ==========");
       print("Full summary map: $summary");
 
-      if (summary != null) {
-        summary.forEach((key, value) {
-          print("Key: $key  =>  Value: $value");
+      final paymentCount = (summary?['paymentCount'] ?? 0).toDouble();
 
-          if (key == 'paymentCount') {
-            final count = (value as num).toInt();
-            print("💳 Payment count: $count");
-          }
-        });
-      }
-      print("===========================================");
-
-      final paymentCount = (summary['paymentCount'] ?? 0.0).toDouble();
-
-      // 2️⃣ Get all individual payments for this order
+      // 2️⃣ Get all individual payments
       final payments =
       await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
 
@@ -307,7 +384,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
           final amountStr = p.amount >= 0
               ? "Cash: \$${p.amount.toStringAsFixed(2)}"
               : "void: \$${p.amount.toStringAsFixed(2)}";
-
           print(
               "→ ID: ${p.id} | Order ID: ${p.orderId} | $amountStr | Synced: ${p.isSynced} | Status: ${p.status.name}");
         }
@@ -316,49 +392,53 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
       // 3️⃣ Compute tender, balance, and change
       if (paymentCount > 0) {
-        final totalPaid = (summary['totalPaid'] ?? 0.0).toDouble();
+        final totalPaid = (summary?['totalPaid'] ?? 0.0).toDouble();
+        final remaining = summary?['remainingBalance']?.toDouble();
 
+        // Compute netPay
+        final netPay = (_order["payable"] as num?)?.toDouble() ??
+            (_order["net_payable"] as num?)?.toDouble() ??
+            uiNetPayable ??
+            0.0;
+
+        // Compute balanceAmount
+        double computedBalance;
+        if (remaining != null) {
+          computedBalance = remaining.clamp(0.0, double.infinity);
+        } else {
+          computedBalance = (netPay - totalPaid).clamp(0.0, double.infinity);
+        }
+
+        // Compute changeAmount
+        double computedChange;
+        if (computedBalance <= 0) {
+          computedChange = (totalPaid - (_order["payable"] ?? 0.0))
+              .clamp(0.0, double.infinity);
+          computedBalance = 0.0;
+        } else {
+          computedChange = 0.0;
+        }
+
+        //  Override to ensure changeAmount reflects netPay if needed
+        computedChange = netPay < balanceAmount ? netPay : balanceAmount;
+
+        //  Set final values once
         setState(() {
           tenderAmount = totalPaid.clamp(0.0, double.infinity);
           payByOther = tenderAmount;
           payByCash = 0.0;
-
-          final remaining = summary['remainingBalance'];
-          if (remaining != null) {
-            balanceAmount =
-                (remaining as num).toDouble().clamp(0.0, double.infinity);
-          } else {
-            final netPay = (_order["payable"] as num?)?.toDouble() ??
-                (_order["net_payable"] as num?)?.toDouble() ??
-                uiNetPayable ??
-                0.0;
-
-            balanceAmount = (netPay - tenderAmount).clamp(0.0, double.infinity);
-          }
-
-          if (balanceAmount <= 0) {
-            changeAmount = (tenderAmount - (_order["payable"] ?? 0.0))
-                .clamp(0.0, double.infinity);
-            balanceAmount = 0.0;
-          } else {
-            changeAmount = 0.0;
-          }
-
-          // ✅ Add this override to compute change using netPay
-          final netPay = (_order["payable"] as num?)?.toDouble() ??
-              (_order["net_payable"] as num?)?.toDouble() ??
-              uiNetPayable ??
-              0.0;
-          changeAmount = ( netPay).clamp(0.0, double.infinity);
-
-          print(
-              "Local payments → tender clamped = $tenderAmount | balance = $balanceAmount | change = $changeAmount");
+          balanceAmount = computedBalance;
+          changeAmount = computedChange;
         });
+
+        print(
+            "Local payments → tender clamped = $tenderAmount | balance = $balanceAmount | change = $changeAmount");
       }
     } catch (e) {
       if (kDebugMode) print("LocalPayment error: $e");
     }
   }
+
 
   Future<void> loadPrinterData() async {
     var printerDB = await PrinterDBHelper().getPrinterFromDB();
@@ -627,6 +707,10 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
           final rawTotal = item[AppDBConst.itemSumPrice];
           final rawQty   = item[AppDBConst.itemCount];
 
+          final name = item[AppDBConst.itemName]?.toString().toLowerCase() ?? "";
+
+          final bool isDiscountItem = name.contains("discount");
+
           final double total = rawTotal is num
               ? rawTotal.toDouble()
               : double.tryParse(rawTotal?.toString() ?? "0") ?? 0.0;
@@ -642,10 +726,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
             AppDBConst.itemPrice: unitPrice,
             AppDBConst.itemSumPrice: total,
 
-            // // ✅ Keep discount info
-            // "multipack_discount_total": item["multipack_discount_total"] ?? 0.0,
-            // "auto_discount_total": item["auto_discount_total"] ?? 0.0,
-            // "combo_discount_total": item["combo_discount_total"] ?? 0.0,
+            "is_discount_item": isDiscountItem
           });
         }
 
@@ -2571,9 +2652,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             final filteredItems = visibleLineItems(orderItems);
                             print("🔎 BEFORE SUMMARY NAVIGATION");
                             for (var item in filteredItems) {
-                              print("Name: ${item[AppDBConst.itemName]} "
-                                  "Price: ${item[AppDBConst.itemPrice]} "
-                                  "Qty: ${item[AppDBConst.itemCount]}");
+                              print(
+                                  "Name: ${item[AppDBConst.itemName]} "
+                                      "Price: ${item[AppDBConst.itemPrice]} "
+                                      "Qty: ${item[AppDBConst.itemCount]} "
+                                      "DiscountType: ${item['discount_type']} "
+                                      "AutoDiscount: ${item['auto_discount']} "
+                                      "ComboDiscount: ${item['combo_discount_total']} "
+                                      "MixMatchDiscount: ${item['mixmatch_discount_total']} "
+                                      "MultipackDiscount: ${item['multipack_discount_total']}"
+                              );
                             }
 
                             final result = await Navigator.push(

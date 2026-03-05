@@ -42,7 +42,7 @@ class CompletedOrdersRepository {
       },
     );
     if (kDebugMode) {
-      print("Status Code: ${response.statusCode}");
+      print("completed Status Code: ${response.statusCode}");
       print("Body: ${response.body}");
     }
 
@@ -53,6 +53,11 @@ class CompletedOrdersRepository {
     }
 
     final decoded = jsonDecode(response.body);
+    if (kDebugMode) {
+      print("DECODED JSON:");
+      debugPrint(decoded.toString());
+    }
+
 
     // ✅ Safe parsing
     if (decoded == null ||
@@ -95,7 +100,7 @@ class CompletedOrdersRepository {
 
   Future<Map<String, dynamic>> refundOrder({
     required int orderId,
-    required String refundType, // "Full" or "Partial"
+    required String refundType,
     List<Map<String, dynamic>>? items,
   }) async {
     final token = await _getTokenFromDb();
@@ -122,29 +127,42 @@ class CompletedOrdersRepository {
       body: jsonEncode(body),
     );
 
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> data = jsonDecode(response.body);
+    final Map<String, dynamic> responseData = jsonDecode(response.body);
 
-      // 🔥 UPDATE SQLITE HERE
+    /// ✅ SUCCESS
+    if (response.statusCode == 200) {
       if (refundType == "Partial" && items != null) {
         final db = await DBHelper.instance.database;
 
-        for (var item in items) {
-          final int serverId = item["line_item_id"];
-          // 👆 Make sure this key matches what you're sending
-
-          await db.rawUpdate(
-            'UPDATE order_items SET is_refund_item = 1 WHERE items_server_id = ?',
-            [serverId],
-          );
-        }
+        // for (var item in items) {
+        //   final int serverId = item["order_item_id"];
+        //
+        //   await db.rawUpdate(
+        //     'UPDATE order_items SET is_refund_item = 1 WHERE items_server_id = ?',
+        //     [serverId],
+        //   );
+        // }
       }
 
-      return data;
-    } else {
-      throw Exception(
-        'Refund failed (status: ${response.statusCode})',
-      );
+      return {
+        "success": true,
+        "data": responseData
+      };
     }
+
+    /// ❌ BACKEND DISCOUNT VALIDATION
+    if (responseData["code"] == "discounted_items_found") {
+      return {
+        "success": false,
+        "type": "discount_error",
+        "message": responseData["message"]
+      };
+    }
+
+    /// ❌ OTHER ERROR
+    return {
+      "success": false,
+      "message": responseData["message"] ?? "Refund failed"
+    };
   }
 }

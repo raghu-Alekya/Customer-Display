@@ -45,7 +45,7 @@ class CompletedOrder {
       transactionId: json['transaction_id']?.toString() ?? '',
 
       amount: double.tryParse(json['amount']?.toString() ?? '0') ?? 0,
-      discount: double.tryParse(json['discount_total']?.toString() ?? '0') ?? 0,
+      discount: double.tryParse(json['discount']?.toString() ?? '0') ?? 0,
       tax: double.tryParse(json['items_tax']?.toString() ?? '0') ?? 0,
       total: double.tryParse(json['total']?.toString() ?? '0') ?? 0,
 

@@ -7,11 +7,20 @@ import 'package:pinaka_pos/Widgets/widget_topbar.dart';
 // Fix import path to match your project (e.g. widget_navigation_bar.dart):
 import 'package:pinaka_pos/Widgets/widget_navigation_bar.dart';
 import 'package:pinaka_pos/Widgets/widget_navigation_bar.dart' as custom;
+import 'package:provider/provider.dart';
 
+import '../../Constants/text.dart';
+import '../../Database/db_helper.dart';
+import '../../Database/user_db_helper.dart';
+import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Models/Orders/refund_orderlist_model.dart';
+import '../../Preferences/pinaka_preferences.dart';
+import '../../Repositories/Orders/Refund_orderlist_repository.dart' show CompletedOrdersRepository;
 import '../../Widgets/cash_refund.dart';
 import '../../Widgets/verify_item_status.dart';
-
+import '../../Widgets/widget_navigation_bar.dart' as custom_widgets;
+enum SidebarPosition { left, right, bottom }
+enum OrderPanelPosition { left, right }
 class RefundScreen extends StatefulWidget {
   final CompletedOrder order;
 
@@ -87,23 +96,21 @@ class _RefundScreenState extends State<RefundScreen> {
     if (grossTotal == 0) return 0;
     return (refundGross / grossTotal) * merchantDiscount;
   }
-
   double get totalRefund {
     if (selectedItems.isEmpty) return 0;
 
-    // Count refundable items in order
-    final refundableItems = selectedOrder.items
-        .where((item) =>
-    !item.name.toLowerCase().contains("discount") &&
-        !item.name.toLowerCase().contains("payout") &&
-        !item.name.toLowerCase().contains("cashback"))
-        .toList();
+    final refundableItems = selectedOrder.items.where((item) {
+      final name = item.name.toLowerCase().trim();
+
+      return name != "discount" &&
+          name != "payout" &&
+          name != "cashback";
+    }).toList();
 
     int totalItemCount = refundableItems.length;
 
     if (totalItemCount == 0) return 0;
 
-    // Equal discount share per item
     double discountPerItem = merchantDiscount / totalItemCount;
 
     double refund = 0;
@@ -115,7 +122,6 @@ class _RefundScreenState extends State<RefundScreen> {
 
     return refund;
   }
-
   @override
   void initState() {
     super.initState();
@@ -136,6 +142,27 @@ class _RefundScreenState extends State<RefundScreen> {
     final visibleItems = selectedOrder.items
         .where((item) => !item.name.toLowerCase().contains("discount"))
         .toList();
+    final themeHelper = Provider.of<ThemeNotifier>(context);
+    final layout = PinakaPreferences.layoutSelectionNotifier.value;
+
+// Defaults
+    SidebarPosition sidebarPosition = SidebarPosition.left;
+    OrderPanelPosition orderPanelPosition = OrderPanelPosition.right;
+
+// 🔥 SAME LOGIC AS OrdersScreen
+    if (layout == SharedPreferenceTextConstants.navRightOrderLeft) {
+      sidebarPosition = SidebarPosition.right;
+      orderPanelPosition = OrderPanelPosition.left;
+    } else if (layout == SharedPreferenceTextConstants.navBottomOrderLeft) {
+      sidebarPosition = SidebarPosition.bottom;
+      orderPanelPosition = OrderPanelPosition.left;
+    } else if (layout == SharedPreferenceTextConstants.navBottomOrderRight) {
+      sidebarPosition = SidebarPosition.bottom;
+      orderPanelPosition = OrderPanelPosition.right;
+    } else {
+      sidebarPosition = SidebarPosition.left;
+      orderPanelPosition = OrderPanelPosition.right;
+    }
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -150,7 +177,33 @@ class _RefundScreenState extends State<RefundScreen> {
           children: [
             TopBar(
               screen: Screen.ORDERS,
-              onModeChanged: () async {},
+              onModeChanged: () async {
+                String newLayout;
+
+                if (sidebarPosition == SidebarPosition.left) {
+                  newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
+                }
+                else if (sidebarPosition == SidebarPosition.right) {
+                  newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
+                }
+                else {
+                  newLayout = orderPanelPosition == OrderPanelPosition.left
+                      ? SharedPreferenceTextConstants.navBottomOrderRight
+                      : SharedPreferenceTextConstants.navLeftOrderRight;
+                }
+
+                // Update layout notifier
+                PinakaPreferences.layoutSelectionNotifier.value = newLayout;
+
+                // Save layout in DB
+                await UserDbHelper().saveUserSettings(
+                  {AppDBConst.layoutSelection: newLayout},
+                  modeChange: true,
+                );
+
+                // Refresh UI
+                setState(() {});
+              },
             ),
             const SizedBox(height: 10),
             // const Divider(
@@ -165,15 +218,14 @@ class _RefundScreenState extends State<RefundScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   /// ================= LEFT SIDEBAR (NavigationBar) =================
-                  custom.NavigationBar(
-                    selectedSidebarIndex: _selectedSidebarIndex,
-                    onSidebarItemSelected: (index) {
-                      setState(() => _selectedSidebarIndex = index);
-                    },
-                    isVertical: true,
-                    isShiftScreen: false,
-                  ),
-
+                  if (sidebarPosition == SidebarPosition.left)
+                    custom_widgets.NavigationBar(
+                      selectedSidebarIndex: _selectedSidebarIndex,
+                      isVertical: true,
+                      onSidebarItemSelected: (index) {
+                        setState(() => _selectedSidebarIndex = index);
+                      },
+                    ),
                   const SizedBox(width: 10),
 
                   /// ================= REFUND CONTENT (Products + Summary) =================
@@ -250,8 +302,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                                       final bool isDiscount = itemName.contains("discount");
                                                       final bool isPayoutOrCashback =
-                                                          itemName.contains("payout") || itemName.contains("cashback");
-
+                                                          itemName.trim() == "payout" || itemName.trim() == "cashback";
                                                       // 🚫 Skip these items
                                                       if (isDiscount || isPayoutOrCashback) {
                                                         continue;
@@ -298,13 +349,13 @@ class _RefundScreenState extends State<RefundScreen> {
                                             ),
                                             SizedBox(width: 14),
                                             // if (!item.name.toLowerCase().contains("discount"))
-                                              Expanded(
-                                                flex: 3,
-                                                child: const Text(
-                                                  "Item Name",
-                                                  style: TextStyle(color: Colors.white),
-                                                ),
+                                            Expanded(
+                                              flex: 3,
+                                              child: const Text(
+                                                "Item Name",
+                                                style: TextStyle(color: Colors.white),
                                               ),
+                                            ),
                                             Expanded(
                                                 flex: 2,
                                                 child: Text("Unit Price",
@@ -354,8 +405,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                               final bool isDiscount = itemName.contains("discount");
                                               final bool isPayoutOrCashback =
-                                                  itemName.contains("payout") || itemName.contains("cashback");
-
+                                                  itemName.trim() == "payout" || itemName.trim() == "cashback";
                                               final unitPrice =
                                               (item.total / item.quantity).toStringAsFixed(2);
 
@@ -463,6 +513,14 @@ class _RefundScreenState extends State<RefundScreen> {
                                   ],
                                 ),
                               ),
+                              if (sidebarPosition == SidebarPosition.bottom)
+                                custom_widgets.NavigationBar(
+                                  selectedSidebarIndex: _selectedSidebarIndex,
+                                  isVertical: false,
+                                  onSidebarItemSelected: (index) {
+                                    setState(() => _selectedSidebarIndex = index);
+                                  },
+                                ),
                             ],
                           ),
                         ),
@@ -1034,6 +1092,18 @@ class _RefundScreenState extends State<RefundScreen> {
                             ),
                           ),
                         ),
+                        if (sidebarPosition == SidebarPosition.right)
+                          const SizedBox(width: 10),
+
+                        if (sidebarPosition == SidebarPosition.right)
+                          custom_widgets.NavigationBar(
+                            selectedSidebarIndex: _selectedSidebarIndex,
+                            isVertical: true,
+                            onSidebarItemSelected: (index) {
+                              setState(() => _selectedSidebarIndex = index);
+                            },
+                          ),
+
                       ],
                     ),
                   ),
@@ -1227,7 +1297,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
     return Expanded(
       child: GestureDetector(
-        onTap: () {
+        onTap: () async {
           print("=========== REFUND DEBUG START ===========");
 
           print("Order ID: ${selectedOrder.orderId}");
@@ -1263,43 +1333,14 @@ class _RefundScreenState extends State<RefundScreen> {
 
             List<RefundItem>? refundItems;
 
-            // ✅ Restrict ONLY for Partial Refund
+            /// Build refund items ONLY for partial refund
             if (isPartialRefund) {
-
-              print("---- CHECKING DISCOUNT FOR PARTIAL REFUND ----");
-
-              final bool hasDiscountedItem = selectedItems.any((selectedItem) {
-                final lineItem = selectedOrder.items
-                    .firstWhere((e) => e.name == selectedItem['name']);
-
-                print("Checking Item: ${lineItem.name}");
-                print("isItemsHasDiscount: ${lineItem.isItemsHasDiscount}");
-                print("itemDiscountType: ${lineItem.itemDiscountType}");
-
-                return lineItem.isItemsHasDiscount == "Yes";
-              });
-
-              if (hasDiscountedItem) {
-                print("❌ PARTIAL REFUND BLOCKED: Discounted item detected");
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                        "Partial refund not allowed for discounted items."),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-
-                print("=========== REFUND DEBUG END (BLOCKED) ===========");
-                return;
-              }
-
               print("---- PARTIAL REFUND ITEM MAPPING START ----");
 
               refundItems = selectedItems.map((item) {
 
                 final lineItem = selectedOrder.items
-                    .firstWhere((e) => e.name == item['name']);
+                    .firstWhere((e) => e.id == item['order_item_id']);
 
                 final double refundAmount = double.parse(
                   (lineItem.total + lineItem.totalTax).toStringAsFixed(2),
@@ -1324,17 +1365,41 @@ class _RefundScreenState extends State<RefundScreen> {
               print("---- PARTIAL REFUND ITEM MAPPING END ----");
             }
 
-            // ✅ Full refund will NOT check discount
+            final refundType = isFullRefund ? "Full" : "Partial";
+
             final refundRequest = RefundRequestModel(
               orderId: selectedOrder.orderId,
-              refundType: isFullRefund ? "Full" : "Partial",
+              refundType: refundType,
               items: refundItems,
             );
 
             print("---- FINAL REFUND REQUEST JSON ----");
             print(jsonEncode(refundRequest.toJson()));
-            print("---- CASH REFUND FLOW END ----");
 
+            /// 🔥 BACKEND VALIDATION
+            final result = await CompletedOrdersRepository(baseUrl: '').refundOrder(
+              orderId: selectedOrder.orderId,
+              refundType: refundType,
+              items: refundItems?.map((e) => e.toJson()).toList(),
+            );
+
+            /// ❌ Backend blocked refund
+            if (result["success"] == false) {
+              print("❌ Backend blocked refund: ${result["message"]}");
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(result["message"] ?? "Refund not allowed"),
+                  backgroundColor: Colors.red,
+                ),
+              );
+
+              return;
+            }
+
+            print("✅ Backend validation passed");
+
+            /// ✅ Open dialog only if backend allows
             showDialog(
               context: context,
               builder: (_) => CashRefundDialog(
@@ -1348,6 +1413,8 @@ class _RefundScreenState extends State<RefundScreen> {
                 },
               ),
             );
+
+            print("---- CASH REFUND FLOW END ----");
           }
 
           print("=========== REFUND DEBUG END ===========");

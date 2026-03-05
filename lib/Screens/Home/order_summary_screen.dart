@@ -5267,28 +5267,29 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // ✅ DISCOUNT EXTRACTION
     // --------------------------------------------------
     final String discountType =
-        orderItem['discount_type']?.toString() ?? '';
+        orderItem['discount_type']?.toString().toLowerCase() ?? '';
+
+    final double discountValue =
+        double.tryParse(orderItem['auto_discount']?.toString() ?? "0") ?? 0.0;
 
     final double autoDiscount =
-    discountType.isEmpty || discountType == 'auto'
-        ? (orderItem['auto_discount'] ?? 0).toDouble()
+    (discountType.isEmpty || discountType == 'auto')
+        ? discountValue
         : 0.0;
 
     final double comboDiscount =
     (discountType == 'combo' || discountType == 'mixmatch')
-        ? (orderItem['auto_discount'] ?? 0).toDouble()
+        ? discountValue
         : 0.0;
 
-
     final double multipackDiscount =
-    discountType == 'multipack'
-        ? (orderItem['auto_discount'] ?? 0).toDouble()
+    (discountType == 'multipack')
+        ? discountValue
         : 0.0;
 
     final bool isComboDiscount = comboDiscount > 0;
     final bool isMultipackDiscount = multipackDiscount > 0;
     final bool hasAutoDiscount = autoDiscount > 0;
-
     // --------------------------------------------------
     // ✅ FINAL PRICE
     // --------------------------------------------------

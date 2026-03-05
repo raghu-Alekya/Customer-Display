@@ -13,6 +13,8 @@ import '../../Widgets/widget_order_screen_panel.dart';
 import '../../Widgets/widget_topbar.dart';
 import '../Blocs/Orders/refund_orderlist_bloc.dart';
 import '../Blocs/Orders/refund_validation_bloc.dart';
+import '../Database/db_helper.dart';
+import '../Database/user_db_helper.dart';
 import '../Models/Orders/refund_orderlist_model.dart';
 import '../Repositories/Orders/refund_validation_repository.dart';
 import '../Widgets/refund_checkin_popup.dart';
@@ -148,7 +150,29 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
           /// 🔹 TOP BAR (same as Orders screen)
           TopBar(
             screen: Screen.ORDERS,
-            onModeChanged: () {
+            onModeChanged: () async {
+              String newLayout;
+
+              if (sidebarPosition == SidebarPosition.left) {
+                newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
+              } else if (sidebarPosition == SidebarPosition.right) {
+                newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
+              } else {
+                newLayout = orderPanelPosition == OrderPanelPosition.left
+                    ? SharedPreferenceTextConstants.navBottomOrderRight
+                    : SharedPreferenceTextConstants.navLeftOrderRight;
+              }
+
+              // Update notifier
+              PinakaPreferences.layoutSelectionNotifier.value = newLayout;
+
+              // Save to DB
+              await UserDbHelper().saveUserSettings(
+                {AppDBConst.layoutSelection: newLayout},
+                modeChange: true,
+              );
+
+              // Refresh UI
               setState(() {});
             },
           ),

@@ -34,10 +34,10 @@ class _InventoryTagMultiSelectWidgetState
     Color backgroundColor;
     Color borderColor;
 
-    if (tag.name == 'Age Restricted') {
+    if (tag.name.toLowerCase() == 'age restricted') {
       backgroundColor = const Color.fromRGBO(245, 230, 215, 1);
       borderColor = const Color.fromRGBO(191, 145, 104, 1);
-    } else if (tag.name == 'Ebt Eligible') {
+    } else if (tag.slug.toLowerCase() == 'ebt eligible') {
       backgroundColor = const Color.fromRGBO(225, 245, 225, 1);
       borderColor = const Color.fromRGBO(102, 187, 106, 1);
     } else {
@@ -98,9 +98,15 @@ class _InventoryTagMultiSelectWidgetState
           final tags = state.tags;
 
           /// ✅ Filter required tags
-          final primaryTags = tags.where((tag) =>
-          tag.name == 'Age Restricted' ||
-              tag.name == 'Ebt Eligible').toList();
+          final primaryTags = tags.where((tag) {
+            final name = tag.name.toLowerCase();
+            final slug = tag.slug.toLowerCase();
+
+            return name == 'age restricted' ||
+                name == 'ebt eligible' ||
+                slug == '21' ||
+                slug == 'ebt-eligible';
+          }).toList();
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
