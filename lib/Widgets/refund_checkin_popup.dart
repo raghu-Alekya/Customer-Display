@@ -40,15 +40,18 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
   }
 
   Widget _pinBox(int index) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: 55,
       height: 40,
       margin: const EdgeInsets.symmetric(horizontal: 6),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFFFF),
+        color: isDark ? const Color(0xFF353845) : const Color(0xFFFFFFFF),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFFD8D7D7)),
+        border: Border.all(
+          color: isDark ? const Color(0xFF363348) : const Color(0xFFD8D7D7),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.08),
@@ -59,15 +62,16 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
       ),
       child: Text(
         index < pin.length ? "*" : "",
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.bold,
-          color: Colors.black,
+          color: isDark ? Colors.white : Colors.black,
         ),
       ),
     );
   }
   Widget _keyButton(String text, {VoidCallback? onTap, Color? bgColor}) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
     bool isClear = text == "Clear";
 
     return GestureDetector(
@@ -78,11 +82,14 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
         margin: const EdgeInsets.all(8),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isClear ? Colors.white : (bgColor ?? const Color(0xFFDFE8FF)),
+          color: isClear
+              ? (isDark ? const Color(0xFF453C48) : Colors.white)
+              : (bgColor ??
+              (isDark ? const Color(0xFF353845) : const Color(0xFFDFE8FF))),
           borderRadius: BorderRadius.circular(8),
           border: isClear
               ? Border.all(
-            color: Color(0xFFFF4D20),
+            color: const Color(0xFFD18A8A),
             width: 1,
           )
               : null,
@@ -99,7 +106,9 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: isClear ? Colors.red : Color(0xFF4C5F7D),
+            color: isClear
+                ?(isDark ? Color(0xFFD18A8A): Colors.red)
+                : (isDark ? Colors.white : const Color(0xFF4C5F7D)),
           ),
         ),
       ),
@@ -108,6 +117,7 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
   @override
   @override
   Widget build(BuildContext context) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
     return BlocConsumer<RefundValidationBloc, RefundValidationState>(
         listener: (context, state) {
           if (state is RefundValidationSuccess) {
@@ -131,6 +141,7 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
         },
         builder: (context, state) {
           return Dialog(
+            backgroundColor: isDark ? const Color(0xFF1F1D2B) : Colors.white,
             child: IntrinsicHeight(
               child: Stack(
                 children: [
@@ -156,13 +167,13 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
 
                         const SizedBox(height: 6),
 
-                        const Center(
+                        Center(
                           child: Text(
                             "PIN verification required to proceed with refund",
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF4C5F7D),
+                              color: isDark ? Colors.white70 : const Color(0xFF4C5F7D),
                             ),
                           ),
                         ),
@@ -309,7 +320,7 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
                                     ],
                                   ),
 
-                                  const SizedBox(height: 15),
+                                  const SizedBox(height: 35),
 
                                   /// SAVE BUTTON
                                   SizedBox(
@@ -409,15 +420,15 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
                                         GestureDetector(
                                           onTap: removeDigit,
                                           child: Container(
-                                            width: 95,
+                                            width: 90,
                                             height: 55,
                                             margin: const EdgeInsets.all(8),
                                             alignment: Alignment.center,
                                             decoration: BoxDecoration(
-                                              color: Colors.white, // inside white
+                                              color: isDark ? const Color(0xFF32374A) : Colors.white, // inside white
                                               borderRadius: BorderRadius.circular(10),
                                               border: Border.all(
-                                                color: const Color(0xFF4C5F7D), // border color
+                                                color: isDark ? Color(0xFF617CA6) : const Color(0xFF4C5F7D), // border color
                                                 width: 1,
                                               ),
                                             ),

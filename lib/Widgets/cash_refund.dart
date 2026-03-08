@@ -217,17 +217,21 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
                           "Add",
                           bgColor: const Color(0xFF3D4F7C),
                           textColor: Colors.white,
-                          onTap: () {
-                            Navigator.pop(context); // close CashRefundDialog
+                          onTap: () async {
 
-                            showDialog(
+                            final enteredAmount = double.tryParse(amount) ?? 0.0;
+
+                            final result = await showDialog<double>(
                               context: context,
                               barrierDismissible: false,
                               builder: (_) => PaymentSuccessDialog(
-                                amount: double.tryParse(amount) ?? 0.0,
-                                onContinue: widget.onContinue,
+                                amount: enteredAmount,
                               ),
                             );
+
+                            if (result != null) {
+                              Navigator.pop(context, result); // return value to RefundScreen
+                            }
                           },
                         ),
                       ],
@@ -242,7 +246,7 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
               right: 0,
               top: 0,
               child: GestureDetector(
-                onTap: () => Navigator.pop(context),
+                onTap: () =>  Navigator.pop(context, amount),
                 child: const CircleAvatar(
                   radius: 10,
                   backgroundColor: Colors.red,
@@ -333,7 +337,7 @@ class PaymentSuccessDialog extends StatelessWidget {
               height: 56,
               child: GestureDetector(
                 onTap: () {
-                  Navigator.pop(context); // close dialog
+                  Navigator.pop(context,amount); // close dialog
                   if (onContinue != null) onContinue!(); // ✅ trigger callback
                 },
                 child: Container(

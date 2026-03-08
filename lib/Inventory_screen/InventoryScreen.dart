@@ -1321,6 +1321,7 @@ class _InventoryScreenState extends State<InventoryScreen>
           onTypeSelected: (tag) {
             if (tag != null) {
               setState(() {
+                _selectedTags.clear();
                 _selectedTags.add(tag);
               });
             }
@@ -2146,9 +2147,12 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         height: 133,
                                         child: InventoryTagMultiSelectWidget(
                                           onTypeSelected: (tag) {
-                                            if (tag != null)
-                                              setState(
-                                                      () => _selectedTags.add(tag));
+                                            if (tag != null) {
+                                              setState(() {
+                                                _selectedTags.clear();
+                                                _selectedTags.add(tag);
+                                              });
+                                            }
                                           },
                                         ),
                                       ),

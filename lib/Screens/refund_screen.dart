@@ -20,11 +20,10 @@ import '../Repositories/Orders/refund_validation_repository.dart';
 import '../Widgets/refund_checkin_popup.dart';
 
 enum SidebarPosition { left, right, bottom }
+
 enum OrderPanelPosition { left, right }
 
-
 List<String> allData = List.generate(27, (i) => "Item ${i + 1}");
-
 
 class CompletedOrdersScreen extends StatefulWidget {
   const CompletedOrdersScreen({super.key, required int lastSelectedIndex});
@@ -40,7 +39,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   int itemsPerPage = 10;
   final List<int> _rowsPerPageOptions = [10, 20, 50, 100];
   int _rowsPerPage = 10;
-
+  DateTime? selectedDate;
   // final int _rowsPerPage = 10;
   List<int> quantities = [];
 // int _currentPage = 1;
@@ -59,7 +58,6 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   Map<int, String?> selectedTxnPerOrder = {};
   List<String> transactionIdOptions = [];
 
-
   List<CompletedOrder> _orders = [];
   // int _totalPages = 1;
   String _todayStart() {
@@ -73,6 +71,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
     final end = DateTime(now.year, now.month, now.day, 23, 59, 59);
     return end.toIso8601String();
   }
+
   void _paginate() {
     final startIndex = (_currentPage - 1) * _rowsPerPage;
     final endIndex = startIndex + _rowsPerPage;
@@ -83,14 +82,13 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
     );
   }
 
-
-
   void _loadPage(int page) {
     setState(() {
       _currentPage = page;
       _paginate();
     });
   }
+
   void _updatePagination() {
     final startIndex = (_currentPage - 1) * itemsPerPage;
     final endIndex = startIndex + itemsPerPage;
@@ -98,9 +96,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
     setState(() {
       _pagedOrders = filteredOrders.sublist(
         startIndex,
-        endIndex > filteredOrders.length
-            ? filteredOrders.length
-            : endIndex,
+        endIndex > filteredOrders.length ? filteredOrders.length : endIndex,
       );
     });
   }
@@ -142,7 +138,6 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
       sidebarPosition = SidebarPosition.left;
       orderPanelPosition = OrderPanelPosition.right;
     }
-
 
     return Scaffold(
       body: Column(
@@ -195,7 +190,8 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
 
                 /// 🔹 CENTER CONTENT (Completed Orders Table)
                 Expanded(
-                  child: BlocConsumer<CompletedOrdersBloc, CompletedOrdersState>(
+                  child:
+                  BlocConsumer<CompletedOrdersBloc, CompletedOrdersState>(
                     listener: (context, state) {
                       if (state is CompletedOrdersLoaded) {
                         setState(() {
@@ -210,12 +206,12 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
 
                           filteredOrders = _allOrders;
                           _currentPage = 1;
-                          _totalPages = (_allOrders.length / _rowsPerPage).ceil();
+                          _totalPages =
+                              (_allOrders.length / _rowsPerPage).ceil();
                           _paginate();
                         });
                       }
                     },
-
                     builder: (context, state) {
                       if (state is CompletedOrdersLoading) {
                         return const Center(child: CircularProgressIndicator());
@@ -233,7 +229,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                       // Loaded / Initial
                       return Container(
                         margin: const EdgeInsets.all(12),
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
                           color: themeHelper.themeMode == ThemeMode.dark
                               ? ThemeNotifier.primaryBackground
@@ -251,7 +247,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                             /// 🔹 HEADER
                             _buildHeader(),
 
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 12),
 
                             /// 🔹 TABLE
                             Expanded(child: _buildOrderTable(themeHelper)),
@@ -265,7 +261,6 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                     },
                   ),
                 ),
-
 
                 /// 🔹 RIGHT ORDER PANEL (same behavior as Orders)
                 // if (sidebarPosition != SidebarPosition.right)
@@ -308,18 +303,35 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   // ================= HEADER =================
 
   Widget _buildHeader() {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
         const Text(
-          "completed orderlist",
+          "Completed Order List",
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const Spacer(),
-        SizedBox(
+        Container(
           width: 200,
           height: 35,
+          decoration: BoxDecoration(
+            color: isDark
+                ? const Color(0xFF29313F) // 🌙 your dark mode color
+                : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 6,
+                spreadRadius: 1,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
           child: TextField(
             controller: searchController,
+            textAlignVertical:
+            TextAlignVertical.center, // ⭐ centers hint & text vertically
             onChanged: (value) {
               setState(() {
                 if (value.isEmpty) {
@@ -333,16 +345,33 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                   }).toList();
                 }
 
-                _currentPage = 1; // Reset to first page after search
+                _currentPage = 1;
                 _updatePagination();
               });
             },
             decoration: InputDecoration(
               hintText: "Search Order ID",
-              prefixIcon: const Icon(Icons.search),
+              hintStyle: TextStyle(
+                fontFamily: "Inter",
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+                color: isDark ? Colors.white : const Color(0xFF999393),
+              ),
+
+              prefixIcon: Icon(
+                Icons.search,
+                color: isDark ? Colors.white : const Color(0xFF999393),
+                size: 18,
+              ),
               suffixIcon: searchController.text.isNotEmpty
                   ? IconButton(
-                icon: const Icon(Icons.close),
+                icon: Icon(
+                  Icons.close,
+                  color: isDark
+                      ? Colors.white
+                      : const Color(0xFF6B7280), // ⭐ close icon color
+                  size: 18,
+                ),
                 onPressed: () {
                   searchController.clear();
                   setState(() {
@@ -353,221 +382,309 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                 },
               )
                   : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+
+              contentPadding: const EdgeInsets.symmetric(
+                  vertical: 0), // ⭐ keeps text centered
               isDense: true,
             ),
           ),
         ),
         const SizedBox(width: 18),
-        DropdownButtonHideUnderline(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: Theme.of(context).colorScheme.outline,
+        Row(
+          children: [
+            // STATUS DROPDOWN
+            DropdownButtonHideUnderline(
+              child: Container(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: isDark
+                        ? const Color(0xFF4D4E63)
+                        : const Color(0xFFCCCCCC),
+                  ),
+                  borderRadius: BorderRadius.circular(6),
+                  color: isDark ? const Color(0xFF29313F) : Colors.white,
+                ),
+                child: DropdownButton<String>(
+                  value: selectedStatus,
+                  isDense: true,
+                  icon: Icon(
+                    Icons.keyboard_arrow_down,
+                    size: 18,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                  dropdownColor:
+                  isDark ? const Color(0xFF29313F) : Colors.white,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black,
+                    fontSize: 13,
+                  ),
+                  onChanged: (value) {
+                    if (value == null) return;
+
+                    setState(() {
+                      selectedStatus = value;
+
+                      filteredOrders = value == "Completed"
+                          ? _allOrders
+                          .where((o) => o.status == "completed")
+                          .toList()
+                          : _allOrders
+                          .where((o) => o.status == "refund")
+                          .toList();
+
+                      _currentPage = 1;
+                      _updatePagination();
+                    });
+                  },
+                  items: const [
+                    DropdownMenuItem(
+                      value: "Completed",
+                      child: Text("Completed"),
+                    ),
+                    DropdownMenuItem(
+                      value: "Refund",
+                      child: Text("Refund"),
+                    ),
+                  ],
+                ),
               ),
-              borderRadius: BorderRadius.circular(6),
-              color: Theme.of(context).colorScheme.surface,
             ),
-            child: DropdownButton<String>(
-              value: selectedStatus,
-              isDense: true,
 
-              icon: Icon(
-                Icons.keyboard_arrow_down,
-                size: 18,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
+            const SizedBox(width: 8),
 
-              dropdownColor: Theme.of(context).colorScheme.surface,
+            // CALENDAR ICON FILTER
+            InkWell(
+              onTap: () async {
+                final date = await showDatePicker(
+                  context: context,
+                  initialDate: selectedDate ?? DateTime.now(),
+                  firstDate: DateTime(2023),
+                  lastDate: DateTime(2100),
+                );
 
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
+                if (date != null) {
+                  setState(() {
+                    selectedDate = date;
 
-              onChanged: (value) {
-                if (value == null) return;
+                    filteredOrders = _allOrders.where((order) {
+                      DateTime orderDate = order.completedAt;
 
-                setState(() {
-                  selectedStatus = value;
+                      return orderDate.year == date.year &&
+                          orderDate.month == date.month &&
+                          orderDate.day == date.day;
+                    }).toList();
 
-                  filteredOrders = value == "Completed"
-                      ? _allOrders.where((o) => o.status == "completed").toList()
-                      : _allOrders.where((o) => o.status == "refund").toList();
-
-                  _currentPage = 1;
-                  _updatePagination();
-                });
+                    _currentPage = 1;
+                    _updatePagination();
+                  });
+                }
               },
-
-              items: const [
-                DropdownMenuItem(
-                    value: "Completed", child: Text("Completed")),
-                DropdownMenuItem(
-                    value: "Refund", child: Text("Refund")),
-              ],
+              child: Container(
+                padding: const EdgeInsets.all(7),
+                // decoration: BoxDecoration(
+                //   // border: Border.all(
+                //   //   color: Theme.of(context).colorScheme.outline,
+                //   // ),
+                //   borderRadius: BorderRadius.circular(6),
+                //   color: Theme.of(context).colorScheme.surface,
+                // ),
+                child: Icon(
+                  Icons.calendar_today,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
             ),
-          ),
-        ),
+          ],
+        )
       ],
     );
   }
 
   // ================= TABLE =================
 
-  Widget _buildOrderTable(ThemeNotifier themeHelper) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: themeHelper.themeMode == ThemeMode.dark
-            ? const Color(0xFF201F29)
-            : const Color(0xFFF9F9F9),
-      ),
-      child: Column(
-        children: [
-          /// 🔹 TABLE HEADER
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            decoration: const BoxDecoration(
-              color: Color(0xFF6F6F70),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(1)),
-            ),
-            child: Row(
-              children: const [
-                SizedBox(width: 10),
+  Widget _buildOrderTable(ThemeNotifier themeHelper) { bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-                _HeaderCell("Order ID"),
-                _HeaderCell("Order Type"),
-                _HeaderCell("Date"),
-                _HeaderCell("Transaction ID"),
-                // SizedBox(width: 10),
-                _HeaderCell("Payment Type"),
-                _HeaderCell("Amount"),
-                _HeaderCell("Item Tax"),
-                _HeaderCell("Discount"),
-                _HeaderCell("Total"),
-                _HeaderCell("Status"),
-              ],
-            ),
+  return Container(
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(12),
+      color: themeHelper.themeMode == ThemeMode.dark
+          ? const Color(0xFF201F29)
+          : const Color(0xFFF9F9F9),
+    ),
+    child: Column(
+      children: [
+        /// 🔹 TABLE HEADER
+        Container(
+          padding: const EdgeInsets.only(
+            left: 8,
+            right: 0,
+            top: 14,
+            bottom: 14,
           ),
+          decoration: BoxDecoration(
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? const Color(0xFF29313F)
+                : const Color(0xFF6F6F70),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+          ),
+          child: Row(
+            children: const [
+              SizedBox(width: 10),
 
-          /// 🔹 TABLE BODY
-          Expanded(
-            child: ListView.builder(
-              itemCount: _pagedOrders.length,
-              itemBuilder: (context, index) {
-                final order = _pagedOrders[index];
+              _HeaderCell("Order ID"),
+              _HeaderCell("Order Type"),
+              _HeaderCell("Date"),
+              _HeaderCell("Transaction ID"),
+              // SizedBox(width: 10),
+              _HeaderCell("Payment Type"),
+              _HeaderCell("Amount"),
+              _HeaderCell("Item Tax"),
+              _HeaderCell("Discount"),
+              _HeaderCell("Total"),
+              _HeaderCell("Status"),
+            ],
+          ),
+        ),
 
-                return InkWell(
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (dialogContext) {
-                        return BlocProvider(
-                          create: (_) => RefundValidationBloc(
-                            repository: RefundValidationRepository(
-                              baseUrl: "https://merchantretail.alektasolutions.com",
-                            ),
+        /// 🔹 TABLE BODY
+        Expanded(
+          child: ListView.builder(
+            itemCount: _pagedOrders.length,
+            itemBuilder: (context, index) {
+              final order = _pagedOrders[index];
+
+              return InkWell(
+                onTap: () {
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (dialogContext) {
+                      return BlocProvider(
+                        create: (_) => RefundValidationBloc(
+                          repository: RefundValidationRepository(
+                            baseUrl:
+                            "https://merchantretail.alektasolutions.com",
                           ),
-                          child: PinCheckInDialog(order: order),
-                        );
-                      },
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    decoration: const BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: Color(0xFFD8D7D7)),
+                        ),
+                        child: PinCheckInDialog(order: order),
+                      );
+                    },
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.only(
+                    left: 10,
+                    right: 10,
+                    top: 10,
+                    bottom: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF212231) : Colors.white,
+                    border: Border(
+                      bottom: BorderSide(
+                        color: isDark
+                            ? const Color(0xFF4D4E63)   // dark mode border
+                            : const Color(0xFFD8D7D7),  // light mode border
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        _DataCell("#${order.orderId}"),
-                        _DataCell(order.orderType),
-                        _DataCell(
-                            order.completedAt.toString().split(' ').first),
-                        // _DataCell(order.transactionId),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () {},
-                            behavior: HitTestBehavior.opaque,
-                            child: DropdownButtonHideUnderline(
-                              child: Builder(
-                                builder: (context) {
-                                  final List<String> itemsList = [
-                                    order.transactionId.toString(),
-                                    ...transactionIdOptions.map((e) => e.toString()),
-                                  ].toSet().toList();
+                  ),
+                  child: Row(
+                    children: [
+                      _DataCell("#${order.orderId}"),
+                      _DataCell(order.orderType),
+                      _DataCell(
+                          order.completedAt.toString().split(' ').first),
+                      // _DataCell(order.transactionId),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {},
+                          behavior: HitTestBehavior.opaque,
+                          child: DropdownButtonHideUnderline(
+                            child: Builder(
+                              builder: (context) {
+                                final List<String> itemsList = [
+                                  order.transactionId.toString(),
+                                  ...transactionIdOptions
+                                      .map((e) => e.toString()),
+                                ].toSet().toList();
 
-                                  // ✅ Show only first 2 IDs in display
-                                  String displayText = "";
+                                // ✅ Show only first 2 IDs in display
+                                String displayText = "";
 
-                                  if (itemsList.length == 1) {
-                                    displayText = itemsList[0];
-                                  } else if (itemsList.length == 2) {
-                                    displayText = "${itemsList[0]}, ${itemsList[1]}";
-                                  } else if (itemsList.length > 2) {
-                                    displayText = "${itemsList[0]}, ${itemsList[1]}...";
-                                  }
-                                  return DropdownButton<String>(
-                                    value: itemsList.first,
-                                    isDense: true,
-                                    isExpanded: true,
-                                    icon: const SizedBox.shrink(),
-                                    onChanged: (value) {
-                                      setState(() {
-                                        selectedTxnPerOrder[order.orderId] = value!;
-                                      });
-                                    },
-                                    selectedItemBuilder: (context) {
-                                      return itemsList.map((e) {
-                                        return Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: Text(
-                                            displayText,
-                                            style: const TextStyle(fontSize: 14),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        );
-                                      }).toList();
-                                    },
-                                    items: itemsList.map((txn) {
-                                      return DropdownMenuItem<String>(
-                                        value: txn,
+                                if (itemsList.length == 1) {
+                                  displayText = itemsList[0];
+                                } else if (itemsList.length == 2) {
+                                  displayText =
+                                  "${itemsList[0]}, ${itemsList[1]}";
+                                } else if (itemsList.length > 2) {
+                                  displayText =
+                                  "${itemsList[0]}, ${itemsList[1]}...";
+                                }
+                                return DropdownButton<String>(
+                                  value: itemsList.first,
+                                  isDense: true,
+                                  isExpanded: true,
+                                  icon: const SizedBox.shrink(),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedTxnPerOrder[order.orderId] =
+                                      value!;
+                                    });
+                                  },
+                                  selectedItemBuilder: (context) {
+                                    return itemsList.map((e) {
+                                      return Align(
+                                        alignment: Alignment.centerLeft,
                                         child: Text(
-                                          txn,
-                                          style: const TextStyle(fontSize: 12),
+                                          displayText,
+                                          style:
+                                          const TextStyle(fontSize: 14),
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       );
-                                    }).toList(),
-                                  );
-                                },
-                              ),
+                                    }).toList();
+                                  },
+                                  items: itemsList.map((txn) {
+                                    return DropdownMenuItem<String>(
+                                      value: txn,
+                                      child: Text(
+                                        txn,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    );
+                                  }).toList(),
+                                );
+                              },
                             ),
                           ),
                         ),
-                        // const SizedBox(width:5),
-                        _DataCell(order.paymentMethod),
-                        _DataCell(order.amount.toStringAsFixed(2)),
-                        _DataCell(order.tax.toStringAsFixed(2)),
-                        _DataCell(order.discount.toStringAsFixed(2)),
-                        _DataCell(order.total.toStringAsFixed(2)),
-                        const _StatusCell(),
-                      ],
-                    ),
+                      ),
+                      // const SizedBox(width:5),
+                      _DataCell(order.paymentMethod),
+                      _DataCell(order.amount.toStringAsFixed(2)),
+                      _DataCell(order.tax.toStringAsFixed(2)),
+                      _DataCell(order.discount.toStringAsFixed(2)),
+                      _DataCell(order.total.toStringAsFixed(2)),
+                      const _StatusCell(),
+                    ],
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
-        ],
-      ),
-    );
+        ),
+      ],
+    ),
+  );
   }
+
   // ================= PAGINATION =================
   Widget _buildPagination() {
     final int totalItems = _allOrders.length; // make sure you have this
@@ -657,6 +774,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
       ),
     );
   }
+
   Widget _pageButton(int page) {
     final bool selected = _currentPage == page;
 
@@ -684,7 +802,6 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
       ),
     );
   }
-
 }
 
 /// ================= SHARED CELLS =================
@@ -698,7 +815,8 @@ class _HeaderCell extends StatelessWidget {
     return Expanded(
       child: Text(
         text,
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        style:
+        const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -724,7 +842,7 @@ class _StatusCell extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
         decoration: BoxDecoration(
           color: Colors.green.shade100,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: const Text(
           "Completed",

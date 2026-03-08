@@ -55,11 +55,21 @@ class PrinterSettings {
         print("Exception at PrinterSetting.openDrawer as :: $e :: Stack :: $s");
       }
     }
-    if(context != null) {
+    if (context != null) {
+      // First SnackBar: Cash drawer opening
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(TextConstants.cashDrawerIsOpening),
           backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      // Second SnackBar: Order successfully completed
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Order successfully completed"),
+          backgroundColor: Colors.green,
           duration: Duration(seconds: 2),
         ),
       );

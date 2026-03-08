@@ -994,6 +994,8 @@ class NestedGridWidget extends StatelessWidget {
                                           item["fast_key_item_name"],
                                           style: TextStyle(
                                             fontSize: 12,
+
+                                            fontWeight: FontWeight.bold,
                                             color: themeHelper.themeMode == ThemeMode.dark
                                                 ? ThemeNotifier.textDark
                                                 : ThemeNotifier.textLight,
@@ -1008,7 +1010,7 @@ class NestedGridWidget extends StatelessWidget {
                                               '${TextConstants.currencySymbol}${double.tryParse(item["fast_key_item_price"].toString())?.toStringAsFixed(2) ?? "0.00"}',
                                               style: TextStyle(
                                                 fontSize: 12,
-                                                fontWeight: FontWeight.bold,
+                                                fontWeight: FontWeight.w500,
                                                 color: themeHelper
                                                     .themeMode ==
                                                     ThemeMode.dark

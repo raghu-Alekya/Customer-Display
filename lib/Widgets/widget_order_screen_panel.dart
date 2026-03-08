@@ -1968,6 +1968,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                       }
 
                                                       final double originalTotal = unitPrice * qty;
+                                                      // Refund amount (after discounts)
+                                                      final double refundAmount = actualSumPrice;
                                                       final double totalDiscount = multipackDiscount + autoDiscount + comboDiscount;
 
                                                       final bool showStrikethrough = totalDiscount > 0 &&

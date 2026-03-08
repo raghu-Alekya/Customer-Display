@@ -1439,6 +1439,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     if (isPaymentComplete && !_successPopupShown) {
       _successPopupShown = true;
+      // ✅ SHOW SUCCESS SNACKBAR
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Order successfully completed"),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
       final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
       final boxDataKey = await box.get(key);
@@ -8824,6 +8832,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       await box.put(orderKey, order);
 
       print("✅ Single order synced successfully");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Order synced successfully"),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
 
     } catch (e) {
       print("❌ Single order sync error: $e");
