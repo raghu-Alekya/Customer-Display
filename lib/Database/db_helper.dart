@@ -43,7 +43,8 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String merchantDiscountIds = 'merchant_discount_ids'; //Build #1.0.94
   static const String orderTax = 'tax'; // Optional: Tax applied to the order
   static const String orderShipping = 'shipping'; // Optional: Shipping charges
-  static const String orderAgeRestricted = 'age_restricted'; //Build #1.0.234: Added column in order table
+  static const String orderAgeRestricted = 'age_restricted';
+  static const String isEbtEligible = "is_ebt_eligible";//Build #1.0.234: Added column in order table
 
   // Add these new constants for order-level fields
   static const multipackDiscountTotal = 'multipack_discount_total';
@@ -327,6 +328,8 @@ CREATE TABLE ${AppDBConst.orderTable} (
       ${AppDBConst.itemType} TEXT NOT NULL,
      ${AppDBConst.multipack_discount_total} REAL DEFAULT 0, -- correct syntax
      ${AppDBConst.autoDiscountTotal} REAL DEFAULT 0, -- correct syntax
+     -- ADD THIS COLUMN
+     is_ebt_eligible INTEGER DEFAULT 0,
 
      ${AppDBConst.comboDiscountTotal} REAL DEFAULT 0, -- NEW: For "Discount Applied" combo discounts
      ${AppDBConst.displayAutoDiscount} REAL DEFAULT 0, -- NEW: For "auto_discount_amount" display discounts
@@ -638,6 +641,8 @@ CREATE TABLE ${AppDBConst.orderTable} (
         AppDBConst.comboDiscountTotal: item['combo_discount_total'] ?? 0,
         AppDBConst.displayAutoDiscount: item['display_auto_discount'] ?? 0,
         'is_refund_item': (item['is_refund_item'] ?? false) == true ? 1 : 0,
+        /// 🔹 ADD THIS
+        'is_ebt_eligible': item['is_ebt_eligible'] ?? 0,
 
       },
       conflictAlgorithm: ConflictAlgorithm.replace,

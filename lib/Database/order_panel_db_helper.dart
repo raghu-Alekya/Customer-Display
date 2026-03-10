@@ -921,11 +921,31 @@ class OrderHelper {
             " unitPrice: ${apiItem.productData.price ?? "0.0"}");
       }
 
-      final String variationName = apiItem.productVariationData?.metaData
-              ?.firstWhere((e) => e.key == "custom_name",
-                  orElse: () => model.MetaData(id: 0, key: "", value: ""))
-              .value ??
+      String variationName = apiItem.productVariationData?.metaData
+          ?.firstWhere(
+            (e) => e.key == "custom_name",
+        orElse: () => model.MetaData(id: 0, key: "", value: ""),
+      )
+          .value ??
           "";
+
+// 🔹 Fallback → check attribute metadata (pa_*)
+      if (variationName.isEmpty) {
+        for (var meta in apiItem.metaData) {
+          final key = meta.key?.toLowerCase() ?? "";
+          if (key.startsWith("pa_")) {
+            variationName = meta.value?.toString() ?? "";
+            break;
+          }
+        }
+      }
+
+// 🔹 Fallback → use item name
+      if (variationName.isEmpty) {
+        variationName = apiItem.name ?? "";
+      }
+
+      print("🟣 VARIANT NAME -> $variationName");
       final int variationCount = apiItem.productData.variations?.length ?? 0;
       final String combo = apiItem.metaData
               .firstWhere((e) => e.value.contains('Combo'),
@@ -934,7 +954,23 @@ class OrderHelper {
               .split(' ')
               .first ??
           "";
+      bool isEbtEligible = false;
 
+// 🔍 Print all meta keys for debugging
+      for (var meta in apiItem.metaData) {
+        print("META KEY -> ${meta.key} | VALUE -> ${meta.value}");
+      }
+
+// ✅ Detect EBT eligibility
+      isEbtEligible = apiItem.metaData.any((meta) {
+        final key = meta.key?.toString().toLowerCase() ?? "";
+        final value = meta.value?.toString().toLowerCase() ?? "";
+
+        return (key == "is_ebt_eligible" || key == "_is_ebt_eligible") &&
+            (value == "1" || value == "true" || value == "yes");
+      });
+
+      print("EBT RESULT -> $isEbtEligible");
       final bool hasVariations = apiItem.productData.variations != null &&
           apiItem.productData.variations!.isNotEmpty;
       final double salesPrice = hasVariations
@@ -1000,6 +1036,7 @@ class OrderHelper {
             AppDBConst.comboDiscountTotal: apiItem.comboDiscountAmount,
             AppDBConst.displayAutoDiscount: apiItem.displayAutoDiscountAmount,
             AppDBConst.isRefundItem: isRefunded ? 1 : 0,
+            AppDBConst.isEbtEligible: isEbtEligible ? 1 : 0,
           },
           where: '${AppDBConst.itemServerId} = ?',
           whereArgs: [existingItem[AppDBConst.itemServerId]],
@@ -1037,14 +1074,23 @@ class OrderHelper {
           AppDBConst.itemProductId: apiItem.productId,
           AppDBConst.itemVariationId: apiItem.variationId,
           AppDBConst.multipackDiscount: apiItem.multipackDiscountAmount,
-          AppDBConst.autoDiscountTotal: apiItem.displayAutoDiscountAmount,
+          AppDBConst.autoDiscountTotal: apiItem.autoDiscountAmount,
           // NEW: Add combo discount and display auto discount
           AppDBConst.comboDiscountTotal: apiItem.comboDiscountAmount,
           AppDBConst.displayAutoDiscount: apiItem.displayAutoDiscountAmount,
+          AppDBConst.isEbtEligible: isEbtEligible ? 1 : 0,
+
           AppDBConst.isRefundItem: isRefunded ? 1 : 0,
         });
         if (kDebugMode) {
           print("#### DEBUG: Inserted new item ID: $itemId for order $orderId");
+          print(
+            "DB SAVE -> ${apiItem.name} "
+                "AUTO:${apiItem.autoDiscountAmount} "
+                "DISPLAY:${apiItem.displayAutoDiscountAmount} "
+                "COMBO:${apiItem.comboDiscountAmount} "
+                "MULTIPACK:${apiItem.multipackDiscountAmount}",
+          );
         }
       }
     }

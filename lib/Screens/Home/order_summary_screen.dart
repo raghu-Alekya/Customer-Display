@@ -5274,36 +5274,61 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // --------------------------------------------------
     // ✅ DISCOUNT EXTRACTION
     // --------------------------------------------------
+    // -----------------------------
+// DISCOUNT EXTRACTION
+// -----------------------------
     final String discountType =
         orderItem['discount_type']?.toString().toLowerCase() ?? '';
 
-    final double discountValue =
-        double.tryParse(orderItem['auto_discount']?.toString() ?? "0") ?? 0.0;
+    double autoDiscount =
+        (orderItem['auto_discount'] as num?)?.toDouble() ?? 0.0;
 
-    final double autoDiscount =
-    (discountType.isEmpty || discountType == 'auto')
-        ? discountValue
-        : 0.0;
+    double comboDiscount =
+        (orderItem['combo_discount_total'] as num?)?.toDouble() ?? 0.0;
 
-    final double comboDiscount =
-    (discountType == 'combo' || discountType == 'mixmatch')
-        ? discountValue
-        : 0.0;
+    double mixMatchDiscount =
+        (orderItem['mixmatch_discount_total'] as num?)?.toDouble() ?? 0.0;
 
-    final double multipackDiscount =
-    (discountType == 'multipack')
-        ? discountValue
-        : 0.0;
+    double multipackDiscount =
+        (orderItem['multipack_discount_total'] as num?)?.toDouble() ?? 0.0;
 
-    final bool isComboDiscount = comboDiscount > 0;
-    final bool isMultipackDiscount = multipackDiscount > 0;
+    /// 🔥 FIX: backend sometimes moves discount into auto_discount
+    if (discountType == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
+      mixMatchDiscount = autoDiscount;
+      autoDiscount = 0;
+    }
+
+    if (discountType == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
+      comboDiscount = autoDiscount;
+      autoDiscount = 0;
+    }
+
+    if (discountType == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
+      multipackDiscount = autoDiscount;
+      autoDiscount = 0;
+    }
+
+    /// Flags
     final bool hasAutoDiscount = autoDiscount > 0;
-    // --------------------------------------------------
-    // ✅ FINAL PRICE
-    // --------------------------------------------------
-    final double finalItemTotal =
-        originalTotal - autoDiscount - comboDiscount - multipackDiscount;
+    final bool isComboDiscount = comboDiscount > 0 || mixMatchDiscount > 0;
+    final bool isMultipackDiscount = multipackDiscount > 0;
 
+    /// Final price
+    final double finalItemTotal =
+        originalTotal -
+            autoDiscount -
+            comboDiscount -
+            mixMatchDiscount -
+            multipackDiscount;
+
+    print(
+      "SUMMARY ITEM -> ${orderItem['item_name']} "
+          "TYPE:$discountType "
+          "AUTO:$autoDiscount "
+          "COMBO:$comboDiscount "
+          "MIX:$mixMatchDiscount "
+          "MULTIPACK:$multipackDiscount",
+    );
     return Column(
       children: [
         Padding(
@@ -5362,110 +5387,62 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       ),
 
                       /// ROW 2 — BADGES
-                      if (isEbtEligible ||
-                          isVariant ||
-                          isComboDiscount ||
-                          isMultipackDiscount)
-                        SizedBox(
-                          height: 12,
-                          child: Row(
-                            children: [
+    /// ROW 2 — BADGES
+    if (isEbtEligible ||
+    isVariant ||
+    hasAutoDiscount ||
+    isComboDiscount ||
+    isMultipackDiscount)
+    SizedBox(
+    height: 12,
+    child: Row(
+    children: [
 
-                              if (isEbtEligible)
-                                Container(
-                                  height: 14,
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6),
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: Colors.green,
-                                    borderRadius: BorderRadius.circular(3),
-                                  ),
-                                  child: const Text(
-                                    "EBT",
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 8,
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      height: 1.0,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.clip,
-                                  ),
-                                ),
+    if (isEbtEligible)
+    Container(
+    height: 14,
+    padding: const EdgeInsets.symmetric(horizontal: 6),
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+    color: Colors.green,
+    borderRadius: BorderRadius.circular(3),
+    ),
+    child: const Text(
+    "EBT",
+    style: TextStyle(
+    fontSize: 8,
+    color: Colors.white,
+    fontWeight: FontWeight.bold,
+    ),
+    ),
+    ),
 
+    if (isVariant) ...[
+    const SizedBox(width: 5),
+    SvgPicture.asset(
+    SvgUtils.variationIcon,
+    height: 8,
+    width: 8,
+    ),
+    ],
 
-                              if (isVariant) ...[
-                                const SizedBox(width: 5),
-                                SvgPicture.asset(
-                                  SvgUtils.variationIcon,
-                                  height: 8,
-                                  width: 8,
-                                ),
-                              ],
+    if (hasAutoDiscount) ...[
+    const SizedBox(width: 5),
+    _discountBadge("Autodiscount", Colors.red),
+    ],
 
-                              if (isComboDiscount) ...[
-                                _discountBadge("MM", Colors.orange),
-                              ],
+    if (isComboDiscount) ...[
+    const SizedBox(width: 5),
+    _discountBadge("combo discount", Colors.orange),
+    ],
 
-                              if (isMultipackDiscount) ...[
-                                _discountBadge("MP", Colors.blue),
-                              ],
-                            ],
-                          ),
-                        ),
-
-                      /// ROW 3 — AUTO DISCOUNT
-                      if (hasAutoDiscount && !isPayoutOrCoupon)
-                        SizedBox(
-                          height: 12,
-                          child: Text(
-                            "Auto Discount: -${TextConstants
-                                .currencySymbol}${autoDiscount.toStringAsFixed(
-                                2)}",
-                            style: const TextStyle(
-                              fontSize: 12,
-                              height: 1.0,
-                              color: Colors.red,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-
-                      /// ROW 4 — COMBO DISCOUNT
-                      if (isComboDiscount && !isPayoutOrCoupon)
-                        SizedBox(
-                          height: 12,
-                          child: Text(
-                            "Combo Discount: -${TextConstants
-                                .currencySymbol}${comboDiscount.toStringAsFixed(
-                                2)}",
-                            style: const TextStyle(
-                              fontSize: 12,
-                              height: 1.0,
-                              color: Colors.orange,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-
-                      /// ROW 5 — MULTIPACK DISCOUNT
-                      if (isMultipackDiscount && !isPayoutOrCoupon)
-                        SizedBox(
-                          height: 12,
-                          child: Text(
-                            "Multipack Discount: -${TextConstants
-                                .currencySymbol}${multipackDiscount
-                                .toStringAsFixed(2)}",
-                            style: const TextStyle(
-                              fontSize: 12,
-                              height: 1.0,
-                              color: Colors.blue,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
+    if (isMultipackDiscount) ...[
+    const SizedBox(width: 5),
+    _discountBadge("Multipack", Colors.blue),
+    ],
+    ],
+    ),
+    ),
                     ],
                   ),
                 ),
@@ -7738,100 +7715,168 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     });
   }
   Future<void> _applyCoupon(String code) async {
+
     try {
+
       final box = StorageProvider.offlineOrders;
 
-      final String orderKey =
-          widget.orderId?.toString() ??
-              widget.offlineOrderId?.toString() ??
-              "";
+      final String orderKey = widget.orderId?.toString() ??
+
+          widget.offlineOrderId?.toString() ??
+
+          "";
 
       if (orderKey.isEmpty) return;
 
       final rawOrder = await box.get(orderKey);
+
       final offlineOrder = Map<String, dynamic>.from(
+
         rawOrder is Map ? rawOrder : {},
+
       );
 
       if (offlineOrder.isEmpty) return;
 
       // Store coupon locally
+
       offlineOrder["coupon_response"] = {
+
         "coupons": [
+
           {"code": code}
+
         ]
+
       };
+
+      // ✅ Use LOCAL order ID instead of Woo ID for syncing
+
+      final int? localOrderId = int.tryParse(orderKey);
+
+      if (localOrderId != null) {
+
+        offlineOrder["id"] = localOrderId; // critical for local sync
+
+      }
 
       await box.put(orderKey, offlineOrder);
 
       setState(() => isSummaryLoading = true);
 
-      final result =
-      await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+      // Send to repository with local ID
 
-      if (result == null) {
+      final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+
+      if (result == null || result is! Map) {
+
         ScaffoldMessenger.of(context).showSnackBar(
+
           const SnackBar(
+
             content: Text("Invalid coupon or unable to apply"),
+
             backgroundColor: Colors.red,
+
           ),
+
         );
+
         return;
+
       }
 
-      // ⭐ EXTRACT VALUES FROM REPOSITORY RESPONSE
+      // ⭐ Extract values from repository response
+
       final double newDiscount =
-          double.tryParse(result["discount_total"].toString()) ?? 0.0;
+
+          double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
 
       final double newTax =
-          double.tryParse(result["tax"].toString()) ?? tax;
+
+          double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
 
       final double newTotal =
-          double.tryParse(result["total"].toString()) ?? 0.0;
 
+          double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
+
+      // Update offline order fields
 
       offlineOrder["orderDiscount"] = newDiscount;
+
       offlineOrder["tax_discount"] = newTax;
+
       offlineOrder["grand_total"] = newTotal;
+
       offlineOrder["coupon_applied"] = true;
+
       offlineOrder["applied_coupons"] = [
+
         {"code": code, "amount": newDiscount}
+
       ];
+
+      // ✅ Store Woo info if returned, but do NOT send Woo ID next time
+
+      if (result.containsKey("id")) {
+
+        offlineOrder["wooOrderId"] = result["id"];
+
+        offlineOrder["wooStatus"] =
+
+            result["status"]?.toString().toLowerCase() ?? '';
+
+        offlineOrder["synced"] = true;
+
+        offlineOrder["sync_at"] = DateTime.now().toIso8601String();
+
+      }
 
       await box.put(orderKey, offlineOrder);
 
-// 🔥 UPDATE DISPLAY
+      // 🔥 Update display
+
       await CustomerDisplayHelper.updateCustomerDisplay(
-        int.tryParse(orderKey) ?? 0,
+
+        localOrderId!,
+
         summaryEnabled: true,
+
       );
 
-      // ⭐ UPDATE UI LIKE YOUR OLD CODE
       setState(() {
+
         discount = newDiscount;
+
         tax = newTax;
 
         NetTotal = grossTotal - discount;
-        computedNetPayable =
-            NetTotal + tax - merchantDiscount + cashbackFee;
+
+        computedNetPayable = NetTotal + tax - merchantDiscount + cashbackFee;
 
         orderTotal = newTotal;
+
         balanceAmount = newTotal;
 
         isCouponAppliedFromApi = true;
+
       });
 
-      print("✅ Coupon Applied:");
-      print("➡ Discount: $newDiscount");
-      print("➡ Tax: $newTax");
-      print("➡ Total: $newTotal");
+      print("✅ Coupon Applied (local ID $localOrderId): Discount $newDiscount, Tax $newTax, Total $newTotal");
 
     } catch (e) {
+
       print("❌ Apply coupon error: $e");
+
     } finally {
+
       setState(() => isSummaryLoading = false);
+
     }
+
   }
+
+
 
   // Future<void> _applyCoupon(String code) async {
   //   if (widget.orderId == null || widget.orderId == 0) return;

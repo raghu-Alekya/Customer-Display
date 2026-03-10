@@ -465,6 +465,7 @@ class LineItem {
       }
     }
 
+
     // Legacy multipack fields (kept for backward compatibility)
     final String? originalSubtotal = getMetaValue('_pinaka_multipack_original_subtotal');
     final String? multipackUnitPriceBefore =
@@ -525,6 +526,15 @@ class LineItem {
       displayAutoDiscountAmount: displayAutoDiscountAmount,
       isRefundItem: json['is_refund_item'] ?? false,
     );
+  }
+  bool get isEbtEligible {
+    try {
+      return productData.tags.any(
+            (tag) => tag.slug.toLowerCase() == "ebt-eligible",
+      );
+    } catch (_) {
+      return false;
+    }
   }
 
   static String? _extractDisplayMetaValue(

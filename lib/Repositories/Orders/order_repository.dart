@@ -964,6 +964,19 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             item['item_name'] ??
                 item['name'] ??
                 "Product";
+        bool isEbtEligible = item['is_ebt_eligible'] == true ||
+            item['is_ebt_eligible'] == 1 ||
+            item['is_ebt_eligible'] == "1";
+
+        final tags = item['tags'] ?? item['product_data']?['tags'];
+
+        if (tags is List) {
+          isEbtEligible = tags.any(
+                  (t) => (t['slug'] ?? '').toString().toLowerCase() == "ebt-eligible"
+          );
+        }
+
+        debugPrint("🟢 EBT DETECTED response → $isEbtEligible for $name");
 
         // 🔒 HARD BLOCK payout & cashback from products loop
         final String lowerName =
@@ -1089,8 +1102,19 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         // ---------------------------------------------------------
         // ⭐ WooCommerce normal product
         // ---------------------------------------------------------
+        final int? variationId = int.tryParse(
+          item['item_variation_id']?.toString() ??
+              item['variation_id']?.toString() ??
+              item['variationId']?.toString() ??
+              item['itemVariationId']?.toString() ??
+              "0",
+        );
+        debugPrint("🟣 VARIANT ID → ${item['item_variation_id']}");
+        debugPrint("🟣 VARIANT NAME → ${item['item_variation_custom_name']}");
+        debugPrint("🟣 FINAL VARIANT ID SENT → $variationId");
         lineItems.add({
           "product_id": pid,
+          if (variationId != null && variationId > 0) "variation_id": variationId,
           //"name": item['name'] ?? "",
           "quantity": qty,
           "subtotal": subtotal.toStringAsFixed(2),
@@ -1116,6 +1140,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
               "key": "_pos_discount_rule_id",
               "value": ruleId,
             },
+            {
+              "key": "_is_ebt_eligible",
+              "value": isEbtEligible ? "1" : "0",
+            }
           ],
         });
 

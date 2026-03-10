@@ -720,12 +720,25 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
               : int.tryParse(rawQty?.toString() ?? "1") ?? 1;
 
           final double unitPrice = qty > 0 ? total / qty : 0.0;
+          final variationId = item[AppDBConst.itemVariationId] ?? 0;
+          final variationName =
+              item[AppDBConst.itemVariationCustomName]?.toString() ?? "";
 
+
+          /// 🔍 DEBUG PRINTS (ADD HERE) sql
+          print("🟡 Variant: ${item[AppDBConst.itemVariationCustomName]}");
+          print("🟡 Variant ID: ${item[AppDBConst.itemVariationId]}");
+          print("🟡 EBT Eligible: ${item[AppDBConst.isEbtEligible]}");
           processedItems.add({
             ...item,
+
+            /// store only if real variant
+            "attribute_variant": variationId > 0 ? variationName : "",
+            "variant_name": variationId,
+
+            "ebt_eligible": item[AppDBConst.isEbtEligible] ?? 0,
             AppDBConst.itemPrice: unitPrice,
             AppDBConst.itemSumPrice: total,
-
             "is_discount_item": isDiscountItem
           });
         }
@@ -1421,7 +1434,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                             ?.toString()
                             .toLowerCase() ?? '';
 
-                        final bool isEbtEligible = orderItem['is_ebt_eligible'] == true;  // ✅ FIXED
+                        final bool isEbtEligible =
+                            orderItem['ebt_eligible'] == 1 ||
+                                orderItem['is_ebt_eligible'] == 1 ||
+                                orderItem['ebt_eligible'] == true;// ✅ FIXED
+                        final variationId = orderItem["variant_name"] ?? 0;
+                        final variationName = orderItem["attribute_variant"] ?? "";
 
 
                         /// Hide coupons
@@ -1481,10 +1499,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                         /// Get the original name
                         final originalName =
                             orderItem[AppDBConst.itemName]?.toString() ?? '';
-                        final variationName =
-                            orderItem[AppDBConst.itemVariationCustomName]
-                                ?.toString() ??
-                                'N/A';
+                        // final variationName =
+                        //     orderItem[AppDBConst.itemVariationCustomName]?.toString() ?? '';
                         final variationCount =
                             orderItem[AppDBConst.itemVariationCount] ?? 0;
                         final combo = orderItem[AppDBConst.itemCombo] ?? '';
@@ -1752,53 +1768,29 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                       style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.orange),
                                                     ),
                                                   ],
-                                                  variationCount == 0
-                                                      ? SizedBox(
-                                                    width: 0,
-                                                  )
-                                                      : Row(
-                                                    children: [
-                                                      Text(
-                                                        variationName == ''
-                                                            ? ""
-                                                            : "(${variationName ?? ''})",
-                                                        overflow:
-                                                        TextOverflow
-                                                            .ellipsis,
-                                                        style: TextStyle(
+    if (variationId > 0 && variationName.isNotEmpty) ...[
+                                                    const SizedBox(height: 2),
+                                                    Row(
+                                                      children: [
+                                                        Text(
+                                                          "($variationName)",
+                                                          overflow: TextOverflow.ellipsis,
+                                                          style: TextStyle(
                                                             fontSize: 10,
-                                                            color: themeHelper
-                                                                .themeMode ==
-                                                                ThemeMode
-                                                                    .dark
-                                                                ? ThemeNotifier
-                                                                .textDark
-                                                                : Colors
-                                                                .grey),
-                                                      ),
-                                                      SizedBox(
-                                                        width: 4,
-                                                      ),
-                                                      SvgPicture.asset(
-                                                        "assets/svg/variation.svg",
-                                                        height: 10,
-                                                        width: 10,
-                                                      ),
-                                                      SizedBox(
-                                                        width: 4,
-                                                      ),
-                                                      Text(
-                                                        "${variationCount ?? 0}",
-                                                        overflow:
-                                                        TextOverflow
-                                                            .ellipsis,
-                                                        style: TextStyle(
-                                                            fontSize: 10,
-                                                            color: Color(
-                                                                0xFFFE6464)),
-                                                      ),
-                                                    ],
-                                                  ),
+                                                            color: themeHelper.themeMode == ThemeMode.dark
+                                                                ? ThemeNotifier.textDark
+                                                                : Colors.grey,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        SvgPicture.asset(
+                                                          "assets/svg/variation.svg",
+                                                          height: 10,
+                                                          width: 10,
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
                                                 ],
                                               ),
                                               if (isEbtEligible) ...[
