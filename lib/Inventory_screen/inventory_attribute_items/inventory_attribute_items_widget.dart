@@ -1,0 +1,128 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import 'inventory_attribute_items_bloc/inventory_attribute_items_bloc.dart';
+import 'inventory_attribute_items_bloc/inventory_attribute_items_state.dart';
+
+
+
+class InventoryAttributeItemsWidget extends StatefulWidget {
+  final int attributeId;
+
+  final void Function(String itemSlug)? onItemSelected;
+
+  const InventoryAttributeItemsWidget({
+    super.key,
+    required this.attributeId,
+    this.onItemSelected,
+  });
+
+  @override
+  State<InventoryAttributeItemsWidget> createState() =>
+      _InventoryAttributeItemsWidgetState();
+}
+
+class _InventoryAttributeItemsWidgetState
+    extends State<InventoryAttributeItemsWidget> {
+  String? _selectedItemSlug;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final borderColor = isDark ? Colors.grey.shade700 : Colors.grey.shade400;
+    final textColor = isDark ? Colors.white : Colors.black;
+    final hintColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+    final bgColor = isDark ? Colors.grey.shade900 : Colors.white;
+
+    return BlocBuilder<InventoryAttributeItemsBloc,
+        InventoryAttributeItemsState>(
+      builder: (context, state) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.06,
+          width: MediaQuery.of(context).size.width * 0.6,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: bgColor,
+            border: Border.all(color: borderColor),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: _buildDropdown(state, textColor, hintColor, bgColor),
+        );
+      },
+    );
+  }
+
+  Widget _buildDropdown(
+      InventoryAttributeItemsState state,
+      Color textColor,
+      Color hintColor,
+      Color bgColor,
+      ) {
+    List<DropdownMenuItem<String>> dropdownItems = [];
+    String hintText = 'No items found';
+    bool isEnabled = false;
+
+    if (state is InventoryAttributeItemsLoaded && state.items.isNotEmpty) {
+      // Reset selection if slug no longer exists
+      if (_selectedItemSlug != null &&
+          !state.items.any((item) => item.slug == _selectedItemSlug)) {
+        _selectedItemSlug = null;
+      }
+
+      dropdownItems = state.items
+          .map(
+            (item) => DropdownMenuItem<String>(
+          value: item.slug, // 👈 use slug as value
+          child: Center(
+            child: Text(
+              item.name,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: textColor),
+            ),
+          ),
+        ),
+      )
+          .toList();
+
+      hintText = 'Select an item';
+      isEnabled = true;
+    } else if (state is InventoryAttributeItemsLoading) {
+      hintText = 'Loading items...';
+      dropdownItems = [];
+      isEnabled = false;
+    }
+
+    return DropdownButtonFormField<String>(
+      value: _selectedItemSlug,
+      isExpanded: true,
+      isDense: true,
+      dropdownColor: bgColor,
+      decoration: const InputDecoration(
+        border: InputBorder.none,
+        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+      ),
+      hint: Center(
+        child: Text(
+          hintText,
+          style: TextStyle(color: hintColor, fontSize: 14),
+        ),
+      ),
+      items: dropdownItems,
+      onChanged: isEnabled
+          ? (value) {
+        setState(() {
+          _selectedItemSlug = value;
+        });
+
+        if (value != null && widget.onItemSelected != null) {
+          widget.onItemSelected!(value);
+          debugPrint('Selected Item Slug: $value');
+        }
+      }
+          : null,
+      icon: Icon(Icons.arrow_drop_down, size: 24, color: textColor),
+      style: TextStyle(fontSize: 14, color: textColor),
+    );
+  }
+}
