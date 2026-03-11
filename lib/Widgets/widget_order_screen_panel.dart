@@ -5246,6 +5246,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 //   }
 
 
+  //Widget-order-screen panel.
+
   Future _preparePrintTicket() async {
     var header = _printerReceipt?[AppDBConst.receiptHeaderText] ?? "";
     var footer = _printerReceipt?[AppDBConst.receiptFooterText] ?? "";
@@ -5259,7 +5261,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     // Refresh summary values if needed
     if (_order != null) {
       setState(() {
-        balanceAmount = (_order[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0;
+        balanceAmount =
+            (_order[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0;
       });
     }
 
@@ -5290,7 +5293,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     final storePhone = "${merchant?[AppDBConst.storePhone] ?? 'N/A'}";
     final storeName = "${storeDetails?.name ?? 'Store Name'}";
     final address = "${storeDetails?.address ?? ''},";
-    final cityStateZip = "${storeDetails?.city ?? ''},${storeDetails?.state ?? ''}-${storeDetails?.zipCode ?? ''}";
+    final cityStateZip =
+        "${storeDetails?.city ?? ''},${storeDetails?.state ?? ''}-${storeDetails?.zipCode ?? ''}";
     final cashierName = "${userData?[AppDBConst.userDisplayName] ?? 'Cashier'}";
     final cashierRole = "${userData?[AppDBConst.userRole] ?? 'Staff'}";
 
@@ -5305,48 +5309,121 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     final redeemedValue = uiRedeemedValue;
     final netPayable = uiNetPayable;
 
+    String formatCurrency(double amount) {
+      if (amount < 0) {
+        return "-${TextConstants.currencySymbol}${amount.abs().toStringAsFixed(2)}";
+      } else {
+        return "${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}";
+      }
+    }
+
     // ── HEADER ─────────────────────────────────────────────
     if (header.isNotEmpty) {
-      bytes += ticket.row([PosColumn(text: header, width: 12, styles: PosStyles(align: PosAlign.center))]);
+      bytes += ticket.row([
+        PosColumn(
+            text: header, width: 12, styles: PosStyles(align: PosAlign.center))
+      ]);
     }
     bytes += ticket.row([
-      PosColumn(text: "***** INVOICE COPY *****", width: 12, styles: PosStyles(align: PosAlign.center, bold: true)),
+      PosColumn(
+          text: "***** INVOICE COPY *****",
+          width: 12,
+          styles: PosStyles(align: PosAlign.center, bold: true)),
     ]);
     bytes += ticket.feed(1);
 
     bytes += ticket.row([
-      PosColumn(text: storeName, width: 12, styles: PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2)),
+      PosColumn(
+          text: storeName,
+          width: 12,
+          styles: PosStyles(
+              align: PosAlign.center,
+              bold: true,
+              height: PosTextSize.size2,
+              width: PosTextSize.size2)),
     ]);
     bytes += ticket.feed(1);
-    bytes += ticket.row([PosColumn(text: address, width: 12, styles: PosStyles(align: PosAlign.center))]);
-    bytes += ticket.row([PosColumn(text: cityStateZip, width: 12, styles: PosStyles(align: PosAlign.center))]);
-    bytes += ticket.row([PosColumn(text: "Phone: $storePhone", width: 12, styles: PosStyles(align: PosAlign.center, bold: true))]);
+    bytes += ticket.row([
+      PosColumn(
+          text: address, width: 12, styles: PosStyles(align: PosAlign.center))
+    ]);
+    bytes += ticket.row([
+      PosColumn(
+          text: cityStateZip,
+          width: 12,
+          styles: PosStyles(align: PosAlign.center))
+    ]);
+    bytes += ticket.row([
+      PosColumn(
+          text: "Phone: $storePhone",
+          width: 12,
+          styles: PosStyles(align: PosAlign.center, bold: true))
+    ]);
     bytes += ticket.feed(1);
-    bytes += ticket.row([PosColumn(text: "-----------------------------------------------", width: 12)]);
+    bytes += ticket.row([
+      PosColumn(
+          text: "-----------------------------------------------", width: 12)
+    ]);
     bytes += ticket.feed(1);
 
     bytes += ticket.row([
-      PosColumn(text: "Date: $dateToPrint", width: 7, styles: PosStyles(align: PosAlign.left)),
-      PosColumn(text: "Time: $timeToPrint", width: 5, styles: PosStyles(align: PosAlign.left)),
+      PosColumn(
+          text: "Date: $dateToPrint",
+          width: 7,
+          styles: PosStyles(align: PosAlign.left)),
+      PosColumn(
+          text: "Time: $timeToPrint",
+          width: 5,
+          styles: PosStyles(align: PosAlign.left)),
     ]);
     bytes += ticket.row([
-      PosColumn(text: "Cashier: $cashierName", width: 7, styles: PosStyles(align: PosAlign.left)),
-      PosColumn(text: "StoreID: $storeId", width: 5, styles: PosStyles(align: PosAlign.left)),
+      PosColumn(
+          text: "Cashier: $cashierName",
+          width: 7,
+          styles: PosStyles(align: PosAlign.left)),
+      PosColumn(
+          text: "StoreID: $storeId",
+          width: 5,
+          styles: PosStyles(align: PosAlign.left)),
     ]);
     bytes += ticket.row([
-      PosColumn(text: "Role: $cashierRole", width: 7, styles: PosStyles(align: PosAlign.left)),
-      PosColumn(text: "OrderID: $orderIdToPrint", width: 5, styles: PosStyles(align: PosAlign.left)),
+      PosColumn(
+          text: "Role: $cashierRole",
+          width: 7,
+          styles: PosStyles(align: PosAlign.left)),
+      PosColumn(
+          text: "OrderID: $orderIdToPrint",
+          width: 5,
+          styles: PosStyles(align: PosAlign.left)),
     ]);
     bytes += ticket.feed(1);
-    bytes += ticket.row([PosColumn(text: "-----------------------------------------------", width: 12)]);
+    bytes += ticket.row([
+      PosColumn(
+          text: "-----------------------------------------------", width: 12)
+    ]);
 
     // ── ITEMS HEADER ───────────────────────────────────────
     bytes += ticket.row([
-      PosColumn(text: "#", width: 1, styles: PosStyles(align: PosAlign.left, bold: true)),
-      PosColumn(text: "Description", width: 5, styles: PosStyles(align: PosAlign.left, bold: true)),
-      PosColumn(text: "Qty", width: 1, styles: PosStyles(align: PosAlign.center, bold: true)),
-      PosColumn(text: "Rate", width: 2, styles: PosStyles(align: PosAlign.right, bold: true)),
-      PosColumn(text: "Amount", width: 3, styles: PosStyles(align: PosAlign.right, bold: true)),
+      PosColumn(
+          text: "#",
+          width: 1,
+          styles: PosStyles(align: PosAlign.left, bold: true)),
+      PosColumn(
+          text: "Description",
+          width: 5,
+          styles: PosStyles(align: PosAlign.left, bold: true)),
+      PosColumn(
+          text: "Qty",
+          width: 1,
+          styles: PosStyles(align: PosAlign.center, bold: true)),
+      PosColumn(
+          text: "Rate",
+          width: 2,
+          styles: PosStyles(align: PosAlign.right, bold: true)),
+      PosColumn(
+          text: "Amount",
+          width: 3,
+          styles: PosStyles(align: PosAlign.right, bold: true)),
     ]);
     bytes += ticket.feed(1);
 
@@ -5396,19 +5473,22 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
 
         // Fallback: derive from sum if needed
         if (unitPrice == 0.0) {
-          final sum = (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
+          final sum =
+              (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
           if (qty > 0) unitPrice = sum / qty;
         }
       }
 
       // This is what we ALWAYS show in Amount column: rate × qty
       final originalAmount = qty * unitPrice;
-      final formattedAmount = "${TextConstants.currencySymbol}${originalAmount.toStringAsFixed(2)}";
 
       // ── Item-level discounts (shown separately below) ──────
-      final multipackDiscount = (item[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
-      final comboDiscount = (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
-      final autoDiscount = (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
+      final multipackDiscount =
+          (item[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
+      final comboDiscount =
+          (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
+      final autoDiscount =
+          (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
 
       if (!isPayout && !isCoupon && !isCashback) {
         totalMultipack += multipackDiscount;
@@ -5420,9 +5500,18 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       bytes += ticket.row([
         PosColumn(text: "${i + 1}", width: 1),
         PosColumn(text: item[AppDBConst.itemName] ?? "Item", width: 5),
-        PosColumn(text: qty.toInt().toString(), width: 1, styles: PosStyles(align: PosAlign.center)),
-        PosColumn(text: "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)}", width: 2, styles: PosStyles(align: PosAlign.right)),
-        PosColumn(text: formattedAmount, width: 3, styles: PosStyles(align: PosAlign.right)),
+        PosColumn(
+            text: qty.toInt().toString(),
+            width: 1,
+            styles: PosStyles(align: PosAlign.center)),
+        PosColumn(
+            text: formatCurrency(unitPrice),
+            width: 2,
+            styles: PosStyles(align: PosAlign.right)),
+        PosColumn(
+            text: formatCurrency(originalAmount),
+            width: 3,
+            styles: PosStyles(align: PosAlign.right)),
       ]);
 
       // Show discounts below the item (if any)
@@ -5430,21 +5519,30 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
         bytes += ticket.row([
           PosColumn(text: "", width: 1),
           PosColumn(text: "  Multipack Discount", width: 7),
-          PosColumn(text: "-${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+          PosColumn(
+              text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
+              width: 4,
+              styles: PosStyles(align: PosAlign.right)),
         ]);
       }
       if (comboDiscount > 0) {
         bytes += ticket.row([
           PosColumn(text: "", width: 1),
           PosColumn(text: "  Combo Discount", width: 7),
-          PosColumn(text: "-${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+          PosColumn(
+              text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
+              width: 4,
+              styles: PosStyles(align: PosAlign.right)),
         ]);
       }
       if (autoDiscount > 0) {
         bytes += ticket.row([
           PosColumn(text: "", width: 1),
           PosColumn(text: "  Auto Discount", width: 7),
-          PosColumn(text: "-${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+          PosColumn(
+              text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
+              width: 4,
+              styles: PosStyles(align: PosAlign.right)),
         ]);
       }
 
@@ -5452,69 +5550,128 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     }
 
     // ── SUMMARY ────────────────────────────────────────────
-    bytes += ticket.row([PosColumn(text: "-----------------------------------------------", width: 12)]);
+
+    bytes += ticket.row([
+      PosColumn(
+          text: "-----------------------------------------------", width: 12)
+    ]);
     bytes += ticket.row([
       PosColumn(text: TextConstants.grossTotal, width: 8),
-      PosColumn(text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: formatCurrency(grossTotal),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
     bytes += ticket.row([
       PosColumn(text: TextConstants.discountText, width: 8),
-      PosColumn(text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: "-${formatCurrency(discount).replaceAll('-', '')}",
+          width: 4,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
-    bytes += ticket.row([PosColumn(text: "-----------------------------------------------", width: 12)]);
+    bytes += ticket.row([
+      PosColumn(
+          text: "-----------------------------------------------", width: 12)
+    ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.taxText, width: 8),
-      PosColumn(text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: formatCurrency(tax),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
     bytes += ticket.row([
       PosColumn(text: TextConstants.merchantDiscount, width: 8),
-      PosColumn(text: "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: "-${formatCurrency(merchantDiscount).replaceAll('-', '')}",
+          width: 4,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
     bytes += ticket.row([
       PosColumn(text: TextConstants.cashbackFee, width: 8),
-      PosColumn(text: "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: formatCurrency(cashbackFee),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
     bytes += ticket.row([
       PosColumn(text: TextConstants.servicecharges, width: 8),
-      PosColumn(text: "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: formatCurrency(servicecharges),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
-    bytes += ticket.row([PosColumn(text: "-----------------------------------------------", width: 12)]);
+    bytes += ticket.row([
+      PosColumn(
+          text: "-----------------------------------------------", width: 12)
+    ]);
     bytes += ticket.feed(1);
 
     // ── FINAL TOTALS ───────────────────────────────────────
     bytes += ticket.row([
       PosColumn(text: TextConstants.netPayable, width: 8),
-      PosColumn(text: "${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: formatCurrency(netPayable),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
-    bytes += ticket.row([
-      PosColumn(text: "Redeemed Value", width: 8),
-      PosColumn(text: "-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
-    ]);
+
+    if (redeemedValue > 0) {
+      bytes += ticket.row([
+        PosColumn(text: "Redeemed Amount", width: 8),
+        PosColumn(
+            text: "-${formatCurrency(redeemedValue).replaceAll('-', '')}",
+            width: 4,
+            styles: PosStyles(align: PosAlign.right)),
+      ]);
+    }
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByCash, width: 8),
-      PosColumn(text: "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: formatCurrency(payByCash),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByOther, width: 8),
-      PosColumn(text: "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: formatCurrency(payByOther),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.tenderAmount, width: 8),
-      PosColumn(text: "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: formatCurrency(tenderAmount),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.change, width: 8),
-      PosColumn(text: "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: formatCurrency(changeAmount),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.feed(2);
 
     if (footer.isNotEmpty) {
-      bytes += ticket.row([PosColumn(text: footer, width: 12, styles: PosStyles(align: PosAlign.center))]);
+      bytes += ticket.row([
+        PosColumn(
+            text: footer, width: 12, styles: PosStyles(align: PosAlign.center))
+      ]);
     }
     bytes += ticket.feed(2);
-    bytes += ticket.row([PosColumn(text: "-----------------------------------------------", width: 12)]);
+    bytes += ticket.row([
+      PosColumn(
+          text: "-----------------------------------------------", width: 12)
+    ]);
   }
 
 
