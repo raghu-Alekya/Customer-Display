@@ -9954,6 +9954,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     bytes += ticket.feed(1);
 
+    String formatCurrency(double amount) {
+      if (amount < 0) {
+        return "-${TextConstants.currencySymbol}${amount.abs().toStringAsFixed(2)}";
+      } else {
+        return "${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}";
+      }
+    }
+
     // -------------------------------
     // ITEMS LOOP (with Combo Discount added)
     // -------------------------------
@@ -9971,13 +9979,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       bool isCashback = type.contains("cashback");
       bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
 
-      String formattedRate = isCoupon || isPayout
-          ? "-${TextConstants.currencySymbol}${unitPrice.abs().toStringAsFixed(2)}"
-          : "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)}";
-
-      String formattedTotal = isCoupon || isPayout
-          ? "-${TextConstants.currencySymbol}${lineTotal.abs().toStringAsFixed(2)}"
-          : "${TextConstants.currencySymbol}${lineTotal.toStringAsFixed(2)}";
+      String formattedRate = formatCurrency(unitPrice);
+      String formattedTotal = formatCurrency(lineTotal);
 
       bytes += ticket.row([
         PosColumn(text: "${i + 1}", width: 1),
@@ -10017,8 +10020,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         bytes += ticket.row([
           PosColumn(text: "Auto Discount", width: 9),
           PosColumn(
-            text:
-                "-${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
+            text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
             width: 3,
             styles: PosStyles(align: PosAlign.right),
           ),
@@ -10030,8 +10032,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         bytes += ticket.row([
           PosColumn(text: "Combo Discount", width: 9),
           PosColumn(
-            text:
-                "-${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}",
+            text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
             width: 3,
             styles: PosStyles(align: PosAlign.right),
           ),
@@ -10043,8 +10044,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         bytes += ticket.row([
           PosColumn(text: "Multipack Discount", width: 9),
           PosColumn(
-            text:
-                "-${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}",
+            text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
             width: 3,
             styles: PosStyles(align: PosAlign.right),
           ),
@@ -10066,7 +10066,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.row([
       PosColumn(text: TextConstants.grossTotal, width: 8),
       PosColumn(
-        text: "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}",
+        text: formatCurrency(grossTotal),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -10075,7 +10075,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.row([
       PosColumn(text: TextConstants.discountText, width: 8),
       PosColumn(
-        text: "-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}",
+        text: "-${formatCurrency(discount).replaceAll('-', '')}",
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -10084,7 +10084,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.row([
       PosColumn(text: TextConstants.taxText, width: 8),
       PosColumn(
-        text: "${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}",
+        text: formatCurrency(tax),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -10093,8 +10093,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.row([
       PosColumn(text: TextConstants.merchantDiscount, width: 8),
       PosColumn(
-        text:
-            "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
+        text: "-${formatCurrency(merchantDiscount).replaceAll('-', '')}",
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -10104,8 +10103,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       bytes += ticket.row([
         PosColumn(text: TextConstants.cashbackFee, width: 8),
         PosColumn(
-          text:
-              "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
+          text: formatCurrency(cashbackFee),
           width: 4,
           styles: PosStyles(align: PosAlign.right),
         ),
@@ -10115,8 +10113,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.row([
       PosColumn(text: TextConstants.servicecharges, width: 8),
       PosColumn(
-        text:
-            "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}",
+        text: formatCurrency(servicecharges),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -10132,7 +10129,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.row([
       PosColumn(text: TextConstants.netPayable, width: 8),
       PosColumn(
-        text: "${TextConstants.currencySymbol}${orderTotal.toStringAsFixed(2)}",
+        text: formatCurrency(orderTotal),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -10142,8 +10139,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       bytes += ticket.row([
         PosColumn(text: "Redeemed Amount", width: 8),
         PosColumn(
-          text:
-              "-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}",
+          text: "-${formatCurrency(redeemedValue).replaceAll('-', '')}",
           width: 4,
           styles: PosStyles(align: PosAlign.right),
         ),
@@ -10153,7 +10149,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByCash, width: 8),
       PosColumn(
-        text: "${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}",
+        text: formatCurrency(payByCash),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -10162,7 +10158,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByOther, width: 8),
       PosColumn(
-        text: "${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}",
+        text: formatCurrency(payByOther),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -10171,8 +10167,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.row([
       PosColumn(text: TextConstants.tenderAmount, width: 8),
       PosColumn(
-        text:
-            "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
+        text: formatCurrency(tenderAmount),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -10181,8 +10176,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.row([
       PosColumn(text: TextConstants.change, width: 8),
       PosColumn(
-        text:
-            "${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}",
+        text: formatCurrency(changeAmount),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
