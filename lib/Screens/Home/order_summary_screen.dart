@@ -3340,12 +3340,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 //     );
 //   }
 
-  Future<void> _callCreatePaymentAPI({
-    bool skipPopup = false,
-    double? amountOverride,
-  }) async {
+  Future<void> _callCreatePaymentAPI({bool skipPopup = false}) async {
     if (kDebugMode) {
-      print("###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount, skipPopup: $skipPopup");
+      print(
+          "###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount, skipPopup: $skipPopup");
     }
 
     final now = DateTime.now();
@@ -3357,14 +3355,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     if (offline_PAYMENT_SUCCESS) {
       if (kDebugMode) print("⚡ FAKE PAYMENT SUCCESS MODE ACTIVE ⚡");
 
-      final double amount = (amountOverride != null)
-          ? amountOverride.clamp(0.0, double.infinity)
-          : (double.tryParse(
-        amountController.text
-            .replaceAll(TextConstants.currencySymbol, '')
-            .trim(),
-      ) ??
-          0.0);
+      double amount = double.tryParse(
+            amountController.text
+                .replaceAll(TextConstants.currencySymbol, '')
+                .trim(),
+          ) ??
+          0.0;
 
       final double currentBalance = balanceAmount;
       final double newTender = tenderAmount + amount;
@@ -3425,8 +3421,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         final key = (orderId ?? 0).toString();
         final d = await box.get(key);
         final cr = d is Map ? d["coupon_response"] : null;
-        final couponResponse = cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
-
+        final couponResponse =
+            cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
 
         // Update Hive order status
         // final box = StorageProvider.offlineOrders;
@@ -3451,10 +3447,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         print("🟡 SHOWING PARTIAL PAYMENT DIALOG");
         _showPartialPaymentDialog(context, amount);
       }
-
-
-
-
 
       // ─── Save fake payment locally ───
       _lastPayment = LastPaymentInfo(
@@ -3483,12 +3475,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       );
 
       try {
-        final saved = await LocalPaymentDBHelper.instance.savePayment(localPayment);
+        final saved =
+            await LocalPaymentDBHelper.instance.savePayment(localPayment);
         _lastPayment?.paymentId = "local_${saved.id}";
         _updateHivePaymentData(localPayment);
 
         if (kDebugMode) {
-          print(" offline  payment saved → ID: ${saved.id}, Amount: $amount, New balance: $newBalance");
+          print(
+              " offline  payment saved → ID: ${saved.id}, Amount: $amount, New balance: $newBalance");
         }
       } catch (e) {
         print("✗ Failed to save fake payment: $e");
@@ -3513,14 +3507,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       return;
     }
 
-    double amount = (amountOverride != null)
-        ? amountOverride.clamp(0.0, double.infinity)
-        : (double.tryParse(
-      amountController.text
-          .replaceAll(TextConstants.currencySymbol, '')
-          .trim(),
-    ) ??
-        0.0);
+    double amount = double.tryParse(
+          amountController.text
+              .replaceAll(TextConstants.currencySymbol, '')
+              .trim(),
+        ) ??
+        0.0;
 
     if (!isCard) {
       if (amount < 0) {
@@ -4120,17 +4112,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   void _showCouponAppliedSnackBar(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ScaffoldMessenger.of(context).showSnackBar(
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
         const SnackBar(
-          content: Text("Coupon already applied. Remove coupon to go back."),
+          content: Text(
+            "Coupon already applied. Remove coupon to go back.",
+          ),
           duration: Duration(seconds: 3),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.orange,
         ),
       );
-    });
   }
+
   Widget _buildNavigationBar() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final theme = Theme.of(context);
@@ -4187,48 +4181,23 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           InkWell(
             borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
             onTap: () async {
-              final box = StorageProvider.offlineOrders;
-
-              final String orderKey =
-                  orderId?.toString() ??
-                      widget.offlineOrderId?.toString() ??
-                      "";
-
-              final rawOrder = await box.get(orderKey);
-
-              final latestOrder = Map<String, dynamic>.from(
-                rawOrder is Map ? rawOrder : {},
-              );
-
-              print("LATEST ORDER -> $latestOrder");
-
-              final bool couponExists =
-                  latestOrder["coupon_applied"] == true;
-
-              print("coupon_applied: ${latestOrder["coupon_applied"]}");
-              print("couponExists: $couponExists");
-              if (couponExists) {
-                print("🚨 Showing snackbar");
-                _showCouponAppliedSnackBar(context);
-                return;
-              }
-
               // Use the most accurate remaining value
               final double effectiveRemaining =
-              (_currentPaymentRemainingBalance != null &&
-                  _currentPaymentRemainingBalance! > 0)
-                  ? _currentPaymentRemainingBalance!
-                  : balanceAmount;
+                  (_currentPaymentRemainingBalance != null &&
+                          _currentPaymentRemainingBalance! > 0)
+                      ? _currentPaymentRemainingBalance!
+                      : balanceAmount;
 
               // Check if payments and voids cancel each other out (net zero effect)
 // NEW (fixed):
-              final payments = await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId ?? 0);
+              final payments = await LocalPaymentDBHelper.instance
+                  .getPaymentsByOrderId(orderId ?? 0);
               final bool hasAnyPaymentBeenMade = payments.isNotEmpty;
               double netAmount = payments.fold(0.0, (sum, p) => sum + p.amount);
-              final bool hasNetPayment = netAmount.abs() > 0.01; // net effect is non-zero
+              final bool hasNetPayment =
+                  netAmount.abs() > 0.01; // net effect is non-zero
 
               final bool hasDiscount = discount > 0;
-
 
               // 🔹 Always update customer display to non-summary mode
               await CustomerDisplayHelper.updateCustomerDisplay(
@@ -4240,8 +4209,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 // ─── Show confirmation only when payment started or discount exists ───
                 if (kDebugMode) {
                   print("Back button → showing exit confirmation");
-                  print("   • Effective remaining: \$${effectiveRemaining.toStringAsFixed(2)}");
-                  print("   • Tender so far:       \$${tenderAmount.toStringAsFixed(2)}");
+                  print(
+                      "   • Effective remaining: \$${effectiveRemaining.toStringAsFixed(2)}");
+                  print(
+                      "   • Tender so far:       \$${tenderAmount.toStringAsFixed(2)}");
                   print(
                       "   • Current session rem: ${_currentPaymentRemainingBalance != null ? '\$${_currentPaymentRemainingBalance!.toStringAsFixed(2)}' : 'none'}");
                 }
@@ -4257,8 +4228,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
               Navigator.of(context).pop();
             },
-
-
             child: Container(
               height: 40,
               width: ResponsiveLayout.getWidth(90),
@@ -4267,7 +4236,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 color: themeHelper.themeMode == ThemeMode.dark
                     ? ThemeNotifier.secondaryBackground
                     : Color(0xFF46566F),
-                borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                borderRadius:
+                    BorderRadius.circular(ResponsiveLayout.getRadius(8)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.05),
@@ -4299,6 +4269,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               ),
             ),
           ),
+
           const SizedBox(width: 70),
 
           const SizedBox(width: 160),
@@ -5367,12 +5338,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final String discountType =
         orderItem['discount_type']?.toString().toLowerCase() ?? '';
 
-    // Prefer DB/Hive canonical keys (auto_discount_total etc.), fallback to legacy auto_discount.
-    double autoDiscount = (orderItem[AppDBConst.autoDiscountTotal] as num?)
-        ?.toDouble() ??
-        (orderItem['auto_discount_total'] as num?)?.toDouble() ??
-        (orderItem['auto_discount'] as num?)?.toDouble() ??
-        0.0;
+    double autoDiscount =
+        (orderItem['auto_discount'] as num?)?.toDouble() ?? 0.0;
+
     double comboDiscount =
         (orderItem['combo_discount_total'] as num?)?.toDouble() ?? 0.0;
 
@@ -5945,14 +5913,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
           return type == 'cashback' || type == 'payout';
         });
-    double effectiveBalance =
-        _currentPaymentRemainingBalance ?? balanceAmount;
-
-// Balance used for suggestions
-    double suggestedBalance =
-    selectedPaymentMethod == TextConstants.ebtText
-        ? (ebtTotal > 0 ? min(ebtTotal, effectiveBalance) : effectiveBalance)
-        : effectiveBalance;
     return Container(
       // Remove the fixed height constraint to let it match the left container
       margin: EdgeInsets.only(
@@ -6321,170 +6281,255 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                             // PaymentNumPad with modified logic
                                             Expanded(
                                               child: PaymentNumPad(
-                                                numPadType: CustomTypeNumPad.payment,
-                                                isDarkTheme: themeHelper.themeMode == ThemeMode.dark,
-                                                getPaidAmount: () => amountController.text,
-
-                                                balanceAmount: suggestedBalance,
-
+                                                numPadType:
+                                                    CustomTypeNumPad.payment,
+                                                isDarkTheme:
+                                                    themeHelper.themeMode ==
+                                                        ThemeMode.dark,
+                                                getPaidAmount: () =>
+                                                    amountController.text,
+                                                balanceAmount:
+                                                    selectedPaymentMethod ==
+                                                            TextConstants
+                                                                .ebtText
+                                                        ? min(
+                                                            ebtTotal,
+                                                            _currentPaymentRemainingBalance ??
+                                                                balanceAmount,
+                                                          )
+                                                        : (_currentPaymentRemainingBalance ??
+                                                            balanceAmount),
                                                 onDigitPressed: (value) {
-                                                  _userManuallyEnteredAmount = true;
+                                                  _userManuallyEnteredAmount =
+                                                      true; // User touched → block future auto-fill
 
-                                                  int digit = value == '00' ? 0 : int.tryParse(value) ?? 0;
+                                                  int digit = value == '00'
+                                                      ? 0
+                                                      : int.tryParse(value) ??
+                                                          0;
 
-                                                  int newAmount =
-                                                  value == '00' ? _rawAmount * 100 : _rawAmount * 10 + digit;
+                                                  int newAmount = value == '00'
+                                                      ? _rawAmount * 100
+                                                      : _rawAmount * 10 + digit;
 
                                                   int maxAmount;
+                                                  double effectiveBalance =
+                                                      _currentPaymentRemainingBalance ??
+                                                          balanceAmount;
 
-                                                  if (selectedPaymentMethod == TextConstants.ebtText) {
-                                                    double ebtLimit =
-                                                    ebtTotal > 0 ? min(ebtTotal, effectiveBalance) : effectiveBalance;
-                                                    maxAmount = (ebtLimit * 100).toInt();
-                                                  } else if (selectedPaymentMethod == TextConstants.card) {
-                                                    maxAmount = (effectiveBalance * 100).toInt();
+                                                  if (selectedPaymentMethod ==
+                                                      TextConstants.ebtText) {
+                                                    maxAmount = (min(ebtTotal,
+                                                                effectiveBalance) *
+                                                            100)
+                                                        .toInt();
+                                                  } else if (selectedPaymentMethod ==
+                                                      TextConstants.card) {
+                                                    maxAmount =
+                                                        (effectiveBalance * 100)
+                                                            .toInt();
                                                   } else {
                                                     maxAmount = 999999999;
                                                   }
 
-                                                  if (newAmount > maxAmount) return;
+                                                  if (newAmount > maxAmount)
+                                                    return;
 
                                                   _rawAmount = newAmount;
-
-                                                  double displayValue = _rawAmount / 100;
-
+                                                  double displayValue =
+                                                      _rawAmount / 100.0;
                                                   amountController.text =
-                                                  '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+                                                      '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
                                                   setState(() {
-                                                    _isAmountEntered = _rawAmount != 0;
+                                                    _isAmountEntered =
+                                                        _rawAmount != 0;
                                                   });
                                                 },
-
                                                 onClearPressed: () {
-                                                  _userManuallyEnteredAmount = true;
+                                                  _userManuallyEnteredAmount =
+                                                      true;
 
                                                   _rawAmount = 0;
-                                                  amountController.text = '${TextConstants.currencySymbol}0.00';
+                                                  amountController.text =
+                                                      '${TextConstants.currencySymbol}0.00';
                                                   _amountErrorText = null;
 
                                                   setState(() {
                                                     _isAmountEntered = false;
                                                   });
                                                 },
-
                                                 onDeletePressed: () {
-                                                  _userManuallyEnteredAmount = true;
+                                                  _userManuallyEnteredAmount =
+                                                      true;
 
                                                   _rawAmount = _rawAmount ~/ 10;
-
-                                                  double displayValue = _rawAmount / 100;
-
+                                                  double displayValue =
+                                                      _rawAmount / 100.0;
                                                   amountController.text =
-                                                  '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+                                                      '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
                                                   setState(() {
-                                                    _isAmountEntered = _rawAmount != 0;
+                                                    _isAmountEntered =
+                                                        _rawAmount != 0;
                                                   });
                                                 },
+                                                onQuickAmountSelected:
+                                                    (double selectedAmount) {
+                                                  _userManuallyEnteredAmount =
+                                                      true;
 
-                                                onQuickAmountSelected: (double selectedAmount) {
-                                                  _userManuallyEnteredAmount = true;
+                                                  double amountToUse =
+                                                      selectedAmount;
 
-                                                  double amountToUse = selectedAmount;
-
-                                                  if (selectedPaymentMethod == TextConstants.ebtText && ebtTotal > 0) {
-                                                    amountToUse = min(selectedAmount, ebtTotal);
+                                                  if (selectedPaymentMethod ==
+                                                      TextConstants.ebtText) {
+                                                    amountToUse = min(
+                                                        selectedAmount,
+                                                        ebtTotal);
                                                   }
+                                                  // For cash/card/wallet → allow full selectedAmount (even > balance)
 
-                                                  _rawAmount = (amountToUse * 100).round();
-
+                                                  _rawAmount =
+                                                      (amountToUse * 100)
+                                                          .round();
                                                   amountController.text =
-                                                  '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+                                                      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
 
                                                   setState(() {
                                                     _amountErrorText = null;
-                                                    _isAmountEntered = _rawAmount > 0;
+                                                    _isAmountEntered =
+                                                        _rawAmount > 0;
                                                   });
 
-                                                  print("Quick selected → $amountToUse (user picked $selectedAmount)");
+                                                  print(
+                                                      "Quick selected → $amountToUse (user picked $selectedAmount)");
                                                 },
-
                                                 onPayPressed: () async {
-                                                  String cleanAmount = amountController.text
-                                                      .replaceAll(TextConstants.currencySymbol, '')
-                                                      .trim();
+                                                  String cleanAmount =
+                                                      amountController.text
+                                                          .replaceAll(
+                                                              TextConstants
+                                                                  .currencySymbol,
+                                                              '')
+                                                          .trim();
 
-                                                  double amount = double.tryParse(cleanAmount) ?? 0.0;
+                                                  double amount =
+                                                      double.tryParse(
+                                                              cleanAmount) ??
+                                                          0.0;
 
-                                                  double previousBalance = effectiveBalance;
+                                                  double effectiveBalance =
+                                                      _currentPaymentRemainingBalance ??
+                                                          balanceAmount;
 
+                                                  _amountErrorText = null;
+
+                                                  // Calculations (your existing logic)
+                                                  double previousBalance =
+                                                      effectiveBalance;
                                                   double newBalance =
-                                                  (effectiveBalance - amount).clamp(0, double.infinity);
-
-                                                  double newTenderAmount = tenderAmount + amount;
-
+                                                      (effectiveBalance -
+                                                              amount)
+                                                          .clamp(0,
+                                                              double.infinity);
+                                                  double newTenderAmount =
+                                                      tenderAmount + amount;
                                                   double newChange = 0.0;
 
-                                                  if (amount > effectiveBalance) {
-                                                    newChange = amount - effectiveBalance;
+                                                  if (amount >
+                                                      effectiveBalance) {
+                                                    newChange = amount -
+                                                        effectiveBalance;
                                                     newBalance = 0.0;
                                                   }
 
+                                                  // Update UI
                                                   setState(() {
                                                     balanceAmount = newBalance;
-                                                    tenderAmount = newTenderAmount;
+                                                    tenderAmount =
+                                                        newTenderAmount;
                                                     changeAmount = newChange;
 
-                                                    if (selectedPaymentMethod == TextConstants.cash) {
+                                                    if (selectedPaymentMethod ==
+                                                        TextConstants.cash) {
                                                       payByCash += amount;
-                                                    } else if (selectedPaymentMethod == TextConstants.ebtText) {
+                                                    } else if (selectedPaymentMethod ==
+                                                        TextConstants.ebtText) {
                                                       payByEbt += amount;
-                                                      ebtTotal = (ebtTotal - amount).clamp(0, double.infinity);
+                                                      ebtTotal = (ebtTotal -
+                                                              amount)
+                                                          .clamp(0,
+                                                              double.infinity);
                                                     }
 
                                                     isPaymentStarted = true;
 
                                                     int newPaymentNumber =
-                                                        (_lastPaymentDetails?['paymentNumber'] ?? 0) + 1;
+                                                        (_lastPaymentDetails?[
+                                                                    'paymentNumber'] ??
+                                                                0) +
+                                                            1;
 
                                                     if (newBalance > 0) {
-                                                      _currentPaymentRemainingBalance = newBalance;
-
+                                                      _currentPaymentRemainingBalance =
+                                                          newBalance;
                                                       _lastPaymentDetails = {
                                                         'amount': amount,
-                                                        'method': selectedPaymentMethod,
-                                                        'remainingBalance': newBalance,
-                                                        'previousBalance': previousBalance,
-                                                        'datetime': DateTime.now().toIso8601String(),
-                                                        'paymentNumber': newPaymentNumber,
-                                                        'totalPaid': newTenderAmount,
+                                                        'method':
+                                                            selectedPaymentMethod,
+                                                        'remainingBalance':
+                                                            newBalance,
+                                                        'previousBalance':
+                                                            previousBalance,
+                                                        'datetime': DateTime
+                                                                .now()
+                                                            .toIso8601String(),
+                                                        'paymentNumber':
+                                                            newPaymentNumber,
+                                                        'totalPaid':
+                                                            newTenderAmount,
                                                       };
                                                     } else {
-                                                      _currentPaymentRemainingBalance = null;
-                                                      _lastPaymentDetails = null;
+                                                      _currentPaymentRemainingBalance =
+                                                          null;
+                                                      _lastPaymentDetails =
+                                                          null;
                                                     }
                                                   });
 
-                                                  // Reset numpad
+                                                  // ────────────────────────────────────────────────
+                                                  // CRITICAL CHANGE: RESET TO 0.00 — BUT DO NOT AUTO-FILL
+                                                  // ────────────────────────────────────────────────
                                                   _rawAmount = 0;
-                                                  amountController.text = '${TextConstants.currencySymbol}0.00';
+                                                  amountController.text =
+                                                      '${TextConstants.currencySymbol}0.00';
                                                   _isAmountEntered = false;
 
+                                                  // DO NOT call _autoFillRemainingBalance() here anymore!
+                                                  // Only reset — let user decide next amount
+
+                                                  // Show dialogs (your existing logic)
                                                   if (newBalance > 0) {
-                                                    _showPartialPaymentDialog(context, amount);
+                                                    _showPartialPaymentDialog(
+                                                        context, amount);
                                                   } else {
                                                     _successPopupShown = true;
-
-                                                    final box = StorageProvider.offlineOrders;
-                                                    final key = (orderId ?? 0).toString();
-                                                    final boxData = await box.get(key);
-
-                                                    final cr =
-                                                    boxData is Map ? (boxData)["coupon_response"] : null;
-
-                                                    final couponResponse = cr is Map
-                                                        ? Map<String, dynamic>.from(cr)
+                                                    final box = StorageProvider
+                                                        .offlineOrders;
+                                                    final key = (orderId ?? 0)
+                                                        .toString();
+                                                    final boxData =
+                                                        await box.get(key);
+                                                    final cr = boxData is Map
+                                                        ? (boxData as Map)[
+                                                            "coupon_response"]
+                                                        : null;
+                                                    final couponResponse = cr
+                                                            is Map
+                                                        ? Map<String,
+                                                                dynamic>.from(
+                                                            cr as Map)
                                                         : <String, dynamic>{};
 
                                                     _showPaymentDialog(
@@ -6492,19 +6537,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       newTenderAmount,
                                                       changeAmount: newChange,
                                                       showChange: newChange > 0,
-                                                      couponResponse: couponResponse,
+                                                      couponResponse:
+                                                          couponResponse,
                                                     );
                                                   }
 
+                                                  // Background API
                                                   _callCreatePaymentAPI(
-                                                    skipPopup: true,
-                                                    amountOverride: amount,
-                                                  );
+                                                      skipPopup: true);
                                                 },
-
                                                 isLoading: isLoading,
                                               ),
-                                            )
+                                            ),
                                           ],
                                         ),
                                       ),
@@ -7654,9 +7698,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final box = StorageProvider.offlineOrders;
 
       final String orderKey =
-          widget.orderId?.toString() ??
-              widget.offlineOrderId?.toString() ??
-              "";
+          widget.orderId?.toString() ?? widget.offlineOrderId?.toString() ?? "";
 
       if (orderKey.isEmpty) return;
 
@@ -7670,15 +7712,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       setState(() => isSummaryLoading = true);
 
       // 🔥 CLEAR COUPON BEFORE SYNC
-      offlineOrder["coupon_response"] = {
-        "coupons": []
-      };
+      offlineOrder["coupon_response"] = {"coupons": []};
 
       await box.put(orderKey, offlineOrder);
 
       // 🔥 CALL SAME SYNC METHOD
       final result =
-      await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+          await OrderRepository().syncSingleOfflineOrder(offlineOrder);
 
       if (result == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -7701,11 +7741,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         newDiscount =
             double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
       }
-      newTax =
-          double.tryParse(result["tax"]?.toString() ?? "0") ?? 0.0;
-      newTotal =
-          double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
-
+      newTax = double.tryParse(result["tax"]?.toString() ?? "0") ?? 0.0;
+      newTotal = double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
 
       offlineOrder["orderDiscount"] = couponLines.isEmpty ? 0.0 : newDiscount;
       offlineOrder["tax_discount"] = newTax;
@@ -7720,23 +7757,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       );
 
       setState(() {
-        discount = newDiscount;
+        discount = newDiscount; // should become 0
         tax = newTax;
 
         NetTotal = grossTotal - discount;
-        computedNetPayable =
-            NetTotal + tax - merchantDiscount + cashbackFee;
+        computedNetPayable = NetTotal + tax - merchantDiscount + cashbackFee;
 
         orderTotal = newTotal;
         balanceAmount = newTotal - tenderAmount;
 
-        // 🔥 reset coupon states
         isCouponAppliedFromApi = false;
-        isCouponActive = false;
-        couponValue = 0;
-
-        // update local order reference
-        this.offlineOrder = offlineOrder;
       });
 
       print("🗑 Coupon Removed");
@@ -7750,14 +7780,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           backgroundColor: Colors.green,
         ),
       );
-
     } catch (e) {
       print("❌ Remove coupon error: $e");
     } finally {
       setState(() => isSummaryLoading = false);
     }
   }
-
 
   void _openCouponPopup() {
     ScannerGuard.isCouponPopupOpen = true;
@@ -7928,13 +7956,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final box = StorageProvider.offlineOrders;
 
       final String orderKey =
-          widget.orderId?.toString() ??
-              widget.offlineOrderId?.toString() ??
-              "";
+          widget.orderId?.toString() ?? widget.offlineOrderId?.toString() ?? "";
 
       if (orderKey.isEmpty) return;
 
       final rawOrder = await box.get(orderKey);
+
       final offlineOrder = Map<String, dynamic>.from(
         rawOrder is Map ? rawOrder : {},
       );
@@ -7942,76 +7969,106 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (offlineOrder.isEmpty) return;
 
       // Store coupon locally
+
       offlineOrder["coupon_response"] = {
         "coupons": [
           {"code": code}
         ]
       };
 
+      // ✅ Use LOCAL order ID instead of Woo ID for syncing
+
+      final int? localOrderId = int.tryParse(orderKey);
+
+      if (localOrderId != null) {
+        offlineOrder["id"] = localOrderId; // critical for local sync
+      }
+
       await box.put(orderKey, offlineOrder);
 
       setState(() => isSummaryLoading = true);
 
-      final result =
-      await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+      // Send to repository with local ID
 
-      if (result == null) {
+      final result =
+          await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+
+      if (result == null || result is! Map) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Invalid coupon or unable to apply"),
             backgroundColor: Colors.red,
           ),
         );
+
         return;
       }
 
-      // ⭐ EXTRACT VALUES FROM REPOSITORY RESPONSE
+      // ⭐ Extract values from repository response
+
       final double newDiscount =
-          double.tryParse(result["discount_total"].toString()) ?? 0.0;
+          double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
 
       final double newTax =
-          double.tryParse(result["tax"].toString()) ?? tax;
+          double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
 
       final double newTotal =
-          double.tryParse(result["total"].toString()) ?? 0.0;
+          double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
 
+      // Update offline order fields
 
       offlineOrder["orderDiscount"] = newDiscount;
+
       offlineOrder["tax_discount"] = newTax;
+
       offlineOrder["grand_total"] = newTotal;
+
       offlineOrder["coupon_applied"] = true;
+
       offlineOrder["applied_coupons"] = [
         {"code": code, "amount": newDiscount}
       ];
 
+      // ✅ Store Woo info if returned, but do NOT send Woo ID next time
+
+      if (result.containsKey("id")) {
+        offlineOrder["wooOrderId"] = result["id"];
+
+        offlineOrder["wooStatus"] =
+            result["status"]?.toString().toLowerCase() ?? '';
+
+        offlineOrder["synced"] = true;
+
+        offlineOrder["sync_at"] = DateTime.now().toIso8601String();
+      }
+
       await box.put(orderKey, offlineOrder);
 
-// 🔥 UPDATE DISPLAY
+      // 🔥 Update display
+
       await CustomerDisplayHelper.updateCustomerDisplay(
-        int.tryParse(orderKey) ?? 0,
+        localOrderId!,
         summaryEnabled: true,
       );
 
-      // ⭐ UPDATE UI LIKE YOUR OLD CODE
       setState(() {
         discount = newDiscount;
+
         tax = newTax;
 
         NetTotal = grossTotal - discount;
-        computedNetPayable =
-            NetTotal + tax - merchantDiscount + cashbackFee;
+
+        computedNetPayable = NetTotal + tax - merchantDiscount + cashbackFee;
 
         orderTotal = newTotal;
+
         balanceAmount = newTotal;
 
         isCouponAppliedFromApi = true;
       });
 
-      print("✅ Coupon Applied:");
-      print("➡ Discount: $newDiscount");
-      print("➡ Tax: $newTax");
-      print("➡ Total: $newTotal");
-
+      print(
+          "✅ Coupon Applied (local ID $localOrderId): Discount $newDiscount, Tax $newTax, Total $newTotal");
     } catch (e) {
       print("❌ Apply coupon error: $e");
     } finally {
@@ -9739,8 +9796,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     return printerDB.first;
   }
 
-  //Order_summary_screen
-
   Future _preparePrintTicket() async {
     if (kDebugMode) {
       print("OrderSummaryScreen _preparePrintTicket call print receipt");
@@ -9770,7 +9825,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final decodedImage = img.decodeImage(imageBytes)!;
       img.Image thumbnail = img.copyResize(decodedImage, height: 280);
       img.Image originalImg =
-      img.copyResize(decodedImage, width: 470, height: 280);
+          img.copyResize(decodedImage, width: 470, height: 280);
       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
       var padding = (originalImg.width - thumbnail.width) / 2;
       drawImage(originalImg, thumbnail, dstX: padding.toInt());
@@ -9956,9 +10011,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           : 0.0;
 
       double comboDiscount =
-      (discountType == 'combo' || discountType == 'mixmatch')
-          ? (item['auto_discount'] ?? 0).toDouble()
-          : 0.0;
+          (discountType == 'combo' || discountType == 'mixmatch')
+              ? (item['auto_discount'] ?? 0).toDouble()
+              : 0.0;
 
       // Auto Discount
       if (autoDiscount > 0 && !isPayoutOrCoupon) {
@@ -10140,7 +10195,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ]);
     }
   }
-
 
 //////
 
