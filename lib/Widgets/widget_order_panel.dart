@@ -12,6 +12,7 @@ import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:focus_detector/focus_detector.dart';
+import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:isar/isar.dart';
@@ -48,6 +49,7 @@ import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/api_response.dart';
 import '../Helper/customerdisplayhelper.dart';
+import '../Helper/url_helper.dart';
 import '../Models/Assets/asset_model.dart';
 import '../Preferences/pinaka_preferences.dart';
 import '../Repositories/Category/category_repository.dart';
@@ -67,6 +69,10 @@ import 'ManualPriceDialog.dart';
 import 'OrderPopupHelper.dart';
 import 'discount_engine_constants.dart';
 import 'widget_logs_toast.dart';
+
+
+
+
 
 class ScannerMutex {
   static bool noOrderBusy = false;
@@ -281,6 +287,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       });
     }
   }
+
+
+
 
   @override
   void didUpdateWidget(RightOrderPanel oldWidget) {
@@ -4151,23 +4160,101 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                 motion: const DrawerMotion(),
                                 children: [
                                   CustomSlidableAction(
+                                    // onPressed: (context) async {
+                                    //   if (kDebugMode) {
+                                    //     print(
+                                    //         "🗑️ Delete tapped for item: $orderItem");
+                                    //   }
+                                    //
+                                    //   final bool isOffline = orderHelper
+                                    //       .activeOrderId !=
+                                    //       null &&
+                                    //       (await StorageProvider
+                                    //           .offlineOrders
+                                    //           .containsKey(orderHelper
+                                    //           .activeOrderId
+                                    //           .toString()));
+                                    //
+                                    //   await deleteOfflineItem(orderItem,
+                                    //       itemIndex: index);
+                                    //
+                                    //   if (kDebugMode) {
+                                    //     print(isOffline
+                                    //         ? "✅ Offline item deleted immediately."
+                                    //         : "✅ Online item deleted immediately.");
+                                    //   }
+                                    // },
                                     onPressed: (context) async {
                                       if (kDebugMode) {
-                                        print(
-                                            "🗑️ Delete tapped for item: $orderItem");
+                                        print("🗑️ Delete tapped for item: $orderItem");
                                       }
 
-                                      final bool isOffline = orderHelper
-                                          .activeOrderId !=
-                                          null &&
-                                          (await StorageProvider
-                                              .offlineOrders
-                                              .containsKey(orderHelper
-                                              .activeOrderId
-                                              .toString()));
+                                      final bool isOffline = orderHelper.activeOrderId != null &&
+                                          (await StorageProvider.offlineOrders
+                                              .containsKey(orderHelper.activeOrderId.toString()));
 
-                                      await deleteOfflineItem(orderItem,
-                                          itemIndex: index);
+                                      try {
+
+                                        int itemQty = orderItem["items_count"] ?? 0;
+                                        double itemTotal = (orderItem["item_sum_price"] ?? 0).toDouble();
+                                        int productId = orderItem["product_id"] ?? 0;
+
+                                        if (kDebugMode) {
+                                          print("📦 Qty: $itemQty");
+                                          print("💰 Total: $itemTotal");
+                                          print("🆔 Product ID: $productId");
+                                        }
+
+                                        // Build: use dynamic base URL and user token/shift from UserDbHelper
+                                        final userData = await UserDbHelper().getUserData();
+                                        final String token = userData?[AppDBConst.userToken] ?? "";
+                                        final int? shiftId = await UserDbHelper().getUserShiftId();
+
+                                        // final uri = Uri.parse(
+                                        //     'https://indigo.alekyatechsolutions.com/wp-json/pinaka-pos/v1/orders/track-void-items-event');
+
+                                        final uri = Uri.parse(
+                                            '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}orders/track-void-items-event${UrlHelper.apiKey}'
+                                        );
+
+                                        final headers = <String, String>{
+                                          'Content-Type': 'application/json',
+                                          if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+                                        };
+
+                                        var body = jsonEncode({
+                                          "offline_orderid": orderHelper.activeOrderId,
+                                          "shift_id": shiftId,
+                                          "item_id": productId,
+                                          "item_total": itemTotal,
+                                          "item_qty": itemQty,
+                                          "timestamp": DateTime.now().toString(),
+                                          "deleted_by":  orderHelper.activeUserId
+                                        });
+
+                                        final response = await http.post(uri, headers: headers, body: body);
+
+                                        if (kDebugMode) {
+                                          print("API Response Delete: ${response.statusCode}");
+                                          print("APIiii: ${uri}");
+                                          print("shiftId: ${shiftId}");
+                                          print("orderid: ${orderHelper.activeOrderId}");
+
+
+                                          print(response.body);
+                                        }
+
+                                        // delete item locally
+                                        // orderHelper.orderItems.removeAt(index);
+
+                                        await deleteOfflineItem(orderItem,
+                                            itemIndex: index);
+
+                                      } catch (e) {
+                                        if (kDebugMode) {
+                                          print("❌ Delete error: $e");
+                                        }
+                                      }
 
                                       if (kDebugMode) {
                                         print(isOffline
@@ -4175,6 +4262,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             : "✅ Online item deleted immediately.");
                                       }
                                     },
+
                                     backgroundColor: Colors.transparent,
                                     child: Column(
                                       mainAxisAlignment:

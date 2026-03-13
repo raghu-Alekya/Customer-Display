@@ -29,8 +29,82 @@ import java.text.NumberFormat
 import java.util.Locale
 import android.content.Intent
 import android.graphics.Paint
+import android.hardware.usb.UsbManager
+import io.flutter.plugin.common.EventChannel
+import com.example.flutter_sunmi_customer_display.UsbSerialManager
 
 class MainActivity : FlutterActivity() {
+
+    private var usbSerialManager: UsbSerialManager? = null
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+
+        usbSerialManager = UsbSerialManager(this).also { manager ->
+
+            MethodChannel(
+                flutterEngine.dartExecutor.binaryMessenger,
+                "magellan_scale"
+            ).setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        manager.startListening()
+                        result.success(null)
+                    }
+                    "stop" -> {
+                        manager.stopListening()
+                        result.success(null)
+                    }
+                    "reconnect" -> {
+                        manager.restartDevice()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+            EventChannel(
+                flutterEngine.dartExecutor.binaryMessenger,
+                "magellan_scale/events"
+            ).setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, eventSink: EventChannel.EventSink?) {
+                    manager.setEventSink(eventSink)
+                    manager.startListening()
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    manager.setEventSink(null)
+                }
+            })
+        }
+
+        handleUsbDeviceIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleUsbDeviceIntent(intent)
+    }
+
+    override fun onDestroy() {
+        usbSerialManager?.dispose()
+        usbSerialManager = null
+        super.onDestroy()
+    }
+
+    private fun handleUsbDeviceIntent(intent: Intent?) {
+        if (intent?.action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
+            @Suppress("DEPRECATION")
+            val device = intent.getParcelableExtra<android.hardware.usb.UsbDevice>(UsbManager.EXTRA_DEVICE)
+            if (device != null && usbSerialManager != null) {
+                usbSerialManager!!.connectToDevice(device)
+            }
+        }
+    }
+
+
+    //// ==== above code was for magellan scale, below is for customer display =====
 
     private val CHANNEL = "com.example.flutter_customer_display/sunmi_display"
     private var customerDisplayPresentation: CustomerDisplayPresentation? = null
@@ -42,196 +116,197 @@ class MainActivity : FlutterActivity() {
     private var saleResultCallback: MethodChannel.Result? = null
 
 
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
-        Log.d("CustomerDisplay", "🔧 configureFlutterEngine called")
+//    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+//        super.configureFlutterEngine(flutterEngine)
+//        Log.d("CustomerDisplay", "🔧 configureFlutterEngine called")
+//
+//
+//
+//        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+//            Log.d("CustomerDisplay", "📢 MethodChannel call → method=${call.method}, args=${call.arguments}")
+//
+//            when (call.method) {
+//
+//                "showWelcome" -> {
+//                    Log.d("CustomerDisplay", "➡ showWelcome invoked")
+//                    if (showWelcomeOnCustomerDisplay()) {
+//                        Log.d("CustomerDisplay", "✔ Welcome displayed")
+//                        result.success("Welcome shown")
+//                    } else {
+//                        Log.e("CustomerDisplay", "❌ No secondary display found for Welcome")
+//                        result.error("NO_DISPLAY", "No secondary display found", null)
+//                    }
+//                }
+//
+//                "showWelcomeWithStore" -> {
+//                    val storeId = call.argument<String>("storeId") ?: ""
+//                    val storeName = call.argument<String>("storeName") ?: ""
+//                    val storeLogoUrl = call.argument<String>("storeLogoUrl")
+//                    val storeBaseUrl = call.argument<String>("storeBaseUrl") ?: ""
+//
+//                    Log.d(
+//                        "CustomerDisplay",
+//                        "➡ showWelcomeWithStore invoked → storeId=$storeId, storeName=$storeName, logoUrl=$storeLogoUrl, baseUrl=$storeBaseUrl"
+//                    )
+//
+//                    currentStoreId = storeId
+//                    currentStoreName = storeName
+//                    currentStoreLogoUrl = storeLogoUrl
+//                    currentStoreBaseUrl = storeBaseUrl
+//
+//                    // --- Call the slideshow API first to see logs ---
+//                    if (storeBaseUrl.isNotEmpty()) {
+//                        Thread {
+//                            try {
+//                                val apiUrl = "$storeBaseUrl/wp-content/plugins/pinaka-pos-wp/promotion_images.php"
+//                                val json = URL(apiUrl).readText()
+//                                val jsonArray = JSONArray(json)
+//
+//                                val imageUrls = mutableListOf<String>()
+//                                for (i in 0 until jsonArray.length()) {
+//                                    val obj = jsonArray.getJSONObject(i)
+//                                    val url = obj.getString("url")
+//                                    imageUrls.add(url)
+//                                }
+//
+//                                Log.d("CustomerDisplay", "✅ Slideshow API returned ${imageUrls.size} images for store $storeName")
+//                                for (url in imageUrls) {
+//                                    Log.d("CustomerDisplay", "Slide URL: $url")
+//                                }
+//
+//                            } catch (e: Exception) {
+//                                Log.e("CustomerDisplay", "❌ Failed to load slideshow for store $storeName: ${e.message}")
+//                            }
+//                        }.start()
+//                    } else {
+//                        Log.e("CustomerDisplay", "storeBaseUrl is empty → cannot load slideshow for store $storeName")
+//                    }
+//
+//                    // --- Show Welcome layout on customer display ---
+//                    if (customerDisplayPresentation == null) {
+//                        showWelcomeOnCustomerDisplay()
+//                    }
+//
+//                    customerDisplayPresentation?.showWelcomeLayout(storeId, storeName, storeLogoUrl, storeBaseUrl)
+//
+//                    result.success("Welcome updated with store")
+//                }
+//
+//
+//                "showCustomerData" -> {
+//                    val orderId = call.argument<Int>("orderId") ?: 0
+//                    val items = call.argument<List<Map<String, Any>>>("items") ?: emptyList()
+//                    val grossTotal = call.argument<Double>("grossTotal") ?: 0.0
+//                    val discount = call.argument<Double>("discount") ?: 0.0
+//                    val merchantDiscount = call.argument<Double>("merchantDiscount") ?: 0.0
+//                    val netTotal = call.argument<Double>("netTotal") ?: 0.0
+//                    val tax = call.argument<Double>("tax") ?: 0.0
+//                    val netPayable = call.argument<Double>("netPayable") ?: 0.0
+//                    val orderDate = call.argument<String>("orderDate") ?: ""
+//                    val orderTime = call.argument<String>("orderTime") ?: ""
+//                    val cashbackFee = call.argument<Double>("cashbackFee") ?: 0.0
+//                    val loyaltyContact = call.argument<String>("loyaltyContact") ?: ""
+//                    val summaryEnabled = call.argument<Boolean>("summaryEnabled") ?: true
+//
+//                    Log.d("CustomerDisplay", "☎ Loyalty Contact received: $loyaltyContact")
+//
+//                    Log.d("CustomerDisplay", "➡ showCustomerData invoked → orderId=$orderId, items=${items.size}, grossTotal=$grossTotal, discount=$discount, merchantDiscount=$merchantDiscount, netTotal=$netTotal, tax=$tax, netPayable=$netPayable")
+//                    Log.d("CustomerDisplay", "➡ orderDate='$orderDate'")
+//                    Log.d("CustomerDisplay", "➡ orderTime='$orderTime'")
+//
+//                    val success = showDataOnCustomerDisplay(
+//                        orderId, currentStoreId, currentStoreName, currentStoreLogoUrl, items,
+//                        grossTotal, discount, merchantDiscount, netTotal, tax, netPayable,orderDate, orderTime,cashbackFee,loyaltyContact,summaryEnabled
+//                    )
+//
+//                    if (success) {
+//                        Log.d("CustomerDisplay", "✔ Customer data displayed")
+//                        result.success("Data displayed")
+//                    } else {
+//                        Log.e("CustomerDisplay", "❌ No secondary display found for Customer data")
+//                        result.error("NO_DISPLAY", "No secondary display found", null)
+//                    }
+//                }
+//
+//                "showThankYou" -> {
+//                    Log.d("CustomerDisplay", "➡ showThankYou invoked")
+//                    if (showThankYouOnCustomerDisplay()) {
+//                        Log.d("CustomerDisplay", "✔ Thank You displayed")
+//                        result.success("Thank You shown")
+//                    } else {
+//                        Log.e("CustomerDisplay", "❌ No secondary display found for Thank You")
+//                        result.error("NO_DISPLAY", "No secondary display found", null)
+//                    }
+//                }
+//
+//                else -> {
+//                    Log.w("CustomerDisplay", "⚠ Method not implemented: ${call.method}")
+//                    result.notImplemented()
+//                }
+//            }
+//        }
+//        // ================= PAYMENT CHANNEL =================
+//        MethodChannel(
+//            flutterEngine.dartExecutor.binaryMessenger,
+//            PAYMENT_CHANNEL
+//        ).setMethodCallHandler { call, result ->
+//
+//            when (call.method) {
+//
+//                "startSale" -> {
+//                    val amount = call.argument<String>("amount")
+//                    val orderId = call.argument<String>("orderId")
+//
+//                    val intent = Intent().apply {
+//                        setClassName(
+//                            "com.sunmi.payment.demo",
+//                            "com.sunmi.payment.demo.page.trans.SaleActivity"
+//                        )
+//                        putExtra("amount", amount)
+//                        putExtra("orderId", orderId)
+//                    }
+//
+//                    saleResultCallback = result
+//                    startActivityForResult(intent, 9090)
+//                }
+//
+//                "startVoid" -> {
+//                    val amount = call.argument<String>("amount")
+//                    val originOrderId = call.argument<String>("originOrderId")
+//                    val originTransactionId = call.argument<String>("originTransactionId")
+//
+//                    Log.d(
+//                        "SunmiVoid",
+//                        "➡ startVoid → amount=$amount, originOrderId=$originOrderId, originTxn=$originTransactionId"
+//                    )
+//
+//                    // ✅ Basic validation only
+//                    if (originOrderId.isNullOrEmpty() || originTransactionId.isNullOrEmpty()) {
+//                        result.error("INVALID_ARGS", "Missing origin order or transaction ID", null)
+//                        return@setMethodCallHandler
+//                    }
+//
+//                    val intent = Intent().apply {
+//                        setClassName(
+//                            "com.sunmi.payment.demo",
+//                            "com.sunmi.payment.demo.page.trans.VoidActivity"
+//                        )
+//                        putExtra("amount", amount)
+//                        putExtra("originOrderId", originOrderId)
+//                        putExtra("originTransactionId", originTransactionId)
+//                    }
+//
+//                    saleResultCallback = result
+//                    startActivityForResult(intent, 9091)
+//                }
+//
+//
+//                else -> result.notImplemented()
+//            }
+//        }
+//
+//    }
 
-
-
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
-            Log.d("CustomerDisplay", "📢 MethodChannel call → method=${call.method}, args=${call.arguments}")
-
-            when (call.method) {
-
-                "showWelcome" -> {
-                    Log.d("CustomerDisplay", "➡ showWelcome invoked")
-                    if (showWelcomeOnCustomerDisplay()) {
-                        Log.d("CustomerDisplay", "✔ Welcome displayed")
-                        result.success("Welcome shown")
-                    } else {
-                        Log.e("CustomerDisplay", "❌ No secondary display found for Welcome")
-                        result.error("NO_DISPLAY", "No secondary display found", null)
-                    }
-                }
-
-                "showWelcomeWithStore" -> {
-                    val storeId = call.argument<String>("storeId") ?: ""
-                    val storeName = call.argument<String>("storeName") ?: ""
-                    val storeLogoUrl = call.argument<String>("storeLogoUrl")
-                    val storeBaseUrl = call.argument<String>("storeBaseUrl") ?: ""
-
-                    Log.d(
-                        "CustomerDisplay",
-                        "➡ showWelcomeWithStore invoked → storeId=$storeId, storeName=$storeName, logoUrl=$storeLogoUrl, baseUrl=$storeBaseUrl"
-                    )
-
-                    currentStoreId = storeId
-                    currentStoreName = storeName
-                    currentStoreLogoUrl = storeLogoUrl
-                    currentStoreBaseUrl = storeBaseUrl
-
-                    // --- Call the slideshow API first to see logs ---
-                    if (storeBaseUrl.isNotEmpty()) {
-                        Thread {
-                            try {
-                                val apiUrl = "$storeBaseUrl/wp-content/plugins/pinaka-pos-wp/promotion_images.php"
-                                val json = URL(apiUrl).readText()
-                                val jsonArray = JSONArray(json)
-
-                                val imageUrls = mutableListOf<String>()
-                                for (i in 0 until jsonArray.length()) {
-                                    val obj = jsonArray.getJSONObject(i)
-                                    val url = obj.getString("url")
-                                    imageUrls.add(url)
-                                }
-
-                                Log.d("CustomerDisplay", "✅ Slideshow API returned ${imageUrls.size} images for store $storeName")
-                                for (url in imageUrls) {
-                                    Log.d("CustomerDisplay", "Slide URL: $url")
-                                }
-
-                            } catch (e: Exception) {
-                                Log.e("CustomerDisplay", "❌ Failed to load slideshow for store $storeName: ${e.message}")
-                            }
-                        }.start()
-                    } else {
-                        Log.e("CustomerDisplay", "storeBaseUrl is empty → cannot load slideshow for store $storeName")
-                    }
-
-                    // --- Show Welcome layout on customer display ---
-                    if (customerDisplayPresentation == null) {
-                        showWelcomeOnCustomerDisplay()
-                    }
-
-                    customerDisplayPresentation?.showWelcomeLayout(storeId, storeName, storeLogoUrl, storeBaseUrl)
-
-                    result.success("Welcome updated with store")
-                }
-
-
-                "showCustomerData" -> {
-                    val orderId = call.argument<Int>("orderId") ?: 0
-                    val items = call.argument<List<Map<String, Any>>>("items") ?: emptyList()
-                    val grossTotal = call.argument<Double>("grossTotal") ?: 0.0
-                    val discount = call.argument<Double>("discount") ?: 0.0
-                    val merchantDiscount = call.argument<Double>("merchantDiscount") ?: 0.0
-                    val netTotal = call.argument<Double>("netTotal") ?: 0.0
-                    val tax = call.argument<Double>("tax") ?: 0.0
-                    val netPayable = call.argument<Double>("netPayable") ?: 0.0
-                    val orderDate = call.argument<String>("orderDate") ?: ""
-                    val orderTime = call.argument<String>("orderTime") ?: ""
-                    val cashbackFee = call.argument<Double>("cashbackFee") ?: 0.0
-                    val loyaltyContact = call.argument<String>("loyaltyContact") ?: ""
-                    val summaryEnabled = call.argument<Boolean>("summaryEnabled") ?: true
-
-                    Log.d("CustomerDisplay", "☎ Loyalty Contact received: $loyaltyContact")
-
-                    Log.d("CustomerDisplay", "➡ showCustomerData invoked → orderId=$orderId, items=${items.size}, grossTotal=$grossTotal, discount=$discount, merchantDiscount=$merchantDiscount, netTotal=$netTotal, tax=$tax, netPayable=$netPayable")
-                    Log.d("CustomerDisplay", "➡ orderDate='$orderDate'")
-                    Log.d("CustomerDisplay", "➡ orderTime='$orderTime'")
-
-                    val success = showDataOnCustomerDisplay(
-                        orderId, currentStoreId, currentStoreName, currentStoreLogoUrl, items,
-                        grossTotal, discount, merchantDiscount, netTotal, tax, netPayable,orderDate, orderTime,cashbackFee,loyaltyContact,summaryEnabled
-                    )
-
-                    if (success) {
-                        Log.d("CustomerDisplay", "✔ Customer data displayed")
-                        result.success("Data displayed")
-                    } else {
-                        Log.e("CustomerDisplay", "❌ No secondary display found for Customer data")
-                        result.error("NO_DISPLAY", "No secondary display found", null)
-                    }
-                }
-
-                "showThankYou" -> {
-                    Log.d("CustomerDisplay", "➡ showThankYou invoked")
-                    if (showThankYouOnCustomerDisplay()) {
-                        Log.d("CustomerDisplay", "✔ Thank You displayed")
-                        result.success("Thank You shown")
-                    } else {
-                        Log.e("CustomerDisplay", "❌ No secondary display found for Thank You")
-                        result.error("NO_DISPLAY", "No secondary display found", null)
-                    }
-                }
-
-                else -> {
-                    Log.w("CustomerDisplay", "⚠ Method not implemented: ${call.method}")
-                    result.notImplemented()
-                }
-            }
-        }
-        // ================= PAYMENT CHANNEL =================
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            PAYMENT_CHANNEL
-        ).setMethodCallHandler { call, result ->
-
-            when (call.method) {
-
-                "startSale" -> {
-                    val amount = call.argument<String>("amount")
-                    val orderId = call.argument<String>("orderId")
-
-                    val intent = Intent().apply {
-                        setClassName(
-                            "com.sunmi.payment.demo",
-                            "com.sunmi.payment.demo.page.trans.SaleActivity"
-                        )
-                        putExtra("amount", amount)
-                        putExtra("orderId", orderId)
-                    }
-
-                    saleResultCallback = result
-                    startActivityForResult(intent, 9090)
-                }
-
-                "startVoid" -> {
-                    val amount = call.argument<String>("amount")
-                    val originOrderId = call.argument<String>("originOrderId")
-                    val originTransactionId = call.argument<String>("originTransactionId")
-
-                    Log.d(
-                        "SunmiVoid",
-                        "➡ startVoid → amount=$amount, originOrderId=$originOrderId, originTxn=$originTransactionId"
-                    )
-
-                    // ✅ Basic validation only
-                    if (originOrderId.isNullOrEmpty() || originTransactionId.isNullOrEmpty()) {
-                        result.error("INVALID_ARGS", "Missing origin order or transaction ID", null)
-                        return@setMethodCallHandler
-                    }
-
-                    val intent = Intent().apply {
-                        setClassName(
-                            "com.sunmi.payment.demo",
-                            "com.sunmi.payment.demo.page.trans.VoidActivity"
-                        )
-                        putExtra("amount", amount)
-                        putExtra("originOrderId", originOrderId)
-                        putExtra("originTransactionId", originTransactionId)
-                    }
-
-                    saleResultCallback = result
-                    startActivityForResult(intent, 9091)
-                }
-
-
-                else -> result.notImplemented()
-            }
-        }
-
-    }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
 
@@ -359,11 +434,11 @@ class MainActivity : FlutterActivity() {
             false
         }
     }
-    override fun onDestroy() {
-        Log.d("CustomerDisplay", "➡ onDestroy called, dismissing CustomerDisplayPresentation")
-        customerDisplayPresentation?.dismiss()
-        super.onDestroy()
-    }
+//    override fun onDestroy() {
+//        Log.d("CustomerDisplay", "➡ onDestroy called, dismissing CustomerDisplayPresentation")
+//        customerDisplayPresentation?.dismiss()
+//        super.onDestroy()
+//    }
 
     // ---------------------- CustomerDisplayPresentation ----------------------
     class CustomerDisplayPresentation(

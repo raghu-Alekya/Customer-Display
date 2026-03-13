@@ -2,25 +2,49 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 
-
 class WeightProvider extends ChangeNotifier {
   double _weightKg        = 0.0;
   String _weightText      = '0.000 lb';
+  String _nativeUnit      = 'kg';   // ← unit the scale actually reported
+  bool   _isStable        = false;  // ← mirrors USB manager's 'stable' flag
   bool   _isConnected     = false;
   bool   _suppressUpdates = false;
   bool   _paused          = false;
 
   double get weightKg        => _weightKg;
   String get weightText      => _weightText;
+  String get nativeUnit      => _nativeUnit;
+  bool   get isStable        => _isStable;
   bool   get isConnected     => _isConnected;
   bool   get isPaused        => _paused;
   bool   get suppressUpdates => _suppressUpdates;
 
-  /// Called by TopBar's USB stream. Stores raw kg; builds lb display string.
+  // ── Called by TopBar's USB EventChannel stream ──────────────────────────
+  // Pass the raw values exactly as UsbSerialManager emits them:
+  //   weight  → the numeric value (in nativeUnit)
+  //   unit    → 'kg' | 'lb' | 'g' | 'oz'
+  //   stable  → from parseWeight()
+  void updateFromUsb({
+    required double weight,
+    required String unit,
+    required bool   stable,
+    String?         displayText,
+  }) {
+    if (_suppressUpdates) return;
+    _nativeUnit = unit;
+    _isStable   = stable;
+    _weightKg   = _toKg(weight, unit);          // normalise → kg for storage
+    _weightText = displayText ?? _buildDisplayText(_weightKg);
+    notifyListeners();
+  }
+
+  /// Legacy helper kept for compatibility — assumes lb display.
   void updateWeight(double kg, {String? displayText}) {
     if (_suppressUpdates) return;
     _weightKg   = kg;
-    _weightText = displayText ?? '${(kg * 2.20462).toStringAsFixed(3)} lb';
+    _nativeUnit = 'kg';
+    _isStable   = true;
+    _weightText = displayText ?? _buildDisplayText(kg);
     notifyListeners();
   }
 
@@ -28,7 +52,7 @@ class WeightProvider extends ChangeNotifier {
     if (_suppressUpdates) return;
     _paused     = false;
     _weightKg   = kg;
-    _weightText = displayText ?? '${(kg * 2.20462).toStringAsFixed(3)} lb';
+    _weightText = displayText ?? _buildDisplayText(kg);
     notifyListeners();
   }
 
@@ -37,31 +61,47 @@ class WeightProvider extends ChangeNotifier {
     if (!connected) {
       _weightKg        = 0.0;
       _weightText      = '0.000 lb';
+      _nativeUnit      = 'kg';
+      _isStable        = false;
       _paused          = false;
       _suppressUpdates = false;
     }
     notifyListeners();
   }
 
-
   void clearWeight() {
     _suppressUpdates = true;
     _weightKg        = 0.0;
     _weightText      = '0.000 lb';
-    notifyListeners(); // TopBar Consumer rebuilds immediately to show 0.000
+    _isStable        = false;
+    notifyListeners();
 
     Future.delayed(const Duration(seconds: 1), () {
       _suppressUpdates = false;
-      // No notifyListeners — next real scale reading will update naturally
     });
   }
 
   void pause()  { _paused = true; }
   void resume() { _paused = false; notifyListeners(); }
+
+  // ── Internal helpers ────────────────────────────────────────────────────
+  static double _toKg(double value, String unit) {
+    switch (unit.toLowerCase()) {
+      case 'lb': return value / 2.20462;
+      case 'g':  return value / 1000.0;
+      case 'oz': return value / 35.274;
+      case 'kg':
+      default:   return value;
+    }
+  }
+
+  static String _buildDisplayText(double kg) =>
+      '${(kg * 2.20462).toStringAsFixed(3)} lb';
 }
 
-
-
+// ─────────────────────────────────────────────────────────────────────────────
+// AutoWeightPriceDialog
+// ─────────────────────────────────────────────────────────────────────────────
 class AutoWeightPriceDialog extends StatefulWidget {
   final String productName;
   final double unitPrice;
@@ -95,15 +135,14 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
     super.initState();
     _weightController.addListener(_onManualWeightChanged);
 
-    // Pre-fill text field with current scale reading converted to display unit
+    // Pre-fill with current scale reading converted to dialog's display unit
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final kg = context.read<WeightProvider>().weightKg;
+      final provider = context.read<WeightProvider>();
+      final kg = provider.weightKg;
       if (kg > 0) {
-        final displayVal = _kgToDisplayUnit(kg); // ← convert before pre-fill
-        _weightController.removeListener(_onManualWeightChanged);
-        _weightController.text = _formatWeight(displayVal);
-        _weightController.addListener(_onManualWeightChanged);
+        final displayVal = _kgToDisplayUnit(kg);
+        _setControllerSilently(_formatWeight(displayVal));
       }
     });
   }
@@ -117,12 +156,11 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
 
   // ── Unit conversion ───────────────────────────────────────────────────────
 
-  /// Convert raw kg (always stored in provider) → dialog's display unit.
-  /// Scale sends kg → provider stores kg → dialog converts to lb for display.
+  /// Provider always stores kg → convert to dialog's display unit.
   double _kgToDisplayUnit(double kg) {
     switch (widget.unit.toLowerCase()) {
-      case 'lb': return kg * 2.20462;  // 0.065 kg → 0.143 lb ✓
-      case 'g':  return kg * 1000;
+      case 'lb': return kg * 2.20462;
+      case 'g':  return kg * 1000.0;
       case 'oz': return kg * 35.274;
       case 'kg':
       default:   return kg;
@@ -131,13 +169,11 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  /// Effective weight in display unit.
-  /// Manual entry takes priority over live scale reading.
   double _effectiveWeight(WeightProvider provider) {
     if (_isManualEntry) return _manualWeight;
     final kg = provider.weightKg;
     if (kg <= 0) return 0.0;
-    return _kgToDisplayUnit(kg); // e.g. 0.065 kg → 0.143 lb
+    return _kgToDisplayUnit(kg);
   }
 
   /// Price = weight × unitPrice, truncated to 2 decimals (no rounding).
@@ -166,6 +202,16 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
     return '${raw.substring(0, dotIndex)}.$truncDec';
   }
 
+  void _setControllerSilently(String text) {
+    _weightController.removeListener(_onManualWeightChanged);
+    _weightController.text = text;
+    if (text.isNotEmpty) {
+      _weightController.selection =
+          TextSelection.fromPosition(TextPosition(offset: text.length));
+    }
+    _weightController.addListener(_onManualWeightChanged);
+  }
+
   void _onManualWeightChanged() {
     final text   = _weightController.text.trim();
     final parsed = double.tryParse(text);
@@ -186,25 +232,21 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
   Widget build(BuildContext context) {
     return Consumer<WeightProvider>(
       builder: (context, weightProvider, _) {
-        // Always in display unit (lb by default)
         final weight = _effectiveWeight(weightProvider);
         final price  = _calculatedPrice(weight);
 
-        // ── Sync text field with live scale when user has not typed manually ──
+        // Stability indicator — reflects USB manager's 'stable' flag directly
+        final bool isLive   = !_isManualEntry;
+        final bool isStable = weightProvider.isStable;
+
+        // ── Sync text field with live scale when not in manual mode ──────
         if (!_isManualEntry) {
           final kg         = weightProvider.weightKg;
-          final displayVal = kg > 0 ? _kgToDisplayUnit(kg) : 0.0; // kg → lb
+          final displayVal = kg > 0 ? _kgToDisplayUnit(kg) : 0.0;
           final liveText   = displayVal > 0 ? _formatWeight(displayVal) : '';
 
           if (_weightController.text != liveText) {
-            _weightController.removeListener(_onManualWeightChanged);
-            _weightController.text = liveText;
-            if (liveText.isNotEmpty) {
-              _weightController.selection = TextSelection.fromPosition(
-                TextPosition(offset: liveText.length),
-              );
-            }
-            _weightController.addListener(_onManualWeightChanged);
+            _setControllerSilently(liveText);
           }
         }
 
@@ -213,8 +255,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          insetPadding: const EdgeInsets.symmetric(
-              horizontal: 24, vertical: 40),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
           child: SizedBox(
             width: 480,
             child: Padding(
@@ -224,7 +265,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
 
-                  // ── Title ──────────────────────────────────────────────
+                  // ── Title ────────────────────────────────────────────────
                   Stack(
                     alignment: Alignment.center,
                     children: [
@@ -255,9 +296,19 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                     ],
                   ),
 
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 16),
 
-                  // ── Row 1: Product name + Unit price ──────────────────
+                  // ── Scale status chip ─────────────────────────────────────
+                  _ScaleStatusChip(
+                    isConnected: weightProvider.isConnected,
+                    isLive:      isLive,
+                    isStable:    isStable,
+                    nativeUnit:  weightProvider.nativeUnit,
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // ── Row 1: Product name + Unit price ──────────────────────
                   Row(
                     children: [
                       Expanded(
@@ -278,7 +329,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
 
                   const SizedBox(height: 20),
 
-                  // ── Row 2: Weight field + Calculated price ─────────────
+                  // ── Row 2: Weight field + Calculated price ─────────────────
                   Row(
                     children: [
                       Expanded(
@@ -286,6 +337,15 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                           label:      'Weight (${widget.unit}s) :',
                           controller: _weightController,
                           hintText:   '0.000',
+                          isLive:     isLive,
+                          isStable:   isStable,
+                          onClear: () {
+                            setState(() {
+                              _isManualEntry = false;
+                              _manualWeight  = 0.0;
+                            });
+                            _setControllerSilently('');
+                          },
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -301,7 +361,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
 
                   const SizedBox(height: 28),
 
-                  // ── Confirm button ─────────────────────────────────────
+                  // ── Confirm button ─────────────────────────────────────────
                   Align(
                     alignment: Alignment.centerRight,
                     child: SizedBox(
@@ -312,11 +372,8 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                           final capturedWeight = weight;
                           final capturedPrice  = price;
 
-                          // Reset TopBar display to 0.000 immediately
-                          // and suppress scale stream for 3 s
                           weightProvider.clearWeight();
 
-                          // Return results to caller
                           Navigator.of(context).pop({
                             'weight':     capturedWeight,
                             'finalPrice': capturedPrice,
@@ -357,7 +414,81 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// _ScaleStatusChip
+// Shows live connection + stability status from USB manager.
+// ─────────────────────────────────────────────────────────────────────────────
+class _ScaleStatusChip extends StatelessWidget {
+  final bool   isConnected;
+  final bool   isLive;
+  final bool   isStable;
+  final String nativeUnit;
 
+  const _ScaleStatusChip({
+    required this.isConnected,
+    required this.isLive,
+    required this.isStable,
+    required this.nativeUnit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Color  bgColor;
+    final Color  dotColor;
+    final String label;
+
+    if (!isConnected) {
+      bgColor  = const Color(0xFFF5F5F5);
+      dotColor = const Color(0xFFAAAAAA);
+      label    = 'Scale disconnected';
+    } else if (!isLive) {
+      bgColor  = const Color(0xFFFFF3E0);
+      dotColor = const Color(0xFFFF9800);
+      label    = 'Manual entry mode';
+    } else if (isStable) {
+      bgColor  = const Color(0xFFE8F5E9);
+      dotColor = const Color(0xFF4CAF50);
+      label    = 'Scale stable · reading in $nativeUnit';
+    } else {
+      bgColor  = const Color(0xFFFFF8E1);
+      dotColor = const Color(0xFFFFC107);
+      label    = 'Scale unstable · stabilising…';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color:        bgColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8, height: 8,
+            decoration: BoxDecoration(
+              color: dotColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize:   13,
+              fontWeight: FontWeight.w500,
+              color:      dotColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _InfoLabel  (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 class _InfoLabel extends StatelessWidget {
   final String label;
   final String value;
@@ -391,7 +522,9 @@ class _InfoLabel extends StatelessWidget {
   }
 }
 
-/// Read-only grey box — used for the calculated price.
+// ─────────────────────────────────────────────────────────────────────────────
+// _FieldBox — read-only calculated price box  (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 class _FieldBox extends StatelessWidget {
   final String label;
   final String value;
@@ -441,19 +574,38 @@ class _FieldBox extends StatelessWidget {
   }
 }
 
-/// Editable text field — accepts both live scale data and manual keyboard input.
+// ─────────────────────────────────────────────────────────────────────────────
+// _EditableWeightBox
+// Updated: shows live/manual state via border colour; has a clear button
+// to return from manual mode back to live scale reading.
+// ─────────────────────────────────────────────────────────────────────────────
 class _EditableWeightBox extends StatelessWidget {
-  final String label;
+  final String                label;
   final TextEditingController controller;
-  final String hintText;
+  final String                hintText;
+  final bool                  isLive;
+  final bool                  isStable;
+  final VoidCallback          onClear;   // restores live mode
+
   const _EditableWeightBox({
     required this.label,
     required this.controller,
     required this.hintText,
+    required this.isLive,
+    required this.isStable,
+    required this.onClear,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Border colour reflects source:
+    //   green  = live & stable
+    //   amber  = live & unstable
+    //   orange = manual entry
+    final Color activeBorder = isLive
+        ? (isStable ? const Color(0xFF4CAF50) : const Color(0xFFFFC107))
+        : const Color(0xFFFF9800);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -487,18 +639,28 @@ class _EditableWeightBox extends StatelessWidget {
               fillColor: const Color(0xFFF5F5F5),
               contentPadding: const EdgeInsets.symmetric(
                   horizontal: 14, vertical: 0),
+              // "↺" button — only shown when user has typed manually
+              suffixIcon: !isLive
+                  ? Tooltip(
+                message: 'Return to live scale reading',
+                child: IconButton(
+                  icon: const Icon(Icons.refresh,
+                      color: Color(0xFFFF9800), size: 20),
+                  onPressed: onClear,
+                ),
+              )
+                  : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide:   const BorderSide(color: Color(0xFFE0E0E0)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide:   const BorderSide(color: Color(0xFFE0E0E0)),
+                borderSide:   BorderSide(color: activeBorder, width: 1.5),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide:   const BorderSide(
-                    color: Color(0xFFFF6B6B), width: 1.5),
+                borderSide:   BorderSide(color: activeBorder, width: 2.0),
               ),
             ),
           ),

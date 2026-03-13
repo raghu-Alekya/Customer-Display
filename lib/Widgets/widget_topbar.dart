@@ -1,16 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:isar/isar.dart';
 import 'package:pinaka_pos/Widgets/weighing_scale_widget.dart';
 import 'package:pinaka_pos/Widgets/widget_variants_dialog.dart';
 import 'package:provider/provider.dart';
-import 'package:usb_serial/usb_serial.dart';
 
 import '../Blocs/Orders/order_bloc.dart';
 import '../Blocs/Search/product_search_bloc.dart';
@@ -38,54 +37,18 @@ import 'OrderPopupHelper.dart';
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SCALE DEVICE TABLE — Datalogic / Magellan + common serial chips
+// NATIVE SCALE CHANNELS — talks to UsbSerialManager.kt via MethodChannel/EventChannel
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// All known VID/PID combos for scales and USB-Serial adapters used with
-/// Datalogic Magellan scanner/scales (and other retail scale brands).
-const _knownScaleVidPids = [
-  // ── Datalogic / Magellan native ─────────────────────────────────────
-  {'vid': 0x05F9, 'pid': 0x1100},
-  {'vid': 0x05F9, 'pid': 0x1101},
-  {'vid': 0x05F9, 'pid': 0x1102},
-  {'vid': 0x05F9, 'pid': 0x1103},
-  {'vid': 0x05F9, 'pid': 0x1104}, // Magellan 800i / 1100i / 9800i
-  {'vid': 0x05F9, 'pid': 0x2202}, // Magellan 9800i / Digimarc
-  {'vid': 0x05F9, 'pid': 0x4204},
-  // ── FTDI FT232R / FT231X (most common Magellan USB-Serial cable) ─────
-  {'vid': 0x0403, 'pid': 0x6001}, // FT232R        (dec: vid=1027, pid=24577)
-  {'vid': 0x0403, 'pid': 0x6010},
-  {'vid': 0x0403, 'pid': 0x6011},
-  {'vid': 0x0403, 'pid': 0xB0C4}, // your detected (dec: vid=1027, pid=45249)
-  // ── Prolific PL2303 ──────────────────────────────────────────────────
-  {'vid': 0x067B, 'pid': 0x2303},
-  {'vid': 0x067B, 'pid': 0x2304},
-  // ── Silicon Labs CP210x ──────────────────────────────────────────────
-  {'vid': 0x10C4, 'pid': 0xEA60},
-  {'vid': 0x10C4, 'pid': 0xEA70},
-  // ── WinChipHead CH340 / CH341 ────────────────────────────────────────
-  {'vid': 0x1A86, 'pid': 0x7523},
-  {'vid': 0x1A86, 'pid': 0x5523},
-];
+/// MethodChannel for start / stop / reconnect commands.
+const _scaleMethodChannel = MethodChannel('magellan_scale');
 
-/// Name keywords that suggest a device is a scale or serial adapter.
-const _scaleKeywords = [
-  'magellan', 'datalogic', 'digimarc', 'scale', 'scanner',
-  'serial', 'converter', 'uart', 'ftdi', 'prolific', 'silabs', 'ch340',
-];
+/// EventChannel stream that carries JSON events from UsbSerialManager.kt.
+const _scaleEventChannel = EventChannel('magellan_scale/events');
 
-/// Baud rates to try — 9600 is the Magellan/retail standard.
-const _scaleBaudRates = [9600, 4800, 19200, 38400];
-
-/// Hard timeout per open() / create() call so we never hang on a bad port.
-const _connectTimeout = Duration(seconds: 5);
-
-/// How long to wait for the first byte to confirm the correct baud rate.
-/// Prevents locking onto the wrong port in a USB hub with many devices.
-const _dataWaitTimeout = Duration(seconds: 3);
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 7-SEGMENT LCD DISPLAY  — no font file needed, pure CustomPainter
+// 7-SEGMENT LCD DISPLAY
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _SegmentPainter extends CustomPainter {
@@ -298,40 +261,35 @@ class TopBar extends StatefulWidget {
 class _TopBarState extends State<TopBar> {
   late BuildContext _context;
   final _searchController = TextEditingController();
-  final _searchFocusNode = FocusNode();
-  Timer? _debounce;
+  final _searchFocusNode  = FocusNode();
+  Timer?        _debounce;
   OverlayEntry? _overlayEntry;
   final _searchFieldKey = GlobalKey();
 
   final orderHelper = OrderHelper();
   late OrderBloc _orderBloc;
 
-  bool isAddingItemLoading = false;
-  int? userId;
+  bool   isAddingItemLoading = false;
+  int?   userId;
   String? userRole;
   String? userDisplayName;
-  bool isLoading = false;
+  bool   isLoading = false;
 
   bool _isSearchEnabled = true;
-  var _printerSettings = PrinterSettings();
+  var  _printerSettings = PrinterSettings();
 
   List<dynamic> _cachedProducts = [];
-  bool _cacheLoaded = false;
+  bool          _cacheLoaded    = false;
   final ProductBloc productBloc = ProductBloc(ProductRepository());
 
   bool _dialogOpen = false;
 
-  // ── SCALE CONNECTION ────────────────────────────────────────────────────────
-  UsbPort? _port;
-  StreamSubscription<Uint8List>? _subscription;
-  final _scaleBuffer = <int>[];
+  // ── SCALE — native EventChannel listener ───────────────────────────────────
+  StreamSubscription<dynamic>? _scaleSubscription;
 
   bool _isConnecting = false;
-  String _scaleStatus = 'Disconnected';   // for internal logging / debug
-  String _connectedDeviceName = '';
+  String _scaleStatus = 'Disconnected';
 
-  /// Cached WeightProvider — safe to use from dispose() and async gaps
-  /// (never call Provider.of after an await gap).
   WeightProvider? _weightProvider;
 
   // ── CACHED USER DATA ────────────────────────────────────────────────────────
@@ -340,8 +298,8 @@ class _TopBarState extends State<TopBar> {
   static Future<Map<String, dynamic>?>? _initialUserFuture;
 
   static void clearUserDataCache() {
-    _cachedUserData = null;
-    _isUserDataLoaded = false;
+    _cachedUserData    = null;
+    _isUserDataLoaded  = false;
     _initialUserFuture = null;
     if (kDebugMode) print("🧹 TopBar user data cache cleared");
   }
@@ -363,14 +321,14 @@ class _TopBarState extends State<TopBar> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _weightProvider = Provider.of<WeightProvider>(context, listen: false);
-      _connectToScale();
+      _listenToScale();
     });
 
     if (!_isUserDataLoaded) {
       _initialUserFuture = UserDbHelper().getUserData();
       _initialUserFuture!.then((userData) {
-        _cachedUserData    = userData;
-        _isUserDataLoaded  = true;
+        _cachedUserData   = userData;
+        _isUserDataLoaded = true;
         if (userData != null) {
           userId          = userData[AppDBConst.userId] as int?;
           userDisplayName = userData[AppDBConst.userDisplayName] as String?;
@@ -386,14 +344,14 @@ class _TopBarState extends State<TopBar> {
       }
     }
   }
+
   static void clearUserCache() {
-    _cachedUserData = null;
-    _isUserDataLoaded = false;
+    _cachedUserData    = null;
+    _isUserDataLoaded  = false;
     _initialUserFuture = null;
     if (kDebugMode) print("🧹 TopBar user data cache cleared");
   }
 
-  // @override
   @override
   void dispose() {
     _debounce?.cancel();
@@ -403,100 +361,104 @@ class _TopBarState extends State<TopBar> {
     _searchFocusNode.dispose();
     _orderBloc.dispose();
     _removeOverlay();
-    _disconnectScaleSafe(); // safe: uses cached _weightProvider, not context
+    _stopScale();
     super.dispose();
     TopBar.clearUserCache();
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // SCALE — CONNECTION
+  // SCALE — Native EventChannel listener
   // ══════════════════════════════════════════════════════════════════════════════
 
-  Future<void> _connectToScale() async {
-    if (_isConnecting || _port != null) return;
+  void _listenToScale() {
+    if (_scaleSubscription != null) return;
     if (mounted) setState(() {
       _isConnecting = true;
-      _scaleStatus  = 'Scanning devices...';
+      _scaleStatus  = 'Connecting...';
     });
+    _scaleLog('🔌 Subscribing to native magellan_scale/events...');
 
-    try {
-      final devices = await UsbSerial.listDevices();
-      _scaleLog('🔍 Found ${devices.length} USB device(s)');
-      for (final d in devices) {
-        _scaleLog('  • ${d.productName ?? "unknown"}'
-            '  VID:0x${d.vid?.toRadixString(16).toUpperCase().padLeft(4, "0")}'
-            '  PID:0x${d.pid?.toRadixString(16).toUpperCase().padLeft(4, "0")}');
-      }
+    _scaleSubscription = _scaleEventChannel.receiveBroadcastStream().listen(
+          (event) {
+        try {
+          final Map<String, dynamic> data = jsonDecode(event as String);
+          final String type = data['type'] as String? ?? '';
 
-      if (devices.isEmpty) {
-        _scaleLog('❌ No USB devices found.');
+          _scaleLog('📡 Native event: $event');
+
+          switch (type) {
+            case 'status':
+              final status  = data['status']  as String? ?? '';
+              final message = data['message'] as String? ?? '';
+              _scaleLog('📊 Status: $status — $message');
+              if (mounted) setState(() {
+                _scaleStatus  = message;
+                _isConnecting = status == 'connecting';
+              });
+              _weightProvider?.setConnected(status == 'connected');
+              if (status == 'disconnected' || status == 'error') {
+                _weightProvider?.updateWeight(0.0);
+              }
+              break;
+
+            case 'weight':
+              final double w    = (data['weight'] as num?)?.toDouble() ?? 0.0;
+              final String unit = data['unit']   as String? ?? 'lb';
+              _scaleLog('⚖️ Weight: $w $unit');
+              // Convert to kg for internal storage, show in lb
+              double kg = w;
+              if (unit == 'lb') kg = w * 0.453592;
+              else if (unit == 'g') kg = w / 1000;
+              else if (unit == 'oz') kg = w * 0.0283495;
+              final double lb = unit == 'lb' ? w : kg * 2.20462;
+              final displayText = '${lb.toStringAsFixed(3)} lb';
+              _weightProvider?.updateWeight(kg, displayText: displayText);
+              break;
+
+            case 'scan':
+              final raw = data['raw'] as String? ?? '';
+              _scaleLog('📷 Scan: $raw');
+              break;
+
+            case 'raw':
+              _scaleLog('📦 Raw: ${data['raw']}');
+              break;
+
+            default:
+              _scaleLog('❓ Unknown event type: $type');
+          }
+        } catch (e) {
+          _scaleLog('❌ Event parse error: $e');
+        }
+      },
+      onError: (e) {
+        _scaleLog('❌ EventChannel error: $e');
+        _weightProvider?.setConnected(false);
         if (mounted) setState(() {
-          _scaleStatus  = 'No USB devices';
+          _scaleStatus  = 'Channel error';
           _isConnecting = false;
         });
-        return;
-      }
-
-      // ── Rank devices into 3 priority buckets ─────────────────────────────
-      // P1 = exact VID/PID match  (most reliable)
-      // P2 = product-name keyword match
-      // P3 = everything else on the hub (last-resort brute-force)
-
-      final p1 = <UsbDevice>[];
-      final p2 = <UsbDevice>[];
-      final p3 = <UsbDevice>[];
-
-      for (final d in devices) {
-        final isKnown = _knownScaleVidPids
-            .any((e) => e['vid'] == d.vid && e['pid'] == d.pid);
-        final name      = (d.productName ?? '').toLowerCase();
-        final nameMatch = _scaleKeywords.any(name.contains);
-
-        if (isKnown)       p1.add(d);
-        else if (nameMatch) p2.add(d);
-        else                p3.add(d);
-      }
-
-      _scaleLog('📋 Priority — P1:${p1.length} P2:${p2.length} P3(fallback):${p3.length}');
-
-      // ── Try in priority order; stop at first success ──────────────────────
-      for (final d in [...p1, ...p2, ...p3]) {
-        // Unknown devices (P3) only try 9600 to keep scan fast on hubs
-        final bauds = p3.contains(d) ? [9600] : _scaleBaudRates;
-        for (final baud in bauds) {
-          final ok = await _tryConnectDevice(d, baud);
-          if (ok) return; // ✅ connected
-        }
-      }
-
-      _scaleLog('❌ Could not connect to any device.');
-      if (mounted) setState(() => _scaleStatus = 'Not connected');
-
-    } catch (e, st) {
-      _scaleLog('❌ Scan error: $e');
-      debugPrint('$st');
-      if (mounted) setState(() => _scaleStatus = 'Scan error: $e');
-    } finally {
-      if (mounted) setState(() => _isConnecting = false);
-    }
+      },
+      onDone: () {
+        _scaleLog('⚠️ EventChannel closed.');
+        _weightProvider?.setConnected(false);
+        if (mounted) setState(() {
+          _scaleStatus  = 'Disconnected';
+          _isConnecting = false;
+        });
+      },
+      cancelOnError: false,
+    );
   }
-  // bool isLoading = false; // 👈 Make sure this exists
 
   Future<void> refreshProducts() async {
     try {
       setState(() => isLoading = true);
-
       final isar = await IsarService.instance;
-
       await isar.writeTxn(() async {
-        await isar.isarCacheEntrys
-            .filter()
-            .keyStartsWith("sku_")   // ✅ ONLY SKU CACHE
-            .deleteAll();
+        await isar.isarCacheEntrys.filter().keyStartsWith("sku_").deleteAll();
       });
-
       print("🗑 Only SKU cache cleared (sku_*)");
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -505,231 +467,53 @@ class _TopBarState extends State<TopBar> {
           ),
         );
       }
-
     } catch (e) {
       print("❌ SKU Refresh error: $e");
     } finally {
-      if (mounted) {
-        setState(() => isLoading = false);
-      }
-    }
-  }
-  /// Try opening [device] at [baud].
-  /// Waits up to [_dataWaitTimeout] for actual bytes before committing.
-  /// Returns true only when data starts flowing (confirms correct device/baud).
-  Future<bool> _tryConnectDevice(UsbDevice device, int baud) async {
-    final label = '${device.productName ?? "device"} @ $baud';
-    _scaleLog('🔌 Trying $label...');
-
-    UsbPort? port;
-    try {
-      // ── Create port ──────────────────────────────────────────────────────
-      port = await device.create().timeout(
-        _connectTimeout,
-        onTimeout: () { _scaleLog('  ⏱ Timeout creating port'); return null; },
-      );
-      if (port == null) { _scaleLog('  ❌ create() returned null'); return false; }
-
-      // ── Open port ────────────────────────────────────────────────────────
-      final opened = await port.open().timeout(
-        _connectTimeout,
-        onTimeout: () { _scaleLog('  ⏱ Timeout opening port'); return false; },
-      );
-      if (!opened) {
-        _scaleLog('  ❌ open() returned false');
-        await _safeClosePort(port);
-        return false;
-      }
-
-      // ── Configure serial params ──────────────────────────────────────────
-      await port.setPortParameters(
-        baud,
-        UsbPort.DATABITS_8,
-        UsbPort.STOPBITS_1,
-        UsbPort.PARITY_NONE,
-      ).timeout(_connectTimeout);
-
-      // DTR + RTS required by many Magellan models to start sending weight data
-      await port.setDTR(true);
-      await port.setRTS(true);
-
-      _scaleBuffer.clear();
-
-      // ── Wait for first byte — confirms correct device + baud ─────────────
-      // This is the key fix for USB hubs: we don't commit until data flows.
-      final dataCompleter = Completer<bool>();
-      final probeSub = port.inputStream?.listen((data) {
-        if (!dataCompleter.isCompleted && data.isNotEmpty) {
-          dataCompleter.complete(true);
-        }
-      });
-
-      final gotData = await dataCompleter.future
-          .timeout(_dataWaitTimeout, onTimeout: () => false);
-
-      await probeSub?.cancel();
-
-      if (!gotData) {
-        _scaleLog('  ⚠️ No data at $baud baud — skipping.');
-        await _safeClosePort(port);
-        return false;
-      }
-
-      // ── Confirmed — set up real subscription ─────────────────────────────
-      await _subscription?.cancel();
-      _scaleBuffer.clear();
-
-      _subscription = port.inputStream?.listen(
-        _onScaleData,
-        onError: (e) {
-          _scaleLog('❌ Stream error: $e');
-          _weightProvider?.setConnected(false);
-          if (mounted) setState(() => _scaleStatus = 'Stream error');
-        },
-        onDone: () {
-          _scaleLog('⚠️ Stream closed.');
-          _weightProvider?.setConnected(false);
-          if (mounted) setState(() => _scaleStatus = 'Disconnected');
-        },
-        cancelOnError: false,
-      );
-
-      _port                = port;
-      _connectedDeviceName = device.productName ?? 'Scale';
-      _weightProvider?.setConnected(true);
-
-      if (mounted) setState(() => _scaleStatus = 'Connected: $_connectedDeviceName');
-      _scaleLog('✅ Connected: $label');
-      return true;
-
-    } on TimeoutException {
-      _scaleLog('  ⏱ Connection timed out: $label');
-      await _safeClosePort(port);
-      if (_port == port) _port = null;
-      return false;
-    } catch (e) {
-      _scaleLog('  ❌ Exception: $e');
-      await _safeClosePort(port);
-      if (_port == port) _port = null;
-      return false;
-    }
-  }
-
-  Future<void> _safeClosePort(UsbPort? port) async {
-    try { await port?.close(); } catch (_) {}
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════════
-  // SCALE — DATA PARSING
-  // ══════════════════════════════════════════════════════════════════════════════
-
-  void _onScaleData(Uint8List data) {
-    _scaleBuffer.addAll(data);
-
-    // ── Newline-terminated frames (standard RS-232 scale protocol) ───────────
-    while (true) {
-      final idx = _scaleBuffer.indexOf(0x0A); // LF
-      if (idx == -1) break;
-      final frame = _scaleBuffer.sublist(0, idx + 1);
-      _scaleBuffer.removeRange(0, idx + 1);
-      final line = String.fromCharCodes(frame).trim();
-      if (line.isNotEmpty) {
-        _scaleLog('📦 $line');
-        _parseAndUpdateWeight(line);
-      }
-    }
-
-    // ── Fixed-width frames without LF (some Magellan firmware versions) ──────
-    if (_scaleBuffer.length > 64) {
-      final line = String.fromCharCodes(_scaleBuffer).trim();
-      _scaleBuffer.clear();
-      if (line.isNotEmpty) {
-        _scaleLog('📦 (raw) $line');
-        _parseAndUpdateWeight(line);
-      }
-    }
-  }
-
-  void _parseAndUpdateWeight(String raw) {
-    final clean = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
-
-    // ── "1.234 kg" / "2.50 lb" / "12.0 oz" ──────────────────────────────────
-    final unitMatch = RegExp(
-      r'([+-]?\d*\.?\d+)\s*(kg|g|lb|oz)',
-      caseSensitive: false,
-    ).firstMatch(clean);
-
-    if (unitMatch != null) {
-      final value = double.tryParse(unitMatch.group(1) ?? '');
-      final unit  = unitMatch.group(2)?.toLowerCase() ?? 'kg';
-      if (value != null) {
-        final kg          = _convertToKg(value, unit);
-        final lb          = kg * 2.20462;
-        final displayText = '${lb.toStringAsFixed(3)} lb';
-        _scaleLog('✅ $value $unit → $kg kg → $displayText');
-        _weightProvider?.updateWeight(kg, displayText: displayText);
-        return;
-      }
-    }
-
-    // ── Bare number (Magellan SASI/OSD): "  2.500" — assume kg ──────────────
-    final numMatch = RegExp(r'([+-]?\d*\.?\d+)').firstMatch(clean);
-    if (numMatch != null) {
-      final value = double.tryParse(numMatch.group(1) ?? '');
-      if (value != null && value >= 0) {
-        final lb          = value * 2.20462;
-        final displayText = '${lb.toStringAsFixed(3)} lb';
-        _scaleLog('⚠️ No unit — assuming kg: $value → $displayText');
-        _weightProvider?.updateWeight(value, displayText: displayText);
-        return;
-      }
-    }
-
-    _scaleLog('❌ Cannot parse: "$clean"');
-  }
-
-  double _convertToKg(double value, String unit) {
-    switch (unit) {
-      case 'g':  return value / 1000;
-      case 'lb': return value * 0.453592;
-      case 'oz': return value * 0.0283495;
-      case 'kg':
-      default:   return value;
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // SCALE — CONNECT / DISCONNECT HELPERS
+  // SCALE — HELPERS
   // ══════════════════════════════════════════════════════════════════════════════
 
   void _scaleLog(String msg) {
-    if (kDebugMode) print(msg);
+    if (kDebugMode) debugPrint('[Scale] $msg');
   }
 
-  /// Fully safe disconnect — uses cached [_weightProvider], never touches context.
-  /// Call from dispose() or after async gaps.
-  Future<void> _disconnectScaleSafe() async {
-    await _subscription?.cancel();
-    _subscription = null;
-    await _safeClosePort(_port);
-    _port = null;
+  /// Cancel EventChannel subscription and tell native side to stop.
+  void _stopScale() {
+    _scaleSubscription?.cancel();
+    _scaleSubscription = null;
+    try {
+      _scaleMethodChannel.invokeMethod('stop');
+    } catch (_) {}
     _weightProvider?.setConnected(false);
     _weightProvider?.updateWeight(0.0);
   }
 
-  /// Full disconnect + state update. Use for reconnect flows.
-  Future<void> _disconnectScale() async {
-    await _disconnectScaleSafe();
-    _connectedDeviceName = '';
-    if (mounted) setState(() => _scaleStatus = 'Disconnected');
-  }
-
+  /// Reconnect: tell native to restart, re-subscribe if needed.
   Future<void> _reconnectScale() async {
-    await _disconnectScale();
-    await _connectToScale();
+    _scaleLog('🔄 Reconnecting...');
+    if (mounted) setState(() {
+      _isConnecting = true;
+      _scaleStatus  = 'Reconnecting...';
+    });
+    try {
+      await _scaleMethodChannel.invokeMethod('reconnect');
+    } catch (e) {
+      _scaleLog('❌ Reconnect error: $e');
+    }
+    // If subscription was somehow cancelled, re-create it
+    if (_scaleSubscription == null) {
+      _listenToScale();
+    }
   }
 
-
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SEARCH
+  // ══════════════════════════════════════════════════════════════════════════════
 
   Future<void> _loadCachedProducts() async {
     try {
@@ -879,8 +663,7 @@ class _TopBarState extends State<TopBar> {
 
         return ListTile(
           leading: SizedBox(
-            width: 50,
-            height: 50,
+            width: 50, height: 50,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: imageUrl != null && imageUrl.isNotEmpty
@@ -898,6 +681,7 @@ class _TopBarState extends State<TopBar> {
           title:    Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
           subtitle: Text("\$$price"),
           onTap: () async {
+            // ── Build base ProductResponse from cache row ──────────────────
             ProductResponse fullProduct = ProductResponse(
               id:     int.tryParse(p["fast_key_product_id"]?.toString() ?? "0") ?? 0,
               name:   name,
@@ -906,6 +690,7 @@ class _TopBarState extends State<TopBar> {
               images: imageUrl != null ? [imageUrl] : [],
             );
 
+            // ── Enrich with tags from products_ cache ──────────────────────
             try {
               final isar    = await IsarService.instance;
               final entries = await isar.isarCacheEntrys
@@ -942,64 +727,103 @@ class _TopBarState extends State<TopBar> {
     );
   }
 
+  // ══════════════════════════════════════════════════════════════════════════════
+  // VARIANT CACHE HELPER
+  // ══════════════════════════════════════════════════════════════════════════════
+
   Future<List<Map<String, dynamic>>> _getVariantsFromCache(int productId) async {
-    final isar    = await IsarService.instance;
-    final entries = await isar.isarCacheEntrys
-        .where()
-        .filter()
-        .keyStartsWith("products_")
-        .findAll();
+    try {
+      final isar    = await IsarService.instance;
+      final entries = await isar.isarCacheEntrys
+          .where()
+          .filter()
+          .keyStartsWith("products_")
+          .findAll();
 
-    for (final entry in entries) {
-      final List<dynamic> products = jsonDecode(entry.json);
-      final match = products.firstWhere(
-            (p) => p["fast_key_product_id"]?.toString() == productId.toString(),
-        orElse: () => null,
-      );
-      if (match == null) continue;
+      for (final entry in entries) {
+        final List<dynamic> products = jsonDecode(entry.json);
+        final match = products.firstWhere(
+              (p) => p["fast_key_product_id"]?.toString() == productId.toString(),
+          orElse: () => null,
+        );
+        if (match == null) continue;
 
-      final rawVariations = match["variations"];
-      if (rawVariations is! List || rawVariations.isEmpty) continue;
+        final rawVariations = match["variations"];
+        if (rawVariations is! List || rawVariations.isEmpty) continue;
 
-      final List<Map<String, dynamic>> variants = [];
-      for (final v in rawVariations) {
-        if (v is Map<String, dynamic>) {
-          variants.add({
-            "id":    v["id"],
-            "name":  v["name"] ?? (v["attributes"] as List?)?.map((a) => a["option"]).join(" - "),
-            "price": v["regular_price"] ?? v["price"] ?? "0",
-            "image": v["image"]?["src"],
-            "sku":   v["sku"],
-          });
-        } else if (v is int) {
-          variants.add({
-            "id": v, "name": "Variant",
-            "price": match["price"] ?? "0",
-            "image": match["image"], "sku": match["sku"],
-          });
+        final List<Map<String, dynamic>> variants = [];
+        for (final v in rawVariations) {
+          if (v is Map<String, dynamic>) {
+            variants.add({
+              "id":    v["id"],
+              "name":  v["name"] ?? (v["attributes"] as List?)
+                  ?.map((a) => a["option"])
+                  .join(" - "),
+              "price": v["regular_price"] ?? v["price"] ?? "0",
+              "image": v["image"]?["src"],
+              "sku":   v["sku"],
+            });
+          } else if (v is int) {
+            variants.add({
+              "id":    v,
+              "name":  "Variant",
+              "price": match["price"] ?? "0",
+              "image": match["image"],
+              "sku":   match["sku"],
+            });
+          }
         }
+        if (variants.isNotEmpty) return variants;
       }
-      if (variants.isNotEmpty) return variants;
+    } catch (e) {
+      debugPrint("_getVariantsFromCache error: $e");
     }
     return [];
   }
 
+  // ══════════════════════════════════════════════════════════════════════════════
+  // PRODUCT TAP HANDLER
+  // Mirrors _onIndigoProductTapped — full flow: age check → EBT → produce
+  // (auto-weight) → variants → variable price → simple add.
+  // ══════════════════════════════════════════════════════════════════════════════
+
   Future<void> _handleProductTap(ProductResponse product) async {
+    // ── Guard: only act on valid screens ──────────────────────────────────────
+    final screen = widget.screen;
+    if (screen != Screen.FASTKEY &&
+        screen != Screen.CATEGORY &&
+        screen != Screen.ADD) {
+      if (kDebugMode) print("TopBar: product tap ignored on screen $screen");
+      return;
+    }
+
+    // ── Prevent re-entrant taps ───────────────────────────────────────────────
+    if (_dialogOpen) {
+      if (kDebugMode) print("TopBar: dialog already open, ignoring tap");
+      return;
+    }
+
+    // ── Step 1: fully dismiss search UI BEFORE any async work ────────────────
+    // Unfocus first so the keyboard hides (doesn't steal context)
+    _searchFocusNode.unfocus();
+    // Remove overlay entry and wait for Flutter to fully flush the removal
+    _removeOverlay();
+    // Give the framework one full frame to remove the overlay from the tree
+    // before we try to push a dialog on top. Without this, the overlay can
+    // still intercept the dialog's barrier tap on the first frame.
+    await WidgetsBinding.instance.endOfFrame;
+
+    // ── Safety: bail if widget was disposed during that frame ─────────────────
+    if (!mounted) return;
+
     try {
-      _searchFocusNode.unfocus();
-      _removeOverlay();
-
-      var screen = widget.screen;
-      if (screen != Screen.FASTKEY && screen != Screen.CATEGORY && screen != Screen.ADD) {
-        if (kDebugMode) print("TopBar - return from product selection (invalid screen)");
-        return;
-      }
-
+      // ── 2. Ensure an active order exists ──────────────────────────────────
       final ensuredOrderId = await orderHelper.ensureOrderExists();
       if (ensuredOrderId == null) {
-        if (kDebugMode) print("Failed to create or restore order");
+        if (kDebugMode) print("❌ Failed to create or restore order");
         return;
       }
+      if (!mounted) return;
 
       final offlineBox    = StorageProvider.offlineOrders;
       final activeOrderId = ensuredOrderId.toString();
@@ -1007,49 +831,56 @@ class _TopBarState extends State<TopBar> {
       final Map<String, dynamic> rawOrder =
       Map<String, dynamic>.from(raw is Map ? raw : {});
 
-      List<dynamic> lineItems = List.from(rawOrder['line_items'] ?? []);
+      // ── 3. Resolve product tags ────────────────────────────────────────────
+      final List<SKU.Tags> tags = product.tags ?? [];
 
-      // ── Age verification ────────────────────────────────────────────────────
-      final tags = product.tags ?? [];
+      // ── 4. Age verification ───────────────────────────────────────────────
       final bool hasAgeRestriction =
       tags.any((t) => t.name == TextConstants.age_restricted);
 
-      SKU.Tags? ageRestrictedTag;
       if (hasAgeRestriction) {
-        ageRestrictedTag = tags.firstWhere((t) => t.name == TextConstants.age_restricted);
+        final dynamic hiveAge      = rawOrder["age_verified"];
+        final bool alreadyVerified = hiveAge == true ||
+            hiveAge == 1 ||
+            hiveAge?.toString().toLowerCase() == "true";
+
+        if (!alreadyVerified) {
+          final SKU.Tags ageTag =
+          tags.firstWhere((t) => t.name == TextConstants.age_restricted);
+          final int minAge =
+              int.tryParse(ageTag.slug?.toString() ?? "0") ?? 0;
+
+          if (kDebugMode) print("🔞 Age verification required (min $minAge)");
+
+          _dialogOpen = true;
+          final prov = AgeVerificationProvider();
+          final ok   = await prov.verifyAge(context, minAge: minAge);
+          _dialogOpen = false;
+
+          if (!mounted) return;
+          if (!ok) {
+            if (kDebugMode) print("❌ Age verification failed or cancelled");
+            return;
+          }
+
+          rawOrder["age_verified"] = true;
+          await offlineBox.put(activeOrderId, rawOrder);
+          if (kDebugMode) print("✅ Age verified — order updated");
+        }
       }
 
-      final dynamic hiveAge      = rawOrder["age_verified"];
-      final bool alreadyVerified = hiveAge == true ||
-          hiveAge == 1 ||
-          hiveAge?.toString().toLowerCase() == "true";
+      if (!mounted) return;
 
-      if (hasAgeRestriction && !alreadyVerified) {
-        final int minAge = int.tryParse(ageRestrictedTag?.slug?.toString() ?? "0") ?? 0;
-        print("🔞 Showing Age Verification Popup (SEARCH)");
-        _dialogOpen = true;
-        _searchFocusNode.unfocus();
-        _removeOverlay();
-        await WidgetsBinding.instance.endOfFrame;
-
-        final prov = AgeVerificationProvider();
-        final ok   = await prov.verifyAge(context, minAge: minAge);
-        _dialogOpen = false;
-
-        if (!ok) { print("❌ Age verification failed"); return; }
-        rawOrder["age_verified"] = true;
-        await offlineBox.put(activeOrderId.toString(), rawOrder);
-      }
-
-      // ── EBT eligibility ─────────────────────────────────────────────────────
+      // ── 5. Resolve EBT eligibility ─────────────────────────────────────────
       bool isEbtEligible = false;
       try {
-        final isar         = await IsarService.instance;
+        final isar          = await IsarService.instance;
         final cachedEntries = await isar.isarCacheEntrys
             .where()
             .filter()
             .keyStartsWith("products_")
             .findAll();
+
         for (final entry in cachedEntries) {
           final List<dynamic> products = jsonDecode(entry.json);
           final match = products.firstWhere(
@@ -1058,7 +889,9 @@ class _TopBarState extends State<TopBar> {
           );
           if (match != null) {
             isEbtEligible = match["is_ebt_eligible"] == true;
-            if (kDebugMode) print("🥗 EBT → ${match["fast_key_item_name"]} | $isEbtEligible");
+            if (kDebugMode) {
+              print("🥗 EBT → ${match["fast_key_item_name"]} | $isEbtEligible");
+            }
             break;
           }
         }
@@ -1066,186 +899,267 @@ class _TopBarState extends State<TopBar> {
         if (kDebugMode) print("⚠️ EBT resolve error: $e");
       }
 
-      // ── Produce → Auto Weight Popup ─────────────────────────────────────────
+      if (!mounted) return;
+
+      // ── 6. Parse unit price ────────────────────────────────────────────────
+      final double unitPrice = (product.price is num)
+          ? (product.price as num).toDouble()
+          : double.tryParse(product.price?.toString() ?? "0") ?? 0.0;
+
+      // ── 7. PRODUCE → Auto Weight & Price dialog ────────────────────────────
       final bool hasProduceTag = tags.any((t) =>
-      t.slug?.toLowerCase() == "produce" || t.name?.toLowerCase() == "produce");
+      t.slug?.toLowerCase() == "produce" ||
+          t.name?.toLowerCase() == "produce");
 
       if (hasProduceTag) {
-        print("🌿 Produce detected → AutoWeightPriceDialog");
-        _removeOverlay();
-        await Future.delayed(const Duration(milliseconds: 40));
+        if (kDebugMode) print("🌿 Produce detected → AutoWeightPriceDialog");
 
-        final double unitPrice = (product.price is num)
-            ? (product.price as num).toDouble()
-            : double.tryParse(product.price?.toString() ?? "0") ?? 0.0;
+        // Wait one extra frame so any previous dialog/overlay paint is done
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
 
         _dialogOpen = true;
-        _searchFocusNode.unfocus();
-        _removeOverlay();
+        Map<String, dynamic>? result;
+        try {
+          result = await showDialog<Map<String, dynamic>>(
+            // Use the live `context` getter — never the stale `_context` field
+            // after async gaps, because the Element may have been rebuilt.
+            context: context,
+            barrierDismissible: false,
+            useRootNavigator: true,   // ← ensures it sits above all overlays
+            builder: (dialogCtx) => ChangeNotifierProvider.value(
+              // Re-inject WeightProvider into the dialog's subtree because
+              // using useRootNavigator: true creates a new Navigator scope
+              // that is above the Provider, so we must pass it down manually.
+              value: Provider.of<WeightProvider>(context, listen: false),
+              child: AutoWeightPriceDialog(
+                productName: product.name ?? "Product",
+                unitPrice:   unitPrice,
+              ),
+            ),
+          );
+        } finally {
+          _dialogOpen = false;
+        }
 
-        final result = await showDialog(
-          context: _context,
-          barrierDismissible: false,
-          builder: (_) => AutoWeightPriceDialog(
-            productName: product.name ?? "Product",
-            unitPrice:   unitPrice,
-          ),
-        );
-        _dialogOpen = false;
+        if (!mounted) return;
 
-        if (result == null) { print("⚠️ Auto weight cancelled"); return; }
+        if (result == null) {
+          if (kDebugMode) print("⚠️ Auto weight cancelled");
+          return;
+        }
 
-        final double finalPrice = result["finalPrice"];
-        final double weight     = result["weight"];
+        final double finalPrice  = (result["finalPrice"] as num).toDouble();
+        final double weightValue = (result["weight"]     as num).toDouble();
+        if (kDebugMode) {
+          print("⚖️ Weight: $weightValue lb  |  Price: \$$finalPrice");
+        }
 
         setState(() => isAddingItemLoading = true);
+
         await orderHelper.addItemToOrder(
-          product.id!, product.name ?? 'Unknown',
+          product.id!,
+          product.name ?? 'Unknown',
           product.images?.isNotEmpty == true ? product.images!.first : '',
-          finalPrice, 1, product.sku ?? '',
+          finalPrice,
+          1,
+          product.sku ?? '',
           int.parse(activeOrderId),
-          type: "weighted", productId: product.id, variationId: -1,
-          unitPrice: unitPrice, salesPrice: finalPrice, regularPrice: unitPrice,
-          combo: null, isEbtEligible: isEbtEligible,
+          type:          "weighted",
+          productId:     product.id,
+          variationId:   -1,
+          unitPrice:     unitPrice,
+          salesPrice:    finalPrice,
+          regularPrice:  unitPrice,
+          combo:         null,
+          isEbtEligible: isEbtEligible,
           onItemAdded: () {
-            _removeOverlay(); _clearSearch();
-            setState(() => isAddingItemLoading = false);
+            _removeOverlay();
+            _clearSearch();
+            if (mounted) setState(() => isAddingItemLoading = false);
             widget.onProductSelected?.call(product);
           },
         );
         return;
       }
 
-      // ── Variants / Variable price ────────────────────────────────────────────
-      final double productPrice = (product.price is num)
-          ? (product.price as num).toDouble()
-          : double.tryParse(product.price?.toString() ?? "") ?? 0.0;
+      // ── 8. VARIANTS ────────────────────────────────────────────────────────
+      List<Map<String, dynamic>> variants =
+      await _getVariantsFromCache(product.id!);
+      bool hasVariants = variants.isNotEmpty;
 
-      double finalPrice = productPrice;
+      if (!hasVariants) {
+        productBloc.fetchProductVariations(product.id!);
+        final response = await productBloc.variationStream
+            .firstWhere((r) => r.status == Status.COMPLETED)
+            .timeout(const Duration(seconds: 10),
+          //     onTimeout: () {
+          //   return ApiResponse<List<ProductVariation>>.completed([]);
+          // }
+        );
 
+        if (response.data != null && response.data!.isNotEmpty) {
+          hasVariants = true;
+          variants = response.data!.map((v) => {
+            "id":    v.id,
+            "name":  v.name ?? "Variant",
+            "price": v.price ?? "0",
+            "image": v.image?.src ?? "",
+            "sku":   v.sku ?? "",
+          }).toList();
+        }
+      }
+
+      if (!mounted) return;
+
+      if (hasVariants && variants.isNotEmpty) {
+        if (kDebugMode) print("🔀 Variants (${variants.length}) → VariantsDialog");
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+
+        _dialogOpen = true;
+        try {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            useRootNavigator: true,
+            builder: (dialogCtx) => VariantsDialog(
+              title:      product.name ?? "Select Variant",
+              variations: variants,
+              onAddVariant: (selected, qty) async {
+                final varPrice =
+                    double.tryParse(selected["price"].toString()) ?? 0.0;
+
+                await orderHelper.addItemToOrder(
+                  selected["id"],
+                  selected["name"] ?? product.name ?? 'Unknown',
+                  selected["image"] ?? '',
+                  varPrice,
+                  qty,
+                  selected["sku"] ?? product.sku ?? '',
+                  int.parse(activeOrderId),
+                  type:          'variant',
+                  productId:     product.id,
+                  variationId:   selected["id"],
+                  unitPrice:     varPrice,
+                  salesPrice:    varPrice,
+                  regularPrice:  varPrice,
+                  isEbtEligible: isEbtEligible,
+                  onItemAdded: () {
+                    _removeOverlay();
+                    _clearSearch();
+                    if (mounted) setState(() => isAddingItemLoading = false);
+                    widget.onProductSelected?.call(product);
+                  },
+                );
+                if (dialogCtx.mounted) {
+                  Navigator.of(dialogCtx, rootNavigator: true).pop();
+                }
+              },
+            ),
+          );
+        } finally {
+          _dialogOpen = false;
+        }
+
+        _removeOverlay();
+        _clearSearch();
+        if (mounted) setState(() => isAddingItemLoading = false);
+        return;
+      }
+
+      // ── 9. VARIABLE PRICE ──────────────────────────────────────────────────
       final bool hasVariablePriceTag = tags.any((t) =>
       t.slug?.toLowerCase() == "variable-product" ||
           t.slug?.toLowerCase() == "variable" ||
           t.name?.toLowerCase() == "variable product" ||
           t.name?.toLowerCase() == "variable");
 
-      final String variableKey   = "variable_price_added_${product.id}";
-      final String savedPriceKey = "selected_price_${product.id}";
-      final bool popupAlreadyShown = rawOrder[variableKey] == true;
+      final String variableKey       = "variable_price_added_${product.id}";
+      final String savedPriceKey     = "selected_price_${product.id}";
+      final bool   popupAlreadyShown = rawOrder[variableKey] == true;
 
-      if (popupAlreadyShown) {
-        final savedPrice = rawOrder[savedPriceKey] ?? productPrice;
-        finalPrice = double.tryParse(savedPrice.toString()) ?? productPrice;
-      }
+      double finalPrice = unitPrice;
 
-      final cachedVariants = await _getVariantsFromCache(product.id!);
-      bool hasVariants = cachedVariants.isNotEmpty;
-
-      if (!hasVariants) {
-        productBloc.fetchProductVariations(product.id!);
-        final response = await productBloc.variationStream
-            .firstWhere((r) => r.status == Status.COMPLETED);
-        hasVariants = response.data != null && response.data!.isNotEmpty;
-      }
-
-      if (hasVariants) {
-        productBloc.fetchProductVariations(product.id!);
-        final response = await productBloc.variationStream
-            .firstWhere((r) => r.status == Status.COMPLETED);
-
-        List<Map<String, dynamic>> variants = [];
-        if (response.data != null && response.data!.isNotEmpty) {
-          variants = response.data!.map((v) => {
-            "id": v.id, "name": v.name ?? "Variant",
-            "price": v.price ?? "0", "image": v.image?.src ?? "", "sku": v.sku ?? "",
-          }).toList();
+      if (hasVariablePriceTag) {
+        if (popupAlreadyShown) {
+          final savedPrice = rawOrder[savedPriceKey];
+          finalPrice = double.tryParse(savedPrice?.toString() ?? "") ?? unitPrice;
+          if (kDebugMode) print("💲 Variable price re-used: \$$finalPrice");
         } else {
-          variants = cachedVariants;
+          await WidgetsBinding.instance.endOfFrame;
+          if (!mounted) return;
+
+          _dialogOpen = true;
+          double? enteredPrice;
+          try {
+            enteredPrice = await ManualPriceDialog.show(
+              context,
+              productName:  product.name ?? "Product",
+              productImage: _getProductImage(product),
+              minPrice:     unitPrice,
+            );
+          } finally {
+            _dialogOpen = false;
+          }
+
+          if (!mounted) return;
+          if (enteredPrice == null) {
+            if (kDebugMode) print("⚠️ Variable price entry cancelled");
+            return;
+          }
+
+          finalPrice              = enteredPrice;
+          rawOrder[variableKey]   = true;
+          rawOrder[savedPriceKey] = finalPrice;
+          await offlineBox.put(activeOrderId, rawOrder);
+          if (kDebugMode) print("💲 Variable price entered: \$$finalPrice");
         }
-        if (variants.isEmpty) return;
-
-        _removeOverlay();
-        await Future.delayed(const Duration(milliseconds: 40));
-        _removeOverlay();
-
-        await showDialog(
-          context: _context,
-          barrierDismissible: false,
-          builder: (_) => VariantsDialog(
-            title:      product.name ?? "Select Variant",
-            variations: variants,
-            onAddVariant: (selected, qty) async {
-              final price = double.tryParse(selected["price"].toString()) ?? 0;
-              await orderHelper.addItemToOrder(
-                selected["id"], selected["name"], selected["image"], price, qty,
-                selected["sku"], int.parse(activeOrderId),
-                type: 'variant', productId: product.id, variationId: selected["id"],
-                isEbtEligible: isEbtEligible,
-                onItemAdded: () {
-                  _removeOverlay(); _clearSearch();
-                  if (mounted) setState(() => isAddingItemLoading = false);
-                  widget.onProductSelected?.call(product);
-                },
-              );
-              Navigator.of(context, rootNavigator: true).pop();
-            },
-          ),
-        );
-
-        _removeOverlay();
-        _clearSearch();
-        setState(() => isAddingItemLoading = false);
-        return;
       }
 
-      if (hasVariablePriceTag && !popupAlreadyShown) {
-        _removeOverlay();
-        await Future.delayed(const Duration(milliseconds: 40));
-        _removeOverlay();
+      if (!mounted) return;
 
-        final enteredPrice = await ManualPriceDialog.show(
-          _context,
-          productName:  product.name ?? "Product",
-          productImage: _getProductImage(product),
-          minPrice:     productPrice,
-        );
-        if (enteredPrice == null) return;
-
-        finalPrice             = enteredPrice;
-        rawOrder[variableKey]  = true;
-        rawOrder[savedPriceKey] = finalPrice;
-        await offlineBox.put(activeOrderId.toString(), rawOrder);
-      }
-
+      // ── 10. SIMPLE PRODUCT ────────────────────────────────────────────────
+      if (kDebugMode) print("🛒 Simple add → ${product.name} @ \$$finalPrice");
       setState(() => isAddingItemLoading = true);
 
-      try {
-        await orderHelper.addItemToOrder(
-          product.id!, product.name ?? 'Unknown',
-          product.images?.isNotEmpty == true ? product.images!.first : '',
-          finalPrice, 1, product.sku ?? '',
-          int.tryParse(activeOrderId) ?? 0,
-          type: "simple", productId: product.id!, variationId: -1,
-          variationName: null, variationCount: 0, combo: null,
-          salesPrice: finalPrice, regularPrice: finalPrice, unitPrice: finalPrice,
-          isEbtEligible: isEbtEligible,
-          onItemAdded: () {
-            _removeOverlay(); _clearSearch();
-            setState(() => isAddingItemLoading = false);
-            widget.onProductSelected?.call(product);
-          },
-        );
-      } catch (e, s) {
-        print("❌ Simple product add error: $e\n$s");
-        _removeOverlay();
-        setState(() => isAddingItemLoading = false);
-      }
-    } catch (e, s) {
-      if (kDebugMode) print("TopBar onTap Exception: $e\n$s");
+      await orderHelper.addItemToOrder(
+        product.id!,
+        product.name ?? 'Unknown',
+        product.images?.isNotEmpty == true ? product.images!.first : '',
+        finalPrice,
+        1,
+        product.sku ?? '',
+        int.tryParse(activeOrderId) ?? 0,
+        type:           "simple",
+        productId:      product.id!,
+        variationId:    -1,
+        variationName:  null,
+        variationCount: 0,
+        combo:          null,
+        salesPrice:     finalPrice,
+        regularPrice:   finalPrice,
+        unitPrice:      finalPrice,
+        isEbtEligible:  isEbtEligible,
+        onItemAdded: () {
+          _removeOverlay();
+          _clearSearch();
+          if (mounted) setState(() => isAddingItemLoading = false);
+          widget.onProductSelected?.call(product);
+        },
+      );
+
+    } catch (e, st) {
+      if (kDebugMode) print("❌ _handleProductTap Exception: $e\n$st");
+      _dialogOpen = false;
       _removeOverlay();
-      setState(() => isAddingItemLoading = false);
+      if (mounted) setState(() => isAddingItemLoading = false);
     }
   }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // MISC HELPERS
+  // ══════════════════════════════════════════════════════════════════════════════
 
   void _removeOverlay() {
     _overlayEntry?.remove();
@@ -1287,173 +1201,140 @@ class _TopBarState extends State<TopBar> {
             final isDark = Theme.of(context).brightness == Brightness.dark;
 
             return Dialog(
-                insetPadding: const EdgeInsets.symmetric(horizontal: 40),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                backgroundColor: isDark
-                    ? const Color(0xFF2F3241)
-                    : Colors.white,
-                child: SizedBox(
-                  width: 320,
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // 🔐 Icon
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.lock_outline,
-                            color: Colors.redAccent,
-                            size: 30,
-                          ),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              backgroundColor: isDark ? const Color(0xFF2F3241) : Colors.white,
+              child: SizedBox(
+                width: 320,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.15),
+                          shape: BoxShape.circle,
                         ),
-
-                        const SizedBox(height: 12),
-
-                        Text(
-                          "Authentication Required ",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: 'Inter',
-                            color: isDark ? Colors.white : Colors.black,
-                          ),
+                        child: const Icon(
+                          Icons.lock_outline,
+                          color: Colors.redAccent,
+                          size: 30,
                         ),
-
-                        const SizedBox(height: 6),
-
-                        Text(
-                          "Enter PIN to open cash drawer",
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontFamily: 'Inter',
-                            color: isDark
-                                ? Colors.white60
-                                : Colors.grey[600],
-                          ),
-                          textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        "Authentication Required",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Inter',
+                          color: isDark ? Colors.white : Colors.black,
                         ),
-
-                        const SizedBox(height: 18),
-
-                        // 🔢 PIN BOXES
-                        _PinBoxField(
-                          controller: pinController,
-                          hasError: isError,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        "Enter PIN to open cash drawer",
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Inter',
+                          color: isDark ? Colors.white60 : Colors.grey[600],
                         ),
-
-                        if (isError) ...[
-                          const SizedBox(height: 8),
-                          const Text(
-                            "You are not authorized to access this feature.",
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.red,
-                            ),
-                          ),
-                        ],
-
-                        const SizedBox(height: 20),
-
-                        // 🔘 ACTION BUTTONS
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isDark
-                                      ? const Color(0xFF50535F)
-                                      : const Color(0xFFE0E0E0),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 10,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: Text(
-                                  "Cancel",
-                                  style: TextStyle(
-                                    color: isDark ? Colors.white70 : Colors.black87,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 18),
+                      _PinBoxField(
+                        controller: pinController,
+                        hasError: isError,
+                      ),
+                      if (isError) ...[
+                        const SizedBox(height: 8),
+                        const Text(
+                          "You are not authorized to access this feature.",
+                          style: TextStyle(fontSize: 11, color: Colors.red),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isDark
+                                    ? const Color(0xFF50535F)
+                                    : const Color(0xFFE0E0E0),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 10),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: Text(
+                                "Cancel",
+                                style: TextStyle(
+                                  color: isDark ? Colors.white70 : Colors.black87,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.redAccent,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 10,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                                onPressed: () async {
-                                  final pin = pinController.text.trim();
-
-                                  if (pin.length != 6) {
-                                    setState(() => isError = true);
-                                    return;
-                                  }
-
-                                  setState(() => isError = false);
-
-                                  try {
-                                    final response =
-                                    await OrderRepository().validateLoginPin(pin); // ✅ positional
-
-                                    final decoded = json.decode(response);
-
-                                    if (decoded["success"] == true) {
-                                      Navigator.pop(ctx, true);
-                                    } else {
-                                      setState(() => isError = true);
-                                      pinController.clear();
-                                    }
-                                  } catch (e) {
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 10),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onPressed: () async {
+                                final pin = pinController.text.trim();
+                                if (pin.length != 6) {
+                                  setState(() => isError = true);
+                                  return;
+                                }
+                                setState(() => isError = false);
+                                try {
+                                  final response =
+                                  await OrderRepository().validateLoginPin(pin);
+                                  final decoded = json.decode(response);
+                                  if (decoded["success"] == true) {
+                                    Navigator.pop(ctx, true);
+                                  } else {
                                     setState(() => isError = true);
                                     pinController.clear();
                                   }
-                                },
-
-
-                                child: const Text(
-                                  "Confirm",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                } catch (e) {
+                                  setState(() => isError = true);
+                                  pinController.clear();
+                                }
+                              },
+                              child: const Text(
+                                "Confirm",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
-                          ],
-                        ),
-
-                      ],
-                    ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ));
+                ),
+              ),
+            );
           },
         );
       },
-    ) ??
-        false;
+    ) ?? false;
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -1473,7 +1354,7 @@ class _TopBarState extends State<TopBar> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          // ── Logo ──────────────────────────────────────────────────────────
+          // ── Logo ────────────────────────────────────────────────────────────
           SvgPicture.asset(
             themeHelper.themeMode == ThemeMode.dark
                 ? 'assets/svg/app_logo.svg'
@@ -1482,7 +1363,7 @@ class _TopBarState extends State<TopBar> {
           ),
           const SizedBox(width: 80),
 
-          // ── Search bar ────────────────────────────────────────────────────
+          // ── Search bar ───────────────────────────────────────────────────────
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -1511,10 +1392,12 @@ class _TopBarState extends State<TopBar> {
                 focusNode:  _searchFocusNode,
                 decoration: InputDecoration(
                   hintText:   TextConstants.searchHint,
-                  prefixIcon: Icon(Icons.search, color: Theme.of(context).iconTheme.color),
+                  prefixIcon: Icon(Icons.search,
+                      color: Theme.of(context).iconTheme.color),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
-                    icon: Icon(Icons.clear, color: Theme.of(context).iconTheme.color),
+                    icon: Icon(Icons.clear,
+                        color: Theme.of(context).iconTheme.color),
                     onPressed: _clearSearch,
                   )
                       : null,
@@ -1532,107 +1415,125 @@ class _TopBarState extends State<TopBar> {
           ),
           const SizedBox(width: 50),
 
-          // ── Scale weight display ──────────────────────────────────────────
-          // Consumer<WeightProvider>(
-          //   builder: (context, weightProvider, _) {
-          //     final bool connected = weightProvider.isConnected;
-          //     final isDark = themeHelper.themeMode == ThemeMode.dark;
-          //
-          //     final parts    = weightProvider.weightText.trim().split(' ');
-          //     final numPart  = parts.isNotEmpty ? parts[0] : '0.00';
-          //     final unitPart = parts.length > 1  ? parts[1] : 'lb';
-          //
-          //     return GestureDetector(
-          //       onLongPress: _reconnectScale, // long-press to force reconnect
-          //       child: Row(
-          //         mainAxisSize: MainAxisSize.min,
-          //         children: [
-          //           if (connected) ...[
-          //             // Grey pill: 7-segment number
-          //             Container(
-          //               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          //               decoration: BoxDecoration(
-          //                 color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFEAEAEA),
-          //                 borderRadius: BorderRadius.circular(8),
-          //               ),
-          //               child: SevenSegmentDisplay(
-          //                 text:        numPart,
-          //                 digitHeight: 28,
-          //                 onColor:  isDark ? const Color(0xFFEEEEEE) : const Color(0xFF1A1A1A),
-          //                 offColor: isDark ? const Color(0xFF444444) : const Color(0xFFD0D0D0),
-          //                 spacing: 3,
-          //               ),
-          //             ),
-          //             const SizedBox(width: 6),
-          //             // Dark pill: unit label
-          //             Container(
-          //               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-          //               decoration: BoxDecoration(
-          //                 color: isDark ? const Color(0xFF444444) : const Color(0xFF3A3A3A),
-          //                 borderRadius: BorderRadius.circular(8),
-          //               ),
-          //               child: Text(
-          //                 unitPart,
-          //                 style: const TextStyle(
-          //                   fontSize: 15, fontWeight: FontWeight.w600,
-          //                   color: Colors.white, letterSpacing: 0.5, height: 1.0,
-          //                 ),
-          //               ),
-          //             ),
-          //           ] else ...[
-          //             // Disconnected / Connecting state
-          //             GestureDetector(
-          //               onTap: _isConnecting ? null : _reconnectScale,
-          //               child: Container(
-          //                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          //                 decoration: BoxDecoration(
-          //                   color: isDark
-          //                       ? ThemeNotifier.secondaryBackground
-          //                       : Colors.grey.shade100,
-          //                   borderRadius: BorderRadius.circular(8),
-          //                 ),
-          //                 child: Row(
-          //                   mainAxisSize: MainAxisSize.min,
-          //                   children: [
-          //                     if (_isConnecting)
-          //                       SizedBox(
-          //                         width: 14, height: 14,
-          //                         child: CircularProgressIndicator(
-          //                           strokeWidth: 1.5,
-          //                           color: Colors.grey.shade400,
-          //                         ),
-          //                       )
-          //                     else
-          //                       Icon(Icons.scale, size: 16, color: Colors.grey.shade400),
-          //                     const SizedBox(width: 6),
-          //                     Text(
-          //                       _isConnecting ? 'Connecting...' : 'Scale disconnected',
-          //                       style: TextStyle(
-          //                         fontSize: 13, fontWeight: FontWeight.w500,
-          //                         color: Colors.grey.shade500,
-          //                       ),
-          //                     ),
-          //                   ],
-          //                 ),
-          //               ),
-          //             ),
-          //           ],
-          //         ],
-          //       ),
-          //     );
-          //   },
-          // ),
+          // ── Scale weight display ─────────────────────────────────────────────
+
+          Consumer<WeightProvider>(
+            builder: (context, weightProvider, _) {
+              final bool connected = weightProvider.isConnected;
+              final isDark = themeHelper.themeMode == ThemeMode.dark;
+
+              final parts    = weightProvider.weightText.trim().split(' ');
+              final numPart  = parts.isNotEmpty ? parts[0] : '0.00';
+              final unitPart = parts.length > 1  ? parts[1] : 'lb';
+
+              return GestureDetector(
+                onLongPress: _reconnectScale,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (connected) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? const Color(0xFF2C2C2C)
+                              : const Color(0xFFEAEAEA),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: SevenSegmentDisplay(
+                          text:        numPart,
+                          digitHeight: 28,
+                          onColor:  isDark
+                              ? const Color(0xFFEEEEEE)
+                              : const Color(0xFF1A1A1A),
+                          offColor: isDark
+                              ? const Color(0xFF444444)
+                              : const Color(0xFFD0D0D0),
+                          spacing: 3,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 13, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? const Color(0xFF444444)
+                              : const Color(0xFF3A3A3A),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          unitPart,
+                          style: const TextStyle(
+                            fontSize:   15,
+                            fontWeight: FontWeight.w600,
+                            color:      Colors.white,
+                            letterSpacing: 0.5,
+                            height: 1.0,
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      GestureDetector(
+                        onTap: _isConnecting ? null : _reconnectScale,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? ThemeNotifier.secondaryBackground
+                                : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_isConnecting)
+                                SizedBox(
+                                  width: 14, height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.5,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                )
+                              else
+                                Icon(Icons.scale,
+                                    size: 16, color: Colors.grey.shade400),
+                              const SizedBox(width: 6),
+                              Text(
+                                _isConnecting
+                                    ? 'Connecting...'
+                                    : 'Scale disconnected',
+                                style: TextStyle(
+                                  fontSize:   13,
+                                  fontWeight: FontWeight.w500,
+                                  color:      Colors.grey.shade500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
+          ),
+
           const SizedBox(width: 16),
 
-          // ── Cash drawer ───────────────────────────────────────────────────
+          // ── Cash drawer ──────────────────────────────────────────────────────
+
           GestureDetector(
             onTap: () async {
               final isAuthorized = await _showCashDrawerPinPopup(context);
               if (!isAuthorized) return;
               await PrinterSettings.openDrawer(context: context);
-              List<int> bytes  = [];
-              final ticket     = await _printerSettings.getTicket();
-              bytes           += ticket.feed(1);
+              List<int> bytes = [];
+              final ticket    = await _printerSettings.getTicket();
+              bytes          += ticket.feed(1);
               await _printerSettings.printTicket(bytes, ticket);
             },
             child: Container(
@@ -1652,7 +1553,9 @@ class _TopBarState extends State<TopBar> {
                 SvgUtils.cashDrawerIcon,
                 width: 26, height: 26,
                 colorFilter: ColorFilter.mode(
-                  themeHelper.themeMode == ThemeMode.dark ? Colors.white70 : Colors.grey,
+                  themeHelper.themeMode == ThemeMode.dark
+                      ? Colors.white70
+                      : Colors.grey,
                   BlendMode.srcIn,
                 ),
               ),
@@ -1660,7 +1563,7 @@ class _TopBarState extends State<TopBar> {
           ),
           const SizedBox(width: 16),
 
-          // ── Mode toggle ───────────────────────────────────────────────────
+          // ── Mode toggle ──────────────────────────────────────────────────────
           GestureDetector(
             onTap: widget.onModeChanged,
             child: Container(
@@ -1680,7 +1583,9 @@ class _TopBarState extends State<TopBar> {
                 SvgUtils.changeModeIcon,
                 width: 26, height: 26,
                 colorFilter: ColorFilter.mode(
-                  themeHelper.themeMode == ThemeMode.dark ? Colors.white70 : Colors.grey,
+                  themeHelper.themeMode == ThemeMode.dark
+                      ? Colors.white70
+                      : Colors.grey,
                   BlendMode.srcIn,
                 ),
               ),
@@ -1688,7 +1593,7 @@ class _TopBarState extends State<TopBar> {
           ),
           const SizedBox(width: 16),
 
-          // ── Theme toggle ──────────────────────────────────────────────────
+          // ── Theme toggle ─────────────────────────────────────────────────────
           GestureDetector(
             onTap: () {
               themeHelper.setThemeMode(
@@ -1714,7 +1619,9 @@ class _TopBarState extends State<TopBar> {
                 SvgUtils.themeIcon,
                 width: 26, height: 26,
                 colorFilter: ColorFilter.mode(
-                  themeHelper.themeMode == ThemeMode.dark ? Colors.white70 : Colors.grey,
+                  themeHelper.themeMode == ThemeMode.dark
+                      ? Colors.white70
+                      : Colors.grey,
                   BlendMode.srcIn,
                 ),
               ),
@@ -1722,7 +1629,7 @@ class _TopBarState extends State<TopBar> {
           ),
           const SizedBox(width: 16),
 
-          // ── Notifications ─────────────────────────────────────────────────
+          // ── Notifications ────────────────────────────────────────────────────
           Container(
             decoration: BoxDecoration(
               color: themeHelper.themeMode == ThemeMode.dark
@@ -1736,24 +1643,28 @@ class _TopBarState extends State<TopBar> {
               ),
             ),
             padding: const EdgeInsets.all(10),
-            child: Icon(Icons.notifications, size: 24,
-                color: themeHelper.themeMode == ThemeMode.dark
-                    ? Colors.white
-                    : Colors.black54),
+            child: Icon(
+              Icons.notifications,
+              size: 24,
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? Colors.white
+                  : Colors.black54,
+            ),
           ),
           const SizedBox(width: 16),
+
+          // ── Refresh ──────────────────────────────────────────────────────────
           IconButton(
             icon: isLoading
                 ? const SizedBox(
-              height: 20,
-              width: 20,
+              height: 20, width: 20,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
                 : const Icon(Icons.refresh),
             onPressed: isLoading ? null : refreshProducts,
           ),
 
-          // ── User chip ─────────────────────────────────────────────────────
+          // ── User chip ────────────────────────────────────────────────────────
           Container(
             height: 45,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
@@ -1774,9 +1685,14 @@ class _TopBarState extends State<TopBar> {
                   radius: 15,
                   backgroundColor: Colors.deepPurple,
                   child: Text(
-                    (userDisplayName ?? "Unknown").substring(0, 1).toUpperCase(),
+                    (userDisplayName ?? "Unknown")
+                        .substring(0, 1)
+                        .toUpperCase(),
                     style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 15),
@@ -1796,7 +1712,8 @@ class _TopBarState extends State<TopBar> {
                     ),
                     Text(
                       userRole ?? "Unknown",
-                      style: const TextStyle(color: Color(0xFFE09696), fontSize: 12),
+                      style: const TextStyle(
+                          color: Color(0xFFE09696), fontSize: 12),
                     ),
                   ],
                 ),
