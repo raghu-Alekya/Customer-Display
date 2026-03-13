@@ -422,15 +422,15 @@ class OrderHelper {
       orders =
           List<Map<String, dynamic>>.from(validEntries.map((e) => e.value));
 
-      // ✅ Sort by created_at descending (newest first) for stable tab order on navbar navigation
+      // ✅ Sort by created_at ascending (oldest first) so that new orders stay on the right
       orders.sort((a, b) {
         final aTime = a['created_at']?.toString() ?? '';
         final bTime = b['created_at']?.toString() ?? '';
-        final cmp = bTime.compareTo(aTime);
+        final cmp = aTime.compareTo(bTime);
         if (cmp != 0) return cmp;
         final aId = a['order_id'] ?? a['id'] ?? 0;
         final bId = b['order_id'] ?? b['id'] ?? 0;
-        return ((bId as num).toDouble()).compareTo((aId as num).toDouble());
+        return ((aId as num).toDouble()).compareTo((bId as num).toDouble());
       });
 
       // ✅ Extract order IDs from sorted orders (keeps orderIds in sync)
@@ -513,7 +513,8 @@ class OrderHelper {
           .any((list) => list.isNotEmpty);
 
       if (!hasItems) {
-        if (kDebugMode) print("#### Order skipped — no items (orderId=$orderId)");
+        if (kDebugMode)
+          print("#### Order skipped — no items (orderId=$orderId)");
         continue; // skip empty orders
       }
 
@@ -902,7 +903,6 @@ class OrderHelper {
     // final bool isRefunded = apiItem.isRefundItem == true;
 
     for (var apiItem in apiItems) {
-
       if (apiItem.name.contains('Payout') ||
           apiItem.name == TextConstants.discountText) {
         continue;
@@ -922,11 +922,11 @@ class OrderHelper {
       }
 
       String variationName = apiItem.productVariationData?.metaData
-          ?.firstWhere(
-            (e) => e.key == "custom_name",
-        orElse: () => model.MetaData(id: 0, key: "", value: ""),
-      )
-          .value ??
+              ?.firstWhere(
+                (e) => e.key == "custom_name",
+                orElse: () => model.MetaData(id: 0, key: "", value: ""),
+              )
+              .value ??
           "";
 
 // 🔹 Fallback → check attribute metadata (pa_*)
@@ -1086,10 +1086,10 @@ class OrderHelper {
           print("#### DEBUG: Inserted new item ID: $itemId for order $orderId");
           print(
             "DB SAVE -> ${apiItem.name} "
-                "AUTO:${apiItem.autoDiscountAmount} "
-                "DISPLAY:${apiItem.displayAutoDiscountAmount} "
-                "COMBO:${apiItem.comboDiscountAmount} "
-                "MULTIPACK:${apiItem.multipackDiscountAmount}",
+            "AUTO:${apiItem.autoDiscountAmount} "
+            "DISPLAY:${apiItem.displayAutoDiscountAmount} "
+            "COMBO:${apiItem.comboDiscountAmount} "
+            "MULTIPACK:${apiItem.multipackDiscountAmount}",
           );
         }
       }
