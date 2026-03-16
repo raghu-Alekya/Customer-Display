@@ -5476,7 +5476,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 //   }
 
   Future _preparePrintTicket() async {
-   Future var header = _printerReceipt?[AppDBConst.receiptHeaderText] ?? "";
+    var header = _printerReceipt?[AppDBConst.receiptHeaderText] ?? "";
     var footer = _printerReceipt?[AppDBConst.receiptFooterText] ?? "";
     var logo = _printerReceipt?[AppDBConst.receiptIconPath] ?? "";
 
