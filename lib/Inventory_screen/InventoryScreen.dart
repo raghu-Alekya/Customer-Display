@@ -255,16 +255,23 @@ class _InventoryScreenState extends State<InventoryScreen>
     if (_selectedProductType?.toLowerCase() == 'variable') {
       if (_variants.isEmpty) {
         _fieldErrors['variants'] =
-        'At least one variant is required for variable products';
+            'At least one variant is required for variable products';
       }
     } else {
       final cleanReg = _regularPriceController.text
           .trim()
           .replaceAll(RegExp(r'[^0-9.]'), '');
       final regPrice = double.tryParse(cleanReg) ?? 0.0;
-      // if (regPrice <= 0) {
-      //   _fieldErrors['regularPrice'] = 'Regular price must be greater than 0';
-      // }
+
+      // Only validate regular price when the Pricing & Tax regular price field
+      // is actually enabled (i.e. pricing is not handled via variants / variable price).
+      final bool isProductTypeVariable = _selectedProductType == 'variable';
+      final bool isPriceStockDisabled = _hasVariablePrice || isProductTypeVariable;
+
+      if (!isPriceStockDisabled && regPrice <= 0) {
+        _fieldErrors['regularPrice'] =
+            'Regular price must be greater than 0';
+      }
     }
 
     return _fieldErrors.isNotEmpty ? _fieldErrors.values.first : null;

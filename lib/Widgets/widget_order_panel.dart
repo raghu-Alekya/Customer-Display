@@ -2718,78 +2718,80 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     // ============================
 
     // ============================
-// 🛑 CHECK: MERCHANT DISCOUNT & NEGATIVE TOTAL PREVENTION
+// 🛑 CHECK: MERCHANT DISCOUNT WHEN DELETING ITEMS
 // ============================
 
     final double merchantDiscount = (offlineOrder['merchantDiscount'] is num)
         ? (offlineOrder['merchantDiscount'] as num).toDouble()
         : 0.0;
 
-// If no discount → allow delete
-// 🔍 Detect type FIRST
+    // If no discount → allow delete
+    // 🔍 Detect type FIRST
     final String itemType =
-    (orderItem['item_type'] ?? orderItem['type'] ?? '')
-        .toString()
-        .toLowerCase();
+        (orderItem['item_type'] ?? orderItem['type'] ?? '')
+            .toString()
+            .toLowerCase();
 
     final bool isPayout = itemType == 'payout';
     final bool isCashback = itemType == 'cashback';
 
-
-// ✅ Skip validation for payout & cashback
+    // ✅ Skip merchant discount handling for payout & cashback
     if (merchantDiscount > 0 && !isPayout && !isCashback) {
-
       double productsTotal =
-      ((offlineOrder['products'] as List?) ?? []).fold(0.0, (sum, p) {
+          ((offlineOrder['products'] as List?) ?? []).fold(0.0, (sum, p) {
         final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
-        final qty = int.tryParse(p['quantity']?.toString() ??
-            p['items_count']?.toString() ??
-            '1') ??
+        final qty = int.tryParse(
+                p['quantity']?.toString() ??
+                    p['items_count']?.toString() ??
+                    '1') ??
             1;
         return sum + (price * qty);
       });
 
       double customTotal =
-      ((offlineOrder['custom_items'] as List?) ?? []).fold(0.0, (sum, c) {
-        final price = double.tryParse(c['custom_item_price']?.toString() ??
-            c['amount']?.toString() ??
-            c['price']?.toString() ??
-            '0') ??
+          ((offlineOrder['custom_items'] as List?) ?? []).fold(0.0, (sum, c) {
+        final price = double.tryParse(
+                c['custom_item_price']?.toString() ??
+                    c['amount']?.toString() ??
+                    c['price']?.toString() ??
+                    '0') ??
             0;
-        final qty = int.tryParse(c['quantity']?.toString() ??
-            c['items_count']?.toString() ??
-            '1') ??
+        final qty = int.tryParse(
+                c['quantity']?.toString() ??
+                    c['items_count']?.toString() ??
+                    '1') ??
             1;
         return sum + (price * qty);
       });
 
-      double currentTotal = productsTotal + customTotal;
+      final double currentTotal = productsTotal + customTotal;
 
-      double itemPrice = double.tryParse(
-          orderItem['item_price']?.toString() ??
-              orderItem[AppDBConst.itemPrice]?.toString() ??
-              '0') ??
+      final double itemPrice = double.tryParse(
+              orderItem['item_price']?.toString() ??
+                  orderItem[AppDBConst.itemPrice]?.toString() ??
+                  '0') ??
           0;
 
-      int itemQty = int.tryParse(
-          orderItem['items_count']?.toString() ??
-              orderItem[AppDBConst.itemCount]?.toString() ??
-              '1') ??
+      final int itemQty = int.tryParse(
+              orderItem['items_count']?.toString() ??
+                  orderItem[AppDBConst.itemCount]?.toString() ??
+                  '1') ??
           1;
 
-      double itemLineTotal = itemPrice * itemQty;
-      double newTotal = currentTotal - itemLineTotal;
+      final double itemLineTotal = itemPrice * itemQty;
+      final double newTotal = currentTotal - itemLineTotal;
 
       if (newTotal < merchantDiscount) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              "Merchant discount exists. Deleting this item will make the order total negative. Please remove discount first.",
+              "Merchant discount is more than the new order total. Please remove merchant discount first before decreasing items.",
             ),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 2),
           ),
         );
+        // Block decreasing / deleting this item until user removes discount.
         return;
       }
     }
@@ -4184,6 +4186,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                     //         : "✅ Online item deleted immediately.");
                                     //   }
                                     // },
+
                                     onPressed: (context) async {
                                       if (kDebugMode) {
                                         print("🗑️ Delete tapped for item: $orderItem");

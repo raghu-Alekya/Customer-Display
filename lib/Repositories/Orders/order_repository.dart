@@ -840,6 +840,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           ? "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$existingWooOrderId"
           : "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
 
+      //pinaka-pos/v1/orders/
+
       List<Map<String, dynamic>> paymentsPayload = [];
 
       if (localOrderIdInt != null) {

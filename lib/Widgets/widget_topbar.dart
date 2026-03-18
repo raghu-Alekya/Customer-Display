@@ -515,16 +515,61 @@ class _TopBarState extends State<TopBar> {
   // SEARCH
   // ══════════════════════════════════════════════════════════════════════════════
 
-  Future<void> _loadCachedProducts() async {
+  // FIXED — reads ALL products_ keys directly, no dedup loss
+  // REPLACE the existing _loadCachedProducts with this:
+  _loadCachedProducts() async {
     try {
-      final repo     = CategoryRepository();
-      final products = await repo.getAllCachedProducts();
-      setState(() {
-        _cachedProducts = products;
-        _cacheLoaded    = true;
-      });
+      // Step 1: Kick off background pre-fetch of ALL categories
+      // This ensures all subcategory products land in Isar cache
+      final repo = CategoryRepository();
+      unawaited(repo.prefetchAllCategoryProducts().then((_) async {
+        // Step 2: Once prefetch done, reload _cachedProducts so search is complete
+        if (!mounted) return;
+        await _reloadAllProductsFromIsar();
+      }));
+
+      // Step 3: Also load whatever is already in cache right now (instant)
+      await _reloadAllProductsFromIsar();
+
     } catch (e) {
-      debugPrint("Failed to load cached products: $e");
+      if (kDebugMode) print("❌ _loadCachedProducts error: $e");
+      if (mounted) setState(() => _cacheLoaded = true);
+    }
+  }
+
+// NEW helper — reads ALL products_* keys from Isar into _cachedProducts
+  Future<void> _reloadAllProductsFromIsar() async {
+    try {
+      final isar = await IsarService.instance;
+      final cachedEntries = await isar.isarCacheEntrys
+          .where()
+          .filter()
+          .keyStartsWith("products_")
+          .findAll();
+
+      final Map<int, dynamic> uniqueProducts = {};
+      for (final entry in cachedEntries) {
+        try {
+          final List<dynamic> products = json.decode(entry.json);
+          for (final product in products) {
+            final int? productId = product["fast_key_product_id"];
+            if (productId == null) continue;
+            uniqueProducts[productId] = product; // overwrite = latest wins
+          }
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        setState(() {
+          _cachedProducts = uniqueProducts.values.toList();
+          _cacheLoaded    = true;
+        });
+        if (kDebugMode) {
+          print("✅ _cachedProducts refreshed: ${_cachedProducts.length} total products");
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print("❌ _reloadAllProductsFromIsar error: $e");
     }
   }
 
@@ -539,6 +584,27 @@ class _TopBarState extends State<TopBar> {
     return "";
   }
 
+  getAllCachedProducts() async {
+    final isar = await IsarService.instance;  // ← ADD THIS LINE
+
+    final cachedEntries = await isar.isarCacheEntrys
+        .where()
+        .filter()
+        .keyStartsWith("products_")
+        .findAll();
+
+    final Map<int, dynamic> uniqueProducts = {};
+    for (final entry in cachedEntries) {
+      final List<dynamic> products = json.decode(entry.json);
+      for (final product in products) {
+        final int? productId = product["fast_key_product_id"];
+        if (productId == null) continue;
+        uniqueProducts.putIfAbsent(productId, () => product);
+      }
+    }
+    return uniqueProducts.values.toList();
+  }
+
   void _onFocusChanged() {
     if (_searchFocusNode.hasFocus &&
         _searchController.text.isNotEmpty &&
@@ -549,11 +615,32 @@ class _TopBarState extends State<TopBar> {
     }
   }
 
+  // void _onSearchChanged() {
+  //   if (_debounce?.isActive ?? false) _debounce?.cancel();
+  //   _debounce = Timer(const Duration(milliseconds: 350), () {
+  //     final query = _searchController.text.toLowerCase();
+  //     if (query.isEmpty) { _removeOverlay(); setState(() {}); return; }
+  //     if (_overlayEntry == null) _showSearchResultsOverlay();
+  //     else _overlayEntry?.markNeedsBuild();
+  //     setState(() {});
+  //   });
+  // }
+
+  // FIXED — refreshes cache on each search so newly loaded categories appear
+
+// REPLACE existing _onSearchChanged with this:
   void _onSearchChanged() {
     if (_debounce?.isActive ?? false) _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 350), () {
+    _debounce = Timer(const Duration(milliseconds: 350), () async {
       final query = _searchController.text.toLowerCase();
-      if (query.isEmpty) { _removeOverlay(); setState(() {}); return; }
+      if (query.isEmpty) {
+        _removeOverlay();
+        setState(() {});
+        return;
+      }
+      // Always re-read Isar so newly cached categories are included
+      await _reloadAllProductsFromIsar();
+      if (!mounted) return;
       if (_overlayEntry == null) _showSearchResultsOverlay();
       else _overlayEntry?.markNeedsBuild();
       setState(() {});
@@ -614,21 +701,31 @@ class _TopBarState extends State<TopBar> {
   }
 
   Widget _buildLocalResultsList() {
-    final query = _searchController.text.toLowerCase();
+    final query = _searchController.text.toLowerCase().trim();
     if (!_cacheLoaded) return const Center(child: CircularProgressIndicator());
     if (_cachedProducts.isEmpty) return const Center(child: Text("No products in cache"));
 
-    final Map<String, dynamic> unique = {};
+    // ── Deduplicate by product ID + filter by name or SKU ──────────────────────
+    final Map<int, dynamic> uniqueById = {};
     for (final p in _cachedProducts) {
+      final int? pid = p["fast_key_product_id"] is int
+          ? p["fast_key_product_id"]
+          : int.tryParse(p["fast_key_product_id"]?.toString() ?? "");
+      if (pid == null) continue;
+
       final name = (p["fast_key_item_name"] ?? "").toString().trim().toLowerCase();
-      if (name.isEmpty || !name.contains(query)) continue;
-      unique[name] = p;
+      final sku  = (p["sku"] ?? "").toString().trim().toLowerCase();
+
+      if (query.isEmpty || name.contains(query) || sku.contains(query)) {
+        uniqueById[pid] = p; // overwrite — latest cached version wins
+      }
     }
 
-    final list = unique.values.toList()
+    final list = uniqueById.values.toList()
       ..sort((a, b) {
         final na = (a["fast_key_item_name"] ?? "").toString().toLowerCase();
         final nb = (b["fast_key_item_name"] ?? "").toString().toLowerCase();
+        // Exact starts-with matches float to the top
         final sa = na.startsWith(query);
         final sb = nb.startsWith(query);
         if (sa && !sb) return -1;
@@ -642,10 +739,13 @@ class _TopBarState extends State<TopBar> {
       shrinkWrap: true,
       itemCount: list.length,
       itemBuilder: (context, i) {
-        final p     = list[i];
+        final p = list[i];
+
         final name  = p["fast_key_item_name"]?.toString() ?? "Unknown";
         final price = p["fast_key_item_price"]?.toString() ?? "0.00";
+        final sku   = p["sku"]?.toString() ?? "";
 
+        // ── Resolve best available image ───────────────────────────────────────
         String? imageUrl;
         final imagesRaw = p["images"];
         if (imagesRaw != null) {
@@ -653,71 +753,127 @@ class _TopBarState extends State<TopBar> {
             imageUrl = imagesRaw;
           } else if (imagesRaw is List && imagesRaw.isNotEmpty) {
             final first = imagesRaw.first;
-            if (first is String) imageUrl = first;
-            else if (first is Map && first["src"] != null) {
+            if (first is String && first.isNotEmpty) {
+              imageUrl = first;
+            } else if (first is Map && first["src"] != null) {
               imageUrl = first["src"].toString();
             }
           }
         }
         imageUrl ??= p["fast_key_item_image"]?.toString();
+        if (imageUrl != null && imageUrl.isEmpty) imageUrl = null;
 
         return ListTile(
           leading: SizedBox(
-            width: 50, height: 50,
+            width: 50,
+            height: 50,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: imageUrl != null && imageUrl.isNotEmpty
+              child: imageUrl != null
                   ? Image.network(
                 imageUrl,
                 fit: BoxFit.cover,
                 loadingBuilder: (ctx, child, progress) => progress == null
                     ? child
-                    : const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 40),
+                    : const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+                errorBuilder: (_, __, ___) =>
+                const Icon(Icons.broken_image, size: 40),
               )
                   : const Icon(Icons.image, size: 40),
             ),
           ),
-          title:    Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
-          subtitle: Text("\$$price"),
+          title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
+          subtitle: Row(
+            children: [
+              Text(
+                "\$$price",
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+
+              // if (sku.isNotEmpty) ...[
+              //   const SizedBox(width: 8),
+              //   Text(
+              //     "SKU: $sku",
+              //     style: const TextStyle(fontSize: 11, color: Colors.grey),
+              //   ),
+              // ],
+
+            ],
+          ),
           onTap: () async {
-            // ── Build base ProductResponse from cache row ──────────────────
+            // ── Build base ProductResponse from cache row ──────────────────────
             ProductResponse fullProduct = ProductResponse(
               id:     int.tryParse(p["fast_key_product_id"]?.toString() ?? "0") ?? 0,
               name:   name,
               price:  price,
-              sku:    p["sku"]?.toString(),
-              images: imageUrl != null ? [imageUrl] : [],
+              sku:    sku.isNotEmpty ? sku : null,
+              images: imageUrl != null ? [imageUrl!] : [],
             );
 
-            // ── Enrich with tags from products_ cache ──────────────────────
+            // ── Enrich with tags directly from the cached product map ──────────
+            // No extra Isar round-trip needed — tags are already stored in the
+            // normalized cache row written by _cacheProductsAndVariations.
             try {
-              final isar    = await IsarService.instance;
-              final entries = await isar.isarCacheEntrys
-                  .where()
-                  .filter()
-                  .keyStartsWith("products_")
-                  .findAll();
-
-              for (final entry in entries) {
-                final List<dynamic> cached = jsonDecode(entry.json);
-                final match = cached.firstWhere(
-                      (item) => item["fast_key_product_id"]?.toString() ==
-                      p["fast_key_product_id"]?.toString(),
-                  orElse: () => null,
-                );
-                if (match != null) {
-                  final rawTags = match["tags"];
-                  if (rawTags is List) {
-                    fullProduct.tags = rawTags.map((t) => SKU.Tags(
-                      id: t["id"], name: t["name"], slug: t["slug"],
-                    )).toList();
+              final rawTags = p["tags"];
+              if (rawTags is List && rawTags.isNotEmpty) {
+                fullProduct.tags = rawTags.map((t) {
+                  if (t is Map) {
+                    return SKU.Tags(
+                      id:   t["id"],
+                      name: t["name"]?.toString(),
+                      slug: t["slug"]?.toString(),
+                    );
                   }
-                  break;
+                  return SKU.Tags();
+                }).toList();
+
+                if (kDebugMode) {
+                  print("🏷️ Tags enriched from cache for product "
+                      "${fullProduct.id}: ${fullProduct.tags?.map((t) => t.name).toList()}");
+                }
+              } else {
+                // ── Fallback: scan all products_ Isar entries for this product ──
+                final isar    = await IsarService.instance;
+                final entries = await isar.isarCacheEntrys
+                    .where()
+                    .filter()
+                    .keyStartsWith("products_")
+                    .findAll();
+
+                for (final entry in entries) {
+                  final List<dynamic> cached = jsonDecode(entry.json);
+                  final match = cached.firstWhere(
+                        (item) =>
+                    item["fast_key_product_id"]?.toString() ==
+                        p["fast_key_product_id"]?.toString(),
+                    orElse: () => null,
+                  );
+                  if (match != null) {
+                    final fallbackTags = match["tags"];
+                    if (fallbackTags is List && fallbackTags.isNotEmpty) {
+                      fullProduct.tags = fallbackTags.map((t) {
+                        if (t is Map) {
+                          return SKU.Tags(
+                            id:   t["id"],
+                            name: t["name"]?.toString(),
+                            slug: t["slug"]?.toString(),
+                          );
+                        }
+                        return SKU.Tags();
+                      }).toList();
+
+                      if (kDebugMode) {
+                        print("🏷️ Tags enriched via fallback scan for product "
+                            "${fullProduct.id}");
+                      }
+                    }
+                    break;
+                  }
                 }
               }
             } catch (e) {
-              debugPrint("Enrich product failed: $e");
+              debugPrint("❌ Tag enrichment failed for product ${fullProduct.id}: $e");
             }
 
             _handleProductTap(fullProduct);

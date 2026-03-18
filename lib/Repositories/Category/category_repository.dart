@@ -415,5 +415,47 @@ class CategoryRepository {
     return uniqueProducts.values.toList();
   }
 
+  /// Pre-fetches and caches products for ALL subcategories at startup
+  Future<void> prefetchAllCategoryProducts() async {
+    try {
+      // Step 1: Get all parent categories
+      final parentCategories = await getCategories(parent: 0);
+      final allCategoryIds = <int>[];
+
+      for (final parent in parentCategories.categories ?? []) {
+        if (parent.id == null) continue;
+
+        // Step 2: Get subcategories for each parent
+        try {
+          final subCategories = await getCategories(parent: parent.id!);
+          for (final sub in subCategories.categories ?? []) {
+            if (sub.id != null) allCategoryIds.add(sub.id!);
+          }
+        } catch (e) {
+          if (kDebugMode) print("⚠️ Failed subcategories for parent ${parent.id}: $e");
+        }
+
+        // Also add parent itself
+        allCategoryIds.add(parent.id!);
+      }
+
+      if (kDebugMode) print("🚀 Pre-fetching products for ${allCategoryIds.length} categories...");
+
+      // Step 3: Fetch products for each category (checks cache first)
+      for (final categoryId in allCategoryIds.toSet()) {
+        try {
+          await getProductsByCategory(categoryId);
+          if (kDebugMode) print("✅ Pre-fetched products for category $categoryId");
+        } catch (e) {
+          if (kDebugMode) print("⚠️ Failed products for category $categoryId: $e");
+        }
+      }
+
+      if (kDebugMode) print("🎉 All category products pre-fetched successfully");
+    } catch (e) {
+      if (kDebugMode) print("❌ prefetchAllCategoryProducts error: $e");
+    }
+  }
+
 
 }
