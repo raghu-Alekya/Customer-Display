@@ -10,6 +10,7 @@ import '../Constants/text.dart';
 import '../Models/Category/category_product_model.dart';
 import '../Models/Orders/get_orders_model.dart' as model;
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
+import '../services/customer_services.dart';
 import 'db_helper.dart';
 import 'isar_service.dart'; // Build #1.0.104
 import 'isar_cache_entry.dart'; // Build #1.0.104
@@ -69,10 +70,27 @@ class OrderHelper {
 
   /// Notifier so RightOrderPanel can refresh when a new order is created (e.g. from grid).
   static final ValueNotifier<int> orderPanelRefreshNotifier = ValueNotifier(0);
+  static final Map<int, double> _manualRefundAmounts = {};
 
   static void notifyOrderPanelToRefresh() {
     orderPanelRefreshNotifier.value++;
   }
+
+  static void setManualRefundAmount({
+    required int orderId,
+    required double amount,
+  }) {
+    _manualRefundAmounts[orderId] = amount;
+    notifyOrderPanelToRefresh();
+  }
+
+  static double? getManualRefundAmount(int orderId) {
+    return _manualRefundAmounts[orderId];
+  }
+
+  // static void notifyOrderPanelToRefresh() {
+  //   orderPanelRefreshNotifier.value++;
+  // }
 
   /// When ensureOrderExists fails, this holds the error message for UI feedback.
   static String? lastEnsureOrderError;
@@ -2279,6 +2297,19 @@ class OrderHelper {
 
       // Calculate totals and save to Hive + Memory
       await saveOfflineOrder(orderId, updatedOrder);
+      // ead back the values that saveOfflineOrder wrote
+      final double subtotal = (updatedOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
+      final double tax      = (updatedOrder['order_tax']   as num?)?.toDouble() ?? 0.0;
+      final double total    = (updatedOrder['net_payable'] as num?)?.toDouble() ?? 0.0;
+
+      // / 🔄 Send update to Customer Display
+    await CustomerService.publishCartUpdate(
+    orderId,
+    products,
+    subtotal: subtotal,
+    tax: tax,
+    total: total,
+    );
 
       notifyOrderPanelToRefresh();
       if (onItemAdded != null) onItemAdded();

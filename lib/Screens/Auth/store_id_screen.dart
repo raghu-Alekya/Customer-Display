@@ -17,6 +17,7 @@ import '../../Repositories/Auth/login_repository.dart';
 import '../../Repositories/Auth/store_validation_repository.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_loading.dart';
+import '../../services/customer_services.dart';
 import '../Home/pos_home_screen.dart';
 import '../../Widgets/widget_error.dart';
 
@@ -187,8 +188,21 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
                     final response = snapshot.data!;
                     if (response.status == Status.COMPLETED) {
                       if (response.data!.success) {
-                        // Save validation data and navigate
-                        StoreDbHelper.instance.saveStoreValidationData(response.data!).then((_) {  //Build #1.0.126: updated to StoreDbHelper
+                        final store = response.data!; // StoreValidationResponse
+
+                        // Run async side‑effects after this frame
+                        Future.microtask(() async {
+                          // 1) send store info to customer display
+                          await CustomerService.publishStoreInfo(
+                            storeId: int.tryParse(store.storeId ?? '0') ?? 0,
+                            storeName: store.storeName ?? 'Merchant',
+                            logoUrl: store.storeLogo,                // <-- use correct field here
+                          );
+
+
+                          // 2) Save validation data and navigate
+                          await StoreDbHelper.instance.saveStoreValidationData(store);
+                          if (!mounted) return;
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -207,7 +221,8 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
                           }
                         });
                       }
-                    } else if (response.status == Status.ERROR) {
+                    }
+                    else if (response.status == Status.ERROR) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         setState(() {
                           _isLoading = false; // Stop loader

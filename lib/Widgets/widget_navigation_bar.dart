@@ -42,6 +42,7 @@ class NavigationBar extends StatelessWidget {
   final Function(int) onSidebarItemSelected;
   final bool isVertical;
   final bool isShiftScreen; // ✅ ADD THIS
+  final Future<bool> Function(int index)? onWillNavigate;
   /// When non-null, tapping these indices only calls onSidebarItemSelected (no Navigator push).
   /// Used by POSHomeScreen to switch tabs without replacing route.
   final Set<int>? callbackOnlyIndices;
@@ -51,9 +52,14 @@ class NavigationBar extends StatelessWidget {
     required this.onSidebarItemSelected,
     this.isVertical = true,
     this.isShiftScreen = false, // default
+    this.onWillNavigate,
     this.callbackOnlyIndices,
     Key? key,
   }) : super(key: key);
+
+  Future<bool> _canNavigate(int index) async {
+    return await onWillNavigate?.call(index) ?? true;
+  }
 
   String todayStart() {
     final now = DateTime.now();
@@ -148,7 +154,8 @@ class NavigationBar extends StatelessWidget {
                 selectedSidebarIndex ==
                     0 // Build #1.0.240 : Disabled Multiple tap on same SidebarButton
                 ? () {}
-                : () {
+                : () async {
+              if (!await _canNavigate(0)) return;
               if (kDebugMode) {
                 print("##### Fast Keys button tapped");
               }
@@ -193,7 +200,8 @@ class NavigationBar extends StatelessWidget {
             isSelected: selectedSidebarIndex == 1,
             onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 1
                 ? () {}
-                : () {
+                : () async {
+              if (!await _canNavigate(1)) return;
               if (kDebugMode) {
                 print("##### Categories button tapped");
               }
@@ -236,7 +244,8 @@ class NavigationBar extends StatelessWidget {
             isSelected: selectedSidebarIndex == 2,
             onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 2
                 ? () {}
-                : () {
+                : () async {
+              if (!await _canNavigate(2)) return;
               if (kDebugMode) {
                 print("##### AddScreen button tapped");
               }
@@ -276,7 +285,8 @@ class NavigationBar extends StatelessWidget {
             isSelected: selectedSidebarIndex == 3,
             onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 3
                 ? () {}
-                : () {
+                : () async {
+              if (!await _canNavigate(3)) return;
               if (kDebugMode) {
                 print("##### OrdersScreen button tapped");
               }
@@ -327,7 +337,8 @@ class NavigationBar extends StatelessWidget {
             isSelected: selectedSidebarIndex == 4,
             onTap: selectedSidebarIndex == 4
                 ? () {}
-                : () {
+                : () async {
+              if (!await _canNavigate(4)) return;
               if (kDebugMode) {
                 print("##### AppsScreen button tapped");
               }
@@ -370,7 +381,8 @@ class NavigationBar extends StatelessWidget {
             isDisabled: isShiftInvalid || isShiftScreen, // ✅ FIXED
             onTap: (isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5)
                 ? () {}
-                : () {
+                : () async {
+              if (!await _canNavigate(5)) return;
               if (kDebugMode) {
                 print("##### Refund button tapped");
               }
@@ -415,7 +427,8 @@ class NavigationBar extends StatelessWidget {
                   isShiftScreen ||
                   selectedSidebarIndex == 6
                   ? () {}
-                  : () {
+                  : () async {
+                if (!await _canNavigate(6)) return;
                 if (kDebugMode) {
                   print("##### Settings button tapped");
                 }
@@ -462,7 +475,8 @@ class NavigationBar extends StatelessWidget {
               onTap: isShiftInvalid ||
                   isShiftScreen // Build #1.0.247: Enabled Multiple click for Logout
                   ? () {}
-                  : () {
+                  : () async {
+                if (!await _canNavigate(7)) return;
                 final previousIndex = selectedSidebarIndex;
                 onSidebarItemSelected(7);
                 if (kDebugMode) {
@@ -527,7 +541,8 @@ class NavigationBar extends StatelessWidget {
                 selectedSidebarIndex ==
                     0 // Build #1.0.240 : Disabled Multiple tap on same SidebarButton
                 ? () {}
-                : () {
+                : () async {
+              if (!await _canNavigate(0)) return;
               if (kDebugMode) {
                 print("##### Fast Keys button tapped");
               }
@@ -571,7 +586,8 @@ class NavigationBar extends StatelessWidget {
             isSelected: selectedSidebarIndex == 1,
             onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 1
                 ? () {}
-                : () {
+                : () async {
+              if (!await _canNavigate(1)) return;
               if (kDebugMode) {
                 print("##### Categories button tapped");
               }
@@ -614,7 +630,8 @@ class NavigationBar extends StatelessWidget {
             isSelected: selectedSidebarIndex == 2,
             onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 2
                 ? () {}
-                : () {
+                : () async {
+              if (!await _canNavigate(2)) return;
               if (kDebugMode) {
                 print("##### AddScreen button tapped");
               }
@@ -656,7 +673,8 @@ class NavigationBar extends StatelessWidget {
             isSelected: selectedSidebarIndex == 3,
             onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 3
                 ? () {}
-                : () {
+                : () async {
+              if (!await _canNavigate(3)) return;
               if (kDebugMode) {
                 print("##### OrdersScreen button tapped");
               }
@@ -704,7 +722,8 @@ class NavigationBar extends StatelessWidget {
             isSelected: selectedSidebarIndex == 4,
             onTap: selectedSidebarIndex == 4
                 ? () {}
-                : () {
+                : () async {
+              if (!await _canNavigate(4)) return;
               if (kDebugMode) {
                 print("##### AppsScreen button tapped");
               }
@@ -748,7 +767,8 @@ class NavigationBar extends StatelessWidget {
             isSelected: selectedSidebarIndex == 5,
             onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5
                 ? () {}
-                : () {
+                : () async {
+              if (!await _canNavigate(5)) return;
               if (kDebugMode) {
                 print("##### Settings button tapped");
               }
@@ -790,7 +810,8 @@ class NavigationBar extends StatelessWidget {
             isSelected: selectedSidebarIndex == 6,
             onTap: isShiftInvalid || isShiftScreen
                 ? () {}
-                : () {
+                : () async {
+              if (!await _canNavigate(6)) return;
               final previousIndex = selectedSidebarIndex;
               onSidebarItemSelected(6);
               if (kDebugMode) {

@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pinaka_pos/services/CustomerDisplayService.dart';
+import 'package:pinaka_pos/services/customer_services.dart';
 import 'package:provider/provider.dart';
 import 'Blocs/Orders/refund_orderlist_bloc.dart';
 import 'Constants/misc_features.dart';
@@ -95,6 +96,7 @@ void main() async {
   // Build #1.0.9 : By default dark theme getting selected on launch even after changing from settings
   await UrlHelper.initializeBaseUrl();
   await DBHelper.instance.database;
+  await CustomerService.connect();
   final storeInfo = PinakaPreferences.getLoggedInStore();
   if (storeInfo.isNotEmpty) {
     await CustomerDisplayHelper.updateWelcomeWithStore(

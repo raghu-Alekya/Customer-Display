@@ -252,7 +252,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String login                 = "LOGIN"; // Build #1.0.8
   static const String loading               = "loading";
   static const String jsonfileExtension     = ".json";
-  static const String searchHint            = "Search category or menu"; // Build #1.0.13: updated to here
+  static const String searchHint            = "Search Items"; // Build #1.0.13: updated to here
   static const String serverIdNotFound      = "Server Order ID not found"; // Build #1.0.13: updated to here
   static const String failedToUpdateOrder   = "Failed to update order"; // Build #1.0.13: updated to here
   static const String doYouWantTo           = "Do you want to?"; // Build #1.0.13: updated to here

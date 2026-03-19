@@ -49,6 +49,7 @@ import '../../Widgets/scanner_guard.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_payment_dialog.dart';
 import '../../services/CustomerDisplayService.dart';
+import '../../services/customer_services.dart';
 import '../Auth/login_screen.dart';
 import 'Settings/image_utils.dart';
 import 'Settings/printer_setup_screen.dart';
@@ -3796,8 +3797,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       _processingPaymentMethod != null &&
                                           _processingPaymentMethod !=
                                               TextConstants.cash,
-                                  onTap: () {
+                                  onTap: () async {
                                     _selectPaymentMethod(TextConstants.cash);
+                                    await CustomerService.publishProcessingPayment(
+                                      orderId ?? 0,
+                                      orderItems,                    // your list of items
+                                      subtotal: grossTotal,          // same as you send to display now
+                                      tax: tax,                      // existing tax variable
+                                      total: computedNetPayable,     // or balanceAmount if you prefer
+                                    );
                                     _handlePay();
                                   },
                                 ),
@@ -9310,7 +9318,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         },
 
         // ── NO RECEIPT ───────────────────────────────────────
-        onNoReceipt: () {
+        onNoReceipt: () async {
+          await CustomerService.publishPaymentSuccess(
+            orderId ?? 0,
+            orderItems,
+            subtotal: grossTotal,
+            tax: tax,
+            total: computedNetPayable,
+          );
+
           // ✅ Close IMMEDIATELY
           Navigator.of(dialogCtx, rootNavigator: false).pop();
 
@@ -9328,7 +9344,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         },
 
         // ── DONE (Print / Email / SMS) ────────────────────────
-        onDone: (selectedOption, {String? email}) {
+        onDone: (selectedOption, {String? email}) async {
+          await CustomerService.publishPaymentSuccess(
+            orderId ?? 0,
+            orderItems,
+            subtotal: grossTotal,
+            tax: tax,
+            total: computedNetPayable,
+          );
           print("onDone → $selectedOption, email=$email");
 
           // ── EMAIL ────────────────────────────────────────────
@@ -10407,6 +10430,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         },
         onSMS: (phone) {},
         onNoReceipt: () async {
+          await CustomerService.publishPaymentSuccess(
+            orderId ?? 0,
+            orderItems,
+            subtotal: grossTotal,
+            tax: tax,
+            total: computedNetPayable,
+          );
           print("Email option selected with dataaaaaaaaa");
 
           await Future.delayed(const Duration(milliseconds: 300));

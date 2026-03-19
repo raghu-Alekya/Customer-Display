@@ -397,64 +397,70 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
         Row(
           children: [
             // STATUS DROPDOWN
-            DropdownButtonHideUnderline(
-              child: Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: isDark
-                        ? const Color(0xFF4D4E63)
-                        : const Color(0xFFCCCCCC),
-                  ),
-                  borderRadius: BorderRadius.circular(6),
-                  color: isDark ? const Color(0xFF29313F) : Colors.white,
-                ),
-                child: DropdownButton<String>(
-                  value: selectedStatus,
-                  isDense: true,
-                  icon: Icon(
-                    Icons.keyboard_arrow_down,
-                    size: 18,
-                    color: isDark ? Colors.white : Colors.black,
-                  ),
-                  dropdownColor:
-                  isDark ? const Color(0xFF29313F) : Colors.white,
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black,
-                    fontSize: 13,
-                  ),
-                  onChanged: (value) {
-                    if (value == null) return;
-
-                    setState(() {
-                      selectedStatus = value;
-
-                      filteredOrders = value == "Completed"
-                          ? _allOrders
-                          .where((o) => o.status == "completed")
-                          .toList()
-                          : _allOrders
-                          .where((o) => o.status == "refund")
-                          .toList();
-
-                      _currentPage = 1;
-                      _updatePagination();
-                    });
-                  },
-                  items: const [
-                    DropdownMenuItem(
-                      value: "Completed",
-                      child: Text("Completed"),
-                    ),
-                    DropdownMenuItem(
-                      value: "Refund",
-                      child: Text("Refund"),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            // DropdownButtonHideUnderline(
+            //   child: Container(
+            //     padding:
+            //     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            //     decoration: BoxDecoration(
+            //       border: Border.all(
+            //         color: isDark
+            //             ? const Color(0xFF4D4E63)
+            //             : const Color(0xFFCCCCCC),
+            //       ),
+            //       borderRadius: BorderRadius.circular(6),
+            //       color: isDark ? const Color(0xFF29313F) : Colors.white,
+            //     ),
+            //     child: DropdownButton<String>(
+            //       value: selectedStatus,
+            //       isDense: true,
+            //       icon: Icon(
+            //         Icons.keyboard_arrow_down,
+            //         size: 18,
+            //         color: isDark ? Colors.white : Colors.black,
+            //       ),
+            //       dropdownColor:
+            //       isDark ? const Color(0xFF29313F) : Colors.white,
+            //       style: TextStyle(
+            //         color: isDark ? Colors.white : Colors.black,
+            //         fontSize: 13,
+            //       ),
+            //       onChanged: (value) {
+            //         if (value == null) return;
+            //
+            //         setState(() {
+            //           selectedStatus = value;
+            //
+            //           filteredOrders = value == "Completed"
+            //               ? _allOrders
+            //               .where((o) =>
+            //           (o.status ?? '').toLowerCase() ==
+            //               'completed')
+            //               .toList()
+            //               : _allOrders
+            //               .where((o) {
+            //             final s = (o.status ?? '').toLowerCase();
+            //             return s == 'refunded' ||
+            //                 s == 'partial-refund';
+            //           })
+            //               .toList();
+            //
+            //           _currentPage = 1;
+            //           _updatePagination();
+            //         });
+            //       },
+            //       items: const [
+            //         DropdownMenuItem(
+            //           value: "Completed",
+            //           child: Text("Completed"),
+            //         ),
+            //         DropdownMenuItem(
+            //           value: "Refund",
+            //           child: Text("Refund"),
+            //         ),
+            //       ],
+            //     ),
+            //   ),
+            // ),
 
             const SizedBox(width: 8),
 
