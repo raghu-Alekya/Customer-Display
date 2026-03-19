@@ -2285,9 +2285,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     print(" EBT Total in Summary Screen = $ebtTotal");
 
     // Compute totals
-    NetTotal = grossTotal - discount;
-    computedNetPayable =
-        grossTotal + tax - discount - merchantDiscount + cashbackFee;
+    NetTotal = grossTotal - discount.abs() - merchantDiscount.abs();
+    computedNetPayable = NetTotal + tax + cashbackFee;
 
     orderTotal = computedNetPayable;
 
@@ -4177,53 +4176,95 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Back button
+          ////**88 */ Back button
           InkWell(
             borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
             onTap: () async {
-              // Use the most accurate remaining value
+              final box = StorageProvider.offlineOrders;
+
+              final String orderKey = orderId?.toString() ??
+                  widget.offlineOrderId?.toString() ??
+                  "";
+
+              final rawOrder = await box.get(orderKey);
+
+              final latestOrder = Map<String, dynamic>.from(
+                rawOrder is Map ? rawOrder : {},
+              );
+
+              print("LATEST ORDER -> $latestOrder");
+
+              final bool couponExists = latestOrder["coupon_applied"] == true;
+
+              print("coupon_applied: ${latestOrder["coupon_applied"]}");
+              print("couponExists: $couponExists");
+
+              // Get payments
+              final payments = await LocalPaymentDBHelper.instance
+                  .getPaymentsByOrderId(orderId ?? 0);
+
+              final bool hasAnyPaymentBeenMade = payments.isNotEmpty;
+
+              double netAmount = payments.fold(0.0, (sum, p) => sum + p.amount);
+
+              final bool hasNetPayment = netAmount.abs() > 0.01;
+
+              final bool hasDiscount = discount > 0;
+
+              // Remaining balance
               final double effectiveRemaining =
                   (_currentPaymentRemainingBalance != null &&
                           _currentPaymentRemainingBalance! > 0)
                       ? _currentPaymentRemainingBalance!
                       : balanceAmount;
 
-              // Check if payments and voids cancel each other out (net zero effect)
-// NEW (fixed):
-              final payments = await LocalPaymentDBHelper.instance
-                  .getPaymentsByOrderId(orderId ?? 0);
-              final bool hasAnyPaymentBeenMade = payments.isNotEmpty;
-              double netAmount = payments.fold(0.0, (sum, p) => sum + p.amount);
-              final bool hasNetPayment =
-                  netAmount.abs() > 0.01; // net effect is non-zero
-
-              final bool hasDiscount = discount > 0;
-
-              // 🔹 Always update customer display to non-summary mode
+              // Always update customer display
               await CustomerDisplayHelper.updateCustomerDisplay(
                 orderId!,
                 summaryEnabled: false,
               );
 
-              if (hasAnyPaymentBeenMade || hasDiscount) {
-                // ─── Show confirmation only when payment started or discount exists ───
+              // ✅ CASE 1: Payment already started (partial payment)
+              if (hasNetPayment) {
                 if (kDebugMode) {
                   print("Back button → showing exit confirmation");
                   print(
-                      "   • Effective remaining: \$${effectiveRemaining.toStringAsFixed(2)}");
-                  print(
-                      "   • Tender so far:       \$${tenderAmount.toStringAsFixed(2)}");
-                  print(
-                      "   • Current session rem: ${_currentPaymentRemainingBalance != null ? '\$${_currentPaymentRemainingBalance!.toStringAsFixed(2)}' : 'none'}");
+                      "Remaining balance: \$${effectiveRemaining.toStringAsFixed(2)}");
                 }
 
                 _showExitPaymentConfirmation(context);
                 return;
               }
 
-              // ─── No payment made yet → direct back, no popup ───
+              // ✅ CASE 2: Coupon applied but no payment yet
+              // CASE 2: Coupon applied
+              if (couponExists) {
+                // ⭐ ISSUE COUPON → show exit confirmation popup
+                if (isCouponActive) {
+                  print("🎟 Issue coupon → showing exit confirmation");
+                  _showExitPaymentConfirmation(context);
+                  return;
+                }
+
+                // ⭐ GENERATED COUPON → show snackbar
+                print("🚨 Generated coupon exists → showing snackbar");
+                _showCouponAppliedSnackBar(context);
+                return;
+              }
+              if (couponExists || isCouponAppliedFromApi) {
+                print("🚨 Coupon already applied → showing snackbar");
+                _showCouponAppliedSnackBar(context);
+                return;
+              }
+              // ✅ CASE 3: Discount applied
+              if (hasDiscount) {
+                _showExitPaymentConfirmation(context);
+                return;
+              }
+
+              // ✅ CASE 4: No payment and no coupon
               if (kDebugMode) {
-                print("Back button → direct exit (no payment made yet)");
+                print("Back button → direct exit");
               }
 
               Navigator.of(context).pop();
@@ -7139,14 +7180,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     !isPaymentStarted &&
                                     !hasEbtItem &&
                                     !isOrderPending &&
-                                    !hasOnlyCashbackOrPayoutItems, // ✅ NEW CONDITION
+                                    !hasOnlyCashbackOrPayoutItems &&
+                                    computedNetPayable >
+                                        0, // ✅ Enable only when net payable is positive
                                 onTap: () {
                                   if (hasEbtItem ||
                                       redeemedValue > 0 ||
                                       isPaymentStarted ||
                                       isOrderPending ||
-                                      hasOnlyCashbackOrPayoutItems) {
-                                    // ✅ BLOCK TAP
+                                      hasOnlyCashbackOrPayoutItems ||
+                                      computedNetPayable <= 0) {
+                                    // ✅ Block when zero or negative
                                     return;
                                   }
 
@@ -7172,8 +7216,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     );
                                     return;
                                   }
-
-                                  await _syncAndShowCouponPopup();
+                                  final confirmed =
+                                      await _syncAndShowCouponPopup();
+                                  setState(() {
+                                    isCouponActive = confirmed;
+                                  });
                                 },
                               ),
                             ],
@@ -7192,8 +7239,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   bool isGenerateCouponActive = false;
-  Future<void> _syncAndShowCouponPopup() async {
-    if (_isProcessing) return;
+  Future<bool> _syncAndShowCouponPopup() async {
+    if (_isProcessing) return false;
 
     setState(() => _isProcessing = true);
 
@@ -7216,19 +7263,20 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // 🔒 HARD GUARD
       if (response == null || response is! Map<String, dynamic>) {
         _showErrorPopup("Coupon applied but no response data received.");
-        return;
+        return false;
       }
 
       final coupons = response["coupons"] as List? ?? [];
       if (coupons.isEmpty) {
         _showErrorPopup("Coupon applied, but no coupon details returned.");
-        return;
+        return false;
       }
 
       final coupon = coupons.first;
       final double discountAmount =
           (coupon["amount"] as num?)?.toDouble() ?? 0.0;
 
+      // ✅ Only update UI state here; save to Hive only after user clicks OK
       setState(() {
         couponValue = discountAmount;
         ebtTotal = 0.0;
@@ -7236,25 +7284,34 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         isGenerateCouponActive = true;
       });
 
-      _showCouponResponsePopup(response);
+      // ✅ Await popup result: true = OK (confirm), false = X (cancel)
+      final bool confirmed = await _showCouponResponsePopup(response);
+
+      if (!confirmed) {
+        // User closed with X – don't save to Hive, reset UI state so they can issue again
+        debugPrint("🔵 Coupon popup closed with X – not saving to Hive");
+        setState(() {
+          isGenerateCouponActive = false;
+        });
+        return false;
+      }
 
       final box = StorageProvider.offlineOrders;
 
-// 🔑 always resolve order key safely
       final String key = offlineOrder?['id']?.toString() ??
           offlineOrder?['order_id']?.toString() ??
           offlineOrder?['local_order_id']?.toString() ??
           "";
 
-// 🧠 merge with existing order
+      if (key.isEmpty) return true;
+
       final hasKey = await box.containsKey(key);
       final raw = hasKey ? await box.get(key) : null;
       final Map<String, dynamic> existing = raw is Map
           ? Map<String, dynamic>.from(raw)
           : Map<String, dynamic>.from(offlineOrder!);
 
-// ✅ STORE coupon data for later payment success
-      existing["coupon_response"] = response; // decoded Map
+      existing["coupon_response"] = response;
       existing["coupon_applied"] = true;
       existing["coupon_applied_at"] = DateTime.now().toIso8601String();
       existing["coupon_amount"] = discountAmount;
@@ -7263,6 +7320,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       offlineOrder = existing;
 
       debugPrint("✅ Coupon saved in Hive for order $key");
+      return true;
     } catch (e) {
       if (loaderOpen) {
         Navigator.of(context).pop();
@@ -7270,6 +7328,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
       _showErrorPopup("Something went wrong while applying coupon.");
       debugPrint("❌ Coupon popup error: $e");
+      return false;
     } finally {
       setState(() => _isProcessing = false);
     }
@@ -7291,7 +7350,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     );
   }
 
-  void _showCouponResponsePopup(Map<String, dynamic> response) {
+  Future<bool> _showCouponResponsePopup(Map<String, dynamic> response) async {
     final coupons = response["coupons"] as List? ?? [];
     final coupon = coupons.isNotEmpty ? coupons.first : null;
 
@@ -7303,10 +7362,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final textSecondary = isDark ? Colors.white70 : Colors.grey;
     const success = Color(0xFF1ABC9C);
 
-    showDialog(
+    final bool? result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) {
+      builder: (dialogContext) {
         return Dialog(
           backgroundColor: dialogBg,
           insetPadding:
@@ -7415,7 +7474,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                       const SizedBox(height: 18),
 
-                      /// OK BUTTON
+                      /// OK BUTTON → confirm (true)
                       SizedBox(
                         width: double.infinity,
                         height: 42,
@@ -7428,7 +7487,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               borderRadius: BorderRadius.circular(10),
                             ),
                           ),
-                          onPressed: () => Navigator.pop(context),
+                          onPressed: () => Navigator.pop(dialogContext, true),
                           child: const Text(
                             "OK",
                             style: TextStyle(
@@ -7440,12 +7499,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   ),
                 ),
 
-                /// CLOSE BUTTON
+                /// CLOSE (X) BUTTON → cancel (false)
                 Positioned(
                   right: 12,
                   top: 12,
                   child: GestureDetector(
-                    onTap: () => Navigator.pop(context),
+                    onTap: () => Navigator.pop(dialogContext, false),
                     child: const CircleAvatar(
                       radius: 14,
                       backgroundColor: Colors.red,
@@ -7459,6 +7518,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         );
       },
     );
+    return result ?? false;
   }
 
   Widget _couponRow(String label, String value, Color color) {
@@ -7760,8 +7820,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         discount = newDiscount; // should become 0
         tax = newTax;
 
-        NetTotal = grossTotal - discount;
-        computedNetPayable = NetTotal + tax - merchantDiscount + cashbackFee;
+        NetTotal = grossTotal - discount.abs() - merchantDiscount.abs();
+        computedNetPayable = NetTotal + tax + cashbackFee;
 
         orderTotal = newTotal;
         balanceAmount = newTotal - tenderAmount;
@@ -8056,9 +8116,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         tax = newTax;
 
-        NetTotal = grossTotal - discount;
-
-        computedNetPayable = NetTotal + tax - merchantDiscount + cashbackFee;
+        NetTotal = grossTotal - discount.abs() - merchantDiscount.abs();
+        computedNetPayable = NetTotal + tax + cashbackFee;
 
         orderTotal = newTotal;
 
@@ -10129,7 +10188,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.row([
       PosColumn(text: TextConstants.netPayable, width: 8),
       PosColumn(
-        text: formatCurrency(orderTotal),
+        text: formatCurrency(computedNetPayable),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),

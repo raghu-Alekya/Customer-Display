@@ -852,7 +852,7 @@ class _TopBarState extends State<TopBar> {
         return na.compareTo(nb);
       });
 
-    if (list.isEmpty) return const Center(child: Text("No products found"));
+    if (list.isEmpty) return const Center(child: Text("No items found"));
 
     return ListView.builder(
       shrinkWrap: true,
