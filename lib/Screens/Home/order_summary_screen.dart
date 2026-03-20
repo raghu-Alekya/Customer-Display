@@ -5617,26 +5617,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   /// 🔹 Reusable badge widget
+  /// 🔹 Reusable badge widget
   Widget _discountBadge(String text, Color color) {
-    return Container(
-      height: 16, // 👈 increases badge height
-      padding: const EdgeInsets.symmetric(
-          horizontal: 6, vertical: 3 // 👈 increases inner height
-          ),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(2),
-      ),
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          fontSize: 7,
-          height: 1.0, // 👈 increases text line height
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 9,
+        fontWeight: FontWeight.bold,
+        color: color, // ✅ text color only
       ),
     );
   }
@@ -7186,19 +7174,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                 "assets/coupon.png",
                                 isActive: redeemedValue == 0 &&
                                     !isPaymentStarted &&
-                                    !hasEbtItem &&
                                     !isOrderPending &&
                                     !hasOnlyCashbackOrPayoutItems &&
-                                    computedNetPayable >
-                                        0, // ✅ Enable only when net payable is positive
+                                    computedNetPayable > 0, // ✅ keep this
                                 onTap: () {
-                                  if (hasEbtItem ||
-                                      redeemedValue > 0 ||
+                                  if (
+                                  redeemedValue > 0 ||
                                       isPaymentStarted ||
                                       isOrderPending ||
                                       hasOnlyCashbackOrPayoutItems ||
                                       computedNetPayable <= 0) {
-                                    // ✅ Block when zero or negative
                                     return;
                                   }
 

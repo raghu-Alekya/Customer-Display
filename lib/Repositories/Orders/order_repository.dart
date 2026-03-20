@@ -560,7 +560,8 @@ class OrderRepository {
           "product_id": pid,
           //"name": item['name'] ?? "",
           "quantity": qty,
-          "subtotal": subtotal.toStringAsFixed(2),
+          // "subtotal": subtotal.toStringAsFixed(2),
+          "subtotal": autoDiscount > 0 ? total.toStringAsFixed(2) : subtotal.toStringAsFixed(2),
           "total": total.toStringAsFixed(2),
 
           // Optional (Woo may override name, but fine to send)
@@ -1068,8 +1069,9 @@ class OrderRepository {
             "variation_id": variationId,
           //"name": item['name'] ?? "",
           "quantity": qty,
-          "subtotal": subtotal.toStringAsFixed(2),
+          // "subtotal": subtotal.toStringAsFixed(2),
           "total": total.toStringAsFixed(2),
+          "subtotal": autoDiscount > 0 ? total.toStringAsFixed(2) : subtotal.toStringAsFixed(2),
 
           // Optional (Woo may override name, but fine to send)
           "name": name,
