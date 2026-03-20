@@ -10,6 +10,7 @@ import '../Constants/text.dart';
 import '../Models/Category/category_product_model.dart';
 import '../Models/Orders/get_orders_model.dart' as model;
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
+import '../services/customer_services.dart';
 import 'db_helper.dart';
 import 'isar_service.dart'; // Build #1.0.104
 import 'isar_cache_entry.dart'; // Build #1.0.104
@@ -70,8 +71,22 @@ class OrderHelper {
   /// Notifier so RightOrderPanel can refresh when a new order is created (e.g. from grid).
   static final ValueNotifier<int> orderPanelRefreshNotifier = ValueNotifier(0);
 
+  static final Map<int, double> _manualRefundAmounts = {};
+
   static void notifyOrderPanelToRefresh() {
     orderPanelRefreshNotifier.value++;
+  }
+
+  static void setManualRefundAmount({
+    required int orderId,
+    required double amount,
+  }) {
+    _manualRefundAmounts[orderId] = amount;
+    notifyOrderPanelToRefresh();
+  }
+
+  static double? getManualRefundAmount(int orderId) {
+    return _manualRefundAmounts[orderId];
   }
 
   /// When ensureOrderExists fails, this holds the error message for UI feedback.
@@ -2092,6 +2107,7 @@ class OrderHelper {
 
   // Adds an item to the currently active order; creates an order if none exists
   static final Set<String> _activeAdds = {};
+
   Future<void> addItemToOrder(
       int? serverItemId,
       String name,
@@ -2152,12 +2168,36 @@ class OrderHelper {
           .toList();
 
       final normProductId = (productId ?? -1).toInt();
-      final normVariationId = (variationId ?? 0).toInt();
+      // Treat null / 0 / -1 as "no variation" so different callers (scanner,
+      // categories, search) don't create separate rows for the same simple item.
+      final rawNormVar = (variationId ?? 0).toInt();
+      final normVariationId = rawNormVar <= 0 ? 0 : rawNormVar;
 
       // Find existing item to merge quantity (scan/search/selection)
       final existingIndex = products.indexWhere((p) {
-        final pid = (p['product_id'] ?? p['id'] ?? -1);
-        final vid = (p['variation_id'] ?? p['item_variation'] ?? 0);
+        // Normalize stored ids to int because some flows store them as String/num
+        // (e.g. scanner vs category/search), which would otherwise fail equality
+        // and create duplicate entries for the same product.
+        final dynamic rawPid = p['product_id'] ?? p['id'] ?? -1;
+        final dynamic rawVid =
+            p['variation_id'] ?? p['item_variation'] ?? p['variationId'] ?? 0;
+
+        int pid;
+        if (rawPid is int) {
+          pid = rawPid;
+        } else {
+          pid = int.tryParse(rawPid.toString()) ?? -1;
+        }
+
+        int vid;
+        if (rawVid is int) {
+          vid = rawVid;
+        } else {
+          vid = int.tryParse(rawVid.toString()) ?? 0;
+        }
+        // Normalize stored variation id: <= 0 means "no variation"
+        if (vid <= 0) vid = 0;
+
         final matchesIds = pid == normProductId && vid == normVariationId;
 
         // If it's a custom item (productId 0 or -1), we MUST also match the SKU
@@ -2165,6 +2205,17 @@ class OrderHelper {
           final storedSku = normalizeSku(p['sku']?.toString() ?? '');
           final newSku = normalizeSku(sku);
           return matchesIds && storedSku == newSku;
+        }
+        // For normal products, also allow merge when SKU matches and there is
+        // effectively no variation on either side. This handles flows where one
+        // caller passes a different internal product id for the same barcode.
+        if (!matchesIds) {
+          final storedSku = normalizeSku(p['sku']?.toString() ?? '');
+          final newSku = normalizeSku(sku);
+          final bothNoVariation = vid == 0 && normVariationId == 0;
+          if (bothNoVariation && storedSku.isNotEmpty && storedSku == newSku) {
+            return true;
+          }
         }
         return matchesIds;
       });
@@ -2241,6 +2292,20 @@ class OrderHelper {
 
       // Calculate totals and save to Hive + Memory
       await saveOfflineOrder(orderId, updatedOrder);
+      // ead back the values that saveOfflineOrder wrote
+      final double subtotal = (updatedOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
+      final double tax      = (updatedOrder['order_tax']   as num?)?.toDouble() ?? 0.0;
+      final double total    = (updatedOrder['net_payable'] as num?)?.toDouble() ?? 0.0;
+
+      // / 🔄 Send update to Customer Display
+      // Do not block UI; publishing to the display can be slow.
+      unawaited(CustomerService.publishCartUpdate(
+        orderId,
+        products,
+        subtotal: subtotal,
+        tax: tax,
+        total: total,
+      ));
 
       notifyOrderPanelToRefresh();
       if (onItemAdded != null) onItemAdded();

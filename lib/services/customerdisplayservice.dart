@@ -2,7 +2,7 @@ import 'package:flutter/services.dart';
 
 class CustomerDisplayService {
   static const MethodChannel _platform =
-  MethodChannel('com.example.flutter_customer_display/sunmi_display');
+  MethodChannel('com.alekta.pinakapos');
 
   /// 🔹 Show default welcome screen
   static Future<void> showWelcome() async {

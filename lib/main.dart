@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pinaka_pos/services/CustomerDisplayService.dart';
+import 'package:pinaka_pos/services/customer_services.dart';
 import 'package:provider/provider.dart';
 import 'Blocs/Orders/refund_orderlist_bloc.dart';
 import 'Constants/misc_features.dart';
@@ -95,6 +96,7 @@ void main() async {
   // Build #1.0.9 : By default dark theme getting selected on launch even after changing from settings
   await UrlHelper.initializeBaseUrl();
   await DBHelper.instance.database;
+  await CustomerService.connect();
   final storeInfo = PinakaPreferences.getLoggedInStore();
   if (storeInfo.isNotEmpty) {
     await CustomerDisplayHelper.updateWelcomeWithStore(
@@ -180,53 +182,53 @@ void main() async {
             ),
           ),
         ],
-       child:
-       MultiBlocProvider(
-       providers: [
-         // ✅ ADD THIS
-         BlocProvider<CompletedOrdersBloc>(
-           create: (context) => CompletedOrdersBloc(
-             context.read<CompletedOrdersRepository>(),
-           ),
-         ),
-        BlocProvider<Inventory_Tag_Bloc>(
-          create: (_) => Inventory_Tag_Bloc(inventoryTagUseCase),
+        child:
+        MultiBlocProvider(
+          providers: [
+            // ✅ ADD THIS
+            BlocProvider<CompletedOrdersBloc>(
+              create: (context) => CompletedOrdersBloc(
+                context.read<CompletedOrdersRepository>(),
+              ),
+            ),
+            BlocProvider<Inventory_Tag_Bloc>(
+              create: (_) => Inventory_Tag_Bloc(inventoryTagUseCase),
+            ),
+
+            BlocProvider<Inventory_Tax_Bloc>(
+              create: (_) => Inventory_Tax_Bloc(inventoryTaxUseCase),
+            ),
+
+            BlocProvider<InventoryCategoriesBloc>(
+              create: (_) => InventoryCategoriesBloc(getCategoriesUseCase: inventoryCategoriesUseCase),
+            ),
+
+            BlocProvider<InventoryAttributesBloc>(
+              create: (_) => InventoryAttributesBloc(getUseCase: inventoryAttributesUseCase),
+            ),
+            BlocProvider<InventoryGetProductTypesBloc>(
+              create: (_) =>
+                  InventoryGetProductTypesBloc(useCase: inventoryProductTypesUseCase),
+            ),
+
+            // BlocProvider<InventoryAttributeItemsBloc>(
+            //   create: (_) => InventoryAttributeItemsBloc(getItemsUseCase: inventoryAttributeItemsUseCase),
+            // ),
+
+
+            // Add Product Bloc
+            BlocProvider<AddProductInventoryTaxBloc>(create: (_) => addProductBloc),
+            //ChangeNotifierProvider(create: (_) => WeightProvider())
+            ChangeNotifierProvider(create: (_) => WeightProvider())
+
+
+          ],
+          child: ChangeNotifierProvider(
+            create: (_) => themeNotifier,
+            child: const MyApp(),
+          ),
         ),
-
-        BlocProvider<Inventory_Tax_Bloc>(
-          create: (_) => Inventory_Tax_Bloc(inventoryTaxUseCase),
-        ),
-
-        BlocProvider<InventoryCategoriesBloc>(
-          create: (_) => InventoryCategoriesBloc(getCategoriesUseCase: inventoryCategoriesUseCase),
-        ),
-
-        BlocProvider<InventoryAttributesBloc>(
-          create: (_) => InventoryAttributesBloc(getUseCase: inventoryAttributesUseCase),
-        ),
-        BlocProvider<InventoryGetProductTypesBloc>(
-          create: (_) =>
-              InventoryGetProductTypesBloc(useCase: inventoryProductTypesUseCase),
-        ),
-
-        // BlocProvider<InventoryAttributeItemsBloc>(
-        //   create: (_) => InventoryAttributeItemsBloc(getItemsUseCase: inventoryAttributeItemsUseCase),
-        // ),
-
-
-        // Add Product Bloc
-        BlocProvider<AddProductInventoryTaxBloc>(create: (_) => addProductBloc),
-        //ChangeNotifierProvider(create: (_) => WeightProvider())
-        ChangeNotifierProvider(create: (_) => WeightProvider())
-
-
-      ],
-      child: ChangeNotifierProvider(
-        create: (_) => themeNotifier,
-        child: const MyApp(),
-      ),
-    ),
-  ));
+      ));
 
 }
 class MyApp extends StatelessWidget {

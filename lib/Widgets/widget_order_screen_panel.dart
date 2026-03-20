@@ -1274,6 +1274,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
     uiRedeemedValue = hiveRedeemedValue;
 
 
+    // Defaults for refund UI (these are set only when the offline override runs).
+    // They must be in scope for the summary widgets below.
+    double alreadyRefundedAmount = 0.0;
+    bool showRefundBlock = false;
+
     // ---------- DO NOT TOUCH OFFLINE OVERRIDE ----------
     if (order["offline"] == true) {
       grossTotal =
@@ -1289,6 +1294,87 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       netPayable =
           (order["payable"] as num?)?.toDouble() ?? netPayable;
 
+
+      final currentOrderStatus =
+      (_wooOrder?.status.isNotEmpty == true
+          ? _wooOrder!.status
+          : (_order?[AppDBConst.orderStatus]?.toString() ?? ''))
+          .toLowerCase()
+          .trim();
+      final normalizedStatus = currentOrderStatus
+          .replaceAll('_', '-')
+          .replaceAll(' ', '-');
+      final bool isPartialRefundOrder = normalizedStatus == 'partial-refund';
+
+// Sum refunded items from local DB (isRefundItem == 1) — most reliable source
+      double localRefundedItemsTotal = 0.0;
+      double localRefundedTaxTotal = 0.0;
+
+      for (final item in orderItems) {
+        final refVal = item[AppDBConst.isRefundItem];
+
+        final isRefunded = refVal == 1 ||
+            refVal == true ||
+            refVal == '1' ||
+            refVal == 'true';
+
+        if (isRefunded) {
+          // ✅ Item price
+          final itemPrice =
+              (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
+                  double.tryParse(item["amount"]?.toString() ?? "0") ??
+                  0.0;
+
+          // ✅ Item tax (check multiple keys safely)
+          final itemTax =
+              (item["item_tax"] as num?)?.toDouble() ??
+                  (item["tax"] as num?)?.toDouble() ??
+                  (item["total_tax"] as num?)?.toDouble() ??
+                  (item["item_total_tax"] as num?)?.toDouble() ??
+                  0.0;
+
+          localRefundedItemsTotal += itemPrice;
+          localRefundedTaxTotal += itemTax;
+
+          print("🔁 Refunded Item → ${item[AppDBConst.itemName]}");
+          print("   Price → $itemPrice | Tax → $itemTax");
+        }
+      }
+
+      final double totalRefundWithTax =
+          localRefundedItemsTotal + localRefundedTaxTotal;
+
+      print("💰 Refunded Items Total → $localRefundedItemsTotal");
+      print("💰 Refunded Tax Total   → $localRefundedTaxTotal");
+      print("💰 Final Refund (Incl Tax) → $totalRefundWithTax");
+
+// Use local items total first; fall back to Woo API totals when local is 0
+      alreadyRefundedAmount = totalRefundWithTax > 0
+          ? totalRefundWithTax
+          : (_wooOrder?.refundTotal ?? 0) > 0
+          ? (_wooOrder?.refundTotal ?? 0)
+          : (_wooOrder?.refundOrderTotal ?? 0);
+
+      final double remainingAmount =
+      (netTotal.toDouble() + orderTax).clamp(0.0, double.infinity);
+
+// Show refund block when there are locally-refunded items OR the order is
+// marked partial-refund by Woo, as long as there is a refund amount to show.
+      showRefundBlock =
+          (isPartialRefundOrder || localRefundedItemsTotal > 0) &&
+              alreadyRefundedAmount > 0;
+
+      final double remainingAfterRefund = remainingAmount; // netTotal + orderTax (refunded items already excluded from grossTotal)
+
+      print("🟥 REFUND DEBUG START ----------------");
+      print("Local Refunded Items → $localRefundedItemsTotal");
+      print("Woo refundTotal      → ${_wooOrder?.refundTotal}");
+      print("Woo refundOrderTotal → ${_wooOrder?.refundOrderTotal}");
+      print("Final Used Refund    → $alreadyRefundedAmount");
+      print("Order Status         → $normalizedStatus");
+      print("Is Partial Refund    → $isPartialRefundOrder");
+      print("Show Refund Block    → $showRefundBlock");
+      print("🟥 REFUND DEBUG END ----------------");
 
       print("🔥 OFFLINE OVERRIDE APPLIED:");
       print("grossTotal       = $grossTotal");
@@ -2415,6 +2501,36 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                           ),
                                         ],
                                       ),
+
+
+                                    SizedBox(
+                                      height: 2,
+                                    ),
+
+                                    if (showRefundBlock) ...[
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            "Refunded Amount",
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                              color: Colors.red,
+                                            ),
+                                          ),
+                                          Text(
+                                            "${TextConstants.currencySymbol}${alreadyRefundedAmount.toStringAsFixed(2)}",
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.red,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+
+                                    ],
 
                                   ],
                                 ),

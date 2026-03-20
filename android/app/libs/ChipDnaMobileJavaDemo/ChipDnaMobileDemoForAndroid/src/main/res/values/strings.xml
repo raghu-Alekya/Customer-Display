@@ -1,0 +1,27 @@
+<resources>
+    <string name="app_name">ChipDna Mobile Demo</string>
+    <string name="terminate">Terminate</string>
+    <string name="clear">Clear</string>
+    <string name="done">Done</string>
+    <string-array name="amount_values">
+        <item>Sale - $10.00</item>
+        <item>Decline - $5.00</item>
+        <item>Error - $1100.00</item>
+        <item>Voice Ref - $47.23</item>
+    </string-array>
+    <string name="ref">Ref</string>
+    <string name="user_reference">User Reference</string>
+    <string name="enable_ttm">Enable Tap To Mobile Transactions</string>
+    <string-array name="transaction_command_values">
+        <item>Auth</item>
+        <item>Confirm</item>
+        <item>Void</item>
+        <item>Transaction Info</item>
+    </string-array>
+    <string name="scanning">Scanning…</string>
+    <string name="decline">Decline</string>
+    <string name="approve">Approve</string>
+    <string name="reviewSignatureTag">reviewSignatureFragment</string>
+    <string name="bluetooth_permissions_not_granted">Bluetooth permissions have not been granted</string>
+    <string name="audio_permission_not_granted">Audio recording permission has not been granted</string>
+</resources>

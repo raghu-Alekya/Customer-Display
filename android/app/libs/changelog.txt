@@ -1,0 +1,287 @@
+2025 November 28 (4.0.6)
+- Updated SQLCipher to 4.7.2
+- Support provided for 16 KB page sizes.
+- Updated Cloud Commerce SDK to version 5.3.1, resolving Tap To Mobile Discover contactless transactions unexpectedly declining.
+- Resolved issue where the SDK could lockup on a bad EMV contact card read on ID TECH VP3350 devices.
+
+2025 September 12 (4.0.5)
+- Updated Cloud Commerce SDK to version 5.3.0.
+- Resolved issue where "No CVM" is displayed on receipt when CDCVM is performed for Tap To Mobile.
+- Added support for Online PIN for Tap To Mobile.
+- Removed internal hard-coded transaction limit of 9,999,999 (minor units).
+
+2025 July 18 (4.0.3)
+- Updated Cloud Commerce SDK to version 5.2.0.
+- Added population of a full transactionFinished response for Tap To Mobile.
+- Optimised JWT expiry, improving configuration process speed for Tap To Mobile.
+- Added returning of SmartcardRemovePrompted and SmartcardRemoved events at the end of an EMV contact transaction for all PIN Pads.
+
+2025 June 23 (4.0.2)
+- Added support for Tap To Mobile
+
+2025 July 9 (3.16.5)
+- Added support for allowlisting on ID TECH VP3350 devices.
+- Added support for USB-C female ID TECH VP3350 device connection type.
+- Fixed issue where transactions could decline with TransactionAlreadyInProgressError on Miura PIN pads.
+
+2025 June 16 (3.16.4)
+- Added support for one way Card Tokens, allowing consistent, non-payment-specific tokenization of card PANs, to be used for a range of applications in integration.
+
+2025 May 20 (3.16.3)
+- Fixed issue with vp3350 incorrectly requesting an ARQC instead of an ACC when performing a contactless refund with Mastercard.
+
+2025 March 21 (3.16.2)
+- Added support for enabling Deferred Auths per card scheme.  VP3350 on First Data will support Deferred Auths except on Amex and Discover card schemes.
+- Fixed issue with First Data Discover contactless, transactions performed on the VP3350 with Discover Contactless should now 0 fill unrecognised tag 9F34.
+
+2024 November 29 (3.16.1)
+- Fixed issue with First Data Rapid Connect pre-formatted non-signature receipts being returned with a signature line.
+- Added functionality to display zero amount for account verification transactions for Miura PIN pads via TMS.
+- Added functionality to display zero amount for get card details transactions for Miura PIN pads via TMS.
+- Fixed issue which prevented supplying both the OS and MPI to be updated for Miura PIN pads.
+- Added functionality to return more detailed progress for firmware updates for Miura PIN pads.
+- Fixed potential crash with Miura device during retry card whilst cancelling transaction via PinPad.
+
+2024 October 18 (3.16)
+- Enhanced checks for applying configuration for ID TECH VP3350 devices, resulting in improved connection times.
+- Added functionality to give integrating apps greater control for initiating the firmware update process for ID TECH VP3350 devices.
+- Added functionality to return more detailed progress for firmware updates for ID TECH VP3350 devices.
+- Added functionality to filter data returned in getStatus response.
+- Added functionality to return address verification result in transactionFinished response.
+
+2024 August 30 (3.15.1)
+- Updated ID TECH SDK to version 1.00.180 providing the latest features and bug fixes.
+- Fixed issue with pre-formatted signature receipts being returned without a signature line.
+- Fixed issue with ICC signature not prompting correctly on the VP3350 device.
+- Fixed issue that could cause the SDK to lock up when connecting to a VP3350 device.
+- Fixed potential crash during a disconnection from a VP3350 device.
+- Fixed issue that could cause an unexpected card swiped transaction update notification to be returned from a VP3350 device.
+- Fixed issue that could return an UnexpectedChipDnaError when connecting to Miura PIN pads.
+- Fixed issue where a disconnection for BBPOS Devices was sometimes not detected by the SDK.
+
+2024 July 12 (3.15)
+- Improved thread safety for calls to setProperties function.
+- Updated ID TECH SDK to version 1.00.177 providing the latest features and bug fixes.
+- Improved pairing and bluetooth connection with VP3350.
+- Added functionality to control the ID TECH VP3350 PINs card removal beep via TMS.
+- Resolved issue that could cause the SDK to crash when an incorrect pairing pin is entered for BBPOS devices.
+
+2024 June 10 (3.14)
+- Added support for BBPOS CHB30 Devices.
+- Added a new field, rawBatteryChargePercentage, to DeviceStatus for ID TECH VP3350 PIN pads. batteryChargePercentage represents the normalized battery percentage.
+- Added Disconnect API method.
+- Added functionality to control collision detection for ID TECH VP3350 PIN pads through TMS.
+- Enhanced checks for applying correct firmware for ID TECH VP3350 PIN pads.
+
+2024 May 9 (3.13.2)
+- Significantly decreased configuration time when connecting ID TECH VP3350 PIN pads for transaction processing.
+- Added functionality to control low power mode for ID TECH VP3350 PIN pads through TMS.
+- Enhanced the capability to manage standby and sleep low power timers for ID TECH VP3350 PIN pads via TMS.
+- Added battery level percentage reporting for ID TECH VP3350 PIN pads. 
+- Updated CardEaseXMLClient to fix potential timeouts when registering a PIN pad.
+
+2024 February 16 (3.13)
+- Added support for ID Tech VP3350 devices.
+- Merchant Defined Fields are now returned from getTransactionInformation.
+- Merchant Defined Fields are now sent in a Deferred Auth request.
+- General improvements and performance enhancements.
+
+2023 December 19 (3.12.3)
+- Added TMS setting to control the Miura Amount Confirmation screen visibility when tipping is enabled.
+- General improvements and performance enhancements.
+
+2023 June 22 (3.12)
+- Updated Voided receipts to include the transaction Auth Code.
+- General improvements and performance enhancements.
+
+2023 March 20 (3.11)
+- Added support for AVS when carrying out keyed PAN entry.
+- Added functionality to control backlight for keypad on Miura M020 PIN pads.
+- Added functionality to control backlight for screen on Miura M020 PIN pads.
+- Resolved issue where AMEX contactless transactions were prevented on Miura PIN pads when using SDK version 3.10.
+- Simplified the tipping screen on the Miura M020 PIN pads.
+- General improvements and performance enhancements.
+
+2023 January 16 (3.10)
+- Enhanced the connection method for BBPOS Chipper 2X BT PIN pads to use Bluetooth Low Energy (BLE) instead of Bluetooth Classic.
+- Added OS and kernels information to Miura PIN pads' device status.
+- Improved the appearance of the amount confirmation screen on the Miura PIN pads.
+- Updated the SDK to be compatible with Android 12 (API level - 31).
+- General improvements and performance enhancements.
+
+2022 November 07 (3.09)
+- Removed support for the Miura M010 PIN pad. 
+- General improvements and performance enhancements.
+
+2022 October 10 (3.08)
+- Added support for a custom on-device tipping prompt for Miura M020 and M021 PIN pads.
+- Added support for on-device dynamic tipping for Miura M020 and M021 PIN pads.
+- General improvements and performance enhancements.
+
+2022 August 10 (3.07)
+- Added support for Credential on File (Card-on-File) first store transactions.
+- Resolved issue where a Miura PIN pad connected via USB could conflict with other USB peripherals during the device discovery phase.
+- Resolved issue where including a Display Time parameter when setting an Idle Message on a Miura PIN pad would cause it to disconnect.
+- General improvements and performance enhancements.
+
+2022 May 23 (3.06)
+- Added battery information for BBPOS Chipper and Miura PIN pads in getStatus response.
+- Added preformatted receipt parameters in the signature verification event.
+- Improved signature capture and signature verification receipt data format to match selected acquirer.
+- Resolved issue where potentially confusing error codes could be presented on approved transactions.
+
+2022 March 07 (3.05)
+- Added PIN Bypass functionality for the Miura M020 PIN pads.
+- Improved processing time when manipulating image during signature capture.
+- General improvements and performance enhancements.
+
+2021 September 13 (3.04)
+- Added receipt data parameter in the signature capture event.
+- General improvements and performance enhancements.
+
+2021 August 02 (3.03)
+- Added support for BBPOS Chipper 2X BT CHB29 devices.
+- Improved the process when updating both OS and MPI for Miura PIN pads.
+- Enhancement made to avoid unnecessary parsing of track 2 for non-payment cards.
+- Enhancement made to provide separate notifications when updating firmware or firmware configuration on BBPOS Chipper 2X BT devices.
+
+2021 May 24 (3.02)
+- Enhancement to return the cardholder’s name to the integrator in boundary cases with magstripe cards.
+- Resolved an issue that could cause intermittent communication failure with the BBPOS Chipper PIN pads on some Android devices.
+
+2021 March 29 (3.01)
+- Added support for offline configuration when using the Omni Platform.
+- Resolved issue where providing a Display Time for an idle message that was too large, would cause the message to only show for 5 seconds.
+
+2021 February 12 (3.00)
+- Added support for Linked Refunds on Cash and Cheque transactions.
+- Resolved issue where an incorrect error was displayed when Terminating from a PIN Pad during an SCA Online PIN transaction.
+- Resolved issue where the Card Hash Collection and Card Reference were not being returned in a call to getTransactionInformation for a Confirmed Deferred Authorisation. 
+- Resolved issue where the Expiry Date was missing from Transaction Finished events on Datecs BluePad-50 PIN pads.
+- Resolved issue where Display Time for an idle message was always 5 seconds, even when the time was set to a different value when using Miura M010.
+- Resolved issue where termination of a transaction that requires SCA could disrupt the following transaction if it also requires SCA.
+
+2020 December 14 (2.20)
+- Removed support for the Miura M007 PIN pad as the device is no longer available to buy.
+- Added support for differentiating between Datecs Bluepad-50 v1 and v2 devices.
+
+2020 November 9 (2.19)
+- Added support for PSD2 SCA to Datecs PIN pads. Applicability depends upon appropriate certification.
+- Resolved issue where signature verification required prompt was displayed on Miura devices during a Deferred Authorisation transaction.
+- Resolved issue of inconsistent parameters across Android and iOS.
+
+2020 September 4 (2.18)
+- Resolved issue where DelayOnlineProcessing transactions were incorrectly flagged to auto-confirm.
+
+2020 August 17 (2.18)
+- Resolved issue where Card Scheme was not present on some receipts.
+- Resolved issue where Auth Code was present on Declined and Voided receipts.
+- Resolved issue where enabling Do Not Disturb mode would cause the SDK to crash on some phones.
+- Resolved issue where the error code was not returned in the response when terminating a transaction during signature processing.
+- Removed tip amount parameter from GetTransactionInformation response when the transaction is a linked refund.
+
+2020 June 24 (2.17)
+- Added support for BIN range whitelisting on BBPOS Chipper BT CHB22 PIN pads.
+- Added support for delayed online processing on Miura and BBPOS Chipper BT PIN pads.
+- Improved support for retrieval of customer first name and last name on BBPOS Chipper BT and Miura PIN pads when offline.
+- Added support for Visa PSD2 SCA to Miura PIN pads. Applicability depends upon appropriate certification.
+
+2020 April 27 (2.16)
+- Added support for Account Verification transactions.
+- Added support for voiding a transaction which has previously been confirmed.
+- General improvements and performance enhancements.
+Heritage NMI customers only:
+- Added TransactionID and VaultID parameters in the getTransactionInformation response.
+
+2020 March 2 (2.15)
+- Added support for Payment Account Reference (PAR) retrieval. The availability of this data is limited to certain situations.
+- Updated linked refund transactions to return more transaction information in the response.
+Heritage Creditcall only:
+- Remove support for the BBPOS WisePad 2 and WisePad 2 Plus PIN pads.
+
+2020 January 27 (2.14)
+- Added support for BBPOS Chipper 2X BT CHB22 PIN pads.
+- Added validation during startTransaction method to enforce implementation of mandatory callbacks.
+- Added support for querying merchant configuration data.
+- Added support to refund a transaction using a CardEase reference returned on a different point of sale.
+- Added merchant display name parameter to getStatus response.
+Resolved issue whereby errors string would occasionally contain a trailing comma. 
+- Added support for Application Selection and User Notification listeners to the demo application.
+
+2019 December 18 (2.13.1)
+- Resolved issue where the SDK could fail to connect when switching between BBPOS devices.
+- Resolved issue where the SDK would not allow reconnection attempts after returning a KeysNotLoaded error.
+- Resolved issue where a connection to a BBPOS device could be lost if unexpected data is returned from the device. 
+- General improvements and performance enhancements on BBPOS PINpads.
+
+2019 October 28 (2.13)
+- Added support for firmware updates on BBPOS Chipper PINpads. 
+- Resolved issue where Miura firmware would fail to update. 
+- Resolved issue where by BBPOS Chipper PINpad may not return cardholder first name and last name during magstripe transactions. 
+- Resolved issue where on rare occasions transaction could incorrectly fall back when using Miura PINpads.
+
+2019 September 2 (2.12)
+- Added support to refund a previously approved and confirmed transaction using the CardEase Reference.
+- Added support for dynamic card scheme filtering on Miura PINpads to assist with EMV configuration.
+- General improvements and performance enhancements on BBPOS PINpads.
+
+2019 June 10 (2.11)
+- Updated America Express Contactless transaction processing to comply with Strong Customer Authentication requirement in EU region.
+- Added new signature capture event.
+Heritage NMI customers only:
+- Added support for Billing Information parameters with the Omni Platform.
+- Added support for Purchase Level 2 parameters with the Omni Platform.
+- Added support for auto-confirm when performing sale transactions with the Omni Platform in the US.
+
+
+2019 April 8 (2.10)
+- Added support for keyed PAN entry on Miura PINpads.
+- Added support for logging to file.
+- Upgraded SqlCipher library.
+- Improved stability when processing fall forward transactions.
+- Resolved issue where on rare occasions migration from API 1.x to 2.X failed to complete.
+- Improved card scheme check when processing transactions.
+- Improved stability when processing transactions on BBPOS Chipper PINpads.
+Heritage NMI customers only:
+- Added support for Omni Platform error message descriptions.
+
+2019 February 4 (2.09)
+- Added pre-certification support for BBPOS Chipper BT PIN pads.
+- Where available cardholder first name and last name parameters will now be returned in Transaction Finished event when processing transactions online.
+Heritage NMI customers only
+- Added support for Merchant Defined Fields parameters with the Omni Platform.
+- Where available cardholder first name and last name data will be populated on the Omni Platform.
+- Added enhancement in retry offline request API methods to prevent multiple calls at the same time.
+
+2018 December 10 (2.08)
+- Added support for the Miura M020.
+- Added support for the Miura M021.
+- Added support for Wi-Fi connection to supported PIN pads.
+- Added support for BIN range whitelisting on Miura PIN pads.
+- Enhanced detection for ATM cash only cards.
+- CardEntryPrompted TransactionUpdate will now return during fallback
+
+2018 October 22 (2.07)
+- Added support for printing receipts on BBPOS WisePad2 Plus.
+- Disabled magstripe fallback for deferred authorizations. 
+- Added UTC transaction date time in GetTransactionInformation response.
+
+2018 August 07 (2.06)
+- Added support to allow the Miura contactless prompt to be disabled.
+- Resolved an issue where enabling Do not Disturb mode would cause the SDK to crash in some circumstances.
+- Resolved an issue where transactions are terminated if the previous contactless transaction was 
+terminated at amount confirmation.
+Heritage NMI customers only:
+- Added support for POS registration with the Payment Gateway.
+- Added support for Payment Gateway vault operations Add and Update.
+
+2018 May 08 (2.05)
+Heritage Creditcall customers only:
+- Resolved issue where building an app with the Android target SDK version greater than 23 could cause the application to raise an exception.
+- General enhancements and performance improvements. 
+
+2018 January 17 (2.03)
+Heritage Creditcall customers only:
+- Beta release of NMI Payment Device SDK for iOS/Android.
+- API aligned with NMI Payment Device SDK for Windows/Linux for greater flexibility.
+- Support added for BBPOS WisePad2 and WisePad2 Plus PIN pads.

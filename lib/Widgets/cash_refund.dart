@@ -19,7 +19,7 @@ class CashRefundDialog extends StatefulWidget {
 
 class _CashRefundDialogState extends State<CashRefundDialog> {
   late CompletedOrdersRepository repository;
-  String amount = " ";
+  String amount = "0.00";
   double totalRefund = 0.0;
 
   @override
@@ -162,7 +162,7 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
                           border: Border.all(color: Colors.grey.shade300),
                         ),
                         child: Text(
-                          "\$ $amount",
+                          "\$ ${(double.tryParse(amount) ?? 0.0).toStringAsFixed(2)}",
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -246,7 +246,8 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
               right: 0,
               top: 0,
               child: GestureDetector(
-                onTap: () =>  Navigator.pop(context, amount),
+                // Treat close as cancel: do not return a value
+                onTap: () => Navigator.pop(context),
                 child: const CircleAvatar(
                   radius: 10,
                   backgroundColor: Colors.red,

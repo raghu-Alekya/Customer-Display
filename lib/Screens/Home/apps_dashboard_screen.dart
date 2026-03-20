@@ -17,6 +17,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../Widgets/widget_navigation_bar.dart' as custom_widgets;
 
+import 'package:flutter/services.dart';
+
+import 'Nmi_payments.dart';
+
+
 class AppsDashboardScreen extends StatefulWidget {
   // Build #1.0.6 - Updated Horizontal & Vertical Scrolling
   final int? lastSelectedIndex; // Make it nullable
@@ -189,6 +194,40 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
                               ),
                             );
                           },
+                        ),
+
+                        ///////
+
+                        _buildCard(
+                          //title: TextConstants.cashier,
+                          icon: themeHelper.themeMode == ThemeMode.dark
+                              ? Image.asset(
+                            "assets/stock_inventory.png",
+                          )
+                              : Image.asset(
+                            "assets/stock_inventory.png",
+                          ),
+                          cardIndex: 0,
+
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      NmiPaymentScreen() //Build #1.0.386
+                                //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
+                              ),
+                            );
+                          },
+                          // onTap: () async {
+                          //   final response =
+                          //       await VP3350Service.startTransaction("10.00");
+                          //
+                          //   ScaffoldMessenger.of(context).showSnackBar(
+                          //     SnackBar(content: Text(response)),
+                          //   );
+                          //
+                          // },  NmiPaymentScreen
                         ),
 
                       ],

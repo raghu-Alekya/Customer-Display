@@ -1,0 +1,30 @@
+<resources>
+    <string name="app_name">ChipDna Mobile Demo (Kotlin)</string>
+    <string name="select_pin_pad">Select PIN Pad</string>
+    <string name="connect_to_pin_pad">Connect to PIN Pad</string>
+    <string name="enable_ttm">Enable Tap To Mobile Transactions</string>
+    <string name="go">Go</string>
+    <string name="user_reference">User Reference</string>
+    <string name="autoref">AutoRef</string>
+    <string name="ref">Ref:</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="initialize_client">Initialize Client</string>
+    <string name="chipdna_mobile_password">ChipDNA Mobile Password</string>
+    <string name="refresh">Refresh</string>
+    <string name="select_amount">Select Amount</string>
+    <string name="select_transaction_command">Select Transaction Command</string>
+    <string name="select_command">Select Command</string>
+    <string name="please_ring_your_bank">Please ring your bank.</string>
+    <string name="please_ring_your_bank_">Please ring your bank: %s</string>
+    <string name="operator_pin">Operator PIN</string>
+    <string name="auth_code">Auth Code</string>
+    <string name="application_selection">Application Selection</string>
+    <string name="bluetooth_permissions_not_granted">Bluetooth permissions have not been granted</string>
+    <string name="audio_permission_not_granted">Audio recording permission has not been granted</string>
+    <string name="title_activity_digital_signature_capture_acivity">DigitalSignatureCaptureActivity</string>
+    <string name="please_sign_here_and_return_to_vendor">Please sign here and return to vendor</string>
+    <string name="terminate">Terminate</string>
+    <string name="clear">Clear</string>
+    <string name="done">Done</string>
+</resources>

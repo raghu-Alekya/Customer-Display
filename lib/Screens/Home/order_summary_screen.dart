@@ -49,6 +49,7 @@ import '../../Widgets/scanner_guard.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_payment_dialog.dart';
 import '../../services/CustomerDisplayService.dart';
+import '../../services/customer_services.dart';
 import '../Auth/login_screen.dart';
 import 'Settings/image_utils.dart';
 import 'Settings/printer_setup_screen.dart';
@@ -3804,8 +3805,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       _processingPaymentMethod != null &&
                                           _processingPaymentMethod !=
                                               TextConstants.cash,
-                                  onTap: () {
+                                  onTap: () async {
                                     _selectPaymentMethod(TextConstants.cash);
+                                    await CustomerService.publishProcessingPayment(
+                                      orderId ?? 0,
+                                      orderItems,                    // your list of items
+                                      subtotal: grossTotal,          // same as you send to display now
+                                      tax: tax,                      // existing tax variable
+                                      total: computedNetPayable,     // or balanceAmount if you prefer
+                                    );
                                     _handlePay();
                                   },
                                 ),
@@ -9352,7 +9360,31 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         },
 
         // ── NO RECEIPT ───────────────────────────────────────
-        onNoReceipt: () {
+        // onNoReceipt: () {
+        //   // ✅ Close IMMEDIATELY
+        //   Navigator.of(dialogCtx, rootNavigator: false).pop();
+        //
+        //   // Background work
+        //   doBackgroundWork();
+        //
+        //   // Navigate immediately
+        //   OrderHelper.isOrderPanelLoaded = false;
+        //   OrderHelper.notifyOrderPanelToRefresh();
+        //   Navigator.pushReplacement(
+        //     context,
+        //     MaterialPageRoute(builder: (_) => POSHomeScreen()),
+        //     result: TextConstants.refresh,
+        //   );
+        // },
+        onNoReceipt: () async {
+          await CustomerService.publishPaymentSuccess(
+            orderId ?? 0,
+            orderItems,
+            subtotal: grossTotal,
+            tax: tax,
+            total: computedNetPayable,
+          );
+
           // ✅ Close IMMEDIATELY
           Navigator.of(dialogCtx, rootNavigator: false).pop();
 
@@ -9370,7 +9402,79 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         },
 
         // ── DONE (Print / Email / SMS) ────────────────────────
-        onDone: (selectedOption, {String? email}) {
+        // onDone: (selectedOption, {String? email}) {
+        //   print("onDone → $selectedOption, email=$email");
+        //
+        //   // ── EMAIL ────────────────────────────────────────────
+        //   if (selectedOption == TextConstants.email &&
+        //       email != null &&
+        //       email.isNotEmpty) {
+        //     // Close immediately
+        //     Navigator.of(dialogCtx, rootNavigator: false).pop();
+        //
+        //     if (orderId == null || orderId == 0) {
+        //       ScaffoldMessenger.of(context).showSnackBar(
+        //         SnackBar(
+        //           content: Text(TextConstants.canNotSendEmail),
+        //           backgroundColor: Colors.red,
+        //           duration: const Duration(milliseconds: 1500),
+        //         ),
+        //       );
+        //     } else {
+        //       // Send email in background
+        //       paymentBloc.sendOrderDetails(orderId!, email);
+        //       StreamSubscription? subscription;
+        //       subscription =
+        //           paymentBloc.sendOrderDetailsStream.listen((response) {
+        //         subscription?.cancel();
+        //         print(">>> Email sent");
+        //       });
+        //     }
+        //
+        //     doBackgroundWork();
+        //     OrderHelper.isOrderPanelLoaded = false;
+        //     OrderHelper.notifyOrderPanelToRefresh();
+        //     Navigator.pushReplacement(
+        //       context,
+        //       MaterialPageRoute(builder: (_) => POSHomeScreen()),
+        //       result: TextConstants.refresh,
+        //     );
+        //     return;
+        //   }
+        //
+        //   // ── PRINT ─────────────────────────────────────────────
+        //   // Close immediately
+        //   Navigator.of(dialogCtx, rootNavigator: false).pop();
+        //
+        //   if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
+        //     // Print in background
+        //     Future(() async {
+        //       await _preparePrintTicket();
+        //       await _printTicket(manual: true);
+        //     });
+        //   }
+        //
+        //   doBackgroundWork();
+        //
+        //   // Navigate immediately
+        //   OrderHelper.isOrderPanelLoaded = false;
+        //   OrderHelper.notifyOrderPanelToRefresh();
+        //   Navigator.pushReplacement(
+        //     context,
+        //     MaterialPageRoute(builder: (_) => POSHomeScreen()),
+        //     result: TextConstants.refresh,
+        //   );
+        // },
+
+
+        onDone: (selectedOption, {String? email}) async {
+          await CustomerService.publishPaymentSuccess(
+            orderId ?? 0,
+            orderItems,
+            subtotal: grossTotal,
+            tax: tax,
+            total: computedNetPayable,
+          );
           print("onDone → $selectedOption, email=$email");
 
           // ── EMAIL ────────────────────────────────────────────
@@ -9394,9 +9498,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               StreamSubscription? subscription;
               subscription =
                   paymentBloc.sendOrderDetailsStream.listen((response) {
-                subscription?.cancel();
-                print(">>> Email sent");
-              });
+                    subscription?.cancel();
+                    print(">>> Email sent");
+                  });
             }
 
             doBackgroundWork();
@@ -9433,6 +9537,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             result: TextConstants.refresh,
           );
         },
+
       ),
     ).then((_) {
       _isShowingPaymentDialog = false;
@@ -10450,7 +10555,51 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           }
         },
         onSMS: (phone) {},
+
+        // onNoReceipt: () async {
+        //   print("Email option selected with dataaaaaaaaa");
+        //
+        //   await Future.delayed(const Duration(milliseconds: 300));
+        //   if (orderId != null && orderId! > 0) {
+        //     int retries = 3;
+        //     while (retries > 0) {
+        //       final payments = await LocalPaymentDBHelper.instance
+        //           .getPaymentsByOrderId(orderId!);
+        //       final pendingPayments = payments
+        //           .where((p) =>
+        //               p.amount > 0 && p.status == PaymentDbStatus.pending)
+        //           .toList();
+        //       if (pendingPayments.isNotEmpty) {
+        //         for (final p in pendingPayments) {
+        //           await LocalPaymentDBHelper.instance.updateStatus(
+        //             p.id,
+        //             PaymentDbStatus.completed,
+        //           );
+        //         }
+        //         print(
+        //             "✅ Marked ${pendingPayments.length} payments as completed");
+        //         break;
+        //       } else {
+        //         retries--;
+        //         if (retries > 0) {
+        //           print(
+        //               "⏳ No pending payments found, retrying... ($retries left)");
+        //           await Future.delayed(const Duration(milliseconds: 200));
+        //         }
+        //       }
+        //     }
+        //   }
+        //   changeStatusToCompletedAndExit(false);
+        // },
+
         onNoReceipt: () async {
+          await CustomerService.publishPaymentSuccess(
+            orderId ?? 0,
+            orderItems,
+            subtotal: grossTotal,
+            tax: tax,
+            total: computedNetPayable,
+          );
           print("Email option selected with dataaaaaaaaa");
 
           await Future.delayed(const Duration(milliseconds: 300));
@@ -10461,7 +10610,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   .getPaymentsByOrderId(orderId!);
               final pendingPayments = payments
                   .where((p) =>
-                      p.amount > 0 && p.status == PaymentDbStatus.pending)
+              p.amount > 0 && p.status == PaymentDbStatus.pending)
                   .toList();
               if (pendingPayments.isNotEmpty) {
                 for (final p in pendingPayments) {
@@ -10485,6 +10634,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           }
           changeStatusToCompletedAndExit(false);
         },
+
+
         onDone: (selectedOption, {String? email}) async {
           // Build #1.0.159: Integrated Send Email Order Details API
           print("onDone → $selectedOption, email=$email");
