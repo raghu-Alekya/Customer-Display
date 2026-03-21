@@ -194,9 +194,13 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
                         Future.microtask(() async {
                           // 1) send store info to customer display
                           await CustomerService.publishStoreInfo(
-                            storeId: int.tryParse(store.storeId ?? '0') ?? 0,
-                            storeName: store.storeName ?? 'Merchant',
-                            logoUrl: store.storeLogo,                // <-- use correct field here
+                            storeId: int.tryParse(store.storeId) ?? 0,
+                            storeName: store.displayStoreName.isNotEmpty
+                                ? store.displayStoreName
+                                : 'Store',
+                            logoUrl: store.storeLogo.isNotEmpty
+                                ? store.storeLogo
+                                : null,
                           );
 
 

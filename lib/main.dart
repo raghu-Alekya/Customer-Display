@@ -56,6 +56,7 @@ import '../../Helper/api_helper.dart';
 import 'Widgets/discount_engine_constants.dart';
 import 'Widgets/offline_order_sync_service.dart';
 import 'Widgets/weighing_scale_widget.dart';
+import 'Utilities/global_utility.dart';
 
 void main() async {
 
@@ -96,6 +97,8 @@ void main() async {
   // Build #1.0.9 : By default dark theme getting selected on launch even after changing from settings
   await UrlHelper.initializeBaseUrl();
   await DBHelper.instance.database;
+  final deviceDetails = await GlobalUtility.getDeviceDetails();
+  CustomerService.setPosIdFromDevice(deviceDetails['device_id']);
   await CustomerService.connect();
   final storeInfo = PinakaPreferences.getLoggedInStore();
   if (storeInfo.isNotEmpty) {

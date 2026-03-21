@@ -1,4 +1,6 @@
 // models/store_validation_model.dart
+import 'dart:convert';
+
 class StoreValidationResponse { //Build #1.0.42: Added by Naveen
   final bool success;
   final String message;
@@ -38,6 +40,80 @@ class StoreValidationResponse { //Build #1.0.42: Added by Naveen
     required this.licenseStatus,
   });
 
+  /// Best label for customer display / MQTT when API uses odd keys or `store_name` is empty / generic.
+  String get displayStoreName {
+    final fromInfo = _parseNameFromStoreInfo(storeInfo);
+    final primary = storeName.trim();
+
+    // Prefer a non-empty real name; skip generic API placeholder "Merchant" if we have better data.
+    if (primary.isNotEmpty && primary.toLowerCase() != 'merchant') {
+      return primary;
+    }
+    if (fromInfo != null && fromInfo.isNotEmpty) {
+      return fromInfo;
+    }
+    final u = username.trim();
+    if (u.isNotEmpty) return u;
+    final sid = storeId.trim();
+    if (sid.isNotEmpty) return 'Store $sid';
+    if (primary.isNotEmpty) return primary;
+    return '';
+  }
+
+  static String? _parseNameFromStoreInfo(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is Map) {
+      return _firstNonEmptyInMap(Map<String, dynamic>.from(raw));
+    }
+    final s = raw.toString().trim();
+    if (s.isEmpty) return null;
+    try {
+      final decoded = json.decode(s);
+      if (decoded is Map) {
+        return _firstNonEmptyInMap(Map<String, dynamic>.from(decoded));
+      }
+    } catch (_) {}
+    return s.length > 80 ? '${s.substring(0, 80)}…' : s;
+  }
+
+  static String? _firstNonEmptyInMap(Map<String, dynamic> map) {
+    const keys = [
+      'store_name',
+      'name',
+      'storeName',
+      'company_name',
+      'site_name',
+      'blogname',
+      'store',
+      'title',
+    ];
+    for (final k in keys) {
+      final v = map[k];
+      if (v == null) continue;
+      final t = v.toString().trim();
+      if (t.isNotEmpty) return t;
+    }
+    return null;
+  }
+
+  static String _readStoreNameFromJson(Map<String, dynamic> json) {
+    const keys = [
+      'store_name',
+      'name',
+      'storeName',
+      'company_name',
+      'site_name',
+    ];
+    for (final k in keys) {
+      final v = json[k];
+      if (v == null) continue;
+      final t = v.toString().trim();
+      if (t.isNotEmpty) return t;
+    }
+    final fromInfo = _parseNameFromStoreInfo(json['store_info']);
+    return fromInfo ?? '';
+  }
+
   factory StoreValidationResponse.fromJson(Map<String, dynamic> json) {
     return StoreValidationResponse(
       success: json['success'] ?? false,
@@ -47,8 +123,8 @@ class StoreValidationResponse { //Build #1.0.42: Added by Naveen
       email: json['email'] ?? '',
       storeId: json['store_id'] ?? '',
       subscriptionType: json['subscription_type'] ?? '',
-      storeInfo: json['store_info'] ?? '',
-      storeName: json['store_name'] ?? '',
+      storeInfo: json['store_info']?.toString() ?? '',
+      storeName: _readStoreNameFromJson(json),
       storeLogo: json['store_logo'] ?? '', // ✅ map JSON
       expirationDate: json['expiration_date'] ?? '',
       deviceImeis: json['device_imeis'] ?? [],
