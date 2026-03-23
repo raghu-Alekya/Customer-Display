@@ -2132,8 +2132,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     orderItems = widget.orderItems;
     grossTotal = widget.grossTotal;
-    discount = widget.orderDiscount;
-    merchantDiscount = widget.merchantDiscount;
+    discount =
+        (widget.orderDiscount != 0) ? -(widget.orderDiscount.abs()) : 0.0;
+    merchantDiscount =
+        (widget.merchantDiscount != 0) ? -(widget.merchantDiscount.abs()) : 0.0;
     tax = widget.orderTax;
     orderId = widget.orderId;
     ebtTotal = widget.ebtAmount;
@@ -2286,7 +2288,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     print(" EBT Total in Summary Screen = $ebtTotal");
 
     // Compute totals
-    NetTotal = grossTotal - discount.abs() - merchantDiscount.abs();
+    NetTotal = grossTotal + discount + merchantDiscount;
     computedNetPayable = NetTotal + tax + cashbackFee;
 
     orderTotal = computedNetPayable;
@@ -3799,12 +3801,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                               TextConstants.cash,
                                   onTap: () async {
                                     _selectPaymentMethod(TextConstants.cash);
-                                    await CustomerService.publishProcessingPayment(
+                                    await CustomerService
+                                        .publishProcessingPayment(
                                       orderId ?? 0,
-                                      orderItems,                    // your list of items
-                                      subtotal: grossTotal,          // same as you send to display now
-                                      tax: tax,                      // existing tax variable
-                                      total: computedNetPayable,     // or balanceAmount if you prefer
+                                      orderItems, // your list of items
+                                      subtotal:
+                                          grossTotal, // same as you send to display now
+                                      tax: tax, // existing tax variable
+                                      total:
+                                          computedNetPayable, // or balanceAmount if you prefer
                                     );
                                     _handlePay();
                                   },
@@ -7178,8 +7183,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     !hasOnlyCashbackOrPayoutItems &&
                                     computedNetPayable > 0, // ✅ keep this
                                 onTap: () {
-                                  if (
-                                  redeemedValue > 0 ||
+                                  if (redeemedValue > 0 ||
                                       isPaymentStarted ||
                                       isOrderPending ||
                                       hasOnlyCashbackOrPayoutItems ||
@@ -7804,6 +7808,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       offlineOrder["applied_coupons"] = [];
       offlineOrder["coupon_response"] = {"coupons": []};
       await box.put(orderKey, offlineOrder);
+
       await CustomerDisplayHelper.updateCustomerDisplay(
         int.tryParse(orderKey) ?? 0,
         summaryEnabled: true,
@@ -7813,7 +7818,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         discount = newDiscount; // should become 0
         tax = newTax;
 
-        NetTotal = grossTotal - discount.abs() - merchantDiscount.abs();
+        NetTotal = grossTotal + discount + merchantDiscount;
         computedNetPayable = NetTotal + tax + cashbackFee;
 
         orderTotal = newTotal;
@@ -8105,13 +8110,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       );
 
       setState(() {
-        discount = newDiscount;
-
+        // Enforce negative sign for display consistency (-$5.00)
+        discount = (newDiscount != 0) ? -(newDiscount.abs()) : 0.0;
         tax = newTax;
 
-        NetTotal = grossTotal - discount.abs() - merchantDiscount.abs();
+        // Use algebraic sum
+        NetTotal = grossTotal + discount + merchantDiscount;
         computedNetPayable = NetTotal + tax + cashbackFee;
-
         orderTotal = newTotal;
 
         balanceAmount = newTotal;
@@ -10094,7 +10099,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         ]);
       }
 
-      // Combo / Mix & Match Discount  ←─ ADDED HERE
+      // Combo / Mix & Match Discount
       if (comboDiscount > 0 && !isPayoutOrCoupon) {
         bytes += ticket.row([
           PosColumn(text: "Combo Discount", width: 9),
@@ -10139,10 +10144,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     ]);
 
+    // Show Coupon (standardized negative display)
     bytes += ticket.row([
       PosColumn(text: TextConstants.discountText, width: 8),
       PosColumn(
-        text: "-${formatCurrency(discount).replaceAll('-', '')}",
+        text: discount != 0 ? formatCurrency(discount) : formatCurrency(0.0),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -10160,7 +10166,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes += ticket.row([
       PosColumn(text: TextConstants.merchantDiscount, width: 8),
       PosColumn(
-        text: "-${formatCurrency(merchantDiscount).replaceAll('-', '')}",
+        text: merchantDiscount != 0
+            ? formatCurrency(merchantDiscount)
+            : formatCurrency(0.0),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -10193,10 +10201,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     bytes += ticket.feed(1);
 
+    // Final Net Payable logic matching the summary screen precisely
+    double printNetPayable = grossTotal +
+        discount +
+        merchantDiscount +
+        tax +
+        servicecharges +
+        cashbackFee;
+    if (printNetPayable < 0) printNetPayable = 0.0;
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.netPayable, width: 8),
       PosColumn(
-        text: formatCurrency(computedNetPayable),
+        text: formatCurrency(printNetPayable),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -10422,7 +10439,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             tax: tax,
             total: computedNetPayable,
           );
-          print("Email option selected with dataaaaaaaaa");
+          print("Email option selected with data");
 
           await Future.delayed(const Duration(milliseconds: 300));
           if (orderId != null && orderId! > 0) {

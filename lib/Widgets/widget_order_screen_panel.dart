@@ -503,6 +503,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                     .toString();
             final odVal = double.tryParse(od) ?? 0.0;
             if (odVal > 0) {
+              _order[AppDBConst.orderDiscount] = -odVal;
+            } else {
               _order[AppDBConst.orderDiscount] = odVal;
             }
           }
@@ -513,6 +515,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                 .toString();
             final mdVal = double.tryParse(md) ?? 0.0;
             if (mdVal > 0) {
+              _order[AppDBConst.merchantDiscount] = -mdVal;
+              _order["merchantDiscount"] = -mdVal;
+            } else {
               _order[AppDBConst.merchantDiscount] = mdVal;
               _order["merchantDiscount"] = mdVal;
             }
@@ -1272,18 +1277,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
               "1") ??
           1;
 
-      final double multipackDiscount =
-          (item[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
-
-      final double autoDiscount =
-          (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
-
-      // final double comboDiscount =
-      //     (orderItem[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
-
-      final double comboDiscount =
-          (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
-
       // Price priority
       double unitPrice =
           double.tryParse(item["item_sum_price"]?.toString() ?? "") ??
@@ -1292,8 +1285,35 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
               double.tryParse(item["price"]?.toString() ?? "") ??
               0.0;
 
-      grossTotal +=
-          unitPrice - multipackDiscount - autoDiscount - comboDiscount;
+      // Extract item-level discounts accurately from meta
+      String dType = (item['discount_type'] ?? '').toString().toLowerCase();
+
+      double autoD =
+          (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
+      double multiD =
+          (item[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
+      double comboD =
+          (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
+      double mixD =
+          (item['mixmatch_discount_total'] as num?)?.toDouble() ?? 0.0;
+
+      // Logic matching order_summary_screen.dart: Use dType to avoid double-counting same discount under different keys
+      double itemSavings = 0.0;
+      if (dType == 'multipack') {
+        itemSavings = multiD > 0 ? multiD : autoD;
+      } else if (dType == 'combo') {
+        itemSavings = comboD > 0 ? comboD : autoD;
+      } else if (dType == 'mixmatch') {
+        itemSavings = mixD > 0 ? mixD : autoD;
+      } else {
+        itemSavings = autoD; // Default to auto
+      }
+
+      // Add to merchant discount (as negative value) only if not already accounted for by a global line item
+      // We skip items named "Merchant Discount" already, so we can sum these safely here.
+      merchantDiscount -= itemSavings;
+
+      grossTotal += unitPrice;
     }
 
     print("### Gross Total Calculated: $grossTotal");
@@ -1351,57 +1371,58 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     final cf = order["cashbackFee"] ?? order["cashback_fee"] ?? 0.0;
     cashbackFee = (cf is num) ? (cf as num).toDouble() : 0.0;
 
+    // Build #1.0.269: Source of truth for tax (Woo > SQLite)
+    // Moving this BEFORE computedNetTotal for accurate math
+    if (wooTax > 0) {
+      orderTax = wooTax;
+    } else if (sqliteTax > 0) {
+      orderTax = sqliteTax;
+    }
+
     // ----------- ONLINE TOTAL COMPUTATION -----------
     // NET TOTAL (no tax)
     // Algebraic addition: grossTotal + orderDiscount + merchantDiscount
-    num netTotal = (grossTotal + orderDiscount + merchantDiscount)
+    num netTotal = (grossTotal +
+            (orderDiscount != 0 ? -orderDiscount.abs() : 0.0) +
+            (merchantDiscount != 0 ? -merchantDiscount.abs() : 0.0))
         .clamp(0.0, double.infinity);
 
     // NET PAYABLE WITH TAX + CASHBACK
     // Formula: Gross total + coupon (+ or -ve) + merchant discount (+ve or -ve) + tax + service charges
-    double computedNetPayable =
-        (grossTotal + orderDiscount + merchantDiscount + orderTax + cashbackFee)
-            .clamp(0.0, double.infinity);
+    double computedNetPayable = (grossTotal +
+            (orderDiscount != 0 ? -orderDiscount.abs() : 0.0) +
+            (merchantDiscount != 0 ? -merchantDiscount.abs() : 0.0) +
+            orderTax +
+            cashbackFee)
+        .clamp(0.0, double.infinity);
 
     // Woo total overrides only if > 0
     double netPayable = wooTotal > 0 ? wooTotal : computedNetPayable;
 
     // ---------- DO NOT TOUCH OFFLINE OVERRIDE ----------
-    // Build #1.0.267: Fix - Do not override grossTotal with orderTotal
-    // We want grossTotal to represent the subtotal (Sum of items - item discounts)
     if (order["offline"] == true) {
-      // grossTotal = (order[AppDBConst.orderTotal] as num?)?.toDouble() ?? grossTotal; // REMOVED
-      orderTax = (order[AppDBConst.orderTax] as num?)?.toDouble() ?? orderTax;
       netTotal = (order["netTotal"] as num?)?.toDouble() ?? netTotal;
       netPayable = (order["payable"] as num?)?.toDouble() ?? netPayable;
     }
 
-    // Build #1.0.267: Stop zeroing out discounts - allow them to show if present
-    if (order["offline"] == true ||
-        order[AppDBConst.orderStatus] == TextConstants.completed) {
-      print("🔥 DISCOUNT PROCESSING (Offline/Completed):");
-      print("orderDiscount    = $orderDiscount");
-      print("merchantDiscount = $merchantDiscount");
-    }
-
     // Build #1.0.251 : update UI variables after offline override
     uiGrossTotal = grossTotal;
-    uiOrderDiscount = orderDiscount;
-    uiMerchantDiscount = merchantDiscount;
+    // Always store as negative for matching formatting standards (-$5.00)
+    uiOrderDiscount = (orderDiscount != 0) ? -orderDiscount.abs() : 0.0;
+    uiMerchantDiscount =
+        (merchantDiscount != 0) ? -merchantDiscount.abs() : 0.0;
     uiOrderTax = orderTax;
     uiNetPayable = netPayable;
     uiCashbackFee = cashbackFee;
     uiTotalItems = totalItems;
     uiRedeemedValue = hiveRedeemedValue;
-    final currentOrderStatus =
-    (_wooOrder?.status.isNotEmpty == true
-        ? _wooOrder!.status
-        : (_order?[AppDBConst.orderStatus]?.toString() ?? ''))
+    final currentOrderStatus = (_wooOrder?.status.isNotEmpty == true
+            ? _wooOrder!.status
+            : (_order?[AppDBConst.orderStatus]?.toString() ?? ''))
         .toLowerCase()
         .trim();
-    final normalizedStatus = currentOrderStatus
-        .replaceAll('_', '-')
-        .replaceAll(' ', '-');
+    final normalizedStatus =
+        currentOrderStatus.replaceAll('_', '-').replaceAll(' ', '-');
     final bool isPartialRefundOrder = normalizedStatus == 'partial-refund';
 
     // Sum refunded items from local DB (isRefundItem == 1) — most reliable source
@@ -1411,25 +1432,21 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     for (final item in orderItems) {
       final refVal = item[AppDBConst.isRefundItem];
 
-      final isRefunded = refVal == 1 ||
-          refVal == true ||
-          refVal == '1' ||
-          refVal == 'true';
+      final isRefunded =
+          refVal == 1 || refVal == true || refVal == '1' || refVal == 'true';
 
       if (isRefunded) {
         // ✅ Item price
-        final itemPrice =
-            (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
-                double.tryParse(item["amount"]?.toString() ?? "0") ??
-                0.0;
+        final itemPrice = (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
+            double.tryParse(item["amount"]?.toString() ?? "0") ??
+            0.0;
 
         // ✅ Item tax (check multiple keys safely)
-        final itemTax =
-            (item["item_tax"] as num?)?.toDouble() ??
-                (item["tax"] as num?)?.toDouble() ??
-                (item["total_tax"] as num?)?.toDouble() ??
-                (item["item_total_tax"] as num?)?.toDouble() ??
-                0.0;
+        final itemTax = (item["item_tax"] as num?)?.toDouble() ??
+            (item["tax"] as num?)?.toDouble() ??
+            (item["total_tax"] as num?)?.toDouble() ??
+            (item["item_total_tax"] as num?)?.toDouble() ??
+            0.0;
 
         localRefundedItemsTotal += itemPrice;
         localRefundedTaxTotal += itemTax;
@@ -1450,11 +1467,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     final double alreadyRefundedAmount = totalRefundWithTax > 0
         ? totalRefundWithTax
         : (_wooOrder?.refundTotal ?? 0) > 0
-        ? (_wooOrder?.refundTotal ?? 0)
-        : (_wooOrder?.refundOrderTotal ?? 0);
+            ? (_wooOrder?.refundTotal ?? 0)
+            : (_wooOrder?.refundOrderTotal ?? 0);
 
     final double remainingAmount =
-    (netTotal.toDouble() + orderTax).clamp(0.0, double.infinity);
+        (netTotal.toDouble() + orderTax).clamp(0.0, double.infinity);
 
     // Show refund block when there are locally-refunded items OR the order is
     // marked partial-refund by Woo, as long as there is a refund amount to show.
@@ -1462,7 +1479,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         (isPartialRefundOrder || localRefundedItemsTotal > 0) &&
             alreadyRefundedAmount > 0;
 
-    final double remainingAfterRefund = remainingAmount; // netTotal + orderTax (refunded items already excluded from grossTotal)
+    final double remainingAfterRefund =
+        remainingAmount; // netTotal + orderTax (refunded items already excluded from grossTotal)
 
     print("🟥 REFUND DEBUG START ----------------");
     print("Local Refunded Items → $localRefundedItemsTotal");
@@ -2772,13 +2790,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                               ),
                                               if (showRefundBlock) ...[
                                                 Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment
+                                                          .spaceBetween,
                                                   children: [
                                                     Text(
                                                       "Refunded Amount",
                                                       style: TextStyle(
                                                         fontSize: 14,
-                                                        fontWeight: FontWeight.w500,
+                                                        fontWeight:
+                                                            FontWeight.w500,
                                                         color: Colors.red,
                                                       ),
                                                     ),
@@ -2786,13 +2807,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                       "${TextConstants.currencySymbol}${alreadyRefundedAmount.toStringAsFixed(2)}",
                                                       style: const TextStyle(
                                                         fontSize: 16,
-                                                        fontWeight: FontWeight.w600,
+                                                        fontWeight:
+                                                            FontWeight.w600,
                                                         color: Colors.red,
                                                       ),
                                                     ),
                                                   ],
                                                 ),
-
                                               ],
                                             ],
                                           ),
@@ -5948,21 +5969,25 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     }
     */
 
-    // Show Coupon (Always show)
+    // Show Coupon (standardized negative display)
     bytes += ticket.row([
       PosColumn(text: TextConstants.discountText, width: 8),
       PosColumn(
-        text: formatCurrency(uiOrderDiscount),
+        text: uiOrderDiscount != 0
+            ? formatCurrency(uiOrderDiscount)
+            : formatCurrency(0.0),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
 
-    // Show Merchant Discount (Always show)
+    // Show Merchant Discount (standardized negative display)
     bytes += ticket.row([
       PosColumn(text: TextConstants.merchantDiscount, width: 8),
       PosColumn(
-        text: formatCurrency(uiMerchantDiscount),
+        text: uiMerchantDiscount != 0
+            ? formatCurrency(uiMerchantDiscount)
+            : formatCurrency(0.0),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -5991,7 +6016,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     bytes += ticket.row([
       PosColumn(text: TextConstants.servicecharges, width: 8),
       PosColumn(
-        text: formatCurrency(uiCashbackFee), // Use active order's fee (from UI)
+        text: formatCurrency(
+            0.0), // Need to map service charges properly (future build)
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
