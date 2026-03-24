@@ -5013,7 +5013,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                         _buildOrderCalculation(
                                             TextConstants.discountText,
-                                            '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}',
+                                            '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}',
                                             isDiscount: true),
 
                                         ShaderMask(
@@ -5065,10 +5065,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                         _buildOrderCalculation(
                                             TextConstants.taxText,
                                             '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
-                                        if (merchantDiscount > 0)
-                                          _buildOrderCalculation(
-                                              TextConstants.merchantDiscount,
-                                              '-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}'),
+                                      if (merchantDiscount < 0)
+                            _buildOrderCalculation(
+                            TextConstants.merchantDiscount,
+                            '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
+                          ),
 
                                         if (cashbackFee > 0)
                                           _buildOrderCalculation(
@@ -5280,10 +5281,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           discount =
               (orderData.first[AppDBConst.orderDiscount] as num?)?.toDouble() ??
                   0.0; // Fetch discount
-          merchantDiscount =
+          final dbMerchantDiscount =
               (orderData.first[AppDBConst.merchantDiscount] as num?)
                       ?.toDouble() ??
-                  0.0; // Build #1.0.80
+                  0.0;
+          // Keep merchant discount algebraic (negative) for summary display/total logic.
+          merchantDiscount = dbMerchantDiscount != 0
+              ? -(dbMerchantDiscount.abs())
+              : 0.0; // Build #1.0.80
           tax =
               (orderData.first[AppDBConst.orderTax] as num?)?.toDouble() ?? 0.0;
           orderTotal =
@@ -5658,7 +5663,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
     } else if (label == TextConstants.discountText) {
       amount =
-          '-${TextConstants.currencySymbol}${discount.toStringAsFixed(2)}'; // Display discount from DB
+          '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}'; // Display discount from DB
     }
 
     // Determine colors and icons based on label
@@ -5753,7 +5758,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               ),
               // ---------------- DELETE ICON FOR DISCOUNT ----------------
               if ((label == TextConstants.discountText || isDiscount) &&
-                  discount > 0 &&
+                  discount.abs() > 0 &&
                   redeemedValue == 0)
                 GestureDetector(
                   onTap: isPaymentStarted
@@ -8123,6 +8128,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         isCouponAppliedFromApi = true;
       });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Coupon applied successfully"),
+          backgroundColor: Colors.green,
+        ),
+      );
 
       print(
           "✅ Coupon Applied (local ID $localOrderId): Discount $newDiscount, Tax $newTax, Total $newTotal");

@@ -497,7 +497,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
             .get(widget.activeOrderId.toString());
         if (raw != null && raw is Map) {
           final offline = Map<String, dynamic>.from(raw);
-          if (sqliteOrderDiscount <= 0) {
+          if (sqliteOrderDiscount == 0) {
             final od =
                 (offline['orderDiscount'] ?? offline['order_discount'] ?? 0)
                     .toString();
@@ -508,7 +508,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
               _order[AppDBConst.orderDiscount] = odVal;
             }
           }
-          if (sqliteMerchantDiscount <= 0) {
+          if (sqliteMerchantDiscount == 0) {
             final md = (offline['merchantDiscount'] ??
                     offline['merchant_discount'] ??
                     0)
@@ -1242,6 +1242,22 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       print("### merchantDiscount: $merchantDiscount");
     }
 
+    // Fallback: some orders store merchant discount at order-level only
+    // (without a dedicated discount line item in orderItems).
+    if (merchantDiscount == 0) {
+      final dynamic rawMerchantDiscount = order[AppDBConst.merchantDiscount] ??
+          order['merchantDiscount'] ??
+          order['merchant_discount'] ??
+          0.0;
+      final double orderLevelMerchantDiscount =
+          (rawMerchantDiscount is num)
+              ? rawMerchantDiscount.toDouble()
+              : (double.tryParse(rawMerchantDiscount.toString()) ?? 0.0);
+      if (orderLevelMerchantDiscount != 0) {
+        merchantDiscount = -orderLevelMerchantDiscount.abs();
+      }
+    }
+
     double grossTotal = 0.0;
 
     for (var item in orderItems) {
@@ -1254,6 +1270,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       final type = item["item_type"]?.toString().toLowerCase() ?? "";
       final isRefunded = item[AppDBConst.isRefundItem] == 1 ||
           item[AppDBConst.isRefundItem] == true;
+      final itemSumPrice =
+          double.tryParse(item["item_sum_price"]?.toString() ?? "") ?? 0.0;
+
+      // ✅ FIRST: Extract merchant discount
+      if (name.contains("merchant discount") ||
+          type.contains("merchant discount")) {
+        merchantDiscount +=
+        itemSumPrice > 0 ? -itemSumPrice : itemSumPrice;
+        continue; // skip further processing
+      }
 
       final skip = name.contains("discount") ||
           name.contains("merchant discount") ||
@@ -1311,7 +1337,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
       // Add to merchant discount (as negative value) only if not already accounted for by a global line item
       // We skip items named "Merchant Discount" already, so we can sum these safely here.
-      merchantDiscount -= itemSavings;
+      // merchantDiscount -= itemSavings;
 
       grossTotal += unitPrice;
     }
@@ -1912,15 +1938,15 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                       Expanded(
                                         child: Column(
                                           crossAxisAlignment:
-                                              CrossAxisAlignment.start,
+                                          CrossAxisAlignment.start,
                                           mainAxisAlignment:
-                                              MainAxisAlignment.spaceEvenly,
+                                          MainAxisAlignment.spaceEvenly,
                                           children: [
                                             Column(
                                               crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
+                                              CrossAxisAlignment.start,
                                               mainAxisAlignment:
-                                                  MainAxisAlignment.start,
+                                              MainAxisAlignment.start,
                                               children: [
                                                 RichText(
                                                   maxLines: 2,
@@ -1932,25 +1958,19 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                         style: TextStyle(
                                                           fontFamily: 'inter',
                                                           fontSize: 12,
-                                                          fontWeight:
-                                                              FontWeight.w700,
+                                                          fontWeight: FontWeight.w700,
                                                           color: isRefunded
                                                               ? Colors.grey
-                                                              : (themeHelper
-                                                                          .themeMode ==
-                                                                      ThemeMode
-                                                                          .dark
-                                                                  ? ThemeNotifier
-                                                                      .textDark
-                                                                  : ThemeNotifier
-                                                                      .textLight),
+                                                              : (themeHelper.themeMode == ThemeMode.dark
+                                                              ? ThemeNotifier.textDark
+                                                              : ThemeNotifier.textLight),
                                                           decoration: isRefunded
-                                                              ? TextDecoration
-                                                                  .lineThrough
-                                                              : TextDecoration
-                                                                  .none,
+                                                              ? TextDecoration.lineThrough
+                                                              : TextDecoration.none,
                                                         ),
                                                       ),
+
+
                                                       TextSpan(
                                                         text: combo == ''
                                                             ? ''
@@ -1969,12 +1989,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                     "Multipack Discount: -${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}",
                                                     style: TextStyle(
                                                       fontSize: 10,
-                                                      fontWeight:
-                                                          FontWeight.w600,
+                                                      fontWeight: FontWeight.w600,
                                                       color: Colors.blue,
                                                     ),
                                                   ),
                                                 ],
+
 
                                                 if (autoDiscount > 0) ...[
                                                   const SizedBox(height: 2),
@@ -1982,8 +2002,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                     "auto Discount : -${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
                                                     style: TextStyle(
                                                       fontSize: 10,
-                                                      fontWeight:
-                                                          FontWeight.w600,
+                                                      fontWeight: FontWeight.w600,
                                                       color: Colors.red,
                                                     ),
                                                   ),
@@ -2001,35 +2020,24 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                 //   ),
                                                 // ],
 
-                                                if (comboDiscount > 0) ...[
-                                                  // ← just check value > 0
+                                                if (comboDiscount > 0) ...[   // ← just check value > 0
                                                   const SizedBox(height: 2),
                                                   Text(
                                                     "Combo Discount: -${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}",
-                                                    style: TextStyle(
-                                                        fontSize: 10,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color: Colors.orange),
+                                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.orange),
                                                   ),
                                                 ],
-                                                if (variationId > 0 &&
-                                                    variationName
-                                                        .isNotEmpty) ...[
+                                                if (variationId > 0 && variationName.isNotEmpty) ...[
                                                   const SizedBox(height: 2),
                                                   Row(
                                                     children: [
                                                       Text(
                                                         "($variationName)",
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
+                                                        overflow: TextOverflow.ellipsis,
                                                         style: TextStyle(
                                                           fontSize: 10,
-                                                          color: themeHelper
-                                                                      .themeMode ==
-                                                                  ThemeMode.dark
-                                                              ? ThemeNotifier
-                                                                  .textDark
+                                                          color: themeHelper.themeMode == ThemeMode.dark
+                                                              ? ThemeNotifier.textDark
                                                               : Colors.grey,
                                                         ),
                                                       ),
@@ -2047,14 +2055,10 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                             if (isEbtEligible) ...[
                                               const SizedBox(height: 3),
                                               Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                        horizontal: 6,
-                                                        vertical: 2),
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                 decoration: BoxDecoration(
                                                   color: Colors.green,
-                                                  borderRadius:
-                                                      BorderRadius.circular(4),
+                                                  borderRadius: BorderRadius.circular(4),
                                                 ),
                                                 child: const Text(
                                                   "EBT",
@@ -2109,48 +2113,28 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                             if (!isPayoutOrCouponOrCustomItem) ...[
                                               Builder(
                                                 builder: (context) {
-                                                  double qty = (orderItem[
-                                                                  AppDBConst
-                                                                      .itemCount]
-                                                              as num?)
-                                                          ?.toDouble() ??
-                                                      1;
+                                                  double qty =
+                                                      (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1;
 
                                                   double unitPrice =
-                                                      // (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////---
-                                                      (orderItem[AppDBConst
-                                                                      .itemPrice]
-                                                                  as num?)
-                                                              ?.toDouble() ??
-                                                          (orderItem[AppDBConst
-                                                                      .itemRegularPrice]
-                                                                  as num?)
-                                                              ?.toDouble() ??
-                                                          (orderItem[AppDBConst
-                                                                      .itemUnitPrice]
-                                                                  as num?)
-                                                              ?.toDouble() ?? ////
-                                                          0.0; ////
+                                                  // (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////---
+                                                  (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ??
+                                                      (orderItem[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
+                                                      (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////
+                                                      0.0;   ////
 
                                                   // If still zero → derive price from sum price
                                                   if (unitPrice == 0.0) {
                                                     final double sumPrice =
-                                                        (orderItem[AppDBConst
-                                                                        .itemSumPrice]
-                                                                    as num?)
-                                                                ?.toDouble() ??
-                                                            0.0;
+                                                        (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
 
-                                                    if (sumPrice > 0 &&
-                                                        qty > 0) {
-                                                      unitPrice =
-                                                          sumPrice / qty;
+                                                    if (sumPrice > 0 && qty > 0) {
+                                                      unitPrice = sumPrice / qty;
                                                     }
                                                   }
 
                                                   // 🔹 NEW: calculate total amount
-                                                  final double totalAmount =
-                                                      unitPrice * qty;
+                                                  final double totalAmount = unitPrice * qty;
 
                                                   return Text(
                                                     // 🔹 OLD: only unit price × qty
@@ -2161,11 +2145,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                     // "= ${TextConstants.currencySymbol} ${totalAmount.toStringAsFixed(2)}",
 
                                                     style: TextStyle(
-                                                      color: themeHelper
-                                                                  .themeMode ==
-                                                              ThemeMode.dark
-                                                          ? ThemeNotifier
-                                                              .textDark
+                                                      color: themeHelper.themeMode == ThemeMode.dark
+                                                          ? ThemeNotifier.textDark
                                                           : Colors.black54,
                                                       fontSize: 10,
                                                     ),
@@ -2173,6 +2154,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                 },
                                               ),
                                             ],
+
+
                                           ],
                                         ),
                                       ),
@@ -2595,38 +2578,26 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                             : Colors.grey)),
                                           ],
                                         ),
-                                        if (merchantDiscount > 0)
+                                        if (uiMerchantDiscount != 0)
                                           Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                             children: [
                                               Row(
-                                                spacing: 5,
                                                 children: [
-                                                  // SvgPicture.asset(
-                                                  //   "assets/svg/discount_star.svg",
-                                                  //   height: 12,
-                                                  //   width: 12,
-                                                  //   color: Colors.blue, // 👈 apply blue color
-                                                  // ),
                                                   Text(
-                                                      TextConstants
-                                                          .merchantDiscount,
-                                                      style: TextStyle(
-                                                          color: Colors.blue,
-                                                          fontSize: 14)),
+                                                    TextConstants.merchantDiscount,
+                                                    style: TextStyle(color: Colors.blue, fontSize: 14),
+                                                  ),
                                                 ],
                                               ),
                                               Text(
-                                                  "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
-                                                  style: TextStyle(
-                                                      color: Colors.blue,
-                                                      fontSize: 14)),
+                                                "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}",
+                                                style: TextStyle(color: Colors.blue, fontSize: 14),
+                                              ),
                                             ],
                                           ),
-                                        SizedBox(
-                                          height: 2,
-                                        ),
+
+                                        SizedBox(height: 2),
 
                                         if (cashbackFee > 0)
                                           Row(
@@ -5986,8 +5957,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       PosColumn(text: TextConstants.merchantDiscount, width: 8),
       PosColumn(
         text: uiMerchantDiscount != 0
-            ? formatCurrency(uiMerchantDiscount)
-            : formatCurrency(0.0),
+            ? "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}"
+            : "${TextConstants.currencySymbol}0.00",
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),

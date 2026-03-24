@@ -242,6 +242,7 @@ class OrderHelper {
 
     double orderDiscount = (order['orderDiscount'] as num?)?.toDouble() ?? 0.0;
     double merchantDiscount = getCurrentMerchantDiscount(order);
+    print("🟢 merchant discount: $merchantDiscount");
 
     double netTotal = grossTotal - orderDiscount - merchantDiscount;
     double netPayable = netTotal + orderTax + cbFee;
@@ -1491,9 +1492,11 @@ class OrderHelper {
         []; // Build #1.0.216: FIXED Issue - Merchant discount not deleting, showing error "Payout ID not found"
 
     for (var lineItem in lineItems) {
-      if (lineItem.name == TextConstants.discountText) {
+      final name = (lineItem.name ?? '').toLowerCase();
+
+      if (name.contains('discount')) {
         merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
-        merchantDiscountIdsList.add(lineItem.id.toString()); // Added to list
+        merchantDiscountIdsList.add(lineItem.id.toString());
       }
     }
     // Build #1.0.216: Join with commas and ensure no leading comma
