@@ -2303,13 +2303,13 @@ class OrderHelper {
       final double total    = (updatedOrder['net_payable'] as num?)?.toDouble() ?? 0.0;
 
       // / 🔄 Send update to Customer Display
-    await CustomerService.publishCartUpdate(
-    orderId,
-    products,
-    subtotal: subtotal,
-    tax: tax,
-    total: total,
-    );
+    // await CustomerService.publishCartUpdate(
+    // orderId,
+    // products,
+    // subtotal: subtotal,
+    // tax: tax,
+    // total: total,
+    // );
 
       notifyOrderPanelToRefresh();
       if (onItemAdded != null) onItemAdded();

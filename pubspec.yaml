@@ -81,7 +81,7 @@ dependencies:
   flutter_bloc: ^9.1.1
   qr_flutter: ^4.1.0
   image: ^4.7.2
-  mqtt_client: ^10.8.0
+#  mqtt_client: ^10.8.0
 
 dev_dependencies:
   flutter_test:

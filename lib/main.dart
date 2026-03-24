@@ -96,7 +96,7 @@ void main() async {
   // Build #1.0.9 : By default dark theme getting selected on launch even after changing from settings
   await UrlHelper.initializeBaseUrl();
   await DBHelper.instance.database;
-  await CustomerService.connect();
+  // await CustomerService.connect();
   final storeInfo = PinakaPreferences.getLoggedInStore();
   if (storeInfo.isNotEmpty) {
     await CustomerDisplayHelper.updateWelcomeWithStore(

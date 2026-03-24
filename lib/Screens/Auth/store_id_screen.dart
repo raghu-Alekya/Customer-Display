@@ -193,11 +193,11 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
                         // Run async side‑effects after this frame
                         Future.microtask(() async {
                           // 1) send store info to customer display
-                          await CustomerService.publishStoreInfo(
-                            storeId: int.tryParse(store.storeId ?? '0') ?? 0,
-                            storeName: store.storeName ?? 'Merchant',
-                            logoUrl: store.storeLogo,                // <-- use correct field here
-                          );
+                          // await CustomerService.publishStoreInfo(
+                          //   storeId: int.tryParse(store.storeId ?? '0') ?? 0,
+                          //   storeName: store.storeName ?? 'Merchant',
+                          //   logoUrl: store.storeLogo,                // <-- use correct field here
+                          // );
 
 
                           // 2) Save validation data and navigate

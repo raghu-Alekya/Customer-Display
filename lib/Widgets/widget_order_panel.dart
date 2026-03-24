@@ -3194,14 +3194,14 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       };
     }).toList();
 
-    // Send update directly via CustomerService
-    await CustomerService.publishCartUpdate(
-      orderHelper.activeOrderId!,
-      productsForDisplay,
-      subtotal: grossTotal,
-      tax: orderTax,
-      total: (offlineOrder['net_payable'] as num?)?.toDouble() ?? 0.0,
-    );
+    // // Send update directly via CustomerService
+    // await CustomerService.publishCartUpdate(
+    //   orderHelper.activeOrderId!,
+    //   productsForDisplay,
+    //   subtotal: grossTotal,
+    //   tax: orderTax,
+    //   total: (offlineOrder['net_payable'] as num?)?.toDouble() ?? 0.0,
+    // );
 
     OrderHelper.notifyOrderPanelToRefresh();
 
@@ -4531,13 +4531,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                     };
                                                   }).toList();
 
-                                                  await CustomerService.publishCartUpdate(
-                                                    orderId,
-                                                    productsForDisplay,
-                                                    subtotal: grossTotal,
-                                                    tax: orderTax,
-                                                    total: (offlineOrder['net_payable'] as num?)?.toDouble() ?? 0.0,
-                                                  );
+                                                  // await CustomerService.publishCartUpdate(
+                                                  //   orderId,
+                                                  //   productsForDisplay,
+                                                  //   subtotal: grossTotal,
+                                                  //   tax: orderTax,
+                                                  //   total: (offlineOrder['net_payable'] as num?)?.toDouble() ?? 0.0,
+                                                  // );
 
                                                   // 🔁 Refresh UI instantly
                                                   if (mounted) {

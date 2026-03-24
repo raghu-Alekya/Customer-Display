@@ -3801,16 +3801,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                               TextConstants.cash,
                                   onTap: () async {
                                     _selectPaymentMethod(TextConstants.cash);
-                                    await CustomerService
-                                        .publishProcessingPayment(
-                                      orderId ?? 0,
-                                      orderItems, // your list of items
-                                      subtotal:
-                                          grossTotal, // same as you send to display now
-                                      tax: tax, // existing tax variable
-                                      total:
-                                          computedNetPayable, // or balanceAmount if you prefer
-                                    );
+                                    // await CustomerService
+                                    //     .publishProcessingPayment(
+                                    //   orderId ?? 0,
+                                    //   orderItems, // your list of items
+                                    //   subtotal:
+                                    //       grossTotal, // same as you send to display now
+                                    //   tax: tax, // existing tax variable
+                                    //   total:
+                                    //       computedNetPayable, // or balanceAmount if you prefer
+                                    // );
                                     _handlePay();
                                   },
                                 ),
@@ -9309,13 +9309,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         // ── NO RECEIPT ───────────────────────────────────────
         onNoReceipt: () async {
-          await CustomerService.publishPaymentSuccess(
-            orderId ?? 0,
-            orderItems,
-            subtotal: grossTotal,
-            tax: tax,
-            total: computedNetPayable,
-          );
+          // await CustomerService.publishPaymentSuccess(
+          //   orderId ?? 0,
+          //   orderItems,
+          //   subtotal: grossTotal,
+          //   tax: tax,
+          //   total: computedNetPayable,
+          // );
 
           // ✅ Close IMMEDIATELY
           Navigator.of(dialogCtx, rootNavigator: false).pop();
@@ -9335,13 +9335,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         // ── DONE (Print / Email / SMS) ────────────────────────
         onDone: (selectedOption, {String? email}) async {
-          await CustomerService.publishPaymentSuccess(
-            orderId ?? 0,
-            orderItems,
-            subtotal: grossTotal,
-            tax: tax,
-            total: computedNetPayable,
-          );
+          // await CustomerService.publishPaymentSuccess(
+          //   orderId ?? 0,
+          //   orderItems,
+          //   subtotal: grossTotal,
+          //   tax: tax,
+          //   total: computedNetPayable,
+          // );
           print("onDone → $selectedOption, email=$email");
 
           // ── EMAIL ────────────────────────────────────────────
@@ -10432,13 +10432,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         },
         onSMS: (phone) {},
         onNoReceipt: () async {
-          await CustomerService.publishPaymentSuccess(
-            orderId ?? 0,
-            orderItems,
-            subtotal: grossTotal,
-            tax: tax,
-            total: computedNetPayable,
-          );
+          // await CustomerService.publishPaymentSuccess(
+          //   orderId ?? 0,
+          //   orderItems,
+          //   subtotal: grossTotal,
+          //   tax: tax,
+          //   total: computedNetPayable,
+          // );
           print("Email option selected with data");
 
           await Future.delayed(const Duration(milliseconds: 300));
