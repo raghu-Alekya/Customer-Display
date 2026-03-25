@@ -5356,6 +5356,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final String itemType =
         orderItem['item_type']?.toString().toLowerCase() ?? '';
+    final String itemNameLower =
+        (orderItem['item_name']?.toString() ?? '').toLowerCase();
+
+    // Hide merchant discount line-items from the list (keep it in totals section).
+    if (itemType.contains('discount') ||
+        itemNameLower.contains('merchant discount')) {
+      return const SizedBox.shrink();
+    }
 
     final bool isPayout = itemType.contains(TextConstants.payoutText);
     final bool isCoupon = itemType.contains(TextConstants.couponText);
@@ -10057,6 +10065,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       int qty = (item['items_count'] ?? 0).toInt();
       double lineTotal = (item['item_sum_price'] ?? 0).toDouble();
       String type = item['item_type']?.toString().toLowerCase() ?? '';
+
+      // Hide merchant discount/discount line-items from print item list
+      final nameLower = itemName.toLowerCase();
+      if (type.contains('discount') || nameLower.contains('merchant discount')) {
+        continue;
+      }
 
       bool isPayout = type.contains(TextConstants.payoutText);
       bool isCoupon = type.contains(TextConstants.couponText);
