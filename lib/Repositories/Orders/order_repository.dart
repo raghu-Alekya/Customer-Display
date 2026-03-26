@@ -561,7 +561,9 @@ class OrderRepository {
           //"name": item['name'] ?? "",
           "quantity": qty,
           // "subtotal": subtotal.toStringAsFixed(2),
-          "subtotal": autoDiscount > 0 ? total.toStringAsFixed(2) : subtotal.toStringAsFixed(2),
+          "subtotal": autoDiscount > 0
+              ? total.toStringAsFixed(2)
+              : subtotal.toStringAsFixed(2),
           "total": total.toStringAsFixed(2),
 
           // Optional (Woo may override name, but fine to send)
@@ -727,6 +729,7 @@ class OrderRepository {
         "fee_lines": feeLines,
         "line_items": lineItems,
         "tax_lines": [],
+        "coupon_lines": [],
       };
 
       printFullJson("SYNC Woo Payload", payload);
@@ -790,7 +793,8 @@ class OrderRepository {
       final Map<String, dynamic> couponResponse =
           (offlineOrder["coupon_response"] as Map?)?.cast<String, dynamic>() ??
               {};
-
+      final bool generatedCouponOnly =
+          offlineOrder["generated_coupon_only"] == true;
       final Map<int, Map<String, dynamic>> discountLines = {};
 
       final rawDiscountLines = offlineOrder['discount_lines'];
@@ -1071,7 +1075,9 @@ class OrderRepository {
           "quantity": qty,
           // "subtotal": subtotal.toStringAsFixed(2),
           "total": total.toStringAsFixed(2),
-          "subtotal": autoDiscount > 0 ? total.toStringAsFixed(2) : subtotal.toStringAsFixed(2),
+          "subtotal": autoDiscount > 0
+              ? total.toStringAsFixed(2)
+              : subtotal.toStringAsFixed(2),
 
           // Optional (Woo may override name, but fine to send)
           "name": name,
@@ -1277,7 +1283,9 @@ class OrderRepository {
 
       debugPrint("🎟 Checking coupon_response from offline order...");
 
-      if (couponResponse.isNotEmpty) {
+      if (generatedCouponOnly) {
+        debugPrint("ℹ️ Generated coupon only → skipping coupon_lines");
+      } else if (couponResponse.isNotEmpty) {
         final coupons = couponResponse["coupons"] as List? ?? [];
 
         for (final c in coupons) {

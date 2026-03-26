@@ -5065,11 +5065,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                         _buildOrderCalculation(
                                             TextConstants.taxText,
                                             '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
-                                      if (merchantDiscount < 0)
-                            _buildOrderCalculation(
-                            TextConstants.merchantDiscount,
-                            '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
-                          ),
+                                        if (merchantDiscount < 0)
+                                          _buildOrderCalculation(
+                                            TextConstants.merchantDiscount,
+                                            '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
+                                          ),
 
                                         if (cashbackFee > 0)
                                           _buildOrderCalculation(
@@ -7263,7 +7263,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     );
 
     try {
-      final response = await OrderRepository().CouponApply(offlineOrder!);
+      final payload = Map<String, dynamic>.from(offlineOrder!);
+
+// Issue coupon requests must send an explicit empty coupon_lines array.
+      payload["coupon_lines"] = [];
+
+      final response = await OrderRepository().CouponApply(payload);
 
       if (loaderOpen) {
         Navigator.of(context).pop();
@@ -7325,7 +7330,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       existing["coupon_applied"] = true;
       existing["coupon_applied_at"] = DateTime.now().toIso8601String();
       existing["coupon_amount"] = discountAmount;
-
+      existing["generated_coupon_only"] = true;
       await box.put(key, existing);
       offlineOrder = existing;
 
@@ -7783,7 +7788,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // 🔥 CLEAR COUPON BEFORE SYNC
       offlineOrder["coupon_response"] = {"coupons": []};
-
+      offlineOrder["generated_coupon_only"] = false;
       await box.put(orderKey, offlineOrder);
 
       // 🔥 CALL SAME SYNC METHOD
@@ -7820,6 +7825,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       offlineOrder["coupon_applied"] = false;
       offlineOrder["applied_coupons"] = [];
       offlineOrder["coupon_response"] = {"coupons": []};
+      offlineOrder["generated_coupon_only"] = false;
       await box.put(orderKey, offlineOrder);
 
       await CustomerDisplayHelper.updateCustomerDisplay(
@@ -8046,6 +8052,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           {"code": code}
         ]
       };
+      offlineOrder["generated_coupon_only"] = false;
 
       // ✅ Use LOCAL order ID instead of Woo ID for syncing
 
@@ -10068,7 +10075,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // Hide merchant discount/discount line-items from print item list
       final nameLower = itemName.toLowerCase();
-      if (type.contains('discount') || nameLower.contains('merchant discount')) {
+      if (type.contains('discount') ||
+          nameLower.contains('merchant discount')) {
         continue;
       }
 
