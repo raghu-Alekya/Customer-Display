@@ -2,6 +2,7 @@ package com.alekta.pinakapos
 
 import android.app.Activity
 import android.app.Presentation
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -40,6 +41,7 @@ class MainActivity : FlutterActivity() {
 
     private var usbSerialManager: UsbSerialManager? = null
     private val VP3350_CHANNEL = "vp3350_channel"
+    private val SUNMI_PAYMENT_PACKAGE = "com.sunmi.payment.demo"
     private var chipDna: ChipDnaMobile? = null
     private var pendingResult: MethodChannel.Result? = null
 
@@ -228,6 +230,117 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // Sunmi card terminal (external Payment demo app) — must stay registered here;
+        // the duplicate block below is commented out and is not executed.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PAYMENT_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "startSale" -> {
+                        val amount = call.argument<String>("amount")
+                        val orderId = call.argument<String>("orderId")
+                        val intent = buildSunmiSaleIntent()
+                        if (intent == null) {
+                            result.error("APP_NOT_INSTALLED", "Sunmi SaleActivity not found", null)
+                            return@setMethodCallHandler
+                        }
+                        intent.putExtra("amount", amount)
+                        intent.putExtra("orderId", orderId)
+                        saleResultCallback = result
+                        try {
+                            @Suppress("DEPRECATION")
+                            startActivityForResult(intent, 9090)
+                        } catch (e: ActivityNotFoundException) {
+                            result.error(
+                                "APP_NOT_INSTALLED",
+                                "Sunmi payment activity not available: ${e.message}",
+                                null
+                            )
+                        }
+                    }
+
+                    "startVoid" -> {
+                        val amount = call.argument<String>("amount")
+                        val originOrderId = call.argument<String>("originOrderId")
+                        val originTransactionId = call.argument<String>("originTransactionId")
+                        Log.d(
+                            "SunmiVoid",
+                            "➡ startVoid → amount=$amount, originOrderId=$originOrderId, originTxn=$originTransactionId"
+                        )
+                        if (originOrderId.isNullOrEmpty() || originTransactionId.isNullOrEmpty()) {
+                            result.error(
+                                "INVALID_ARGS",
+                                "Missing origin order or transaction ID",
+                                null
+                            )
+                            return@setMethodCallHandler
+                        }
+                        val intent = buildSunmiVoidIntent()
+                        if (intent == null) {
+                            result.error(
+                                "APP_NOT_INSTALLED",
+                                "Sunmi VoidActivity not found",
+                                null
+                            )
+                            return@setMethodCallHandler
+                        }
+                        intent.putExtra("amount", amount)
+                        intent.putExtra("originOrderId", originOrderId)
+                        intent.putExtra("originTransactionId", originTransactionId)
+                        saleResultCallback = result
+                        try {
+                            @Suppress("DEPRECATION")
+                            startActivityForResult(intent, 9091)
+                        } catch (e: ActivityNotFoundException) {
+                            result.error(
+                                "APP_NOT_INSTALLED",
+                                "Sunmi void activity not available: ${e.message}",
+                                null
+                            )
+                        }
+                    }
+
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun buildSunmiSaleIntent(): Intent? {
+        val actionIntent = Intent("com.example.PAY_SALE").apply {
+            setPackage(SUNMI_PAYMENT_PACKAGE)
+            addCategory(Intent.CATEGORY_DEFAULT)
+        }
+        if (actionIntent.resolveActivity(packageManager) != null) {
+            Log.d("SunmiPay", "Resolved SaleActivity via action com.example.PAY_SALE")
+            return actionIntent
+        }
+        val explicitIntent = Intent().apply {
+            setClassName(
+                SUNMI_PAYMENT_PACKAGE,
+                "$SUNMI_PAYMENT_PACKAGE.page.trans.SaleActivity"
+            )
+        }
+        if (explicitIntent.resolveActivity(packageManager) != null) {
+            Log.d("SunmiPay", "Resolved SaleActivity via explicit class")
+            return explicitIntent
+        }
+        Log.e("SunmiPay", "Unable to resolve SaleActivity in $SUNMI_PAYMENT_PACKAGE")
+        return null
+    }
+
+    private fun buildSunmiVoidIntent(): Intent? {
+        val explicitIntent = Intent().apply {
+            setClassName(
+                SUNMI_PAYMENT_PACKAGE,
+                "$SUNMI_PAYMENT_PACKAGE.page.trans.VoidActivity"
+            )
+        }
+        if (explicitIntent.resolveActivity(packageManager) != null) {
+            Log.d("SunmiPay", "Resolved VoidActivity via explicit class")
+            return explicitIntent
+        }
+        Log.e("SunmiPay", "Unable to resolve VoidActivity in $SUNMI_PAYMENT_PACKAGE")
+        return null
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -366,14 +479,14 @@ class MainActivity : FlutterActivity() {
                     Log.e("CHIPDNA", "SET PROPERTIES - MISSING PARAMETER DETAIL -> $propErrors")
                 }
 
-                    mainHandler.post {
-                        result.error(
-                            "PROPERTY_FAILED",
-                            propResult?.getValue("ERRORS") ?: "SetProperties failed",
-                            null
-                        )
-                    }
-                    return@Thread
+                mainHandler.post {
+                    result.error(
+                        "PROPERTY_FAILED",
+                        propResult?.getValue("ERRORS") ?: "SetProperties failed",
+                        null
+                    )
+                }
+                return@Thread
             }
 
             Log.d("CHIPDNA", "STEP 3 -> CONNECT AND CONFIGURE")

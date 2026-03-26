@@ -72,6 +72,8 @@ class OrderHelper {
   static final ValueNotifier<int> orderPanelRefreshNotifier = ValueNotifier(0);
 
   static final Map<int, double> _manualRefundAmounts = {};
+  static final Map<int, Map<String, dynamic>> _productTaxMetaCache = {};
+  static bool _isProductTaxMetaCacheLoaded = false;
 
   static void notifyOrderPanelToRefresh() {
     orderPanelRefreshNotifier.value++;
@@ -147,34 +149,44 @@ class OrderHelper {
       final isar = IsarService.sync;
       if (isar == null) return 0.0;
 
-      final cachedEntries = isar.isarCacheEntrys
-          .where()
-          .filter()
-          .keyStartsWith("products_")
-          .findAllSync();
+      if (!_isProductTaxMetaCacheLoaded) {
+        final cachedEntries = isar.isarCacheEntrys
+            .where()
+            .filter()
+            .keyStartsWith("products_")
+            .findAllSync();
 
-      for (final entry in cachedEntries) {
-        final List products = json.decode(entry.json);
-        final product = products.firstWhere(
-              (p) => p["fast_key_product_id"] == productId || p["id"] == productId,
-          orElse: () => null,
-        );
-
-        if (product == null) continue;
-        if (product["tax_status"] == "none") return 0.0;
-
-        final taxRates = product["tax"]?["tax_rates"];
-        if (taxRates is List && taxRates.isNotEmpty) {
-          double taxTotal = 0.0;
-          for (final tax in taxRates) {
-            final double rate =
-                double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
-            final double rawTax = (taxableBase * rate) / 100;
-            final double roundedTax = (rawTax * 100).roundToDouble() / 100;
-            taxTotal += roundedTax;
+        for (final entry in cachedEntries) {
+          final List products = json.decode(entry.json);
+          for (final rawProduct in products) {
+            if (rawProduct is! Map) continue;
+            final product = Map<String, dynamic>.from(rawProduct);
+            final dynamic idRaw =
+                product["fast_key_product_id"] ?? product["id"];
+            final int? pid = int.tryParse(idRaw?.toString() ?? "");
+            if (pid != null) {
+              _productTaxMetaCache[pid] = product;
+            }
           }
-          return (taxTotal * 100).roundToDouble() / 100;
         }
+        _isProductTaxMetaCacheLoaded = true;
+      }
+
+      final product = _productTaxMetaCache[productId];
+      if (product == null) return 0.0;
+      if (product["tax_status"] == "none") return 0.0;
+
+      final taxRates = product["tax"]?["tax_rates"];
+      if (taxRates is List && taxRates.isNotEmpty) {
+        double taxTotal = 0.0;
+        for (final tax in taxRates) {
+          final double rate =
+              double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
+          final double rawTax = (taxableBase * rate) / 100;
+          final double roundedTax = (rawTax * 100).roundToDouble() / 100;
+          taxTotal += roundedTax;
+        }
+        return (taxTotal * 100).roundToDouble() / 100;
       }
     } catch (e) {
       if (kDebugMode)

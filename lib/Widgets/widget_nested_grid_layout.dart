@@ -60,6 +60,9 @@ class NestedGridWidget extends StatelessWidget {
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
   static bool _productMetaInitialized = false;
 
+  /// One product-add flow at a time across the grid (fast taps otherwise queue heavy async work).
+  static bool _productTapInFlight = false;
+
   const NestedGridWidget({
     super.key,
     required this.isHorizontal,
@@ -348,6 +351,8 @@ class NestedGridWidget extends StatelessWidget {
                     children: [
                       GestureDetector(
                         onTap: () async {
+                          if (_productTapInFlight) return;
+                          _productTapInFlight = true;
                           // if (orderHelper?.activeOrderId == null) {
                           //   print("⛔ No active order → Show popup and block product adding");
                           //
@@ -960,6 +965,8 @@ class NestedGridWidget extends StatelessWidget {
                           } catch (e, s) {
                             print("❌ ERROR in offline onTap: $e");
                             print(s);
+                          } finally {
+                            _productTapInFlight = false;
                           }
                         },
                         onLongPress: () {

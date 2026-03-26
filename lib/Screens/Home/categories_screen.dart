@@ -1273,6 +1273,14 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   bool _isLoadingIndigoSubCategories = false;
   bool _isLoadingIndigoProducts = false;
   String? _indigoError;
+  static const int _indigoPageSize = 30;  ///
+  int _visibleIndigoProductCount = _indigoPageSize;
+  bool _isIndigoPaginating = false;
+  final Map<int, Map<String, dynamic>> _productMetaCache = {};
+  bool _isProductMetaCacheLoaded = false;
+
+  /// Prevents stacked add-to-order work when the user taps products very quickly (reduces ANR / UI jank).
+  bool _productAddTapInFlight = false;
 
   // ───────────────── ──────────────────── ───────────────── ───────────────────
   // Pagination helpers  (unchanged)
@@ -1498,7 +1506,11 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   Future<void> _loadIndigoProductsBySubCategory(int categoryId) async {
     if (!mounted) return;
     // Show loading only when switching (keep old products visible briefly)
-    setState(() => _isLoadingIndigoProducts = true);
+    setState(() {
+      _isLoadingIndigoProducts = true;
+      _visibleIndigoProductCount = _indigoPageSize;
+      _isIndigoPaginating = false;
+    });
     final products = await _indigoProductRepo.fetchProducts(categoryId);
     if (!mounted) return;
     setState(() {
@@ -1508,12 +1520,39 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     if (kDebugMode) print(" [UI] Loaded ${products.length} Indigo products for sub-category $categoryId");
   }
 
+  Future<void> _loadMoreIndigoProducts() async {
+    if (_isIndigoPaginating) return;
+    if (_isLoadingIndigoProducts) return;
+    if (_visibleIndigoProductCount >= _indigoProducts.length) return;
+
+    setState(() => _isIndigoPaginating = true);
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (!mounted) return;
+    setState(() {
+      _visibleIndigoProductCount += _indigoPageSize;
+      _isIndigoPaginating = false;
+    });
+  }
+
+  bool _onIndigoProductsScrollNotification(ScrollNotification notification) {
+    if (_showCategoryGrid) return false;
+    if (_indigoProducts.isEmpty) return false;
+    if (notification.metrics.axis != Axis.vertical) return false;
+    final remaining =
+        notification.metrics.maxScrollExtent - notification.metrics.pixels;
+    if (remaining < 260) _loadMoreIndigoProducts();
+    return false;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Full order flow for Indigo products  (unchanged)
   // ─────────────────────────────────────────────────────────────────────────
 
   void _onIndigoProductTapped(IndigoCategoryBasedProducts product) async {
+    if (_productAddTapInFlight) return;
+    _productAddTapInFlight = true;
     try {
+      try {
       final orderId = await orderHelper.ensureOrderExists();
       if (orderId == null) {
         final msg = OrderHelper.lastEnsureOrderError ??
@@ -1740,23 +1779,50 @@ class _CategoriesScreenState extends State<CategoriesScreen>
             duration: const Duration(seconds: 2)));
       }
     }
+    } finally {
+      _productAddTapInFlight = false;
+    }
   }
 
   Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
     try {
+      if (_productMetaCache.isNotEmpty) {
+        return _productMetaCache[productId];
+      }
+      if (_isProductMetaCacheLoaded) {
+        return null;
+      }
+
       final isar = await IsarService.instance;
       final allEntries = await isar.isarCacheEntrys.where().filter().keyStartsWith('products_').findAll();
       for (final entry in allEntries) {
         final List<dynamic> products = json.decode(entry.json);
         for (final product in products) {
-          final id = product['fast_key_product_id'];
-          if (id != null && id.toString() == productId.toString()) return Map<String, dynamic>.from(product);
+          if (product is! Map) continue;
+          final map = Map<String, dynamic>.from(product);
+          final dynamic idRaw = map['fast_key_product_id'] ?? map['id'];
+          final int? id = int.tryParse(idRaw?.toString() ?? '');
+          if (id != null) {
+            _productMetaCache[id] = map;
+          }
         }
       }
-      return null;
+      _isProductMetaCacheLoaded = true;
+      return _productMetaCache[productId];
     } catch (e) {
       if (kDebugMode) print("_getCachedProductFromIsar error: $e");
       return null;
+    }
+  }
+
+  Future<void> _waitForNestedLoadingOrTimeout() async {
+    final stopwatch = Stopwatch()..start();
+    const timeout = Duration(seconds: 15);
+    while (mounted && isLoadingNestedContent && stopwatch.elapsed < timeout) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+    if (isLoadingNestedContent && kDebugMode) {
+      print("⚠️ Nested loading timed out after ${timeout.inSeconds}s");
     }
   }
 
@@ -1775,7 +1841,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       await Future.delayed(const Duration(milliseconds: 250));
       if (kDebugMode) print("🚀 Auto tapping category → ${categories[i].name}");
       _onCategoryTapped(i);
-      while (isLoadingNestedContent) { await Future.delayed(const Duration(milliseconds: 100)); }
+      await _waitForNestedLoadingOrTimeout();
       await Future.delayed(const Duration(milliseconds: 300));
     }
     _preWarmAllIndigoData();
@@ -1841,7 +1907,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   Future<void> _loadTopLevelCategories() async {
     setState(() { isLoading = true; isLoadingNestedContent = true; });
     _categoryBloc.fetchCategories(0);
-    await for (final response in _categoryBloc.categoriesStream) {
+    try {
+      await for (final response in _categoryBloc.categoriesStream.timeout(
+          const Duration(seconds: 25))) {
       if (!mounted) break;
       if (response.status == Status.COMPLETED && response.data != null) {
         categories = response.data!.categories;
@@ -1864,12 +1932,19 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         break;
       }
     }
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() { isLoading = false; isLoadingNestedContent = false; });
+      if (kDebugMode) print("⚠️ _loadTopLevelCategories timed out");
+    }
   }
 
   // ── MODIFIED: auto-selects first subcategory pill after loading ───────────
   Future<void> _loadSubCategories(int parentId) async {
     _categoryBloc.fetchCategories(parentId);
-    await for (final response in _categoryBloc.categoriesStream) {
+    try {
+      await for (final response in _categoryBloc.categoriesStream.timeout(
+          const Duration(seconds: 25))) {
       if (!mounted) break;
       if (response.status == Status.COMPLETED && response.data != null) {
         setState(() {
@@ -1899,6 +1974,11 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         break;
       }
     }
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() => isLoadingNestedContent = false);
+      if (kDebugMode) print("⚠️ _loadSubCategories timed out for $parentId");
+    }
   }
 
   Future<void> _loadProductsByCategory(int categoryId) async {
@@ -1909,7 +1989,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       categoryProducts.clear();
     });
     _categoryBloc.fetchProductsByCategory(categoryId);
-    await for (final response in _categoryBloc.productsStream) {
+    try {
+      await for (final response in _categoryBloc.productsStream.timeout(
+          const Duration(seconds: 30))) {
       if (!mounted) break;
       if (response.status == Status.COMPLETED && response.data != null) {
         final Map<int, Map<String, dynamic>> uniqueProducts = {};
@@ -1952,6 +2034,11 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         setState(() => isLoadingNestedContent = false);
         break;
       }
+    }
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() => isLoadingNestedContent = false);
+      if (kDebugMode) print("⚠️ _loadProductsByCategory timed out for $categoryId");
     }
   }
 
@@ -2329,7 +2416,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                 return Wrap(
                   spacing: gap,
                   runSpacing: gap,
-                  children: _indigoProducts.map((product) {
+                  children: _indigoProducts
+                      .take(_visibleIndigoProductCount)
+                      .map((product) {
                     return SizedBox(
                       width: cardW,
                       height: cardH,
@@ -2343,6 +2432,19 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                 );
               }),
             ),
+        if (_isIndigoPaginating &&
+            _visibleIndigoProductCount < _indigoProducts.length)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 14),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Color(0xFFE74C3C)),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -2473,16 +2575,19 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       // Screen 2 & 3: content box contains breadcrumb + subcategory chips + products
       // (all rendered inside _buildIndigoSection — no separate pill bar needed)
       return Expanded(
-        child: SingleChildScrollView(
-          child: Container(
-            margin: const EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 12),
-            decoration: innerBoxDecoration(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: _buildInnerColumnChildren(
-                isDark: isDark,
-                subCategoryListItems: subCategoryListItems,
-                buildProductsWidget: buildProductsWidget,
+        child: NotificationListener<ScrollNotification>(
+          onNotification: _onIndigoProductsScrollNotification,
+          child: SingleChildScrollView(
+            child: Container(
+              margin: const EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 12),
+              decoration: innerBoxDecoration(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: _buildInnerColumnChildren(
+                  isDark: isDark,
+                  subCategoryListItems: subCategoryListItems,
+                  buildProductsWidget: buildProductsWidget,
+                ),
               ),
             ),
           ),
