@@ -15,27 +15,12 @@ For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
 
-(build no:370)
-1.customer display cashback
-2.windows scroll issue
+(build no:450)
+This project is a Customer Display System designed to display billing and order information to customers in real-time.
 
-(build no:374)
-1,customer display ui modifications.
--- removed images form cart.
--- customer layout, welocme page, thank you page font sizes.
+The system has been improved and optimized through the following updates:
 
-2.fast key images fetch.
-3.number pad qty increase.
-
-(build no:375)
-1. EBT Payment method.
-2. variable price.
-3. ui modifications
---render issue resolving.
---age verification popup UI modification.
-
-(build no:376)
-
-1.card payment method completed.
-2.variable price issue resolved.
-3.ui modifications.
+1.Removed MQTT communication to simplify the architecture
+2.Integrated weighing scale functionality for real-time weight-based billing
+3.Added support for caterer-related features and workflows
+4.Eliminated unnecessary API calls to improve performance and efficiency
