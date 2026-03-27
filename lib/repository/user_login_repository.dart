@@ -1,5 +1,7 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../model/user_login.dart';
 
@@ -14,11 +16,20 @@ class AuthRepository {
     final response = await request.send();
 
     final resBody = await response.stream.bytesToString();
-
     final decoded = json.decode(resBody);
 
+    print("LOGIN RESPONSE: $decoded");
+
     if (response.statusCode == 200 && decoded['success'] == true) {
-      return UserLoginResponse.fromJson(decoded);
+      final result = UserLoginResponse.fromJson(decoded);
+
+      /// ✅ STORE TOKEN
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString("token", result.data.token);
+
+      print("✅ TOKEN SAVED: ${result.data.token}");
+
+      return result;
     } else {
       throw Exception(decoded['message'] ?? "Login Failed");
     }

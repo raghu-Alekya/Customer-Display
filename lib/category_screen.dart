@@ -2,23 +2,18 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:keyos_app/repository/addon_repository.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'Homescreen.dart';
 import 'bloc/category_bloc.dart';
 import 'bloc/product_bloc.dart';
 import 'bloc/sub category_bloc.dart';
+import 'cart_manger.dart';
+import 'cart_screen.dart';
+import 'customize_screen.dart';
 import 'model/category_model.dart';
 import 'model/product model.dart';
-// import 'package:kioski2/features/category/data/models/category_model.dart';
-// import 'package:kioski2/features/category/presentation/bloc/category_bloc.dart';
-// import 'package:kioski2/features/category/presentation/bloc/category_event.dart';
-// import 'package:kioski2/features/category/presentation/bloc/category_state.dart';
-// import 'package:kioski2/features/product/data/models/product_model.dart';
-// import 'package:kioski2/features/product/presentation/bloc/product_bloc.dart';
-// import 'package:kioski2/features/product/presentation/bloc/product_event.dart';
-// import 'package:kioski2/features/product/presentation/bloc/product_state.dart';
-// import 'package:kioski2/features/subcategory/presentation/bloc/subcategory_bloc.dart';
-// import 'package:kioski2/features/subcategory/presentation/bloc/subcategory_event.dart';
-// import 'package:kioski2/features/subcategory/presentation/bloc/subcategory_state.dart';
 
 class FoodUiScreen extends StatefulWidget {
   final String orderType;
@@ -42,8 +37,8 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
   Timer? promoTimer;
 
   final List<String> promoImages = const [
-    'assets/promo-1.png',
-    'assets/promo-2.png',
+    'assets/promo-1.jpeg',
+    'assets/promo-2.jpeg',
     'assets/promo-3.png',
   ];
 
@@ -69,6 +64,27 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
       );
     });
   }
+  double _getTotalPrice() {
+    double total = 0;
+
+    for (var item in CartManager.cartItems) {
+      final product = item["product"];
+      final qty = item["qty"];
+      final addons = item["addons"] as List;
+
+      double price =
+          double.tryParse(product.price.replaceAll("₹", "")) ?? 0;
+
+      double addonTotal = 0;
+      for (var a in addons) {
+        addonTotal += a.price;
+      }
+
+      total += (price + addonTotal) * qty;
+    }
+
+    return total;
+  }
 
   @override
   void dispose() {
@@ -82,7 +98,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFEFF1F7),
+      backgroundColor: const Color(0xFFF4F5F7),
       body: SafeArea(
         child: MultiBlocListener(
           listeners: [
@@ -203,9 +219,9 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
         children: [
           _capsule(
             width: 74,
-            child: const Text(
-              'Dine-In',
-              style: TextStyle(fontSize: 12, color: Color(0xFF4A4A4A)),
+            child: Text(
+              widget.orderType, // dynamic from HomeScreen
+              style: const TextStyle(fontSize: 12, color: Color(0xFF4A4A4A)),
             ),
           ),
           const SizedBox(width: 6),
@@ -530,7 +546,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
             crossAxisCount: 3,
             mainAxisSpacing: 10,
             crossAxisSpacing: 8,
-            childAspectRatio: 0.9,
+            childAspectRatio: 0.72,
           ),
           itemBuilder: (_, index) {
             final item = products[index];
@@ -552,19 +568,27 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.crop_square_rounded, size: 11, color: Colors.green),
+          const Icon(Icons.crop_square_rounded,
+              size: 11, color: Colors.green),
+
           const SizedBox(height: 3),
+
           Center(
             child: _productImage(item.imageUrl),
           ),
+
           const SizedBox(height: 4),
+
           Text(
             item.name,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+            style: const TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w500),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
+
           const SizedBox(height: 2),
+
           Text(
             item.price,
             style: const TextStyle(
@@ -573,18 +597,67 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
               fontSize: 12,
             ),
           ),
+
           const Spacer(),
+
           Row(
             children: [
               const Spacer(),
-              Container(
-                height: 18,
-                width: 18,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFD8B2),
-                  borderRadius: BorderRadius.circular(5),
+
+              /// 🔥 FIXED BUTTON
+              InkWell(
+                borderRadius: BorderRadius.circular(6),
+                onTap: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  final token = prefs.getString("token") ?? "";
+
+                  print("👉 TOKEN: $token");
+                  print("👉 PRODUCT ID: ${item.id}");
+
+                  try {
+                    final addons = await AddonRepository().getAddons(
+                      productId: item.id,
+                      token: token,
+                    );
+
+                    print("✅ ADDONS RESPONSE: ${addons.length}");
+
+                    /// ✅ WAIT FOR RETURN
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CustomizeScreen(
+                          product: item,
+                          addons: addons,
+                          orderType: "Dine-In",
+                        ),
+                      ),
+                    );
+
+                    /// 🔥 VERY IMPORTANT → REFRESH UI
+                    setState(() {});
+
+                  } catch (e) {
+                    print("❌ ERROR: $e");
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Error loading addons")),
+                    );
+                  }
+                },
+                child: Container(
+                  height: 22,
+                  width: 22,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD8B2),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: const Icon(
+                    Icons.add,
+                    size: 13,
+                    color: Color(0xFFFF8A00),
+                  ),
                 ),
-                child: const Icon(Icons.add, size: 11, color: Color(0xFFFF8A00)),
               ),
             ],
           ),
@@ -681,62 +754,125 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
       ),
       child: Row(
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFF7A00),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.home_outlined, color: Colors.white, size: 21),
-          ),
-          const Spacer(),
-          SizedBox(
-            width: 156,
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const HomeScreen(),
+                ),
+              );
+            },
             child: Container(
-              height: 42,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: const Color(0xFFFF8A00),
+                color: const Color(0xFFFF7A00),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Row(
-                children: [
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Total Price:',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w500,
-                        ),
+              child: const Icon(Icons.home_outlined, color: Colors.white, size: 21),
+            ),
+          ),
+
+          const Spacer(),
+
+          SizedBox(
+            width: 200, // 🔥 increased width (important)
+            child: Row(
+              children: [
+                /// 🔹 TOTAL PRICE (OUTSIDE)
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Total Price:',
+                      style: TextStyle(
+                        color: Colors.black54,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
                       ),
-                      Text(
-                        '₹120',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
+                    ),
+                    Text(
+                      "₹${_getTotalPrice().toStringAsFixed(0)}",
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
                       ),
-                    ],
-                  ),
-                  Spacer(),
-                  Icon(Icons.shopping_cart_checkout, size: 18, color: Colors.white),
-                  SizedBox(width: 6),
-                  Text(
-                    'Cart',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 26 / 1.5,
+                    ),
+                  ],
+                ),
+
+                const Spacer(),
+
+                /// 🔶 CART BUTTON
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const CartScreen(orderType: '',),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    height: 42,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF8A00),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        /// 🔥 ICON + BADGE
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            const Icon(
+                              Icons.shopping_cart_checkout,
+                              size: 18,
+                              color: Colors.white,
+                            ),
+
+                            if (CartManager.cartItems.isNotEmpty)
+                              Positioned(
+                                right: -6,
+                                top: -6,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    "${CartManager.cartItems.length}",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+
+                        const SizedBox(width: 6),
+
+                        const Text(
+                          'Cart',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter/services.dart';
 import 'package:keyos_app/repository/category_data_resource.dart';
 import 'package:keyos_app/repository/product_data_resource.dart';
 import 'package:keyos_app/repository/user_login_repository.dart';
+import 'package:keyos_app/widgets/kiosk_frame.dart';
 
 import 'bloc/category_bloc.dart';
 import 'bloc/product_bloc.dart';
@@ -11,7 +13,11 @@ import 'login_screen.dart';
 import 'bloc/user_login_bloc.dart';
 // import 'repository/auth_repository.dart'; // make sure path is correct
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
   runApp(const MyApp());
 }
 
@@ -42,6 +48,18 @@ class MyApp extends StatelessWidget {
         theme: ThemeData(
           primarySwatch: Colors.blue,
         ),
+        builder: (context, child) {
+          if (child == null) return const SizedBox.shrink();
+          return KioskFrame(
+            // Vertical kiosk reference size. UI is scaled to this on any device.
+            designWidth: 460,
+            designHeight: 780,
+            backgroundColor: const Color(0xFF101010),
+            kioskOnly: false,
+            allowedSizeDifference: 24,
+            child: child,
+          );
+        },
         home: const LoginScreen(),
       ),
     );

@@ -1,9 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import 'cart_manger.dart';
+import 'model/addon_model.dart';
+import 'model/product model.dart';
 
 class CustomizeScreen extends StatefulWidget {
-  final String orderType; // 👈 add this
+  final ProductModel product;
+  final List<AddonModel> addons;
+  final String orderType;
 
-  const CustomizeScreen({super.key, required this.orderType});
+  const CustomizeScreen({
+    super.key,
+    required this.product,
+    required this.addons,
+    required this.orderType,
+  });
 
   @override
   State<CustomizeScreen> createState() => _CustomizeScreenState();
@@ -11,30 +23,30 @@ class CustomizeScreen extends StatefulWidget {
 
 class _CustomizeScreenState extends State<CustomizeScreen> {
   int qty = 1;
-
-  List<Map<String, dynamic>> addons = [
-    {
-      "name": "Chee",
-      "price": 20,
-      "selected": true,
-      "image": "assets/cheese.png" // ✅ ADD THIS
-    },
-    {
-      "name": "Karam Podi",
-      "price": 20,
-      "selected": false,
-      "image": "assets/podi.png" // ✅ ADD THIS
-    },
-  ];
-
-  late String orderType;
+  late List<AddonModel> addons;
 
   @override
   void initState() {
     super.initState();
-    orderType = widget.orderType; // 👈 get value from home
+    addons = widget.addons;
   }
 
+  double get basePrice {
+    return double.tryParse(
+      widget.product.price.replaceAll("₹", ""),
+    ) ??
+        0;
+  }
+
+  double get addonsTotal {
+    return addons
+        .where((a) => a.isSelected)
+        .fold(0, (sum, item) => sum + item.price);
+  }
+
+  double get totalPrice => (basePrice + addonsTotal) * qty;
+
+  @override
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -43,76 +55,35 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
         children: [
           const SizedBox(height: 20),
 
-          // 🔶 Top Bar
+          /// 🔶 TOP BAR
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Menu button
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white, // ✅ background white
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFFF9B17)), // optional border
-                  ),
-                  child: InkWell(
-                    onTap: () {
-                      Navigator.pop(context); // ✅ go to previous screen
-                    },
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        // border: Border.all(color: const Color(0xFFFF9B17)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Icon(
-                            Icons.arrow_back_ios,
-                            size: 14,
-                            color: Color(0xFFFF9B17),
-                          ),
-                          SizedBox(width: 4),
-                          Text(
-                            "Menu",
-                            style: TextStyle(
-                              color: Color(0xFFFF9B17),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                ),
-
-                const Text(
-                  "Customize",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                InkWell(
+                  onTap: () => Navigator.pop(context),
+                  child: Row(
+                    children: const [
+                      Icon(Icons.arrow_back_ios,
+                          size: 14, color: Color(0xFFFF9B17)),
+                      SizedBox(width: 4),
+                      Text("Menu",
+                          style: TextStyle(color: Color(0xFFFF9B17))),
+                    ],
                   ),
                 ),
-
+                const Text("Customize",
+                    style:
+                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: Colors.grey.shade300),
                   ),
-                  child: Text(
-                    orderType,
-                    style: const TextStyle(
-                      color: Color(0xFF506796), // ✅ applied here
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
+                  child: Text(widget.orderType),
                 )
               ],
             ),
@@ -120,46 +91,74 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
 
           const SizedBox(height: 10),
 
-          // 🔹 Main Card
+          /// 🔹 MAIN CARD
           Expanded(
             child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              padding: const EdgeInsets.all(12), // 🔻 reduced padding
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: const Color(0xFFF7F7F7),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
-                mainAxisSize: MainAxisSize.min, // ✅ IMPORTANT (reduces height)
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-
-                  // 🔹 HEADER ROW
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  /// 🔹 HEADER
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3E2CC), // ✅ SAME AS ITEM CARD
+                      borderRadius: BorderRadius.circular(5),
+                    ),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: const [
-                        Expanded(flex: 5, child: Text("Item Name", style: TextStyle(fontSize: 12, color: Colors.grey))),
-                        Expanded(flex: 2, child: Text("Qty", style: TextStyle(fontSize: 12, color: Colors.grey))),
-                        Expanded(flex: 2, child: Text("Sub Total", style: TextStyle(fontSize: 12, color: Colors.grey))),
-                        Expanded(flex: 2, child: Text("Total", style: TextStyle(fontSize: 12, color: Colors.grey))),
+                        Expanded(
+                          flex: 5,
+                          child: Text(
+                            "Item Name",
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.black,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Text(
+                            "Qty",
+                            style: TextStyle(fontSize: 12, color: Colors.black),
+                          ),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Text(
+                            "Sub Total",
+                            style: TextStyle(fontSize: 12, color: Colors.black),
+                          ),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Text(
+                            "Final",
+                            style: TextStyle(fontSize: 12, color: Colors.black),
+                          ),
+                        ),
                       ],
                     ),
                   ),
 
-                  const SizedBox(height: 8),
+                  // const SizedBox(height: 10),
 
-                  // 🔹 ITEM CARD (SMALL SIZE)
+                  /// 🔹 ITEM CARD
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF3E2CC),
-                      borderRadius: BorderRadius.circular(10),
+                      color: const Color(0xFFF3E2CC), // 🔥 beige
+                      borderRadius: BorderRadius.circular(5),
                     ),
                     child: Row(
                       children: [
-                        // 🔹 Image
                         Container(
                           width: 40,
                           height: 40,
@@ -172,84 +171,83 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
 
                         const SizedBox(width: 8),
 
-                        // 🔹 Item Name
-                        const Expanded(
-                          flex: 3,
-                          child: Text(
-                            "Karam dosa",
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                          ),
+                        Expanded(
+                          flex: 4,
+                          child: Text(widget.product.name),
                         ),
 
-                        // 🔹 Qty
+                        /// 🔹 QTY
                         Expanded(
                           flex: 2,
                           child: Row(
                             children: [
-                              Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(5),
+                              GestureDetector(
+                                onTap: () {
+                                  if (qty > 1) setState(() => qty--);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                  child:
+                                  const Icon(Icons.remove, size: 14),
                                 ),
-                                child: const Icon(Icons.remove, size: 14),
                               ),
                               const SizedBox(width: 6),
-                              const Text("1", style: TextStyle(fontSize: 13)),
+                              Text("$qty"),
                               const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: Color(0xFFFF7A00),
-                                  borderRadius: BorderRadius.circular(5),
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() => qty++);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFF7A00),
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                  child: const Icon(Icons.add,
+                                      size: 14, color: Colors.white),
                                 ),
-                                child: const Icon(Icons.add, size: 14, color: Colors.white),
                               ),
                             ],
                           ),
                         ),
 
-                        // 🔹 Subtotal
-                        const Expanded(
+                        Expanded(
                           flex: 2,
-                          child: Text(
-                            "90.00",
-                            style: TextStyle(fontSize: 13),
-                          ),
+                          child: Text("₹${basePrice.toStringAsFixed(2)}"),
                         ),
 
-                        // 🔹 Total
-                        const Expanded(
+                        Expanded(
                           flex: 2,
-                          child: Text(
-                            "110.00",
-                            style: TextStyle(fontSize: 13),
-                          ),
+                          child: Text("₹${totalPrice.toStringAsFixed(2)}"),
                         ),
                       ],
                     ),
                   ),
 
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
 
-                  // 🔹 Customize Section
-                  const Text(
-                    "Customize",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  const Text(
-                    "Choose one or more add ons to this item",
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
+                  /// 🔹 CUSTOMIZE
+                  const Text("Customize",
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text("Choose one or more add ons"),
+
+                  const SizedBox(height: 10),
+
+                  /// 🔹 ADDONS GRID
                   Row(
                     children: List.generate(addons.length, (index) {
-                      final item = addons[index];
-                      final isSelected = item["selected"];
+                      final addon = addons[index];
+                      final isSelected = addon.isSelected;
 
                       return GestureDetector(
                         onTap: () {
                           setState(() {
-                            item["selected"] = !item["selected"];
+                            addon.isSelected = !isSelected;
                           });
                         },
                         child: Container(
@@ -261,33 +259,33 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: isSelected
-                                  ? const Color(0xFFFF7A00) // ✅ orange border
-                                  : Colors.grey.shade300,   // ❌ grey border
+                                  ? const Color(0xFFFF7A00)
+                                  : Colors.grey.shade300,
                               width: 1.5,
                             ),
                           ),
                           child: Column(
                             children: [
+                              /// 🔥 IMAGE + CHECK ICON
                               Stack(
                                 children: [
-                                  // 🔹 Image
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Image.asset(
-                                      item["image"],
-                                      height: 50,
-                                      width: 50,
-                                      fit: BoxFit.cover,
+                                  Container(
+                                    height: 50,
+                                    width: 50,
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.shade100,
+                                      borderRadius: BorderRadius.circular(10),
                                     ),
+                                    child: const Icon(Icons.fastfood),
                                   ),
 
-                                  // 🔹 Check icon (top-right)
+                                  /// ✅ CHECK ICON (LIKE YOUR IMAGE)
                                   if (isSelected)
                                     Positioned(
                                       right: -2,
                                       top: -2,
                                       child: Container(
-                                        padding: const EdgeInsets.all(2),
+                                        padding: const EdgeInsets.all(3),
                                         decoration: const BoxDecoration(
                                           color: Color(0xFFFF7A00),
                                           shape: BoxShape.circle,
@@ -304,20 +302,18 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
 
                               const SizedBox(height: 8),
 
-                              // 🔹 Name
                               Text(
-                                item["name"],
+                                addon.name,
                                 style: TextStyle(
                                   fontSize: 13,
                                   color: isSelected
-                                      ? const Color(0xFFFF7A00) // ✅ orange text when selected
+                                      ? const Color(0xFFFF7A00)
                                       : Colors.black,
                                 ),
                               ),
 
-                              // 🔹 Price
                               Text(
-                                "₹${item["price"]}",
+                                "₹${addon.price}",
                                 style: const TextStyle(
                                   color: Colors.green,
                                   fontSize: 12,
@@ -329,25 +325,15 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                       );
                     }),
                   )
-
                 ],
               ),
-            )
+            ),
           ),
 
-          // 🔻 Bottom Buttons
+          /// 🔻 BOTTOM BUTTONS
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(color: Colors.black12, blurRadius: 5),
-              ],
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(20),  // ✅ rounded top
-                topRight: Radius.circular(20),
-              ),
-            ),
+            decoration: const BoxDecoration(color: Colors.white),
             child: Row(
               children: [
                 Expanded(
@@ -355,26 +341,44 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                     onPressed: () {},
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Color(0xFFFF7A00)),
-                      foregroundColor: const Color(0xFFFF7A00),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10), // ✅ button radius
+                        borderRadius: BorderRadius.circular(10), // ✅ ADD THIS
                       ),
                     ),
-                    child: const Text("Clear All"),
+                    child: const Text(
+                      "Check Out",
+                      style: TextStyle(color: Color(0xFFFF7A00)),
+                    ),
                   ),
                 ),
 
-                const SizedBox(width: 40),
+                const SizedBox(width: 20),
 
                 Expanded(
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF7A00),
+                      backgroundColor: const Color(0xFFFF8A00),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10), // ✅ button radius
+                        borderRadius: BorderRadius.circular(10), // ✅ ADD THIS
                       ),
                     ),
-                    onPressed: () {},
+                    onPressed: () {
+                      /// 👉 Get selected addons
+                      final selectedAddons =
+                      addons.where((a) => a.isSelected).toList();
+
+                      /// 👉 Add to global cart
+                      CartManager.cartItems.add({
+                        "product": widget.product,
+                        "addons": selectedAddons,
+                        "qty": qty,
+                      });
+
+                      print("🛒 Cart Count: ${CartManager.cartItems.length}");
+
+                      /// 👉 Go back
+                      Navigator.pop(context);
+                    },
                     child: const Text("Add to Cart"),
                   ),
                 ),
