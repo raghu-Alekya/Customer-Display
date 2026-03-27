@@ -858,15 +858,15 @@ class NestedGridWidget extends StatelessWidget {
                                         .every((v) => v["price"].toString() == productPrice.toString());
 
                                 if (allSameAsParent) {
-                                  print("🔁 Cached variants incomplete → Refetching from API...");
-                                  await ProductRepository().fetchProductVariations(productId);
-
-                                  final refreshed = await productBox.get(cacheKey);
-                                  if (refreshed is Map && refreshed["variations"] is List) {
-                                    offlineVariations = (refreshed["variations"] as List)
-                                        .map((v) => Map<String, dynamic>.from(v as Map))
-                                        .toList();
-                                  }
+                                  // print("🔁 Cached variants incomplete → Refetching from API...");
+                                  // await ProductRepository().fetchProductVariations(productId);
+                                  //
+                                  // final refreshed = await productBox.get(cacheKey);
+                                  // if (refreshed is Map && refreshed["variations"] is List) {
+                                  //   offlineVariations = (refreshed["variations"] as List)
+                                  //       .map((v) => Map<String, dynamic>.from(v as Map))
+                                  //       .toList();
+                                  // }
                                 }
                               } catch (e, st) {
                                 if (kDebugMode) {

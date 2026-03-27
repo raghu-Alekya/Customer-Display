@@ -127,69 +127,71 @@ class ProductRepository { // Build #1.0.13 : added product search repository
 
 
 //Build 1.1.36: Fetches product variations from the wc/v3 endpoint
-  Future<List<ProductVariation>> fetchProductVariations(int productId) async {
-    String url =
-        "${UrlHelper.wooCommerceV3}${UrlMethodConstants.variations}/$productId${EndUrlConstants.variationsEndUrl}";
+//   Future<List<ProductVariation>> fetchProductVariations(int productId) async {
+//     String url =
+//         "${UrlHelper.wooCommerceV3}${UrlMethodConstants.variations}/$productId${EndUrlConstants.variationsEndUrl}";
+//
+//     if (kDebugMode) {
+//       print("ProductRepository - FetchProductVariations URL: $url");
+//     }
+//
+//     final response = await _helper.get(url, true);
+//
+//     if (kDebugMode) {
+//       print("ProductRepository - FetchProductVariations Raw Response: $response");
+//     }
+//
+//     List<dynamic> responseData = [];
+//
+//     if (response is String) {
+//       responseData = json.decode(response);
+//     } else if (response is List) {
+//       responseData = response;
+//     } else {
+//       throw Exception("Unexpected response type");
+//     }
+//
+//     // ✅ Convert responseData → ProductVariation objects
+//     final variations = responseData
+//         .map((variationJson) => ProductVariation.fromJson(variationJson))
+//         .toList();
+//
+//     // ✅ Also store a normalized version in Hive for offline use
+//     try {
+//       final productBox = StorageProvider.productCache;
+//       final cacheKey = "product_${productId}_variations";
+//
+//       // Normalize variations for easier offline use
+//       final normalized = responseData.map((v) {
+//         final image = (v["image"] is Map && v["image"]["src"] != null)
+//             ? v["image"]["src"]
+//             : (v["image"] is String ? v["image"] : "");
+//         final name = (v["name"] is Map && v["name"]["rendered"] != null)
+//             ? v["name"]["rendered"]
+//             : (v["name"] is String ? v["name"] : "Unnamed Variant");
+//         final price = v["price"]?.toString() ?? "0";
+//
+//         return {
+//           "id": v["id"],
+//           "name": name,
+//           "price": price,
+//           "sku": v["sku"] ?? "",
+//           "image": image,
+//         };
+//       }).toList();
+//
+//       await productBox.put(cacheKey, {"variations": normalized});
+//       if (kDebugMode) {
+//         print("💾 Cached ${normalized.length} variations for product $productId");
+//       }
+//     } catch (e) {
+//       if (kDebugMode) print("⚠ Failed to cache variations for product $productId: $e");
+//     }
+//
+//     return variations;
+//   }
 
-    if (kDebugMode) {
-      print("ProductRepository - FetchProductVariations URL: $url");
-    }
 
-    final response = await _helper.get(url, true);
-
-    if (kDebugMode) {
-      print("ProductRepository - FetchProductVariations Raw Response: $response");
-    }
-
-    List<dynamic> responseData = [];
-
-    if (response is String) {
-      responseData = json.decode(response);
-    } else if (response is List) {
-      responseData = response;
-    } else {
-      throw Exception("Unexpected response type");
-    }
-
-    // ✅ Convert responseData → ProductVariation objects
-    final variations = responseData
-        .map((variationJson) => ProductVariation.fromJson(variationJson))
-        .toList();
-
-    // ✅ Also store a normalized version in Hive for offline use
-    try {
-      final productBox = StorageProvider.productCache;
-      final cacheKey = "product_${productId}_variations";
-
-      // Normalize variations for easier offline use
-      final normalized = responseData.map((v) {
-        final image = (v["image"] is Map && v["image"]["src"] != null)
-            ? v["image"]["src"]
-            : (v["image"] is String ? v["image"] : "");
-        final name = (v["name"] is Map && v["name"]["rendered"] != null)
-            ? v["name"]["rendered"]
-            : (v["name"] is String ? v["name"] : "Unnamed Variant");
-        final price = v["price"]?.toString() ?? "0";
-
-        return {
-          "id": v["id"],
-          "name": name,
-          "price": price,
-          "sku": v["sku"] ?? "",
-          "image": image,
-        };
-      }).toList();
-
-      await productBox.put(cacheKey, {"variations": normalized});
-      if (kDebugMode) {
-        print("💾 Cached ${normalized.length} variations for product $productId");
-      }
-    } catch (e) {
-      if (kDebugMode) print("⚠ Failed to cache variations for product $productId: $e");
-    }
-
-    return variations;
-  }
   Future<List<ProductBySkuResponse>> fetchProductBySku(
       String sku, {
         bool forceRefresh = false,

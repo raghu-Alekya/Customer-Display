@@ -1826,7 +1826,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
                                                   if (autoDiscount > 0) ...[
                                                     const SizedBox(height: 2),
                                                     Text(
-                                                      "auto Discount : -${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
+                                                      "Auto Discount : -${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
                                                       style: TextStyle(
                                                         fontSize: 10,
                                                         fontWeight: FontWeight.w600,
@@ -5667,6 +5667,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel> with TickerProvider
       // -------------------------------
       // TOTALS
       // -------------------------------
+
       bytes += ticket.feed(1);
       bytes += ticket.row([
         PosColumn(
