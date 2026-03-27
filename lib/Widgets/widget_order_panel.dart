@@ -3182,13 +3182,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
     // Send update directly via CustomerService
     // Do not block UI; display publishing can be slow.
-    unawaited(CustomerService.publishCartUpdate(
-      orderHelper.activeOrderId!,
-      productsForDisplay,
-      subtotal: grossTotal,
-      tax: orderTax,
-      total: (offlineOrder['net_payable'] as num?)?.toDouble() ?? 0.0,
-    ));
+    // unawaited(CustomerService.publishCartUpdate(
+    //   orderHelper.activeOrderId!,
+    //   productsForDisplay,
+    //   subtotal: grossTotal,
+    //   tax: orderTax,
+    //   total: (offlineOrder['net_payable'] as num?)?.toDouble() ?? 0.0,
+    // ));
 
     OrderHelper.notifyOrderPanelToRefresh();
 
@@ -4637,13 +4637,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                               };
                                             }).toList();
 
-                                            await CustomerService.publishCartUpdate(
-                                              orderId,
-                                              productsForDisplay,
-                                              subtotal: grossTotal,
-                                              tax: orderTax,
-                                              total: (offlineOrder['net_payable'] as num?)?.toDouble() ?? 0.0,
-                                            );
+                                            // await CustomerService.publishCartUpdate(
+                                            //   orderId,
+                                            //   productsForDisplay,
+                                            //   subtotal: grossTotal,
+                                            //   tax: orderTax,
+                                            //   total: (offlineOrder['net_payable'] as num?)?.toDouble() ?? 0.0,
+                                            // );
                                             // 🔁 Refresh UI instantly
                                             if (mounted) {
                                               setState(() {

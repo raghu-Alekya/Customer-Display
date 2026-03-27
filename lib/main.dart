@@ -98,8 +98,8 @@ void main() async {
   await UrlHelper.initializeBaseUrl();
   await DBHelper.instance.database;
   final deviceDetails = await GlobalUtility.getDeviceDetails();
-  CustomerService.setPosIdFromDevice(deviceDetails['device_id']);
-  await CustomerService.connect();
+  // CustomerService.setPosIdFromDevice(deviceDetails['device_id']);
+  // await CustomerService.connect();
   final storeInfo = PinakaPreferences.getLoggedInStore();
   if (storeInfo.isNotEmpty) {
     await CustomerDisplayHelper.updateWelcomeWithStore(

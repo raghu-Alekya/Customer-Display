@@ -2311,13 +2311,13 @@ class OrderHelper {
 
       // / 🔄 Send update to Customer Display
       // Do not block UI; publishing to the display can be slow.
-      unawaited(CustomerService.publishCartUpdate(
-        orderId,
-        products,
-        subtotal: subtotal,
-        tax: tax,
-        total: total,
-      ));
+      // unawaited(CustomerService.publishCartUpdate(
+      //   orderId,
+      //   products,
+      //   subtotal: subtotal,
+      //   tax: tax,
+      //   total: total,
+      // ));
 
       notifyOrderPanelToRefresh();
       if (onItemAdded != null) onItemAdded();

@@ -183,6 +183,80 @@ class VP3350Service {
   }
 }
 
+class NmiPaymentProcessor {
+  static bool _isInitialized = false;
+
+  static Future<bool> _checkLocationPermission() async {
+    var status = await Permission.location.status;
+
+    if (!status.isGranted) {
+      status = await Permission.location.request();
+    }
+
+    if (status.isGranted) {
+      return true;
+    } else if (status.isPermanentlyDenied) {
+      await openAppSettings();
+      return false;
+    }
+
+    return false;
+  }
+
+  static Future<String> processCardPayment({
+    required BuildContext context,
+    required double amount,
+    String currency = "840",
+    String transactionPoi = "TAP_TO_MOBILE",
+    String transactionType = "SALE",
+  }) async {
+    final bool hasPermission = await _checkLocationPermission();
+    if (!hasPermission) {
+      return "Location permission required";
+    }
+
+    if (!_isInitialized) {
+      final String initResponse = await VP3350Service.initialize();
+      _isInitialized = !initResponse.toLowerCase().contains("error");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(initResponse)),
+      );
+      if (!_isInitialized) {
+        return initResponse;
+      }
+    }
+
+    final String formattedAmount = amount.toStringAsFixed(2);
+    final String transactionId =
+        DateTime.now().millisecondsSinceEpoch.toString();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          "startTransaction: [CURRENCY : $currency, AMOUNT : $formattedAmount, TRANSACTION_POI : $transactionPoi, TRANSACTION_TYPE : $transactionType, TRANSACTION_ID : $transactionId]",
+        ),
+      ),
+    );
+
+    final int startMs = DateTime.now().millisecondsSinceEpoch;
+    final String response = await VP3350Service.startTransaction(formattedAmount);
+    final int elapsedMs = DateTime.now().millisecondsSinceEpoch - startMs;
+
+    final bool isSuccess = response.toLowerCase().contains("success");
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(response),
+        backgroundColor: isSuccess ? Colors.green : Colors.red,
+      ),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Response time: ${elapsedMs} ms")),
+    );
+
+    return response;
+  }
+}
+
 void main() {
   runApp(const MyApp());
 }
