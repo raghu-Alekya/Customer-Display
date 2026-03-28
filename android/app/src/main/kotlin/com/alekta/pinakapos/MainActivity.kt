@@ -77,6 +77,7 @@ class MainActivity : FlutterActivity() {
             ).setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, eventSink: EventChannel.EventSink?) {
                     manager.setEventSink(eventSink)
+                    // Idempotent: re-subscribe syncs "connected" without flashing "connecting" again.
                     manager.startListening()
                 }
 

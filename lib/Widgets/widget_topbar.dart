@@ -372,10 +372,7 @@ class _TopBarState extends State<TopBar> {
 
   void _listenToScale() {
     if (_scaleSubscription != null) return;
-    if (mounted) setState(() {
-      _isConnecting = true;
-      _scaleStatus  = 'Connecting...';
-    });
+    // Let native status events drive "connecting" vs connected (avoids duplicate flashes).
     _scaleLog('🔌 Subscribing to native magellan_scale/events...');
 
     _scaleSubscription = _scaleEventChannel.receiveBroadcastStream().listen(

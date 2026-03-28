@@ -72,6 +72,9 @@ dependencies {
 
     implementation("com.google.code.gson:gson:2.10.1")
 
+    // USB serial (UsbSerialManager.kt — com.hoho.android.usbserial.*)
+    implementation("com.github.mik3y:usb-serial-for-android:3.8.1")
+
     // ✅ Correct Networking Versions
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
