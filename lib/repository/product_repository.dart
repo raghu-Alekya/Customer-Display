@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 // import 'package:kioski2/features/product/data/models/product_model.dart';
 
 import '../model/product model.dart';
@@ -10,9 +11,6 @@ class ProductRemoteDataSource {
       'https://kioski.alekyatechsolutions.com/wp-json/pinaka-kiosk/v1/products-by-category';
   static const String _wcProductsBaseUrl =
       'https://kioski.alekyatechsolutions.com/wp-json/wc/v3/products';
-
-  static const String _token =
-      'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczpcL1wva2lvc2tpLmFsZWt5YXRlY2hzb2x1dGlvbnMuY29tIiwiaWF0IjoxNzc0NTE5NDA4LCJuYmYiOjE3NzQ1MTk0MDgsImV4cCI6MTc3NzExMTQwOCwiZGF0YSI6eyJ1c2VyIjp7ImlkIjoyLCJkZXZpY2UiOiIiLCJwYXNzIjoiMmNjYzRkNDJlZGZlMzk3ODE1OTAyMzg3YmRhY2IxNGQifX19.Un2rM1rMr3HgWaO2XWpMn0UAHLAdQ_i8oV9WM3niZnw';
 
   final http.Client _client;
 
@@ -68,11 +66,10 @@ class ProductRemoteDataSource {
   }
 
   Future<List<ProductModel>> _requestProducts(Uri endpoint) async {
+    final headers = await _authHeaders();
     final response = await _client.get(
       endpoint,
-      headers: const {
-        'Authorization': 'Bearer $_token',
-      },
+      headers: headers,
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -88,6 +85,17 @@ class ProductRemoteDataSource {
         .whereType<Map<String, dynamic>>()
         .map(ProductModel.fromJson)
         .toList(growable: false);
+  }
+
+  Future<Map<String, String>> _authHeaders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = (prefs.getString('token') ?? '').trim();
+    if (token.isEmpty) {
+      throw Exception('Authentication token missing. Please login again.');
+    }
+    return {
+      'Authorization': 'Bearer $token',
+    };
   }
 
   List<dynamic> _extractList(dynamic decoded) {

@@ -2,8 +2,19 @@ import 'package:flutter/material.dart';
 
 class CardMethodScreen extends StatelessWidget {
   final String orderType;
+  final double subtotal;
+  final double tax;
+  final double total;
 
-  const CardMethodScreen({super.key, required this.orderType});
+  const CardMethodScreen({
+    super.key,
+    required this.orderType,
+    required this.subtotal,
+    required this.tax,
+    required this.total,
+  });
+
+  String _formatAmount(double amount) => '\$ ${amount.toStringAsFixed(2)}';
 
   @override
   Widget build(BuildContext context) {
@@ -114,17 +125,20 @@ class CardMethodScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: const Color(0xFFC7D3E3)),
                 ),
-                child: const Column(
+                child: Column(
                   children: [
-                    _MethodRow(label: 'Sub Total', value: '\$210.00'),
+                    _MethodRow(label: 'Sub Total', value: _formatAmount(subtotal)),
                     SizedBox(height: 8),
-                    _MethodRow(label: 'Tax', value: '\$10.52'),
+                    _MethodRow(
+                      label: 'Tax (CGST + SGST)',
+                      value: _formatAmount(tax),
+                    ),
                     SizedBox(height: 8),
                     Divider(height: 1, color: Color(0xFFBFD0E4)),
                     SizedBox(height: 8),
                     _MethodRow(
                       label: 'Net Payable',
-                      value: '\$220.52',
+                      value: _formatAmount(total),
                       highlight: true,
                     ),
                   ],

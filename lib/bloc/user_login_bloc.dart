@@ -54,6 +54,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
       try {
         final response = await repository.loginWithPin(event.pin);
+        // AuthSession.token = response.data.token;
         emit(AuthSuccess(response.data));
       } catch (e) {
         emit(AuthFailure(e.toString()));

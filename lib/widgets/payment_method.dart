@@ -1,16 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:keyos_app/cart_manger.dart';
+import 'package:keyos_app/repository/order_repository.dart';
 import 'package:keyos_app/widgets/upi_method.dart';
 
 import 'card_method.dart';
 import 'cash_method.dart';
-// import 'package:keyos_app/card_method_screen.dart';
-// import 'package:keyos_app/cash_method_screen.dart';
-// import 'package:keyos_app/upi_method_screen.dart';
+
 
 class PaymentMethods extends StatefulWidget {
   final String orderType;
+  final double subtotal;
+  final double tax;
+  final double total;
 
-  const PaymentMethods({super.key, required this.orderType});
+  const PaymentMethods({
+    super.key,
+    required this.orderType,
+    required this.subtotal,
+    required this.tax,
+    required this.total,
+  });
 
   @override
   State<PaymentMethods> createState() => _PaymentMethodsState();
@@ -18,28 +27,129 @@ class PaymentMethods extends StatefulWidget {
 
 class _PaymentMethodsState extends State<PaymentMethods> {
   String? _selectedMethod;
+  final OrderRepository _orderRepository = OrderRepository();
+  bool _isCreatingOrder = false;
 
-  void _goToSelectedMethod() {
-    if (_selectedMethod == null) return;
+  String _formatAmount(double amount) => '\$${amount.toStringAsFixed(2)}';
 
-    Widget target;
-    switch (_selectedMethod) {
-      case 'card':
-        target = CardMethodScreen(orderType: widget.orderType);
-        break;
-      case 'upi':
-        target = UpiMethodScreen(orderType: widget.orderType);
-        break;
-      case 'cash':
-      default:
-        target = CashMethodScreen(orderType: widget.orderType);
-        break;
+  bool get _isDineInOrder =>
+      widget.orderType.toLowerCase().replaceAll('-', ' ').contains('dine in');
+
+  bool get _isTakeAwayOrder {
+    final normalized = widget.orderType
+        .toLowerCase()
+        .replaceAll('-', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return normalized.contains('take out') || normalized.contains('takeaway');
+  }
+
+  int? _extractOrderId(Map<String, dynamic> orderResponse) {
+    final topId = orderResponse['id'];
+    if (topId is num && topId.toInt() > 0) return topId.toInt();
+
+    final topOrderId = orderResponse['order_id'];
+    if (topOrderId is num && topOrderId.toInt() > 0) return topOrderId.toInt();
+
+    final data = orderResponse['data'];
+    if (data is Map<String, dynamic>) {
+      final dataId = data['id'];
+      if (dataId is num && dataId.toInt() > 0) return dataId.toInt();
+
+      final dataOrderId = data['order_id'];
+      if (dataOrderId is num && dataOrderId.toInt() > 0) {
+        return dataOrderId.toInt();
+      }
     }
+    return null;
+  }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => target),
-    );
+  Future<void> _goToSelectedMethod() async {
+    if (_selectedMethod == null || _isCreatingOrder) return;
+
+    setState(() => _isCreatingOrder = true);
+
+    try {
+      Map<String, dynamic>? orderResponse;
+      if (_isDineInOrder) {
+        orderResponse = await _orderRepository.createDineInOrder(
+          cartItems: CartManager.cartItems,
+        );
+      } else if (_isTakeAwayOrder) {
+        orderResponse = await _orderRepository.createTakeAwayOrder(
+          cartItems: CartManager.cartItems,
+        );
+      }
+      final createdOrderId =
+      orderResponse == null ? null : _extractOrderId(orderResponse);
+
+      if (_selectedMethod == 'cash') {
+        if (createdOrderId == null) {
+          throw Exception('Unable to read order id for cash payment.');
+        }
+        await _orderRepository.createCashPayment(
+          orderId: createdOrderId,
+          amount: widget.total,
+        );
+      } else if (_selectedMethod == 'card') {
+        if (createdOrderId == null) {
+          throw Exception('Unable to read order id for card payment.');
+        }
+        await _orderRepository.createCardPayment(
+          orderId: createdOrderId,
+          amount: widget.total,
+        );
+      }
+
+      Widget target;
+      switch (_selectedMethod) {
+        case 'card':
+          target = CardMethodScreen(
+            orderType: widget.orderType,
+            subtotal: widget.subtotal,
+            tax: widget.tax,
+            total: widget.total,
+          );
+          break;
+        case 'upi':
+          target = UpiMethodScreen(
+            orderType: widget.orderType,
+            subtotal: widget.subtotal,
+            tax: widget.tax,
+            total: widget.total,
+          );
+          break;
+        case 'cash':
+        default:
+          target = CashMethodScreen(
+            orderType: widget.orderType,
+            subtotal: widget.subtotal,
+            tax: widget.tax,
+            total: widget.total,
+            orderId: createdOrderId,
+          );
+          break;
+      }
+
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => target),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to create order: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    } finally {
+      if (mounted) {
+        setState(() => _isCreatingOrder = false);
+      }
+    }
   }
 
   @override
@@ -182,7 +292,7 @@ class _PaymentMethodsState extends State<PaymentMethods> {
                           border: Border.all(color: const Color(0xFFBFD0E6)),
                         ),
                         child: Column(
-                          children: const [
+                          children: [
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -200,12 +310,12 @@ class _PaymentMethodsState extends State<PaymentMethods> {
                             SizedBox(height: 10),
                             _SummaryRow(
                               label: 'Sub Total',
-                              value: '\$210.00',
+                              value: _formatAmount(widget.subtotal),
                             ),
                             SizedBox(height: 6),
                             _SummaryRow(
-                              label: 'Tax',
-                              value: '\$10.52',
+                              label: 'Tax (CGST + SGST)',
+                              value: _formatAmount(widget.tax),
                             ),
                             SizedBox(height: 8),
                             Divider(
@@ -215,7 +325,7 @@ class _PaymentMethodsState extends State<PaymentMethods> {
                             SizedBox(height: 8),
                             _SummaryRow(
                               label: 'Net Payable',
-                              value: '\$220.52',
+                              value: _formatAmount(widget.total),
                               isBold: true,
                             ),
                           ],
@@ -225,7 +335,10 @@ class _PaymentMethodsState extends State<PaymentMethods> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: _selectedMethod == null ? null : _goToSelectedMethod,
+                          onPressed:
+                          _selectedMethod == null || _isCreatingOrder
+                              ? null
+                              : _goToSelectedMethod,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFFF9900),
                             foregroundColor: Colors.white,
@@ -237,7 +350,17 @@ class _PaymentMethodsState extends State<PaymentMethods> {
                             ),
                             elevation: 0,
                           ),
-                          child: const Text(
+                          child: _isCreatingOrder
+                              ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                              : const Text(
                             'Confirm Payment',
                             style: TextStyle(
                               fontWeight: FontWeight.w700,

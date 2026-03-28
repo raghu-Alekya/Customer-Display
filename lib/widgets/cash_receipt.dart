@@ -1,7 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:keyos_app/cart_manger.dart';
+import 'package:keyos_app/Homescreen.dart';
 
 class PrintReceiptScreen extends StatelessWidget {
-  const PrintReceiptScreen({super.key});
+  final double total;
+  final int? orderId;
+
+  const PrintReceiptScreen({
+    super.key,
+    required this.total,
+    required this.orderId,
+  });
+
+  String _formatAmount(double amount) => '\$${amount.toStringAsFixed(2)}';
 
   @override
   Widget build(BuildContext context) {
@@ -52,21 +63,39 @@ class PrintReceiptScreen extends StatelessWidget {
               const SizedBox(height: 28),
 
               RichText(
-                text: const TextSpan(
-                  style: TextStyle(fontSize: 33 / 1.2, fontWeight: FontWeight.w700),
+                text: TextSpan(
+                  style: const TextStyle(
+                    fontSize: 33 / 1.2,
+                    fontWeight: FontWeight.w700,
+                  ),
                   children: [
-                    TextSpan(text: 'Order ID: ', style: TextStyle(color: Color(0xFF303236))),
-                    TextSpan(text: '#2345', style: TextStyle(color: Color(0xFFFF6C00))),
+                    const TextSpan(
+                      text: 'Order ID: ',
+                      style: TextStyle(color: Color(0xFF303236)),
+                    ),
+                    TextSpan(
+                      text: orderId == null ? '--' : '#$orderId',
+                      style: const TextStyle(color: Color(0xFFFF6C00)),
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 8),
               RichText(
-                text: const TextSpan(
-                  style: TextStyle(fontSize: 35 / 1.2, fontWeight: FontWeight.w700),
+                text: TextSpan(
+                  style: const TextStyle(
+                    fontSize: 35 / 1.2,
+                    fontWeight: FontWeight.w700,
+                  ),
                   children: [
-                    TextSpan(text: 'Total : ', style: TextStyle(color: Color(0xFF303236))),
-                    TextSpan(text: '\$220.52', style: TextStyle(color: Color(0xFFFF6C00))),
+                    const TextSpan(
+                      text: 'Total : ',
+                      style: TextStyle(color: Color(0xFF303236)),
+                    ),
+                    TextSpan(
+                      text: _formatAmount(total),
+                      style: const TextStyle(color: Color(0xFFFF6C00)),
+                    ),
                   ],
                 ),
               ),
@@ -112,7 +141,14 @@ class PrintReceiptScreen extends StatelessWidget {
                 child: SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      CartManager.cartItems.clear();
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (_) => const HomeScreen()),
+                            (route) => false,
+                      );
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFF9900),
                       foregroundColor: Colors.white,
@@ -132,7 +168,7 @@ class PrintReceiptScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
             ],
           ),
         ),

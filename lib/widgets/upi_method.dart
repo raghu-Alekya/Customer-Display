@@ -2,8 +2,19 @@ import 'package:flutter/material.dart';
 
 class UpiMethodScreen extends StatelessWidget {
   final String orderType;
+  final double subtotal;
+  final double tax;
+  final double total;
 
-  const UpiMethodScreen({super.key, required this.orderType});
+  const UpiMethodScreen({
+    super.key,
+    required this.orderType,
+    required this.subtotal,
+    required this.tax,
+    required this.total,
+  });
+
+  String _formatAmount(double amount) => '\$${amount.toStringAsFixed(2)}';
 
   @override
   Widget build(BuildContext context) {
@@ -114,17 +125,20 @@ class UpiMethodScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: const Color(0xFFC7D3E3)),
                 ),
-                child: const Column(
+                child: Column(
                   children: [
-                    _UpiRow(label: 'Sub Total', value: '\$210.00'),
+                    _UpiRow(label: 'Sub Total', value: _formatAmount(subtotal)),
                     SizedBox(height: 8),
-                    _UpiRow(label: 'Tax', value: '\$10.52'),
+                    _UpiRow(
+                      label: 'Tax (CGST + SGST)',
+                      value: _formatAmount(tax),
+                    ),
                     SizedBox(height: 8),
                     Divider(height: 1, color: Color(0xFFBFD0E4)),
                     SizedBox(height: 8),
                     _UpiRow(
                       label: 'Net Payable',
-                      value: '\$220.52',
+                      value: _formatAmount(total),
                       highlight: true,
                     ),
                   ],

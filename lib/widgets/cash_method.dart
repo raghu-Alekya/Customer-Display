@@ -1,12 +1,34 @@
 import 'package:flutter/material.dart';
+import 'package:keyos_app/Homescreen.dart';
+import 'package:keyos_app/cart_manger.dart';
 
 import 'cash_receipt.dart';
 // import 'package:keyos_app/cash_receipt_screen.dart';
 
 class CashMethodScreen extends StatelessWidget {
   final String orderType;
+  final double subtotal;
+  final double tax;
+  final double total;
+  final int? orderId;
 
-  const CashMethodScreen({super.key, required this.orderType});
+  const CashMethodScreen({
+    super.key,
+    required this.orderType,
+    required this.subtotal,
+    required this.tax,
+    required this.total,
+    required this.orderId,
+  });
+
+  String _formatAmount(double amount) => '\$${amount.toStringAsFixed(2)}';
+
+  int get _itemCount {
+    return CartManager.cartItems.fold<int>(0, (sum, item) {
+      final qty = (item['qty'] as num?)?.toInt() ?? 0;
+      return sum + qty;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -105,11 +127,11 @@ class CashMethodScreen extends StatelessWidget {
                 child: Image.asset(
                   'assets/printreceipt.png', // replace with your asset
                   fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const Icon(
-                    Icons.point_of_sale_rounded,
-                    size: 90,
-                    color: Color(0xFF7C8DA6),
-                  ),
+                  // errorBuilder: (_, __, ___) => const Icon(
+                  //   Icons.point_of_sale_rounded,
+                  //   size: 90,
+                  //   color: Color(0xFF7C8DA6),
+                  // ),
                 ),
               ),
 
@@ -125,27 +147,33 @@ class CashMethodScreen extends StatelessWidget {
                   border: Border.all(color: const Color(0xFFC7D3E3)),
                 ),
                 child: Column(
-                  children: const [
+                  children: [
                     _CashRow(
                       title: 'Items   -',
-                      value: '04',
+                      value: _itemCount.toString().padLeft(2, '0'),
                       valueBold: false,
                       header: true,
                     ),
                     SizedBox(height: 8),
                     _Dash(),
                     SizedBox(height: 8),
-                    _CashRow(title: 'Sub Total', value: '\$210.00'),
+                    _CashRow(
+                      title: 'Sub Total',
+                      value: _formatAmount(subtotal),
+                    ),
                     SizedBox(height: 8),
                     _Dash(),
                     SizedBox(height: 8),
-                    _CashRow(title: 'Tax', value: '\$10.52'),
+                    _CashRow(
+                      title: 'Tax (CGST + SGST)',
+                      value: _formatAmount(tax),
+                    ),
                     SizedBox(height: 8),
                     _Dash(),
                     SizedBox(height: 8),
                     _CashRow(
                       title: 'Net Payable',
-                      value: '\$220.52',
+                      value: _formatAmount(total),
                       valueBold: true,
                     ),
                   ],
@@ -155,7 +183,14 @@ class CashMethodScreen extends StatelessWidget {
               const SizedBox(height: 20),
 
               TextButton(
-                onPressed: () {},
+                onPressed: () {
+                  CartManager.cartItems.clear();
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const HomeScreen()),
+                        (route) => false,
+                  );
+                },
                 child: const Text(
                   'Start New Order',
                   style: TextStyle(
@@ -177,7 +212,8 @@ class CashMethodScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const PrintReceiptScreen(),
+                          builder: (_) =>
+                              PrintReceiptScreen(total: total, orderId: orderId),
                         ),
                       );
                     },

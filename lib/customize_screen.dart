@@ -63,27 +63,70 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
               children: [
                 InkWell(
                   onTap: () => Navigator.pop(context),
-                  child: Row(
-                    children: const [
-                      Icon(Icons.arrow_back_ios,
-                          size: 14, color: Color(0xFFFF9B17)),
-                      SizedBox(width: 4),
-                      Text("Menu",
-                          style: TextStyle(color: Color(0xFFFF9B17))),
-                    ],
+                  borderRadius: BorderRadius.circular(8), // 👈 ripple shape
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: const Color(0xFFFF9B17), // ✅ same as text color
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(
+                          Icons.arrow_back_ios,
+                          size: 14,
+                          color: Color(0xFFFF9B17),
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          "Menu",
+                          style: TextStyle(
+                            color: Color(0xFFFF9B17),
+                            fontWeight: FontWeight.w600, // 👈 better UI
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const Text("Customize",
                     style:
                     TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: Colors.grey.shade300),
                   ),
-                  child: Text(widget.orderType),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min, // 👈 important
+                    children: [
+                      /// 🔵 DOT
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF506796), // ✅ same as text color
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+
+                      const SizedBox(width: 6),
+
+                      /// 📝 TEXT
+                      Text(
+                        widget.orderType,
+                        style: const TextStyle(
+                          color: Color(0xFF506796), // ✅ your color
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 )
               ],
             ),
@@ -130,6 +173,8 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                             style: TextStyle(fontSize: 12, color: Colors.black),
                           ),
                         ),
+                        const SizedBox(width: 10),
+
                         Expanded(
                           flex: 2,
                           child: Text(
@@ -137,6 +182,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                             style: TextStyle(fontSize: 12, color: Colors.black),
                           ),
                         ),
+                        const SizedBox(width: 10),
                         Expanded(
                           flex: 2,
                           child: Text(
@@ -178,7 +224,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
 
                         /// 🔹 QTY
                         Expanded(
-                          flex: 2,
+                          flex: 3,
                           child: Row(
                             children: [
                               GestureDetector(
@@ -218,12 +264,12 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
 
                         Expanded(
                           flex: 2,
-                          child: Text("₹${basePrice.toStringAsFixed(2)}"),
+                          child: Text("\$${basePrice.toStringAsFixed(2)}"),
                         ),
 
                         Expanded(
                           flex: 2,
-                          child: Text("₹${totalPrice.toStringAsFixed(2)}"),
+                          child: Text("\$${totalPrice.toStringAsFixed(2)}"),
                         ),
                       ],
                     ),

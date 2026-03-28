@@ -3,21 +3,29 @@ class ProductModel {
   final String name;
   final String price;
   final String? imageUrl;
+  final bool? isVeg;
 
   const ProductModel({
     required this.id,
     required this.name,
     required this.price,
     this.imageUrl,
+    this.isVeg,
   });
 
   factory ProductModel.fromJson(Map<String, dynamic> json) {
     final imageUrl = _extractImageUrl(json);
+    final inferredVegFlag = _extractIsVeg(
+      json['is_veg'] ?? json['is_ve'] ?? json['isVeg'],
+    ) ??
+        _inferIsVegFromText(json);
+
     return ProductModel(
       id: _asInt(json['id']),
       name: _asString(json['name']) ?? _asString(json['title']) ?? 'Unknown',
       price: _extractPrice(json),
       imageUrl: imageUrl,
+      isVeg: inferredVegFlag,
     );
   }
 
@@ -75,6 +83,71 @@ class ProductModel {
       }
     }
 
+    return null;
+  }
+
+  static bool? _extractIsVeg(dynamic value) {
+    if (value == null) return null;
+    if (value is bool) return value;
+    if (value is num) return value == 1;
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      if (normalized.isEmpty || normalized == 'null') return null;
+      if (normalized == 'true' ||
+          normalized == 'yes' ||
+          normalized == '1' ||
+          normalized == 'veg') {
+        return true;
+      }
+      if (normalized == 'false' ||
+          normalized == 'no' ||
+          normalized == '0' ||
+          normalized == 'non veg' ||
+          normalized == 'non-veg') {
+        return false;
+      }
+    }
+    return null;
+  }
+
+  static bool? _inferIsVegFromText(Map<String, dynamic> json) {
+    final tokens = <String>[];
+
+    void addValue(dynamic value) {
+      if (value == null) return;
+      if (value is String) {
+        final text = value.trim().toLowerCase();
+        if (text.isNotEmpty) tokens.add(text);
+        return;
+      }
+      if (value is List) {
+        for (final item in value) {
+          addValue(item);
+        }
+        return;
+      }
+      if (value is Map<String, dynamic>) {
+        for (final v in value.values) {
+          addValue(v);
+        }
+      }
+    }
+
+    addValue(json['categories']);
+    addValue(json['tags']);
+    addValue(json['attributes']);
+    addValue(json['name']);
+    addValue(json['slug']);
+
+    final joined = tokens.join(' ');
+    if (joined.contains('non veg') ||
+        joined.contains('non-veg') ||
+        joined.contains('nonveg')) {
+      return false;
+    }
+    if (joined.contains('veg')) {
+      return true;
+    }
     return null;
   }
 }

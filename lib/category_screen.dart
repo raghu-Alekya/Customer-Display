@@ -43,6 +43,12 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
   ];
 
   final List<String> orderTypes = ['Non Veg', 'Veg'];
+  bool _matchesSelectedType(ProductModel product) {
+    // Null from API is treated as "all", so it is visible in both filters.
+    if (product.isVeg == null) return true;
+    if (selectedType == 0) return product.isVeg == false; // Non Veg
+    return product.isVeg == true; // Veg
+  }
 
   @override
   void initState() {
@@ -536,9 +542,14 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
 
         if (state is! ProductLoaded || state.products.isEmpty) {
           return const Center(child: Text('No items found'));
+
+        }
+        final products = state.products.where(_matchesSelectedType).toList();
+        if (products.isEmpty) {
+          return const Center(child: Text('No items found for selected type'));
         }
 
-        final products = state.products;
+        // final products = state.products;
         return GridView.builder(
           padding: const EdgeInsets.fromLTRB(10, 0, 8, 8),
           itemCount: products.length,
@@ -558,6 +569,12 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
   }
 
   Widget _productCard(ProductModel item) {
+    final Color typeColor = item.isVeg == true
+        ? Colors.green
+        : item.isVeg == false
+        ? Colors.red
+        : Colors.orange;
+
     return Container(
       padding: const EdgeInsets.all(7),
       decoration: BoxDecoration(
@@ -568,8 +585,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.crop_square_rounded,
-              size: 11, color: Colors.green),
+          Icon(Icons.crop_square_rounded, size: 11, color: typeColor),
 
           const SizedBox(height: 3),
 
@@ -629,7 +645,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                         builder: (_) => CustomizeScreen(
                           product: item,
                           addons: addons,
-                          orderType: "Dine-In",
+                          orderType: widget.orderType,
                         ),
                       ),
                     );
@@ -777,12 +793,13 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
           const Spacer(),
 
           SizedBox(
-            width: 200, // 🔥 increased width (important)
+            width: 200,
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween, // ✅ key line
               children: [
-                /// 🔹 TOTAL PRICE (OUTSIDE)
+
+                /// 🔹 TOTAL PRICE (LEFT)
                 Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
@@ -790,13 +807,13 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                       style: TextStyle(
                         color: Colors.black54,
                         fontSize: 10,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                     Text(
-                      "₹${_getTotalPrice().toStringAsFixed(0)}",
+                      "\$${_getTotalPrice().toStringAsFixed(0)}",
                       style: const TextStyle(
-                        color: Colors.black,
+                        color: Colors.green,
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                       ),
@@ -804,15 +821,13 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                   ],
                 ),
 
-                const Spacer(),
-
-                /// 🔶 CART BUTTON
+                /// 🔶 CART BUTTON (RIGHT)
                 GestureDetector(
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const CartScreen(orderType: '',),
+                        builder: (_) => CartScreen(orderType: widget.orderType),
                       ),
                     );
                   },
@@ -825,7 +840,6 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                     ),
                     child: Row(
                       children: [
-                        /// 🔥 ICON + BADGE
                         Stack(
                           clipBehavior: Clip.none,
                           children: [
@@ -834,7 +848,6 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                               size: 18,
                               color: Colors.white,
                             ),
-
                             if (CartManager.cartItems.isNotEmpty)
                               Positioned(
                                 right: -6,
@@ -857,9 +870,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                               ),
                           ],
                         ),
-
                         const SizedBox(width: 6),
-
                         const Text(
                           'Cart',
                           style: TextStyle(
@@ -874,7 +885,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                 ),
               ],
             ),
-          ),
+          )
         ],
       ),
     );
