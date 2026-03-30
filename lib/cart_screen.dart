@@ -279,10 +279,11 @@ class _CartScreenState extends State<CartScreen> {
                                 Expanded(
                                   flex: 2,
                                   child: Text(
-                                      "\$${finalPrice.toStringAsFixed(0)}",
+                                    "\$${finalPrice.toStringAsFixed(2)}",
                                     style: const TextStyle(
-                                        color: Colors.green,
-                                        fontWeight: FontWeight.bold),
+                                      color: Colors.green,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
 

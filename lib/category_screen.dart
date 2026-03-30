@@ -25,7 +25,7 @@ class FoodUiScreen extends StatefulWidget {
 
 class _FoodUiScreenState extends State<FoodUiScreen> {
   static const int rootCategoryId = 28;
-  int selectedType = 0;
+  int? selectedType;
   int selectedCategory = 0;
   int selectedSubcategory = 0;
   int? selectedSubcategoryId;
@@ -43,7 +43,9 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
   ];
 
   final List<String> orderTypes = ['Non Veg', 'Veg'];
+
   bool _matchesSelectedType(ProductModel product) {
+    if (selectedType == null) return true;
     // Null from API is treated as "all", so it is visible in both filters.
     if (product.isVeg == null) return true;
     if (selectedType == 0) return product.isVeg == false; // Non Veg
@@ -279,7 +281,9 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
           ...List.generate(orderTypes.length, (index) {
             final selected = selectedType == index;
             return GestureDetector(
-              onTap: () => setState(() => selectedType = index),
+              onTap: () => setState(() {
+                selectedType = selected ? null : index;
+              }),
               child: _capsule(
                 margin: const EdgeInsets.only(left: 4),
                 padding:
@@ -542,14 +546,13 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
 
         if (state is! ProductLoaded || state.products.isEmpty) {
           return const Center(child: Text('No items found'));
-
         }
+
         final products = state.products.where(_matchesSelectedType).toList();
         if (products.isEmpty) {
           return const Center(child: Text('No items found for selected type'));
         }
 
-        // final products = state.products;
         return GridView.builder(
           padding: const EdgeInsets.fromLTRB(10, 0, 8, 8),
           itemCount: products.length,
@@ -793,13 +796,12 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
           const Spacer(),
 
           SizedBox(
-            width: 200,
+            width: 200, // 🔥 increased width (important)
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween, // ✅ key line
               children: [
-
-                /// 🔹 TOTAL PRICE (LEFT)
+                /// 🔹 TOTAL PRICE (OUTSIDE)
                 Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
@@ -807,11 +809,11 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                       style: TextStyle(
                         color: Colors.black54,
                         fontSize: 10,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     Text(
-                      "\$${_getTotalPrice().toStringAsFixed(0)}",
+                      "\$${_getTotalPrice().toStringAsFixed(2)}",
                       style: const TextStyle(
                         color: Colors.green,
                         fontSize: 18,
@@ -821,7 +823,9 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                   ],
                 ),
 
-                /// 🔶 CART BUTTON (RIGHT)
+                const Spacer(),
+
+                /// 🔶 CART BUTTON
                 GestureDetector(
                   onTap: () {
                     Navigator.push(
@@ -840,6 +844,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                     ),
                     child: Row(
                       children: [
+                        /// 🔥 ICON + BADGE
                         Stack(
                           clipBehavior: Clip.none,
                           children: [
@@ -848,6 +853,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                               size: 18,
                               color: Colors.white,
                             ),
+
                             if (CartManager.cartItems.isNotEmpty)
                               Positioned(
                                 right: -6,
@@ -870,7 +876,9 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                               ),
                           ],
                         ),
+
                         const SizedBox(width: 6),
+
                         const Text(
                           'Cart',
                           style: TextStyle(
@@ -885,7 +893,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                 ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );

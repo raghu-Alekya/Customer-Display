@@ -101,9 +101,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
               /// 🔹 BODY
-              /// 🔹 BODY (ONLY AUTO SCROLL IMAGES)
+              /// 🔹 BODY (ONLY AUTO SCROLLIMAGES)
               Flexible(
-                flex: 5, // 👈 control height here
+                flex: 4, // 👈 control height here
                 child: PageView.builder(
                   controller: _controller,
                   physics: const NeverScrollableScrollPhysics(),
