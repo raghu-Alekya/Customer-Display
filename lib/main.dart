@@ -4,13 +4,16 @@ import 'package:flutter/services.dart';
 import 'package:keyos_app/repository/category_data_resource.dart';
 import 'package:keyos_app/repository/product_data_resource.dart';
 import 'package:keyos_app/repository/user_login_repository.dart';
+import 'package:keyos_app/repository/promotion_repository.dart';
 import 'package:keyos_app/widgets/kiosk_frame.dart';
 
 import 'bloc/category_bloc.dart';
 import 'bloc/product_bloc.dart';
+import 'bloc/promotion_bloc.dart';
 import 'bloc/sub category_bloc.dart';
 import 'login_screen.dart';
 import 'bloc/user_login_bloc.dart';
+import 'splashscreen.dart';
 // import 'repository/auth_repository.dart'; // make sure path is correct
 
 Future<void> main() async {
@@ -41,6 +44,9 @@ class MyApp extends StatelessWidget {
         BlocProvider(
           create: (_) => SubcategoryBloc(repository: CategoryRepository()),
         ),
+        BlocProvider(
+          create: (_) => PromotionBloc(repository: PromotionRepository()),
+        ),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -60,7 +66,7 @@ class MyApp extends StatelessWidget {
             child: child,
           );
         },
-        home: const LoginScreen(),
+        home: const  LoginScreen(),
       ),
     );
   }

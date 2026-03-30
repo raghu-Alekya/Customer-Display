@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'bloc/promotion_bloc.dart';
 import 'category_screen.dart';
 import 'customize_screen.dart';
 
@@ -19,7 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String selectedType = "Dine-In"; // default
 
   /// 🔹 Replace with your API images
-  final List<String> images = [
+  List<String> images = [
     "assets/home.png",
     "assets/home2.png",
     "assets/home3.png",
@@ -28,9 +31,11 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _loadPromotions();
 
     _timer = Timer.periodic(const Duration(seconds: 3), (timer) {
       if (!mounted) return;
+      if (images.isEmpty) return;
 
       if (_currentPage < images.length - 1) {
         _currentPage++;
@@ -46,6 +51,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _loadPromotions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    if (!mounted || token == null || token.trim().isEmpty) return;
+    context.read<PromotionBloc>().add(FetchPortraitPromotionImages(token));
+  }
+
   @override
   void dispose() {
     _timer.cancel();
@@ -58,7 +70,17 @@ class _HomeScreenState extends State<HomeScreen> {
     final width = MediaQuery.of(context).size.width;
     final height = MediaQuery.of(context).size.height;
 
-    return Scaffold(
+    return BlocListener<PromotionBloc, PromotionState>(
+      listener: (context, state) {
+        if (state is PromotionLoaded && state.images.isNotEmpty) {
+          setState(() {
+            images = state.images;
+            _currentPage = 0;
+          });
+          _controller.jumpToPage(0);
+        }
+      },
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: Center(
         child: Container(
@@ -109,12 +131,32 @@ class _HomeScreenState extends State<HomeScreen> {
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: images.length,
                   itemBuilder: (context, index) {
-                    return Image.asset(
-                      images[index], // ✅ correct
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: double.infinity,
-                    );
+                    final src = images[index];
+                    final isNetwork =
+                        src.startsWith('http://') || src.startsWith('https://');
+
+                    return isNetwork
+                        ? Image.network(
+                            src,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            errorBuilder: (_, __, ___) => const ColoredBox(
+                              color: Colors.black,
+                              child: Center(
+                                child: Icon(
+                                  Icons.broken_image,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ),
+                          )
+                        : Image.asset(
+                            src,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                          );
                   },
                 ),
               ),
@@ -212,7 +254,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 
