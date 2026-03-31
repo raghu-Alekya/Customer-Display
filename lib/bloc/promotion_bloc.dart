@@ -4,6 +4,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../model/promotion_image_model.dart';
 import '../repository/promotion_repository.dart';
 
+enum PromotionType {
+  portrait,
+  fullScreen,
+  banner,
+}
+
 // EVENTS
 
 abstract class PromotionEvent extends Equatable {
@@ -60,14 +66,16 @@ class PromotionLoading extends PromotionState {
 class PromotionLoaded extends PromotionState {
   final List<String> images;
   final String message;
+  final PromotionType type;   // 👈 add this
 
   const PromotionLoaded({
     required this.images,
     required this.message,
+    required this.type,       // 👈 add this
   });
 
   @override
-  List<Object?> get props => [images, message];
+  List<Object?> get props => [images, message, type];
 }
 
 class PromotionError extends PromotionState {
@@ -116,6 +124,7 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
         PromotionLoaded(
           images: response.images,
           message: response.message,
+          type: PromotionType.portrait,
         ),
       );
     } catch (e) {
@@ -147,6 +156,7 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
         PromotionLoaded(
           images: response.images,
           message: response.message,
+          type: PromotionType.fullScreen,
         ),
       );
     } catch (e) {
@@ -178,6 +188,7 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
         PromotionLoaded(
           images: response.images,
           message: response.message,
+          type: PromotionType.banner,
         ),
       );
     } catch (e) {

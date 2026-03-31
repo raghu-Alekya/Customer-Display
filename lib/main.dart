@@ -60,15 +60,7 @@ class MyApp extends StatelessWidget {
         ),
         builder: (context, child) {
           if (child == null) return const SizedBox.shrink();
-          return KioskFrame(
-            // Vertical kiosk reference size. UI is scaled to this on any device.
-            designWidth: 460,
-            designHeight: 780,
-            backgroundColor: const Color(0xFF101010),
-            kioskOnly: false,
-            allowedSizeDifference: 24,
-            child: child,
-          );
+          return child; // no KioskFrame, use full screen dynamically
         },
         home: const LoginScreen(),
       ),

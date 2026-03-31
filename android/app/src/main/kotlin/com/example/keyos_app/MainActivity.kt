@@ -1,4 +1,4 @@
-package com.example.keyos_app
+package com.keyos_app
 
 import io.flutter.embedding.android.FlutterActivity
 

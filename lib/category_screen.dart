@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:keyos_app/repository/addon_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -15,6 +16,7 @@ import 'cart_screen.dart';
 import 'customize_screen.dart';
 import 'model/category_model.dart';
 import 'model/product model.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class FoodUiScreen extends StatefulWidget {
   final String orderType;
@@ -123,7 +125,9 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
             BlocListener<PromotionBloc, PromotionState>(
               listener: (context, state) {
                 if (!mounted) return;
-                if (state is PromotionLoaded && state.images.isNotEmpty) {
+                if (state is PromotionLoaded &&
+                    state.type == PromotionType.banner &&
+                    state.images.isNotEmpty) {
                   setState(() {
                     bannerImages = state.images;
                     currentPromoIndex = 0;
@@ -192,14 +196,20 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
               const SizedBox(height: 10),
               _topFilters(),
               SizedBox(height: 10),
-              _subCategoryTabs(),
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _leftCategories(),
                     Container(width: 1, color: Colors.black12),
-                    Expanded(child: _foodGrid()),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          _subCategoryTabs(),
+                          Expanded(child: _foodGrid()),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -291,22 +301,45 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 6),
       child: Row(
         children: [
+          const SizedBox(width: 60),
+          const SizedBox(width: 6),
           _capsule(
-            width: 74,
-            child: Text(
-              widget.orderType, // dynamic from HomeScreen
-              style: const TextStyle(fontSize: 12, color: Color(0xFF4A4A4A)),
+            width: 100,
+            height: 30,
+            child: Center(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 6,   // 🔥 control dot size here
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF506796),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    widget.orderType,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF506796),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 6),
-          Expanded(
+          SizedBox(
+            width: 90,
             child: Container(
               height: 30,
               padding: const EdgeInsets.only(left: 10, right: 4),
               decoration: BoxDecoration(
                 color: Colors.white,
                 border: Border.all(color: Colors.black12),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 children: [
@@ -343,6 +376,27 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
               ),
             ),
           ),
+          const SizedBox(width: 6),
+          _capsule(
+            height: 28,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+            borderColor: const Color(0xFFFFA620),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.language, size: 14, color: Color(0xFFFF7A00)),
+                SizedBox(width: 4),
+                Text(
+                  'Eng',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFFF7A00),
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(width: 4),
           ...List.generate(orderTypes.length, (index) {
             final selected = selectedType == index;
@@ -352,8 +406,9 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
               }),
               child: _capsule(
                 margin: const EdgeInsets.only(left: 4),
+                height: 30,
                 padding:
-                const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
                 borderColor:
                 selected ? const Color(0xFFFFA620) : Colors.black12,
                 child: Row(
@@ -384,7 +439,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
         selectedSubcategory < subcategories.length ? selectedSubcategory : 0;
 
         return Padding(
-          padding: const EdgeInsets.only(left: 92, right: 8, bottom: 8),
+          padding: const EdgeInsets.only(left: 8, right: 8, bottom: 8),
           child: Align(
             alignment: Alignment.centerLeft,
             child: SingleChildScrollView(
@@ -629,19 +684,26 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
           return const Center(child: Text('No items found for selected type'));
         }
 
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(10, 0, 8, 8),
-          itemCount: products.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 8,
-            childAspectRatio: 0.72,
+        return Center( // 🔥 centers the grid
+          child: SizedBox(
+            width: 450, // 🔥 control total grid width here
+            child: GridView.builder(
+              // shrinkWrap: true, // 🔥 important
+              physics: const BouncingScrollPhysics(),
+              // padding: const EdgeInsets.symmetric(vertical: 6),
+              itemCount: products.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3, // ✅ keep 3
+                mainAxisSpacing: 6,
+                crossAxisSpacing: 6,
+                childAspectRatio: 1.2,
+              ),
+              itemBuilder: (_, index) {
+                final item = products[index];
+                return _productCard(item);
+              },
+            ),
           ),
-          itemBuilder: (_, index) {
-            final item = products[index];
-            return _productCard(item);
-          },
         );
       },
     );
@@ -651,8 +713,8 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
     final Color typeColor = item.isVeg == true
         ? Colors.green
         : item.isVeg == false
-            ? Colors.red
-            : Colors.orange;
+        ? Colors.red
+        : Colors.transparent;
 
     return InkWell(
       borderRadius: BorderRadius.circular(12),
@@ -667,7 +729,17 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.crop_square_rounded, size: 11, color: typeColor),
+            SizedBox(
+              width: 13,
+              height: 13,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(Icons.crop_square_rounded, size: 13, color: typeColor),
+                  Icon(Icons.circle, size: 6, color: typeColor),
+                ],
+              ),
+            ),
             const SizedBox(height: 3),
             Center(child: _productImage(item.imageUrl)),
             const SizedBox(height: 4),
@@ -678,17 +750,16 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 2),
-            Text(
-              item.price,
-              style: const TextStyle(
-                color: Color(0xFF129A50),
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
-            ),
-            const Spacer(),
             Row(
               children: [
+                Text(
+                  '\$${item.price}',
+                  style: const TextStyle(
+                    color: Color(0xFF129A50),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
                 const Spacer(),
                 InkWell(
                   borderRadius: BorderRadius.circular(6),
@@ -714,7 +785,6 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
       ),
     );
   }
-
   Future<void> _openCustomize(ProductModel item) async {
     await Navigator.push(
       context,
@@ -744,27 +814,42 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
         child: const Icon(Icons.fastfood_rounded, size: 20, color: Colors.black54),
       );
     }
+    // 🔹 Debug: check if this URL is already cached
+    () async {
+      final fileInfo =
+          await DefaultCacheManager().getFileFromCache(imageUrl);
+      final fromCache = fileInfo != null;
+      print('Product image [$imageUrl] cached before build? $fromCache');
+    }();
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
-      child: Image.network(
-        imageUrl,
+      child: CachedNetworkImage(
+        imageUrl: imageUrl,       // <-- use imageUrl here
         height: 38,
         width: 38,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) {
-          return Container(
-            height: 38,
-            width: 38,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF2F4F7),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.fastfood_rounded,
-                size: 20, color: Colors.black54),
-          );
-        },
+        placeholder: (_, __) => const SizedBox(
+          height: 38,
+          width: 38,
+          child: Center(
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+        errorWidget: (_, __, ___) => Container(
+          height: 38,
+          width: 38,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Color(0xFFF2F4F7),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(
+            Icons.fastfood_rounded,
+            size: 20,
+            color: Colors.black54,
+          ),
+        ),
       ),
     );
   }
@@ -808,6 +893,16 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
       }
     });
   }
+
+  int _totalCartQuantity() {
+    int total = 0;
+    for (final item in CartManager.cartItems) {
+      final qty = item['qty'] as int? ?? 0;
+      total += qty;
+    }
+    return total;
+  }
+
 
   Widget _bottomBar() {
     return Container(
@@ -883,7 +978,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                   },
                   child: Container(
                     height: 42,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 34),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFF8A00),
                       borderRadius: BorderRadius.circular(12),
@@ -911,7 +1006,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                                     shape: BoxShape.circle,
                                   ),
                                   child: Text(
-                                    "${CartManager.cartItems.length}",
+                                    "${_totalCartQuantity()}",
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 10,
@@ -950,10 +1045,12 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
     EdgeInsetsGeometry? margin,
     EdgeInsetsGeometry? padding,
     double? width,
+    double? height,
     Color borderColor = const Color(0x22000000),
   }) {
     return Container(
       width: width,
+      height: height,
       margin: margin,
       padding: padding ?? const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       alignment: Alignment.center,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -68,7 +69,9 @@ class _KioskScreenState extends State<KioskScreen> {
     return BlocListener<PromotionBloc, PromotionState>(
       listener: (context, state) {
         if (!mounted) return;
-        if (state is PromotionLoaded && state.images.isNotEmpty) {
+        if (state is PromotionLoaded &&
+            state.type == PromotionType.fullScreen &&
+            state.images.isNotEmpty)  {
           setState(() {
             images = state.images;
             _currentPage = 0;
@@ -103,34 +106,28 @@ class _KioskScreenState extends State<KioskScreen> {
                       src.startsWith('http://') || src.startsWith('https://');
 
                   return isNetwork
-                      ? Image.network(
-                          src,
-                          fit: BoxFit.cover,
-                          width: width,
-                          height: height,
-                          gaplessPlayback: true,
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) return child;
-                            return const ColoredBox(
-                              color: Colors.black,
-                              child: Center(
-                                child: CircularProgressIndicator(
-                                  valueColor:
-                                      AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              ),
-                            );
-                          },
-                          errorBuilder: (_, __, ___) => const ColoredBox(
-                            color: Colors.black,
-                            child: Center(
-                              child: Icon(
-                                Icons.broken_image,
-                                color: Colors.white70,
-                              ),
-                            ),
-                          ),
-                        )
+                      ? CachedNetworkImage(
+                    imageUrl: src,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
+                    placeholder: (_, __) => const ColoredBox(
+                      color: Colors.black,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          valueColor:
+                          AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                    ),
+                    errorWidget: (_, __, ___) => const ColoredBox(
+                      color: Colors.black,
+                      child: Center(
+                        child: Icon(Icons.broken_image, color: Colors.white70),
+                      ),
+                    ),
+                  )
+                      // : Image.asset(...);
                       : Image.asset(
                           src,
                           fit: BoxFit.cover,

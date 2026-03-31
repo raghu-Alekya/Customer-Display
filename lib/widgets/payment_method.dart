@@ -41,7 +41,9 @@ class _PaymentMethodsState extends State<PaymentMethods> {
         .replaceAll('-', ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    return normalized.contains('take out') || normalized.contains('takeaway');
+    return normalized.contains('take out') ||
+        normalized.contains('takeaway') ||
+        normalized.contains('take away');
   }
 
   int? _extractOrderId(Map<String, dynamic> orderResponse) {

@@ -159,7 +159,7 @@ class OrderRepository {
     final payload = {
       'status': 'processing',
       'parent_id': 0,
-      'created_via': 'takeaway',
+      'created_via': 'take away',
       'meta_data': [
         {
           'key': 'pos_device_id',
@@ -175,7 +175,7 @@ class OrderRepository {
     return _postOrder(
       cartItems: cartItems,
       payload: payload,
-      flowName: 'TakeAway',
+      flowName: 'Take Away',
     );
   }
 
