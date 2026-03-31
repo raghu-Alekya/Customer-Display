@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'bloc/promotion_bloc.dart';
 import 'Homescreen.dart';
 
 class KioskScreen extends StatefulWidget {
@@ -13,8 +16,9 @@ class KioskScreen extends StatefulWidget {
 class _KioskScreenState extends State<KioskScreen> {
   final PageController _controller = PageController();
   int _currentPage = 0;
+  Timer? _timer;
 
-  final List<String> images = [
+  List<String> images = const [
     'assets/offer.png',
     'assets/img.png',
     'assets/img2.png',
@@ -23,8 +27,10 @@ class _KioskScreenState extends State<KioskScreen> {
   @override
   void initState() {
     super.initState();
+    _loadFullScreenPromotions();
 
-    Timer.periodic(const Duration(seconds: 3), (timer) {
+    _timer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (images.isEmpty) return;
       if (_currentPage < images.length - 1) {
         _currentPage++;
       } else {
@@ -39,8 +45,16 @@ class _KioskScreenState extends State<KioskScreen> {
     });
   }
 
+  Future<void> _loadFullScreenPromotions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    if (!mounted || token == null || token.trim().isEmpty) return;
+    context.read<PromotionBloc>().add(FetchFullScreenPromotionImages(token));
+  }
+
   @override
   void dispose() {
+    _timer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -51,30 +65,81 @@ class _KioskScreenState extends State<KioskScreen> {
     final width = MediaQuery.of(context).size.width;
     final height = MediaQuery.of(context).size.height;
 
-    return GestureDetector(
-      onTap: () {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
+    return BlocListener<PromotionBloc, PromotionState>(
+      listener: (context, state) {
+        if (!mounted) return;
+        if (state is PromotionLoaded && state.images.isNotEmpty) {
+          setState(() {
+            images = state.images;
+            _currentPage = 0;
+          });
+          _controller.jumpToPage(0);
+          for (final src in state.images) {
+            if (src.startsWith('http://') || src.startsWith('https://')) {
+              precacheImage(NetworkImage(src), context);
+            }
+          }
+        }
       },
-      child: Scaffold(
-        body: Stack(
-          children: [
+      child: GestureDetector(
+        onTap: () {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          );
+        },
+        child: Scaffold(
+          body: Stack(
+            children: [
+              const Positioned.fill(child: ColoredBox(color: Colors.black)),
 
-            /// 🔹 Auto Sliding Images
-            PageView.builder(
-              controller: _controller,
-              itemCount: images.length,
-              itemBuilder: (context, index) {
-                return Image.asset(
-                  images[index],
-                  fit: BoxFit.cover,
-                  width: width,
-                  height: height,
-                );
-              },
-            ),
+              /// 🔹 Auto Sliding Images (asset or network)
+              PageView.builder(
+                controller: _controller,
+                itemCount: images.length,
+                itemBuilder: (context, index) {
+                  final src = images[index];
+                  final isNetwork =
+                      src.startsWith('http://') || src.startsWith('https://');
+
+                  return isNetwork
+                      ? Image.network(
+                          src,
+                          fit: BoxFit.cover,
+                          width: width,
+                          height: height,
+                          gaplessPlayback: true,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return const ColoredBox(
+                              color: Colors.black,
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  valueColor:
+                                      AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              ),
+                            );
+                          },
+                          errorBuilder: (_, __, ___) => const ColoredBox(
+                            color: Colors.black,
+                            child: Center(
+                              child: Icon(
+                                Icons.broken_image,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ),
+                        )
+                      : Image.asset(
+                          src,
+                          fit: BoxFit.cover,
+                          width: width,
+                          height: height,
+                          gaplessPlayback: true,
+                        );
+                },
+              ),
 
             /// 🔹 Bottom Text (Responsive)
             Positioned(
@@ -103,6 +168,7 @@ class _KioskScreenState extends State<KioskScreen> {
               ),
             ),
           ],
+          ),
         ),
       ),
     );

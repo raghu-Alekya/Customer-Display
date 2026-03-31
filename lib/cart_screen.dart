@@ -81,7 +81,7 @@ class _CartScreenState extends State<CartScreen> {
                 ),
 
                 const Text(
-                  "Your Cart (2)",
+                  "Your Cart",
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -157,13 +157,20 @@ class _CartScreenState extends State<CartScreen> {
                         ),
 
                         /// 🗑 CLEAR CART
-                        Text(
-                          "ClearCart",
-                          style: const TextStyle(
-                            color: Color(0xFFDF2626),
-                            fontSize: 14, // 👈 increased size
-                            decoration: TextDecoration.underline, // ✅ underline
-                            fontWeight: FontWeight.w500,
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              CartManager.cartItems.clear();
+                            });
+                          },
+                          child: const Text(
+                            "Clear Cart",
+                            style: TextStyle(
+                              color: Color(0xFFDF2626),
+                              fontSize: 14,
+                              decoration: TextDecoration.underline,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
                       ],

@@ -21,6 +21,10 @@ Future<void> main() async {
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);
+  await SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.immersiveSticky,
+    overlays: [],
+  );
   runApp(const MyApp());
 }
 
@@ -66,7 +70,7 @@ class MyApp extends StatelessWidget {
             child: child,
           );
         },
-        home: const  LoginScreen(),
+        home: const LoginScreen(),
       ),
     );
   }

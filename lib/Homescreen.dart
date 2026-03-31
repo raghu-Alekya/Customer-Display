@@ -78,6 +78,11 @@ class _HomeScreenState extends State<HomeScreen> {
             _currentPage = 0;
           });
           _controller.jumpToPage(0);
+          for (final src in state.images) {
+            if (src.startsWith('http://') || src.startsWith('https://')) {
+              precacheImage(NetworkImage(src), context);
+            }
+          }
         }
       },
       child: Scaffold(
@@ -126,38 +131,59 @@ class _HomeScreenState extends State<HomeScreen> {
               /// 🔹 BODY (ONLY AUTO SCROLLIMAGES)
               Flexible(
                 flex: 4, // 👈 control height here
-                child: PageView.builder(
-                  controller: _controller,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: images.length,
-                  itemBuilder: (context, index) {
-                    final src = images[index];
-                    final isNetwork =
-                        src.startsWith('http://') || src.startsWith('https://');
+                child: Stack(
+                  children: [
+                    const Positioned.fill(child: ColoredBox(color: Colors.black)),
+                    PageView.builder(
+                      controller: _controller,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: images.length,
+                      itemBuilder: (context, index) {
+                        final src = images[index];
+                        final isNetwork = src.startsWith('http://') ||
+                            src.startsWith('https://');
 
-                    return isNetwork
-                        ? Image.network(
-                            src,
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                            errorBuilder: (_, __, ___) => const ColoredBox(
-                              color: Colors.black,
-                              child: Center(
-                                child: Icon(
-                                  Icons.broken_image,
-                                  color: Colors.white70,
+                        return isNetwork
+                            ? Image.network(
+                                src,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                gaplessPlayback: true,
+                                loadingBuilder:
+                                    (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return const ColoredBox(
+                                    color: Colors.black,
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                                Colors.white),
+                                      ),
+                                    ),
+                                  );
+                                },
+                                errorBuilder: (_, __, ___) => const ColoredBox(
+                                  color: Colors.black,
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                          )
-                        : Image.asset(
-                            src,
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                          );
-                  },
+                              )
+                            : Image.asset(
+                                src,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                gaplessPlayback: true,
+                              );
+                      },
+                    ),
+                  ],
                 ),
               ),
 

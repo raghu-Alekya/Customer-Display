@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'cart_manger.dart';
 import 'model/addon_model.dart';
 import 'model/product model.dart';
+import 'repository/addon_repository.dart';
 
 class CustomizeScreen extends StatefulWidget {
   final ProductModel product;
@@ -24,11 +26,42 @@ class CustomizeScreen extends StatefulWidget {
 class _CustomizeScreenState extends State<CustomizeScreen> {
   int qty = 1;
   late List<AddonModel> addons;
+  bool isLoading = false;
+  String? loadError;
 
   @override
   void initState() {
     super.initState();
-    addons = widget.addons;
+    addons = List<AddonModel>.from(widget.addons);
+    if (addons.isEmpty) {
+      _loadAddons();
+    }
+  }
+
+  Future<void> _loadAddons() async {
+    setState(() {
+      isLoading = true;
+      loadError = null;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString("token") ?? "";
+      final fetched = await AddonRepository().getAddons(
+        productId: widget.product.id,
+        token: token,
+      );
+      if (!mounted) return;
+      setState(() {
+        addons = fetched;
+        isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        isLoading = false;
+        loadError = "Failed to load addons";
+      });
+    }
   }
 
   double get basePrice {
@@ -278,99 +311,111 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                   const SizedBox(height: 16),
 
                   /// 🔹 CUSTOMIZE
-                  const Text("Customize",
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text(
+                    "Customize",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   const Text("Choose one or more add ons"),
 
                   const SizedBox(height: 10),
 
-                  /// 🔹 ADDONS GRID
-                  Row(
-                    children: List.generate(addons.length, (index) {
-                      final addon = addons[index];
-                      final isSelected = addon.isSelected;
+                  if (isLoading)
+                    const Expanded(
+                      child: Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  else if (loadError != null)
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          loadError!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    )
+                  else
+                    Row(
+                      children: List.generate(addons.length, (index) {
+                        final addon = addons[index];
+                        final isSelected = addon.isSelected;
 
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            addon.isSelected = !isSelected;
-                          });
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.only(right: 12),
-                          padding: const EdgeInsets.all(10),
-                          width: 110,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isSelected
-                                  ? const Color(0xFFFF7A00)
-                                  : Colors.grey.shade300,
-                              width: 1.5,
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              addon.isSelected = !isSelected;
+                            });
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(right: 12),
+                            padding: const EdgeInsets.all(10),
+                            width: 110,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSelected
+                                    ? const Color(0xFFFF7A00)
+                                    : Colors.grey.shade300,
+                                width: 1.5,
+                              ),
                             ),
-                          ),
-                          child: Column(
-                            children: [
-                              /// 🔥 IMAGE + CHECK ICON
-                              Stack(
-                                children: [
-                                  Container(
-                                    height: 50,
-                                    width: 50,
-                                    decoration: BoxDecoration(
-                                      color: Colors.orange.shade100,
-                                      borderRadius: BorderRadius.circular(10),
+                            child: Column(
+                              children: [
+                                Stack(
+                                  children: [
+                                    Container(
+                                      height: 50,
+                                      width: 50,
+                                      decoration: BoxDecoration(
+                                        color: Colors.orange.shade100,
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                      ),
+                                      child: const Icon(Icons.fastfood),
                                     ),
-                                    child: const Icon(Icons.fastfood),
-                                  ),
-
-                                  /// ✅ CHECK ICON (LIKE YOUR IMAGE)
-                                  if (isSelected)
-                                    Positioned(
-                                      right: -2,
-                                      top: -2,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(3),
-                                        decoration: const BoxDecoration(
-                                          color: Color(0xFFFF7A00),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.check,
-                                          size: 14,
-                                          color: Colors.white,
+                                    if (isSelected)
+                                      Positioned(
+                                        right: -2,
+                                        top: -2,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(3),
+                                          decoration: const BoxDecoration(
+                                            color: Color(0xFFFF7A00),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.check,
+                                            size: 14,
+                                            color: Colors.white,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 8),
-
-                              Text(
-                                addon.name,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: isSelected
-                                      ? const Color(0xFFFF7A00)
-                                      : Colors.black,
+                                  ],
                                 ),
-                              ),
-
-                              Text(
-                                "₹${addon.price}",
-                                style: const TextStyle(
-                                  color: Colors.green,
-                                  fontSize: 12,
+                                const SizedBox(height: 8),
+                                Text(
+                                  addon.name,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: isSelected
+                                        ? const Color(0xFFFF7A00)
+                                        : Colors.black,
+                                  ),
                                 ),
-                              ),
-                            ],
+                                Text(
+                                  "\$${addon.price.toStringAsFixed(2)}",
+                                  style: const TextStyle(
+                                    color: Colors.green,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    }),
-                  )
+                        );
+                      }),
+                    )
                 ],
               ),
             ),
@@ -408,21 +453,45 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                         borderRadius: BorderRadius.circular(10), // ✅ ADD THIS
                       ),
                     ),
-                    onPressed: () {
-                      /// 👉 Get selected addons
+                    onPressed: isLoading
+                        ? null
+                        : () {
                       final selectedAddons =
-                      addons.where((a) => a.isSelected).toList();
+                          addons.where((a) => a.isSelected).toList();
 
-                      /// 👉 Add to global cart
-                      CartManager.cartItems.add({
-                        "product": widget.product,
-                        "addons": selectedAddons,
-                        "qty": qty,
+                      // Try to find same product with same addons in cart
+                      final existingIndex =
+                          CartManager.cartItems.indexWhere((item) {
+                        final product = item["product"];
+                        if (product.id != widget.product.id) return false;
+
+                        final List existingAddons = item["addons"] as List;
+                        if (existingAddons.length != selectedAddons.length) {
+                          return false;
+                        }
+
+                        final existingIds = existingAddons
+                            .map((a) => a.id)
+                            .toSet();
+                        final newIds =
+                            selectedAddons.map((a) => a.id).toSet();
+
+                        return existingIds.length == newIds.length &&
+                            existingIds.containsAll(newIds);
                       });
 
-                      print("🛒 Cart Count: ${CartManager.cartItems.length}");
+                      if (existingIndex >= 0) {
+                        // Increment quantity for same item instead of new row
+                        CartManager.cartItems[existingIndex]["qty"] += qty;
+                      } else {
+                        // Add as new cart line
+                        CartManager.cartItems.add({
+                          "product": widget.product,
+                          "addons": selectedAddons,
+                          "qty": qty,
+                        });
+                      }
 
-                      /// 👉 Go back
                       Navigator.pop(context);
                     },
                     child: const Text("Add to Cart"),

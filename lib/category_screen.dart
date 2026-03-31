@@ -6,6 +6,7 @@ import 'package:keyos_app/repository/addon_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'Homescreen.dart';
+import 'bloc/promotion_bloc.dart';
 import 'bloc/category_bloc.dart';
 import 'bloc/product_bloc.dart';
 import 'bloc/sub category_bloc.dart';
@@ -41,6 +42,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
     'assets/promo-2.jpeg',
     'assets/promo-3.png',
   ];
+  List<String> bannerImages = const [];
 
   final List<String> orderTypes = ['Non Veg', 'Veg'];
 
@@ -58,6 +60,14 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
     promoPageController = PageController();
     searchController = TextEditingController();
     _startPromoAutoSlide();
+    _loadBannerPromotions();
+  }
+
+  Future<void> _loadBannerPromotions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    if (!mounted || token == null || token.trim().isEmpty) return;
+    context.read<PromotionBloc>().add(FetchBannerPromotionImages(token));
   }
 
   void _startPromoAutoSlide() {
@@ -110,6 +120,23 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
       body: SafeArea(
         child: MultiBlocListener(
           listeners: [
+            BlocListener<PromotionBloc, PromotionState>(
+              listener: (context, state) {
+                if (!mounted) return;
+                if (state is PromotionLoaded && state.images.isNotEmpty) {
+                  setState(() {
+                    bannerImages = state.images;
+                    currentPromoIndex = 0;
+                  });
+                  promoPageController.jumpToPage(0);
+                  for (final src in state.images) {
+                    if (src.startsWith('http://') || src.startsWith('https://')) {
+                      precacheImage(NetworkImage(src), context);
+                    }
+                  }
+                }
+              },
+            ),
             BlocListener<CategoryBloc, CategoryState>(
               listener: (context, state) {
                 if (state is CategoryLoaded) {
@@ -185,6 +212,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
   }
 
   Widget _promoCard() {
+    final images = bannerImages.isNotEmpty ? bannerImages : promoImages;
     return Container(
       margin: EdgeInsets.zero,
       decoration: const BoxDecoration(),
@@ -193,26 +221,64 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
         height: 96,
         child: PageView.builder(
           controller: promoPageController,
-          itemCount: promoImages.length,
+          itemCount: images.length,
           onPageChanged: (index) {
             setState(() {
               currentPromoIndex = index;
             });
           },
           itemBuilder: (_, index) {
-            return Image.asset(
-              promoImages[index],
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) {
-                return Container(
-                  color: Colors.white12,
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.image_outlined,
-                    color: Colors.white70,
-                  ),
-                );
-              },
+            final src = images[index];
+            final isNetwork =
+                src.startsWith('http://') || src.startsWith('https://');
+
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                const ColoredBox(color: Colors.black),
+                isNetwork
+                    ? Image.network(
+                        src,
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return const ColoredBox(
+                            color: Colors.black,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                        errorBuilder: (_, __, ___) => const ColoredBox(
+                          color: Colors.black,
+                          child: Center(
+                            child: Icon(
+                              Icons.broken_image,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ),
+                      )
+                    : Image.asset(
+                        src,
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                        errorBuilder: (_, __, ___) => const ColoredBox(
+                          color: Colors.black,
+                          child: Center(
+                            child: Icon(
+                              Icons.image_outlined,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ),
+                      ),
+              ],
             );
           },
         ),
@@ -432,7 +498,17 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
             );
           }
 
-          final categories = state.categories;
+          final categories = state.categories
+              .where((c) => c.name.trim().toLowerCase() != 'uncategorized')
+              .toList();
+          if (categories.isEmpty) {
+            return const Center(
+              child: Text(
+                'No categories',
+                style: TextStyle(fontSize: 12),
+              ),
+            );
+          }
           final safeSelectedIndex = selectedCategory < categories.length
               ? selectedCategory
               : 0;
@@ -575,114 +651,84 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
     final Color typeColor = item.isVeg == true
         ? Colors.green
         : item.isVeg == false
-        ? Colors.red
-        : Colors.orange;
+            ? Colors.red
+            : Colors.orange;
 
-    return Container(
-      padding: const EdgeInsets.all(7),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.crop_square_rounded, size: 11, color: typeColor),
-
-          const SizedBox(height: 3),
-
-          Center(
-            child: _productImage(item.imageUrl),
-          ),
-
-          const SizedBox(height: 4),
-
-          Text(
-            item.name,
-            style: const TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w500),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-
-          const SizedBox(height: 2),
-
-          Text(
-            item.price,
-            style: const TextStyle(
-              color: Color(0xFF129A50),
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => _openCustomize(item),
+      child: Container(
+        padding: const EdgeInsets.all(7),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.black12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.crop_square_rounded, size: 11, color: typeColor),
+            const SizedBox(height: 3),
+            Center(child: _productImage(item.imageUrl)),
+            const SizedBox(height: 4),
+            Text(
+              item.name,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-
-          const Spacer(),
-
-          Row(
-            children: [
-              const Spacer(),
-
-              /// 🔥 FIXED BUTTON
-              InkWell(
-                borderRadius: BorderRadius.circular(6),
-                onTap: () async {
-                  final prefs = await SharedPreferences.getInstance();
-                  final token = prefs.getString("token") ?? "";
-
-                  print("👉 TOKEN: $token");
-                  print("👉 PRODUCT ID: ${item.id}");
-
-                  try {
-                    final addons = await AddonRepository().getAddons(
-                      productId: item.id,
-                      token: token,
-                    );
-
-                    print("✅ ADDONS RESPONSE: ${addons.length}");
-
-                    /// ✅ WAIT FOR RETURN
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CustomizeScreen(
-                          product: item,
-                          addons: addons,
-                          orderType: widget.orderType,
-                        ),
-                      ),
-                    );
-
-                    /// 🔥 VERY IMPORTANT → REFRESH UI
-                    setState(() {});
-
-                  } catch (e) {
-                    print("❌ ERROR: $e");
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Error loading addons")),
-                    );
-                  }
-                },
-                child: Container(
-                  height: 22,
-                  width: 22,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFD8B2),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: const Icon(
-                    Icons.add,
-                    size: 13,
-                    color: Color(0xFFFF8A00),
+            const SizedBox(height: 2),
+            Text(
+              item.price,
+              style: const TextStyle(
+                color: Color(0xFF129A50),
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+            const Spacer(),
+            Row(
+              children: [
+                const Spacer(),
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () => _openCustomize(item),
+                  child: Container(
+                    height: 22,
+                    width: 22,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFD8B2),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: const Icon(
+                      Icons.add,
+                      size: 13,
+                      color: Color(0xFFFF8A00),
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _openCustomize(ProductModel item) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CustomizeScreen(
+          product: item,
+          addons: const [],
+          orderType: widget.orderType,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    setState(() {});
   }
 
   Widget _productImage(String? imageUrl) {

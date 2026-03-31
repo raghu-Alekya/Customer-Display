@@ -22,6 +22,24 @@ class FetchPortraitPromotionImages extends PromotionEvent {
   List<Object?> get props => [token];
 }
 
+class FetchFullScreenPromotionImages extends PromotionEvent {
+  final String token;
+
+  const FetchFullScreenPromotionImages(this.token);
+
+  @override
+  List<Object?> get props => [token];
+}
+
+class FetchBannerPromotionImages extends PromotionEvent {
+  final String token;
+
+  const FetchBannerPromotionImages(this.token);
+
+  @override
+  List<Object?> get props => [token];
+}
+
 // STATES
 
 abstract class PromotionState extends Equatable {
@@ -70,6 +88,8 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
       : _repository = repository,
         super(const PromotionInitial()) {
     on<FetchPortraitPromotionImages>(_onFetchPortraitPromotionImages);
+    on<FetchFullScreenPromotionImages>(_onFetchFullScreenPromotionImages);
+    on<FetchBannerPromotionImages>(_onFetchBannerPromotionImages);
   }
 
   Future<void> _onFetchPortraitPromotionImages(
@@ -80,6 +100,68 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
     try {
       final response =
           await _repository.getPortraitPromotionImages(token: event.token);
+
+      if (!response.success || response.images.isEmpty) {
+        emit(
+          PromotionError(
+            response.message.isEmpty
+                ? 'No promotion images available'
+                : response.message,
+          ),
+        );
+        return;
+      }
+
+      emit(
+        PromotionLoaded(
+          images: response.images,
+          message: response.message,
+        ),
+      );
+    } catch (e) {
+      emit(PromotionError(e.toString()));
+    }
+  }
+
+  Future<void> _onFetchFullScreenPromotionImages(
+    FetchFullScreenPromotionImages event,
+    Emitter<PromotionState> emit,
+  ) async {
+    emit(const PromotionLoading());
+    try {
+      final response =
+          await _repository.getFullScreenPromotionImages(token: event.token);
+
+      if (!response.success || response.images.isEmpty) {
+        emit(
+          PromotionError(
+            response.message.isEmpty
+                ? 'No promotion images available'
+                : response.message,
+          ),
+        );
+        return;
+      }
+
+      emit(
+        PromotionLoaded(
+          images: response.images,
+          message: response.message,
+        ),
+      );
+    } catch (e) {
+      emit(PromotionError(e.toString()));
+    }
+  }
+
+  Future<void> _onFetchBannerPromotionImages(
+    FetchBannerPromotionImages event,
+    Emitter<PromotionState> emit,
+  ) async {
+    emit(const PromotionLoading());
+    try {
+      final response =
+          await _repository.getBannerPromotionImages(token: event.token);
 
       if (!response.success || response.images.isEmpty) {
         emit(
