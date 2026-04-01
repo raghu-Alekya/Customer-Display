@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:keyos_app/widgets/payment_method.dart';
 import 'cart_manger.dart';
+import 'customize_screen.dart';
+import 'model/addon_model.dart';
 
 class CartScreen extends StatefulWidget {
   final String orderType;
@@ -233,28 +235,77 @@ class _CartScreenState extends State<CartScreen> {
                                       if (addons.isNotEmpty)
                                         Padding(
                                           padding: const EdgeInsets.only(top: 4),
-                                          child: Text(
-                                            addons.map((a) => a.name).join(", "),
-                                            style: const TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.grey),
+                                          child: Wrap(
+                                            spacing: 6,
+                                            runSpacing: 6,
+                                            children: addons.map<Widget>((addon) {
+                                              return Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFFFDEFE6),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text(
+                                                      addon.name,
+                                                      style: const TextStyle(fontSize: 11, color: Colors.black87),
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    GestureDetector(
+                                                      onTap: () {
+                                                        setState(() {
+                                                          addons.remove(addon); // removes only clicked addon
+                                                        });
+                                                      },
+                                                      child: const Icon(
+                                                        Icons.cancel,
+                                                        size: 14,
+                                                        color: Colors.red,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            }).toList(),
                                           ),
                                         ),
 
                                       if (addons.isNotEmpty)
-                                        Container(
-                                          margin: const EdgeInsets.only(top: 4),
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            border: Border.all(color: Colors.orange),
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: const Text(
-                                            "Customize",
-                                            style: TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.orange),
+                                        GestureDetector(
+                                          onTap: () async {
+                                            final result = await Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => CustomizeScreen(
+                                                  product: product,
+                                                  addons: List<AddonModel>.from(addons),
+                                                  orderType: widget.orderType,
+                                                  initialQty: qty,
+                                                  isEditFromCart: true,
+                                                ),
+                                              ),
+                                            );
+
+                                            if (result is Map) {
+                                              setState(() {
+                                                item["qty"] = result["qty"] as int;
+                                                item["addons"] = result["addons"] as List;
+                                              });
+                                            }
+                                          },
+                                          child: Container(
+                                            margin: const EdgeInsets.only(top: 4),
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              border: Border.all(color: Colors.orange),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: const Text(
+                                              "Customize",
+                                              style: TextStyle(fontSize: 10, color: Colors.orange),
+                                            ),
                                           ),
                                         )
                                     ],

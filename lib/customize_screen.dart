@@ -12,11 +12,16 @@ class CustomizeScreen extends StatefulWidget {
   final List<AddonModel> addons;
   final String orderType;
 
+  final int initialQty;
+  final bool isEditFromCart;
+
   const CustomizeScreen({
     super.key,
     required this.product,
     required this.addons,
     required this.orderType,
+    this.initialQty = 1,
+    this.isEditFromCart = false,
   });
 
   @override
@@ -28,14 +33,20 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
   late List<AddonModel> addons;
   bool isLoading = false;
   String? loadError;
+  // final int initialQty;
+  final int minQty = 1;
+  final int maxQty = 99;
 
   @override
   void initState() {
     super.initState();
+    qty = widget.initialQty;
     addons = List<AddonModel>.from(widget.addons);
-    if (addons.isEmpty) {
-      _loadAddons();
-    }
+    _loadAddons();
+
+    // if (addons.isEmpty) {
+    //   _loadAddons();
+    // }
   }
 
   Future<void> _loadAddons() async {
@@ -43,13 +54,24 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
       isLoading = true;
       loadError = null;
     });
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString("token") ?? "";
+
+      // IDs already selected when opening from cart
+      final selectedIds = widget.addons.map((a) => a.id).toSet();
+
       final fetched = await AddonRepository().getAddons(
         productId: widget.product.id,
         token: token,
       );
+
+      // Keep previous selections in fetched full list
+      for (final addon in fetched) {
+        addon.isSelected = selectedIds.contains(addon.id);
+      }
+
       if (!mounted) return;
       setState(() {
         addons = fetched;
@@ -63,7 +85,6 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
       });
     }
   }
-
   double get basePrice {
     return double.tryParse(
       widget.product.price.replaceAll("₹", ""),
@@ -238,14 +259,22 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                     ),
                     child: Row(
                       children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            width: 40,
+                            height: 40,
                             color: Colors.orange.shade100,
-                            borderRadius: BorderRadius.circular(8),
+                            child: (widget.product.imageUrl != null &&
+                                widget.product.imageUrl!.trim().isNotEmpty)
+                                ? Image.network(
+                              widget.product.imageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                              const Icon(Icons.fastfood, size: 18),
+                            )
+                                : const Icon(Icons.fastfood, size: 18),
                           ),
-                          child: const Icon(Icons.fastfood, size: 18),
                         ),
 
                         const SizedBox(width: 8),
@@ -261,38 +290,40 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                           child: Row(
                             children: [
                               GestureDetector(
-                                onTap: () {
-                                  if (qty > 1) setState(() => qty--);
-                                },
+                                onTap: qty > minQty ? () => setState(() => qty--) : null,
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
                                     borderRadius: BorderRadius.circular(5),
                                   ),
-                                  child:
-                                  const Icon(Icons.remove, size: 14),
+                                  child: Icon(
+                                    Icons.remove,
+                                    size: 14,
+                                    color: qty > minQty ? Colors.black : Colors.grey,
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 6),
                               Text("$qty"),
                               const SizedBox(width: 6),
                               GestureDetector(
-                                onTap: () {
-                                  setState(() => qty++);
-                                },
+                                onTap: qty < maxQty ? () => setState(() => qty++) : null,
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFFF7A00),
                                     borderRadius: BorderRadius.circular(5),
                                   ),
-                                  child: const Icon(Icons.add,
-                                      size: 14, color: Colors.white),
+                                  child: Icon(
+                                    Icons.add,
+                                    size: 14,
+                                    color: qty < maxQty ? Colors.white : Colors.white70,
+                                  ),
                                 ),
                               ),
                             ],
-                          ),
+                          )
                         ),
 
                         Expanded(
@@ -364,15 +395,20 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                               children: [
                                 Stack(
                                   children: [
-                                    Container(
-                                      height: 50,
-                                      width: 50,
-                                      decoration: BoxDecoration(
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Container(
+                                        height: 50,
+                                        width: 50,
                                         color: Colors.orange.shade100,
-                                        borderRadius:
-                                            BorderRadius.circular(10),
+                                        child: (addon.imageUrl != null && addon.imageUrl!.trim().isNotEmpty)
+                                            ? Image.network(
+                                          addon.imageUrl!,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => const Icon(Icons.fastfood),
+                                        )
+                                            : const Icon(Icons.fastfood),
                                       ),
-                                      child: const Icon(Icons.fastfood),
                                     ),
                                     if (isSelected)
                                       Positioned(
@@ -456,12 +492,19 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                     onPressed: isLoading
                         ? null
                         : () {
-                      final selectedAddons =
-                          addons.where((a) => a.isSelected).toList();
+                      final selectedAddons = addons.where((a) => a.isSelected).toList();
 
-                      // Try to find same product with same addons in cart
-                      final existingIndex =
-                          CartManager.cartItems.indexWhere((item) {
+                      // EDIT MODE: opened from cart -> return edited values to cart row
+                      if (widget.isEditFromCart) {
+                        Navigator.pop(context, {
+                          "qty": qty,
+                          "addons": selectedAddons,
+                        });
+                        return;
+                      }
+
+                      // ADD MODE: opened from menu/category -> keep existing merge/add behavior
+                      final existingIndex = CartManager.cartItems.indexWhere((item) {
                         final product = item["product"];
                         if (product.id != widget.product.id) return false;
 
@@ -470,29 +513,25 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                           return false;
                         }
 
-                        final existingIds = existingAddons
-                            .map((a) => a.id)
-                            .toSet();
-                        final newIds =
-                            selectedAddons.map((a) => a.id).toSet();
+                        final existingIds = existingAddons.map((a) => a.id).toSet();
+                        final newIds = selectedAddons.map((a) => a.id).toSet();
 
                         return existingIds.length == newIds.length &&
                             existingIds.containsAll(newIds);
                       });
 
                       if (existingIndex >= 0) {
-                        // Increment quantity for same item instead of new row
                         CartManager.cartItems[existingIndex]["qty"] += qty;
                       } else {
-                        // Add as new cart line
-                        CartManager.cartItems.add({
-                          "product": widget.product,
-                          "addons": selectedAddons,
-                          "qty": qty,
-                        });
+                        // Prefer manager helper so lineId is included
+                        CartManager.addItem(
+                          product: widget.product,
+                          addons: selectedAddons,
+                          qty: qty,
+                        );
                       }
 
-                      Navigator.pop(context);
+                      Navigator.pop(context, true);
                     },
                     child: const Text("Add to Cart"),
                   ),

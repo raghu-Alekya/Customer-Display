@@ -16,6 +16,9 @@ class PromotionRepository {
       'https://kioski.alekyatechsolutions.com/wp-json/pinaka-kiosk/v1/orders/get-portrait-promotion-images',
     );
 
+    print("🔵 Portrait API: $uri");
+    print("🔐 Token: $token");
+
     final response = await _client.get(
       uri,
       headers: {
@@ -23,12 +26,20 @@ class PromotionRepository {
       },
     );
 
+    print("👉 Status Code: ${response.statusCode}");
+    print("👉 Raw Response: ${response.body}");
+
     final decoded = json.decode(response.body) as Map<String, dynamic>;
 
+    print("👉 Decoded Response: $decoded");
+
     if (response.statusCode == 200) {
-      return PromotionImagesResponse.fromJson(decoded);
+      final result = PromotionImagesResponse.fromJson(decoded);
+      print("✅ Portrait Images Parsed Successfully");
+      return result;
     }
 
+    print("❌ Portrait API Error: ${decoded['message']}");
     throw Exception(
       decoded['message']?.toString() ??
           'Failed to load portrait promotion images',
@@ -42,6 +53,9 @@ class PromotionRepository {
       'https://kioski.alekyatechsolutions.com/wp-json/pinaka-kiosk/v1/orders/get-full-screen-promotion-images',
     );
 
+    print("🔵 Full Screen API: $uri");
+    print("🔐 Token: $token");
+
     final response = await _client.get(
       uri,
       headers: {
@@ -49,12 +63,20 @@ class PromotionRepository {
       },
     );
 
+    print("👉 Status Code: ${response.statusCode}");
+    print("👉 Raw Response: ${response.body}");
+
     final decoded = json.decode(response.body) as Map<String, dynamic>;
 
+    print("👉 Decoded Response: $decoded");
+
     if (response.statusCode == 200) {
-      return PromotionImagesResponse.fromJson(decoded);
+      final result = PromotionImagesResponse.fromJson(decoded);
+      print("✅ Full Screen Images Parsed Successfully");
+      return result;
     }
 
+    print("❌ Full Screen API Error: ${decoded['message']}");
     throw Exception(
       decoded['message']?.toString() ??
           'Failed to load full screen promotion images',
@@ -68,6 +90,9 @@ class PromotionRepository {
       'https://kioski.alekyatechsolutions.com/wp-json/pinaka-kiosk/v1/orders/get-banner-promotion-images',
     );
 
+    print("🔵 Banner API: $uri");
+    print("🔐 Token: $token");
+
     final response = await _client.get(
       uri,
       headers: {
@@ -75,16 +100,23 @@ class PromotionRepository {
       },
     );
 
+    print("👉 Status Code: ${response.statusCode}");
+    print("👉 Raw Response: ${response.body}");
+
     final decoded = json.decode(response.body) as Map<String, dynamic>;
 
+    print("👉 Decoded Response: $decoded");
+
     if (response.statusCode == 200) {
-      return PromotionImagesResponse.fromJson(decoded);
+      final result = PromotionImagesResponse.fromJson(decoded);
+      print("✅ Banner Images Parsed Successfully");
+      return result;
     }
 
+    print("❌ Banner API Error: ${decoded['message']}");
     throw Exception(
       decoded['message']?.toString() ??
           'Failed to load banner promotion images',
     );
   }
 }
-
