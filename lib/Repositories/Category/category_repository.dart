@@ -1,3 +1,4 @@
+// repositories/category_repository.dart
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -11,15 +12,10 @@ import '../../Helper/api_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Category/category_model.dart';
 import '../../Models/Category/category_product_model.dart';
-import '../Search/product_search_repository.dart';
 
 const String categoryBoxName = 'categoryCache';
 const String productBoxName = 'productCache';
 const cacheDuration = Duration(hours: 12);
-
-// ✅ FIX: Background refresh only fires when cache is older than this threshold.
-// Prevents hammering the server on every cache hit.
-const _bgRefreshThreshold = Duration(minutes: 30);
 
 /// ✅ Offline-first Category Repository
 /// - Loads cached data instantly for fast UI.
@@ -27,11 +23,8 @@ const _bgRefreshThreshold = Duration(minutes: 30);
 /// - Caches products + variations + tax + age restriction info.
 class CategoryRepository {
   final APIHelper _helper = APIHelper();
-  static Future<void>? _prefetchAllCategoryProductsTask;
-
-  // ✅ FIX: Per-key in-flight tracker prevents duplicate concurrent refreshes
-  // for the same category or product key.
-  static final Map<String, Future<void>> _inFlightRefreshes = {};
+  // Background prefetching and in-flight tracking were removed to avoid
+  // hammering the API. Repository now only loads on demand.
 
   /// Load categories from cache first, then update from API only when stale
   Future<CategoryListResponse> getCategories({int parent = 0}) async {
@@ -44,27 +37,14 @@ class CategoryRepository {
       final List<dynamic> cachedList = json.decode(cached.json);
       if (kDebugMode) print("📦 Loaded cached categories (parent: $parent)");
 
-      // ✅ FIX: Only refresh in background if cache is older than threshold
-      if (_isStale(cached.timestamp)) {
-        _scheduleBackgroundRefresh(cacheKey, () => _updateCategoriesFromApi(parent));
-      } else {
-        if (kDebugMode) print("⏱️ Categories cache is fresh, skipping BG refresh (parent: $parent)");
-      }
-
+      // ❌ No background refresh: simply return cached data.
+      // Categories will only be refreshed when you explicitly clear cache
+      // (e.g. via a manual "refresh" action) and call this again.
       return CategoryListResponse.fromJson(cachedList);
     }
 
-    // 🚀 No cache → fetch directly from API
+    //  No cache → fetch directly from API once and persist to Isar.
     return await _getCategoriesFromApi(parent);
-  }
-
-  Future<void> _updateCategoriesFromApi(int parent) async {
-    try {
-      await _getCategoriesFromApi(parent);
-      if (kDebugMode) print("✅ Categories updated in background");
-    } catch (e) {
-      if (kDebugMode) print("⚠️ Failed to refresh categories: $e");
-    }
   }
 
   Future<CategoryListResponse> _getCategoriesFromApi(int parent) async {
@@ -75,7 +55,7 @@ class CategoryRepository {
     final response = await _helper.get(url, true);
 
     if (kDebugMode) {
-      print("🧩 Category API Response (parent: $parent):");
+      print(" Category API Response (parent: $parent):");
       print(response);
     }
 
@@ -122,27 +102,14 @@ class CategoryRepository {
 
       print(" Loaded cached products (category: $categoryId)");
 
-      // ✅ FIX: Only refresh in background if cache is older than threshold
-      if (_isStale(cached.timestamp)) {
-        _scheduleBackgroundRefresh(cacheKey, () => _updateProductsFromApi(categoryId));
-      } else {
-        if (kDebugMode) print("⏱️ Products cache is fresh, skipping BG refresh (category: $categoryId)");
-      }
-
+      // ❌ No background refresh: simply return cached data.
+      // Products will only be refreshed when cache is cleared or expired
+      // by separate logic you control.
       return CategoryProductListResponse.fromJson(cachedList);
     }
 
-    //  No cache → fetch directly
+    //  No cache → fetch directly from API once and persist to Isar.
     return await _getProductsFromApi(categoryId);
-  }
-
-  Future<void> _updateProductsFromApi(int categoryId) async {
-    try {
-      await _getProductsFromApi(categoryId);
-      if (kDebugMode) print(" Products updated in background");
-    } catch (e) {
-      if (kDebugMode) print(" Failed to refresh products: $e");
-    }
   }
 
   ///  Fetch products + normalize + cache (tax + age + variants)
@@ -308,8 +275,8 @@ class CategoryRepository {
       print("💾 Cached ${normalizedProducts.length} products with tax & age info (cat: $categoryId)");
     }
 
-    final productRepo = ProductRepository();
-    // NOTE: keeping variations cache in Hive for now; only category/product list caching moved to Isar.
+    // NOTE: keeping variations cache in Hive for now; only category/product
+    // list caching moved to Isar.
     final productCacheBox = StorageProvider.productCache;
 
     for (final product in productList) {
@@ -434,76 +401,6 @@ class CategoryRepository {
     return uniqueProducts.values.toList();
   }
 
-  /// Pre-fetches and caches products for ALL subcategories at startup
-  Future<void> prefetchAllCategoryProducts() async {
-    // Ensure global prefetch runs only once per app session,
-    // even if multiple widgets trigger it in background.
-    final existingTask = _prefetchAllCategoryProductsTask;
-    if (existingTask != null) {
-      await existingTask;
-      return;
-    }
-
-    final task = _prefetchAllCategoryProductsInternal();
-    _prefetchAllCategoryProductsTask = task;
-    await task;
-  }
-
-  Future<void> _prefetchAllCategoryProductsInternal() async {
-    try {
-      // Step 1: Get all parent categories
-      final parentCategories = await getCategories(parent: 0);
-      final allCategoryIds = <int>[];
-
-      for (final parent in parentCategories.categories ?? []) {
-        if (parent.id == null) continue;
-
-        // Step 2: Get subcategories for each parent
-        try {
-          final subCategories = await getCategories(parent: parent.id!);
-          for (final sub in subCategories.categories ?? []) {
-            if (sub.id != null) allCategoryIds.add(sub.id!);
-          }
-        } catch (e) {
-          if (kDebugMode) print("⚠️ Failed subcategories for parent ${parent.id}: $e");
-        }
-
-        // Also add parent itself
-        allCategoryIds.add(parent.id!);
-      }
-
-      if (kDebugMode) print("🚀 Pre-fetching products for ${allCategoryIds.length} categories...");
-
-      // Step 3: Fetch products for each category (checks cache first)
-      for (final categoryId in allCategoryIds.toSet()) {
-        try {
-          await getProductsByCategory(categoryId);
-          if (kDebugMode) print("✅ Pre-fetched products for category $categoryId");
-        } catch (e) {
-          if (kDebugMode) print("⚠️ Failed products for category $categoryId: $e");
-        }
-      }
-
-      if (kDebugMode) print("🎉 All category products pre-fetched successfully");
-    } catch (e) {
-      if (kDebugMode) print("❌ prefetchAllCategoryProducts error: $e");
-    }
-  }
-
-  // ✅ FIX: Returns true only when the cached entry is older than the threshold.
-  bool _isStale(DateTime? timestamp) {
-    if (timestamp == null) return true;
-    return DateTime.now().difference(timestamp) > _bgRefreshThreshold;
-  }
-
-  // ✅ FIX: Ensures only one background refresh runs per cache key at a time.
-  // If a refresh for the same key is already in-flight, the new request is dropped.
-  void _scheduleBackgroundRefresh(String key, Future<void> Function() work) {
-    if (_inFlightRefreshes.containsKey(key)) {
-      if (kDebugMode) print("⏳ BG refresh already in-flight for [$key], skipping");
-      return;
-    }
-    final task = work().whenComplete(() => _inFlightRefreshes.remove(key));
-    _inFlightRefreshes[key] = task;
-  }
+  /// Pre-fetch all category products was previously used to warm the cache
+  /// aggressively at startup. It has been removed to avoid heavy API load.
 }

@@ -70,10 +70,7 @@ class OrderHelper {
 
   /// Notifier so RightOrderPanel can refresh when a new order is created (e.g. from grid).
   static final ValueNotifier<int> orderPanelRefreshNotifier = ValueNotifier(0);
-
   static final Map<int, double> _manualRefundAmounts = {};
-  static final Map<int, Map<String, dynamic>> _productTaxMetaCache = {};
-  static bool _isProductTaxMetaCacheLoaded = false;
 
   static void notifyOrderPanelToRefresh() {
     orderPanelRefreshNotifier.value++;
@@ -90,6 +87,10 @@ class OrderHelper {
   static double? getManualRefundAmount(int orderId) {
     return _manualRefundAmounts[orderId];
   }
+
+  // static void notifyOrderPanelToRefresh() {
+  //   orderPanelRefreshNotifier.value++;
+  // }
 
   /// When ensureOrderExists fails, this holds the error message for UI feedback.
   static String? lastEnsureOrderError;
@@ -149,44 +150,34 @@ class OrderHelper {
       final isar = IsarService.sync;
       if (isar == null) return 0.0;
 
-      if (!_isProductTaxMetaCacheLoaded) {
-        final cachedEntries = isar.isarCacheEntrys
-            .where()
-            .filter()
-            .keyStartsWith("products_")
-            .findAllSync();
+      final cachedEntries = isar.isarCacheEntrys
+          .where()
+          .filter()
+          .keyStartsWith("products_")
+          .findAllSync();
 
-        for (final entry in cachedEntries) {
-          final List products = json.decode(entry.json);
-          for (final rawProduct in products) {
-            if (rawProduct is! Map) continue;
-            final product = Map<String, dynamic>.from(rawProduct);
-            final dynamic idRaw =
-                product["fast_key_product_id"] ?? product["id"];
-            final int? pid = int.tryParse(idRaw?.toString() ?? "");
-            if (pid != null) {
-              _productTaxMetaCache[pid] = product;
-            }
+      for (final entry in cachedEntries) {
+        final List products = json.decode(entry.json);
+        final product = products.firstWhere(
+              (p) => p["fast_key_product_id"] == productId || p["id"] == productId,
+          orElse: () => null,
+        );
+
+        if (product == null) continue;
+        if (product["tax_status"] == "none") return 0.0;
+
+        final taxRates = product["tax"]?["tax_rates"];
+        if (taxRates is List && taxRates.isNotEmpty) {
+          double taxTotal = 0.0;
+          for (final tax in taxRates) {
+            final double rate =
+                double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
+            final double rawTax = (taxableBase * rate) / 100;
+            final double roundedTax = (rawTax * 100).roundToDouble() / 100;
+            taxTotal += roundedTax;
           }
+          return (taxTotal * 100).roundToDouble() / 100;
         }
-        _isProductTaxMetaCacheLoaded = true;
-      }
-
-      final product = _productTaxMetaCache[productId];
-      if (product == null) return 0.0;
-      if (product["tax_status"] == "none") return 0.0;
-
-      final taxRates = product["tax"]?["tax_rates"];
-      if (taxRates is List && taxRates.isNotEmpty) {
-        double taxTotal = 0.0;
-        for (final tax in taxRates) {
-          final double rate =
-              double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
-          final double rawTax = (taxableBase * rate) / 100;
-          final double roundedTax = (rawTax * 100).roundToDouble() / 100;
-          taxTotal += roundedTax;
-        }
-        return (taxTotal * 100).roundToDouble() / 100;
       }
     } catch (e) {
       if (kDebugMode)
@@ -251,6 +242,7 @@ class OrderHelper {
 
     double orderDiscount = (order['orderDiscount'] as num?)?.toDouble() ?? 0.0;
     double merchantDiscount = getCurrentMerchantDiscount(order);
+    print("🟢 merchant discount: $merchantDiscount");
 
     double netTotal = grossTotal - orderDiscount - merchantDiscount;
     double netPayable = netTotal + orderTax + cbFee;
@@ -1500,9 +1492,11 @@ class OrderHelper {
     []; // Build #1.0.216: FIXED Issue - Merchant discount not deleting, showing error "Payout ID not found"
 
     for (var lineItem in lineItems) {
-      if (lineItem.name == TextConstants.discountText) {
+      final name = (lineItem.name ?? '').toLowerCase();
+
+      if (name.contains('discount')) {
         merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
-        merchantDiscountIdsList.add(lineItem.id.toString()); // Added to list
+        merchantDiscountIdsList.add(lineItem.id.toString());
       }
     }
     // Build #1.0.216: Join with commas and ensure no leading comma
@@ -2118,6 +2112,8 @@ class OrderHelper {
   // Adds an item to the currently active order; creates an order if none exists
 
   // Adds an item to the currently active order; creates an order if none exists
+
+  //// code added here **88
   static final Set<String> _activeAdds = {};
 
   Future<void> addItemToOrder(
@@ -2310,14 +2306,13 @@ class OrderHelper {
       final double total    = (updatedOrder['net_payable'] as num?)?.toDouble() ?? 0.0;
 
       // / 🔄 Send update to Customer Display
-      // Do not block UI; publishing to the display can be slow.
-      // unawaited(CustomerService.publishCartUpdate(
-      //   orderId,
-      //   products,
-      //   subtotal: subtotal,
-      //   tax: tax,
-      //   total: total,
-      // ));
+      // await CustomerService.publishCartUpdate(
+      // orderId,
+      // products,
+      // subtotal: subtotal,
+      // tax: tax,
+      // total: total,
+      // );
 
       notifyOrderPanelToRefresh();
       if (onItemAdded != null) onItemAdded();
@@ -2331,6 +2326,170 @@ class OrderHelper {
   static String normalizeSku(String s) {
     return s.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9\-]'), '');
   }
+
+  ///
+  // Future<void> addItemToOrder(
+  //   int? serverItemId,
+  //   String name,
+  //   String image,
+  //   double price,
+  //   int quantity,
+  //   String sku,
+  //   int orderId, {
+  //   VoidCallback? onItemAdded,
+  //   String? type,
+  //   int? productId = -1,
+  //   int? variationId = -1,
+  //   String? variationName,
+  //   int? variationCount,
+  //   String? combo,
+  //   double? salesPrice,
+  //   double? regularPrice,
+  //   double? unitPrice,
+  //   bool isEbtEligible = false,
+  //   String? taxStatus,
+  //   String? taxClass,
+  //   double? taxRate,
+  // }) async {
+  //   print("🍏 addItemToOrder() CALLED for: $name | EBT: $isEbtEligible");
+
+  //   final key = '$orderId-$productId-$variationId';
+
+  //   // 🛡 Prevent double execution
+  //   if (_activeAdds.contains(key)) {
+  //     print("⚠ Duplicate addItemToOrder ignored for $key");
+  //     return;
+  //   }
+  //   _activeAdds.add(key);
+
+  //   try {
+  //     // Block adding items to orders that have payments (pending orders)
+  //     final payments =
+  //         await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+  //     if (payments.isNotEmpty) {
+  //       if (kDebugMode) {
+  //         print(
+  //             "⚠ addItemToOrder blocked: order $orderId has payments (pending) - cannot add line items");
+  //       }
+  //       return;
+  //     }
+
+  //     final box = StorageProvider.offlineOrders;
+  //     final rawOrder = await box.get(orderId.toString());
+  //     if (rawOrder == null || rawOrder is! Map) {
+  //       print("⚠ No offline order found for $orderId");
+  //       return;
+  //     }
+  //     final order = Map<String, dynamic>.from(rawOrder);
+
+  //     // Clone products
+  //     final List<Map<String, dynamic>> products = (order['products'] ?? [])
+  //         .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
+  //         .toList();
+
+  //     final normProductId = (productId ?? -1).toInt();
+  //     final normVariationId = (variationId ?? 0).toInt();
+
+  //     // Find existing item to merge quantity (scan/search/selection)
+  //     final existingIndex = products.indexWhere((p) {
+  //       final pid = (p['product_id'] ?? p['id'] ?? -1);
+  //       final vid = (p['variation_id'] ?? p['item_variation'] ?? 0);
+  //       final matchesIds = pid == normProductId && vid == normVariationId;
+
+  //       // If it's a custom item (productId 0 or -1), we MUST also match the SKU
+  //       if (normProductId == 0 || normProductId == -1) {
+  //         final storedSku = normalizeSku(p['sku']?.toString() ?? '');
+  //         final newSku = normalizeSku(sku);
+  //         return matchesIds && storedSku == newSku;
+  //       }
+  //       return matchesIds;
+  //     });
+
+  //     if (existingIndex != -1) {
+  //       final existing = products[existingIndex];
+  //       final oldQty = (existing['quantity'] ?? 0).toInt();
+  //       final newQty = oldQty + quantity;
+
+  //       final mergedEbt =
+  //           (existing['is_ebt_eligible'] == true) || (isEbtEligible == true);
+
+  //       print("🔁 EXISTING ITEM FOUND → $name");
+  //       print("   Old Qty: $oldQty → New Qty: $newQty");
+  //       print("   EBT (existing or new): $mergedEbt");
+
+  //       products[existingIndex] = {
+  //         ...existing,
+  //         'quantity': newQty,
+  //         'is_ebt_eligible': mergedEbt,
+  //         'price': existing['price'],
+  //       };
+
+  //       print("🔁 SAME PRODUCT → Qty incremented.");
+  //     } else {
+  //       print("🆕 ADDING NEW PRODUCT → $name");
+  //       print("   EBT Eligible: $isEbtEligible");
+
+  //       products.add({
+  //         'server_item_id': serverItemId,
+  //         'name': name,
+  //         'image': image,
+  //         'price': price,
+  //         'quantity': quantity,
+  //         'sku': sku,
+  //         'type': (variationId != null && variationId > 0)
+  //             ? 'variant'
+  //             : (type ?? 'product'),
+
+  //         'product_id': productId,
+  //         // ✅ ADD ALL THREE KEYS (safe + backward compatible)
+  //         'variation_id': variationId,
+  //         'item_variation': variationId,
+  //         'variationId': variationId,
+
+  //         'variation_name': variationName,
+  //         'variation_count': variationCount,
+  //         'combo': combo,
+  //         'sales_price': salesPrice,
+  //         'regular_price': regularPrice,
+  //         'unit_price': unitPrice,
+
+  //         /// ⭐ NOW SAVED CORRECTLY
+  //         'is_ebt_eligible': isEbtEligible,
+  //         'tax_status': taxStatus,
+  //         'tax_class': taxClass,
+  //         'tax_rate': taxRate,
+
+  //         // Discount fields (0 for new items; preserve when merged from existing)
+  //         'auto_discount': 0.0,
+  //         'auto_discount_total': 0.0,
+  //         'multipack_discount_total': 0.0,
+  //         'combo_discount_total': 0.0,
+  //       });
+  //     }
+
+  //     print("💾 ORDER UPDATED → Product Count: ${products.length}");
+  //     for (var p in products) {
+  //       print(
+  //           "   ▶ ${p['name']} | Qty: ${p['quantity']} | EBT: ${p['is_ebt_eligible']}");
+  //     }
+
+  //     final updatedOrder = <String, dynamic>{...order, 'products': products};
+
+  //     // Calculate totals and save to Hive + Memory
+  //     await saveOfflineOrder(orderId, updatedOrder);
+
+  //     notifyOrderPanelToRefresh();
+  //     if (onItemAdded != null) onItemAdded();
+  //   } finally {
+  //     _activeAdds.remove(key);
+  //   }
+  // }
+
+  // static Map<String, dynamic> _inMemoryProductCache = {};
+
+  // static String normalizeSku(String s) {
+  //   return s.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9\-]'), '');
+  // }
 
   static void addToCache(
       String sku,

@@ -198,14 +198,16 @@ class _VariantsDialogState extends State<VariantsDialog> with SingleTickerProvid
                                         height: 140,
                                         width: double.infinity,
                                         child: Image.network(
-                                          variant["image"],
+                                          variant["image"] ?? "",
                                           height: 140,
                                           width: double.infinity,
                                           fit: BoxFit.cover,
                                           errorBuilder: (context, error, stackTrace) {
                                             return Container(
                                               height: 140,
-                                              color: themeHelper.themeMode == ThemeMode.dark ? Colors.white70 : Colors.grey.shade300,
+                                              color: themeHelper.themeMode == ThemeMode.dark
+                                                  ? Colors.white70
+                                                  : Colors.grey.shade300,
                                               child: const Icon(Icons.broken_image, color: Colors.grey),
                                             );
                                           },

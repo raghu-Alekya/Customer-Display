@@ -1979,7 +1979,22 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   }
 
   Future<void> _loadTopLevelCategories() async {
-    setState(() { isLoading = true; isLoadingNestedContent = true; });
+    // Keep existing category list visible when we already have data,
+    // so switching back to this screen or doing a background refresh
+    // does not briefly show the loading shimmer again.
+    // does not briefly show the loading shimmer again.
+    if (categories.isEmpty) {
+      setState(() {
+        isLoading = true;
+        isLoadingNestedContent = true;
+      });
+    } else {
+      setState(() {
+        // Only nested content (subcategories/products) may refresh;
+        // top-level bar stays rendered without flicker.
+        isLoadingNestedContent = true;
+      });
+    }
     _categoryBloc.fetchCategories(0);
     try {
       await for (final response in _categoryBloc.categoriesStream.timeout(

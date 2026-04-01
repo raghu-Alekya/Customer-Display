@@ -2830,7 +2830,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     setState(() => isSummaryLoading = true);
 
-    paymentBloc.getPaymentsByOrderId(orderId!);
+    // paymentBloc.getPaymentsByOrderId(orderId!);
 
     _paymentListSubscription?.cancel();
     _paymentListSubscription =
@@ -3552,113 +3552,113 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       notes: '',
     );
 
-    paymentBloc.createPayment(paymentRequest);
+    // paymentBloc.createPayment(paymentRequest);
 
-    StreamSubscription? subscription;
-    subscription =
-        paymentBloc.createPaymentStream.listen((paymentResponse) async {
-          if (kDebugMode) print("Payment stream response: $paymentResponse");
-
-          if (paymentResponse.status == Status.ERROR) {
-            if (!skipPopup)
-              _hidePaymentProgressDialog();
-            else if (Navigator.canPop(context)) Navigator.pop(context);
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text("Payment failed: ${paymentResponse.message}"),
-                backgroundColor: Colors.red,
-              ),
-            );
-
-            setState(() {
-              _processingPaymentMethod = null;
-              isLoading = false;
-              _successPopupShown = false;
-            });
-
-            subscription?.cancel();
-            return;
-          }
-
-          if (paymentResponse.status == Status.COMPLETED &&
-              paymentResponse.data != null &&
-              paymentResponse.data!.message == "Payment Created Successfully") {
-            final paymentData = paymentResponse.data!;
-            paidAmount = amount;
-            paymentId = paymentData.paymentId.toString();
-
-            final bool isFullPayment = amount >= remainingBalance;
-            final bool isPartialPayment = !isFullPayment && amount > 0;
-
-            // Update balances
-            tenderAmount += amount;
-            if (isFullPayment) {
-              balanceAmount = 0.0;
-              changeAmount = amount - remainingBalance;
-            } else {
-              balanceAmount = remainingBalance - amount;
-              changeAmount = 0.0;
-            }
-            balanceAmount = double.parse(balanceAmount.toStringAsFixed(2));
-
-            // ─── Save last payment info ───
-            _lastPayment = LastPaymentInfo(
-              method: selectedPaymentMethod!,
-              amount: amount,
-              paymentId: paymentId,
-              sunmiTxnId: null,
-            );
-
-            try {
-              final box = StorageProvider.offlineOrders;
-              final key = (orderId ?? 0).toString();
-              final hasKey = await box.containsKey(key);
-              final raw = hasKey ? await box.get(key) : null;
-              final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
-              existing["lastPayment"] = _lastPayment!.toJson();
-              existing["balanceAmount"] = balanceAmount;
-              existing["paidAmount"] = tenderAmount;
-              existing["tenderAmount"] = tenderAmount;
-              existing["ebtTotal"] = ebtTotal;
-              await box.put(key, existing);
-            } catch (e) {
-              print("⚠ Hive update error: $e");
-            }
-
-            if (mounted)
-              setState(() {
-                _processingPaymentMethod = null;
-                isLoading = false;
-                _currentPaymentRemainingBalance =
-                isPartialPayment ? balanceAmount : null;
-              });
-
-            // ─── Show success popup only for full payment ───
-            if (isFullPayment && !_successPopupShown) {
-              _successPopupShown = true;
-
-              final box = StorageProvider.offlineOrders;
-              final key = (orderId ?? 0).toString();
-              final rawBox = await box.get(key);
-              final cr = rawBox is Map ? rawBox["coupon_response"] : null;
-              final couponResponse =
-              cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
-
-              _showPaymentDialog(
-                context,
-                amount,
-                changeAmount: changeAmount,
-                showChange: changeAmount > 0,
-                couponResponse: couponResponse,
-              );
-            }
-
-            amountController.clear();
-            _fetchPaymentsByOrderId();
-            subscription?.cancel();
-          }
-        });
+    // StreamSubscription? subscription;
+    // subscription =
+    //     paymentBloc.createPaymentStream.listen((paymentResponse) async {
+    //       if (kDebugMode) print("Payment stream response: $paymentResponse");
+    //
+    //       if (paymentResponse.status == Status.ERROR) {
+    //         if (!skipPopup)
+    //           _hidePaymentProgressDialog();
+    //         else if (Navigator.canPop(context)) Navigator.pop(context);
+    //
+    //         ScaffoldMessenger.of(context).showSnackBar(
+    //           SnackBar(
+    //             content: Text("Payment failed: ${paymentResponse.message}"),
+    //             backgroundColor: Colors.red,
+    //           ),
+    //         );
+    //
+    //         setState(() {
+    //           _processingPaymentMethod = null;
+    //           isLoading = false;
+    //           _successPopupShown = false;
+    //         });
+    //
+    //         subscription?.cancel();
+    //         return;
+    //       }
+    //
+    //       if (paymentResponse.status == Status.COMPLETED &&
+    //           paymentResponse.data != null &&
+    //           paymentResponse.data!.message == "Payment Created Successfully") {
+    //         final paymentData = paymentResponse.data!;
+    //         paidAmount = amount;
+    //         paymentId = paymentData.paymentId.toString();
+    //
+    //         final bool isFullPayment = amount >= remainingBalance;
+    //         final bool isPartialPayment = !isFullPayment && amount > 0;
+    //
+    //         // Update balances
+    //         tenderAmount += amount;
+    //         if (isFullPayment) {
+    //           balanceAmount = 0.0;
+    //           changeAmount = amount - remainingBalance;
+    //         } else {
+    //           balanceAmount = remainingBalance - amount;
+    //           changeAmount = 0.0;
+    //         }
+    //         balanceAmount = double.parse(balanceAmount.toStringAsFixed(2));
+    //
+    //         // ─── Save last payment info ───
+    //         _lastPayment = LastPaymentInfo(
+    //           method: selectedPaymentMethod!,
+    //           amount: amount,
+    //           paymentId: paymentId,
+    //           sunmiTxnId: null,
+    //         );
+    //
+    //         try {
+    //           final box = StorageProvider.offlineOrders;
+    //           final key = (orderId ?? 0).toString();
+    //           final hasKey = await box.containsKey(key);
+    //           final raw = hasKey ? await box.get(key) : null;
+    //           final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
+    //           existing["lastPayment"] = _lastPayment!.toJson();
+    //           existing["balanceAmount"] = balanceAmount;
+    //           existing["paidAmount"] = tenderAmount;
+    //           existing["tenderAmount"] = tenderAmount;
+    //           existing["ebtTotal"] = ebtTotal;
+    //           await box.put(key, existing);
+    //         } catch (e) {
+    //           print("⚠ Hive update error: $e");
+    //         }
+    //
+    //         if (mounted)
+    //           setState(() {
+    //             _processingPaymentMethod = null;
+    //             isLoading = false;
+    //             _currentPaymentRemainingBalance =
+    //             isPartialPayment ? balanceAmount : null;
+    //           });
+    //
+    //         // ─── Show success popup only for full payment ───
+    //         if (isFullPayment && !_successPopupShown) {
+    //           _successPopupShown = true;
+    //
+    //           final box = StorageProvider.offlineOrders;
+    //           final key = (orderId ?? 0).toString();
+    //           final rawBox = await box.get(key);
+    //           final cr = rawBox is Map ? rawBox["coupon_response"] : null;
+    //           final couponResponse =
+    //           cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+    //
+    //           _showPaymentDialog(
+    //             context,
+    //             amount,
+    //             changeAmount: changeAmount,
+    //             showChange: changeAmount > 0,
+    //             couponResponse: couponResponse,
+    //           );
+    //         }
+    //
+    //         amountController.clear();
+    //         _fetchPaymentsByOrderId();
+    //         subscription?.cancel();
+    //       }
+    //     });
   }
 
   void _hidePaymentProgressDialog() {

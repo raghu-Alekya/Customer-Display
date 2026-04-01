@@ -68,9 +68,8 @@ class TaxModel {
   }
 }
 
-
-
-class OrderRepository {  // Build #1.0.25 - added by naveen
+class OrderRepository {
+  // Build #1.0.25 - added by naveen
   final APIHelper _helper = APIHelper();
 
   // 1. Create Order
@@ -85,7 +84,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     final deviceId = deviceDetails['device_id'] ?? 'unknown';
     final userData = await UserDbHelper().getUserData();
     if (userData == null || userData[AppDBConst.userId] == null) {
-      throw Exception("User not logged in or user data not available. Please log in again.");
+      throw Exception(
+          "User not logged in or user data not available. Please log in again.");
     }
     final userId = userData[AppDBConst.userId] as int;
 
@@ -93,10 +93,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       OrderMetaData(key: OrderMetaData.posDeviceId, value: deviceId),
       OrderMetaData(key: OrderMetaData.posPlacedBy, value: '$userId'),
       OrderMetaData(key: OrderMetaData.shiftId, value: shiftId.toString()),
-      OrderMetaData(key: 'user_name', value: (userData?[AppDBConst.username] ?? "")),
+      OrderMetaData(
+          key: 'user_name', value: (userData?[AppDBConst.username] ?? "")),
       OrderMetaData(key: 'user_id', value: userId.toString()),
     ];
-
 
     final request = CreateOrderRequestModel(metaData: metaData);
 
@@ -108,13 +108,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     for (int attempt = 0; attempt < 10; attempt++) {
       final now = DateTime.now();
       String yearPart = (now.year % 100).toString().padLeft(2, '0');
-      int dayOfYear =
-          now.difference(DateTime(now.year, 1, 1)).inDays + 1;
+      int dayOfYear = now.difference(DateTime(now.year, 1, 1)).inDays + 1;
       String dayPart = dayOfYear.toString().padLeft(2, '0');
-      int totalSeconds =
-          now.hour * 3600 + now.minute * 60 + now.second;
-      String secondPart =
-      (totalSeconds % 100).toString().padLeft(2, '0');
+      int totalSeconds = now.hour * 3600 + now.minute * 60 + now.second;
+      String secondPart = (totalSeconds % 100).toString().padLeft(2, '0');
       String msPart = (now.millisecond % 100).toString().padLeft(2, '0');
       String suffix = attempt > 0 ? attempt.toString() : '';
       String finalOrderIdStr = "$yearPart$dayPart$secondPart$msPart$suffix";
@@ -153,9 +150,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       'status': "pending_offline",
       'created_via': "offline Order",
       'orderAgeRestricted': false,
-      'custom_items': [],       // add to maintain compatibility
+      'custom_items': [], // add to maintain compatibility
     };
-
 
     await box.put(newOrderId.toString(), localOrder);
 
@@ -179,6 +175,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       couponLines: [],
     );
   }
+
   Future<void> saveOfflineOrderTotals(int orderId) async {
     final box = StorageProvider.offlineOrders;
     final raw = await box.get(orderId.toString());
@@ -256,13 +253,15 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       };
 
       if (kDebugMode) {
-        print("🔁 Updated existing offline product: ${product['name']} (Qty: $oldQty → $newQty)");
+        print(
+            "🔁 Updated existing offline product: ${product['name']} (Qty: $oldQty → $newQty)");
       }
     } else {
       products.add(Map<String, dynamic>.from(product));
 
       if (kDebugMode) {
-        print("🆕 Added new offline product: ${product['name']} (ID: $newProductId / Var: $newVariationId)");
+        print(
+            "🆕 Added new offline product: ${product['name']} (ID: $newProductId / Var: $newVariationId)");
       }
     }
 
@@ -275,7 +274,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       print("📦 Offline order updated -> Total products: ${products.length}");
     }
   }
-
 
   double getCustomItemTax({
     required String taxClass,
@@ -300,8 +298,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           return 0.0;
         }
 
-        final rateString =
-        selected.slug.replaceAll(RegExp(r'[^0-9.]'), '');
+        final rateString = selected.slug.replaceAll(RegExp(r'[^0-9.]'), '');
         rate = double.tryParse(rateString) ?? 0.0;
       }
 
@@ -317,6 +314,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       return 0.0;
     }
   }
+
   void printFullJson(String label, Object json) {
     final encoded = jsonEncode(json);
     const chunkSize = 800;
@@ -330,8 +328,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       );
     }
   }
-  Future<void> _deleteProductLocally(String normalizedSku) async {
 
+  Future<void> _deleteProductLocally(String normalizedSku) async {
     // 🧠 MEMORY
     OrderHelper.removeFromCache(normalizedSku);
 
@@ -352,21 +350,16 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         }
       }).toList();
 
-      await StorageProvider.productCache
-          .put("all_products_list", updated);
+      await StorageProvider.productCache.put("all_products_list", updated);
     }
 
     print("🗑 Local product removed → $normalizedSku");
   }
 
-
-
-
   Future<Map<String, dynamic>?> CouponApply(
       Map<String, dynamic> offlineOrder) async {
     try {
-      final String url =
-          "${UrlHelper.componentVersionUrl}"
+      final String url = "${UrlHelper.componentVersionUrl}"
           "${UrlMethodConstants.orders}/"
           "${UrlMethodConstants.issuingCoupons}";
 
@@ -398,20 +391,16 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         );
       }
 
-      final String clientOrderId =
-          offlineOrder['id']?.toString() ??
-              offlineOrder['order_id']?.toString() ??
-              offlineOrder['local_order_id']?.toString() ??
-              "";
-
+      final String clientOrderId = offlineOrder['id']?.toString() ??
+          offlineOrder['order_id']?.toString() ??
+          offlineOrder['local_order_id']?.toString() ??
+          "";
 
       // ---------------------------------------------------------
       // ⭐ HANDLE PRODUCTS
       // ---------------------------------------------------------
       final productsRaw =
-      (offlineOrder['items'] ??
-          offlineOrder['products'] ??
-          []) as List;
+      (offlineOrder['items'] ?? offlineOrder['products'] ?? []) as List;
 
       final List<Map<String, dynamic>> lineItems = [];
       final List<Map<String, dynamic>> feeLines = [];
@@ -438,17 +427,13 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         // final double lineTotal = price * qty;
 
         // ✅ NORMALIZE ITEM FIELDS (POS + API)
-        final String name =
-            item['item_name'] ??
-                item['name'] ??
-                "Product";
+        final String name = item['item_name'] ?? item['name'] ?? "Product";
 
         // 🔒 HARD BLOCK payout & cashback from products loop
         final String lowerName =
         (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
 
-        final String itemType =
-            item['type']?.toString().toLowerCase() ?? '';
+        final String itemType = item['type']?.toString().toLowerCase() ?? '';
 
         if (lowerName == 'payout' ||
             lowerName == 'cashback' ||
@@ -456,37 +441,35 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             itemType == 'cashback' ||
             item['is_payout'] == true ||
             item['is_cashback'] == true) {
-          debugPrint("⏭ Skipping special item from products loop → $lowerName / $itemType");
+          debugPrint(
+              "⏭ Skipping special item from products loop → $lowerName / $itemType");
           continue;
         }
 
-        final double price =
-            double.tryParse(
-              item['item_price']?.toString() ??
-                  item['price']?.toString() ??
-                  '0',
-            ) ?? 0.0;
+        final double price = double.tryParse(
+          item['item_price']?.toString() ??
+              item['price']?.toString() ??
+              '0',
+        ) ??
+            0.0;
 
-        final int qty =
-            int.tryParse(
-              item['items_count']?.toString() ??
-                  item['quantity']?.toString() ??
-                  '1',
-            ) ?? 1;
+        final int qty = int.tryParse(
+          item['items_count']?.toString() ??
+              item['quantity']?.toString() ??
+              '1',
+        ) ??
+            1;
 
         final double subtotal = price * qty;
         final double total = subtotal - autoDiscount;
 
-
-
-        final dynamic pidRaw =
-            item['product_id'] ??
-                item['id'] ??
-                item['productId'] ??
-                item['productID'] ??
-                item['product-id'] ??
-                item['meta']?['product_id'] ??
-                item['data']?['id'];
+        final dynamic pidRaw = item['product_id'] ??
+            item['id'] ??
+            item['productId'] ??
+            item['productID'] ??
+            item['product-id'] ??
+            item['meta']?['product_id'] ??
+            item['data']?['id'];
 
         final int? pid =
         pidRaw == null ? null : int.tryParse(pidRaw.toString());
@@ -494,19 +477,15 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           final int qtyInt = qty.toInt();
 
           // 🔹 READ rate stored from UI
-          final double taxRate =
-              double.tryParse(
-                  item['tax_rate']?.toString() ??
-                      item['tax_Rate']?.toString() ??
-                      '0'
-              ) ?? 0.0;
+          final double taxRate = double.tryParse(item['tax_rate']?.toString() ??
+              item['tax_Rate']?.toString() ??
+              '0') ??
+              0.0;
 
           // ✅ READ TAX CLASS
-          final String taxClass =
-              item['tax_class']?.toString() ??
-                  item['tax_Class']?.toString() ??
-                  "";
-
+          final String taxClass = item['tax_class']?.toString() ??
+              item['tax_Class']?.toString() ??
+              "";
 
           // 🔹 RECALCULATE tax HERE (new screen)
           final double taxAmount = getCustomItemTax(
@@ -532,8 +511,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           if (sku.isEmpty) {
             debugPrint("⚠️ CUSTOM ITEM SKU MISSING → $name | raw: $item");
           }
-
-
 
           lineItems.add({
             "name": name,
@@ -576,7 +553,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           continue;
         }
 
-
         // ---------------------------------------------------------
         // ⭐ WooCommerce normal product
         // ---------------------------------------------------------
@@ -584,7 +560,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           "product_id": pid,
           //"name": item['name'] ?? "",
           "quantity": qty,
-          "subtotal": subtotal.toStringAsFixed(2),
+          // "subtotal": subtotal.toStringAsFixed(2),
+          "subtotal": autoDiscount > 0
+              ? total.toStringAsFixed(2)
+              : subtotal.toStringAsFixed(2),
           "total": total.toStringAsFixed(2),
 
           // Optional (Woo may override name, but fine to send)
@@ -609,7 +588,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             },
           ],
         });
-
       }
 
       // ---------------------------------------------------------
@@ -652,11 +630,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
 
         // Try multiple key names to be safe
-        final dynamic cashbackPidRaw =
-            c['cashback_product_id'] ??
-                c['product_id'] ??
-                c['id'] ??
-                c['cashbackProductId'];
+        final dynamic cashbackPidRaw = c['cashback_product_id'] ??
+            c['product_id'] ??
+            c['id'] ??
+            c['cashbackProductId'];
 
         final int? productId = cashbackPidRaw == null
             ? null
@@ -695,7 +672,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           .toList();
 
       if (merchantDiscount > 0 && discountProductIds.isNotEmpty) {
-        final int discountPid = discountProductIds.first;   // ⭐ Woo Product ID (11827)
+        final int discountPid =
+            discountProductIds.first; // ⭐ Woo Product ID (11827)
 
         lineItems.add({
           "product_id": discountPid,
@@ -710,14 +688,12 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         print("🟢 Added Merchant Discount Product → $discountPid");
       }
 
-
       // ---------------------------------------------------------
       // ⭐ FINAL TOTAL
       // ---------------------------------------------------------
       final totalAmount = lineItems.fold<double>(
         0.0,
-            (sum, li) =>
-        sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+            (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
       );
 
       // ---------------------------------------------------------
@@ -753,15 +729,14 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         "fee_lines": feeLines,
         "line_items": lineItems,
         "tax_lines": [],
+        "coupon_lines": [],
       };
 
       printFullJson("SYNC Woo Payload", payload);
 
-
       final response = await _helper.post(url, payload, true);
 
-      final decoded =
-      (response is String) ? jsonDecode(response) : response;
+      final decoded = (response is String) ? jsonDecode(response) : response;
 
       debugPrint(
         "🟦 [ISSUING COUPON RESPONSE] → ${jsonEncode(decoded)}",
@@ -774,18 +749,17 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       }
 
       return null;
-
-
     } catch (e, s) {
       print("❌ Failed to sync offline order: $e");
       print("Stack: $s");
     }
     return null;
   }
+
   Map<String, dynamic> _normalizeHiveMap(dynamic data) {
     if (data is Map) {
-      return data.map((key, value) =>
-          MapEntry(key.toString(), _normalizeHiveValue(value)));
+      return data.map(
+              (key, value) => MapEntry(key.toString(), _normalizeHiveValue(value)));
     }
     return {};
   }
@@ -799,8 +773,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
     return value;
   }
-
-
 
   Future<Map<String, dynamic>?> syncSingleOfflineOrder(
       Map<String, dynamic> offlineOrder) async {
@@ -819,8 +791,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       final int? existingWooOrderId =
       wooOrderIdRaw != null ? int.tryParse(wooOrderIdRaw.toString()) : null;
       final Map<String, dynamic> couponResponse =
-          (offlineOrder["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
-
+          (offlineOrder["coupon_response"] as Map?)?.cast<String, dynamic>() ??
+              {};
+      final bool generatedCouponOnly =
+          offlineOrder["generated_coupon_only"] == true;
       final Map<int, Map<String, dynamic>> discountLines = {};
 
       final rawDiscountLines = offlineOrder['discount_lines'];
@@ -840,23 +814,18 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           ? "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$existingWooOrderId"
           : "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
 
-      //pinaka-pos/v1/orders/
-
       List<Map<String, dynamic>> paymentsPayload = [];
 
       if (localOrderIdInt != null) {
-
-        final dbPayments =
-        await LocalPaymentDBHelper.instance.getPaymentsByOrderId(localOrderIdInt);
+        final dbPayments = await LocalPaymentDBHelper.instance
+            .getPaymentsByOrderId(localOrderIdInt);
 
         debugPrint("\n📊 LIVE PAYMENTS FROM DB (${dbPayments.length})");
 
         double runningBalance = 0;
 
         for (final p in dbPayments) {
-
-          final remaining =
-          p.remainingBalance < 0 ? 0.0 : p.remainingBalance;
+          final remaining = p.remainingBalance < 0 ? 0.0 : p.remainingBalance;
 
           paymentsPayload.add({
             "local_id": p.id,
@@ -867,19 +836,15 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             "created_at": p.createdAt.toIso8601String(),
           });
 
-          debugPrint(
-              " → ID:${p.id} | ${p.paymentMethod} | "
-                  "Amount:${p.amount} | Remaining:$remaining | ${p.status?.name}"
-          );
+          debugPrint(" → ID:${p.id} | ${p.paymentMethod} | "
+              "Amount:${p.amount} | Remaining:$remaining | ${p.status?.name}");
         }
       }
 
-      final String clientOrderId =
-          offlineOrder['id']?.toString() ??
-              offlineOrder['order_id']?.toString() ??
-              offlineOrder['local_order_id']?.toString() ??
-              "";
-
+      final String clientOrderId = offlineOrder['id']?.toString() ??
+          offlineOrder['order_id']?.toString() ??
+          offlineOrder['local_order_id']?.toString() ??
+          "";
 
       // ---------------------------------------------------------
       // ⭐ HANDLE PRODUCTS
@@ -894,7 +859,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           debugPrint("INDEX $i → ${productsRaw[i]}");
         }
         debugPrint("📦 END RAW PRODUCTS -------------------\n");
-
       }
       final List<Map<String, dynamic>> lineItems = [];
       final List<Map<String, dynamic>> feeLines = [];
@@ -903,26 +867,24 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       // ⭐ HANDLE PRODUCTS (Woo items + Custom items)
       // ---------------------------------------------------------
       for (var raw in productsRaw) {
-
-
         debugPrint("\n🧾 RAW ITEM TYPE → ${raw.runtimeType}");
         debugPrint("🧾 RAW ITEM DATA → $raw");
         debugPrint("🧾 RAW discount_meta → ${raw['discount_meta']}");
-        debugPrint("🧾 discount_meta TYPE → ${raw['discount_meta']?.runtimeType}");
+        debugPrint(
+            "🧾 discount_meta TYPE → ${raw['discount_meta']?.runtimeType}");
 
         final item = Map<String, dynamic>.from(raw);
 
         // ---------------------------------------------------------
 // 🔍 DETECT PRODUCT ID FIRST
 // ---------------------------------------------------------
-        final dynamic pidRaw =
-            item['product_id'] ??
-                item['id'] ??
-                item['productId'] ??
-                item['productID'] ??
-                item['product-id'] ??
-                item['meta']?['product_id'] ??
-                item['data']?['id'];
+        final dynamic pidRaw = item['product_id'] ??
+            item['id'] ??
+            item['productId'] ??
+            item['productID'] ??
+            item['product-id'] ??
+            item['meta']?['product_id'] ??
+            item['data']?['id'];
 
         int? safeParseInt(dynamic v) {
           if (v == null) return null;
@@ -936,24 +898,18 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 // ---------------------------------------------------------
 // 🔥 FETCH DISCOUNT (SOURCE OF TRUTH)
 // ---------------------------------------------------------
-        final Map<String, dynamic> discountMeta =
-            discountLines[pid] ?? {};
-
+        final Map<String, dynamic> discountMeta = discountLines[pid] ?? {};
 
         final double autoDiscount =
             double.tryParse(discountMeta['amount']?.toString() ?? '0') ?? 0.0;
 
-        final String discountType =
-            discountMeta['type']?.toString() ?? '';
+        final String discountType = discountMeta['type']?.toString() ?? '';
 
-        final String discountSource =
-            discountMeta['source']?.toString() ?? '';
+        final String discountSource = discountMeta['source']?.toString() ?? '';
 
-        final String ruleId =
-            discountMeta['rule_id']?.toString() ?? '';
+        final String ruleId = discountMeta['rule_id']?.toString() ?? '';
         debugPrint("🎯 MATCH PID = $pid");
         debugPrint("🎯 FOUND DISCOUNT = $discountMeta");
-
 
         // final double price =
         //     double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
@@ -962,10 +918,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         // final double lineTotal = price * qty;
 
         // ✅ NORMALIZE ITEM FIELDS (POS + API)
-        final String name =
-            item['item_name'] ??
-                item['name'] ??
-                "Product";
+        final String name = item['item_name'] ?? item['name'] ?? "Product";
         bool isEbtEligible = item['is_ebt_eligible'] == true ||
             item['is_ebt_eligible'] == 1 ||
             item['is_ebt_eligible'] == "1";
@@ -973,9 +926,16 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         final tags = item['tags'] ?? item['product_data']?['tags'];
 
         if (tags is List) {
-          isEbtEligible = tags.any(
-                  (t) => (t['slug'] ?? '').toString().toLowerCase() == "ebt-eligible"
-          );
+          isEbtEligible = tags.any((t) {
+            if (t is Map) {
+              return (t['slug'] ?? '').toString().toLowerCase() ==
+                  'ebt-eligible';
+            }
+            if (t is String) {
+              return t.toLowerCase() == 'ebt-eligible';
+            }
+            return false;
+          });
         }
 
         debugPrint("🟢 EBT DETECTED response → $isEbtEligible for $name");
@@ -984,8 +944,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         final String lowerName =
         (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
 
-        final String itemType =
-            item['type']?.toString().toLowerCase() ?? '';
+        final String itemType = item['type']?.toString().toLowerCase() ?? '';
 
         if (lowerName == 'payout' ||
             lowerName == 'cashback' ||
@@ -993,23 +952,24 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             itemType == 'cashback' ||
             item['is_payout'] == true ||
             item['is_cashback'] == true) {
-          debugPrint("⏭ Skipping special item from products loop → $lowerName / $itemType");
+          debugPrint(
+              "⏭ Skipping special item from products loop → $lowerName / $itemType");
           continue;
         }
 
-        final double price =
-            double.tryParse(
-              item['item_price']?.toString() ??
-                  item['price']?.toString() ??
-                  '0',
-            ) ?? 0.0;
+        final double price = double.tryParse(
+          item['item_price']?.toString() ??
+              item['price']?.toString() ??
+              '0',
+        ) ??
+            0.0;
 
-        final int qty =
-            int.tryParse(
-              item['items_count']?.toString() ??
-                  item['quantity']?.toString() ??
-                  '1',
-            ) ?? 1;
+        final int qty = int.tryParse(
+          item['items_count']?.toString() ??
+              item['quantity']?.toString() ??
+              '1',
+        ) ??
+            1;
 
         final double subtotal = price * qty;
         final double total = subtotal - autoDiscount;
@@ -1018,19 +978,15 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           final int qtyInt = qty.toInt();
 
           // 🔹 READ rate stored from UI
-          final double taxRate =
-              double.tryParse(
-                  item['tax_rate']?.toString() ??
-                      item['tax_Rate']?.toString() ??
-                      '0'
-              ) ?? 0.0;
+          final double taxRate = double.tryParse(item['tax_rate']?.toString() ??
+              item['tax_Rate']?.toString() ??
+              '0') ??
+              0.0;
 
           // ✅ READ TAX CLASS
-          final String taxClass =
-              item['tax_class']?.toString() ??
-                  item['tax_Class']?.toString() ??
-                  "";
-
+          final String taxClass = item['tax_class']?.toString() ??
+              item['tax_Class']?.toString() ??
+              "";
 
           // 🔹 RECALCULATE tax HERE (new screen)
           final double taxAmount = getCustomItemTax(
@@ -1056,8 +1012,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           if (sku.isEmpty) {
             debugPrint("⚠️ CUSTOM ITEM SKU MISSING → $name | raw: $item");
           }
-
-
 
           lineItems.add({
             "name": name,
@@ -1100,7 +1054,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           continue;
         }
 
-
         // ---------------------------------------------------------
         // ⭐ WooCommerce normal product
         // ---------------------------------------------------------
@@ -1116,11 +1069,15 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         debugPrint("🟣 FINAL VARIANT ID SENT → $variationId");
         lineItems.add({
           "product_id": pid,
-          if (variationId != null && variationId > 0) "variation_id": variationId,
+          if (variationId != null && variationId > 0)
+            "variation_id": variationId,
           //"name": item['name'] ?? "",
           "quantity": qty,
-          "subtotal": subtotal.toStringAsFixed(2),
+          // "subtotal": subtotal.toStringAsFixed(2),
           "total": total.toStringAsFixed(2),
+          "subtotal": autoDiscount > 0
+              ? total.toStringAsFixed(2)
+              : subtotal.toStringAsFixed(2),
 
           // Optional (Woo may override name, but fine to send)
           "name": name,
@@ -1148,7 +1105,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             }
           ],
         });
-
       }
 
       // ---------------------------------------------------------
@@ -1191,11 +1147,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
 
         // Try multiple key names to be safe
-        final dynamic cashbackPidRaw =
-            c['cashback_product_id'] ??
-                c['product_id'] ??
-                c['id'] ??
-                c['cashbackProductId'];
+        final dynamic cashbackPidRaw = c['cashback_product_id'] ??
+            c['product_id'] ??
+            c['id'] ??
+            c['cashbackProductId'];
 
         final int? productId = cashbackPidRaw == null
             ? null
@@ -1234,7 +1189,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           .toList();
 
       if (merchantDiscount > 0 && discountProductIds.isNotEmpty) {
-        final int discountPid = discountProductIds.first;   // ⭐ Woo Product ID (11827)
+        final int discountPid =
+            discountProductIds.first; // ⭐ Woo Product ID (11827)
 
         lineItems.add({
           "product_id": discountPid,
@@ -1278,14 +1234,12 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 //
 //       debugPrint("🎯 Final coupon_lines → ${jsonEncode(couponLines)}");
 
-
       // ---------------------------------------------------------
       // ⭐ FINAL TOTAL
       // ---------------------------------------------------------
       final totalAmount = lineItems.fold<double>(
         0.0,
-            (sum, li) =>
-        sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+            (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
       );
 
       // ---------------------------------------------------------
@@ -1294,8 +1248,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       final shiftId = await UserDbHelper().getUserShiftId();
       final userData = await UserDbHelper().getUserData();
       final userId = userData?[AppDBConst.userId] ?? "admin";
-
-
 
       final List<Map<String, dynamic>> metaData = [
         {"key": "pos_device_id", "value": "b31b723b92047f4b"},
@@ -1331,7 +1283,9 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
       debugPrint("🎟 Checking coupon_response from offline order...");
 
-      if (couponResponse.isNotEmpty) {
+      if (generatedCouponOnly) {
+        debugPrint("ℹ️ Generated coupon only → skipping coupon_lines");
+      } else if (couponResponse.isNotEmpty) {
         final coupons = couponResponse["coupons"] as List? ?? [];
 
         for (final c in coupons) {
@@ -1348,7 +1302,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       }
 
       debugPrint("🎯 Final coupon_lines → ${jsonEncode(couponLines)}");
-
 
       // ---------------------------------------------------------
       // ⭐ FINAL PAYLOAD
@@ -1367,21 +1320,17 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
       printFullJson("SYNC Woo Payload", payload);
 
-
       final response = isUpdate
           ? await _helper.put(url, payload, true)
           : await _helper.post(url, payload, true);
 
-      final decoded =
-      (response is String) ? jsonDecode(response) : response;
+      final decoded = (response is String) ? jsonDecode(response) : response;
 
-      final String wooStatus =
-      decoded is Map<String, dynamic>
+      final String wooStatus = decoded is Map<String, dynamic>
           ? decoded['status']?.toString() ?? 'processing'
           : 'processing';
 
       debugPrint("🟣 Woo Status from sync response → $wooStatus");
-
 
       debugPrint(
         "🟦 [SYNC] Woo Response → ${jsonEncode(decoded)}",
@@ -1392,16 +1341,12 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       for (final fee in wooFees) {
         final name = fee["name"]?.toString().toLowerCase() ?? "";
         if (name.contains("cashback fee")) {
-          cashbackFee =
-              double.tryParse(fee["total"]?.toString() ?? "0") ?? 0.0;
+          cashbackFee = double.tryParse(fee["total"]?.toString() ?? "0") ?? 0.0;
         }
       }
 
-
       if (decoded is Map<String, dynamic> && decoded['id'] != null) {
-
-        final int serverOrderId =
-            int.tryParse(decoded['id'].toString()) ?? 0;
+        final int serverOrderId = int.tryParse(decoded['id'].toString()) ?? 0;
 
         final double wooTax =
             double.tryParse(decoded['total_tax']?.toString() ?? "0") ?? 0.0;
@@ -1410,7 +1355,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
             double.tryParse(decoded['total']?.toString() ?? "0") ?? 0.0;
 
         final double wooDiscount =
-            double.tryParse(decoded['discount_total']?.toString() ?? "0") ?? 0.0;
+            double.tryParse(decoded['discount_total']?.toString() ?? "0") ??
+                0.0;
 
         final double wooDiscountTax =
             double.tryParse(decoded['discount_tax']?.toString() ?? "0") ?? 0.0;
@@ -1457,16 +1403,20 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           "line_items": decoded["line_items"],
         };
       }
-
     } catch (e, s) {
       print("❌ Failed to sync offline order: $e");
       print("Stack: $s");
     }
     return null;
   }
+
   // 2. Update Order Products
-  Future<OrderModel> updateOrderProducts({required int orderId, required UpdateOrderRequestModel request,}) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+  Future<OrderModel> updateOrderProducts({
+    required int orderId,
+    required UpdateOrderRequestModel request,
+  }) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
 
     if (kDebugMode) {
       print("OrderRepositoryyyyyy - POST URL: $url");
@@ -1484,7 +1434,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         final responseData = json.decode(response);
         return OrderModel.fromJson(responseData);
       } catch (e, s) {
-        if (kDebugMode) print("Error parsing update order response: $e, Stack: $s");
+        if (kDebugMode)
+          print("Error parsing update order response: $e, Stack: $s");
         throw Exception("Failed to parse update order response");
       }
     } else if (response is Map<String, dynamic>) {
@@ -1522,9 +1473,17 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   }
 
   //Build #1.0.40: getOrders
-  Future<OrdersListModel> getOrders({bool allStatuses = false, int pageNumber =1, int pageLimit = 30, String status = "", String orderType = "", String userId = ""}) async {
+  Future<OrdersListModel> getOrders(
+      {bool allStatuses = false,
+        int pageNumber = 1,
+        int pageLimit = 30,
+        String status = "",
+        String orderType = "",
+        String userId = ""}) async {
     //Build #1.0.54: added if allStatuses is true, include all statuses; otherwise, just "processing"
-    final statusString = status != "" ? status : (allStatuses
+    final statusString = status != ""
+        ? status
+        : (allStatuses
         ? TextConstants.orderScreenStatus
         : TextConstants.processing);
 
@@ -1533,7 +1492,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     // final userData = await UserDbHelper().getUserData();
     // userId = "${userData?[AppDBConst.userId]}"; ///Added to filter user based processing orders as per requirement update on 7-Jul-25
     //"?page=1&per_page=10&search=&status="
-    var getOrdersParameter = "?author=$userId&page=$pageNumber&per_page=$pageLimit&created_via=$orderType&search=&status=";
+    var getOrdersParameter =
+        "?author=$userId&page=$pageNumber&per_page=$pageLimit&created_via=$orderType&search=&status=";
     // Encode for URL (spaces become '+', commas become '%2C')
     final encodedStatus = Uri.encodeQueryComponent(statusString);
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}"
@@ -1562,13 +1522,14 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         if (parsed is List<dynamic>) {
           return OrdersListModel.fromJson(parsed);
         }
-        throw Exception("Unexpected parsed response type: ${parsed.runtimeType}");
+        throw Exception(
+            "Unexpected parsed response type: ${parsed.runtimeType}");
       }
       // Handle any other unexpected type
       else {
         throw Exception("Unexpected response type: ${response.runtimeType}");
       }
-    } catch (e,s) {
+    } catch (e, s) {
       if (kDebugMode) {
         print("OrderRepository - Error in getOrders: $e");
         print("Stack trace: $s");
@@ -1578,18 +1539,29 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   }
 
   // Build #1.0.118: Fetch Total Orders Count API Call for Orders Screen
-  Future<TotalOrdersResponseModel> fetchTotalOrdersCount({bool allStatuses = false, int pageNumber =1, int pageLimit = 10, String status = "", String orderType = "", String userId = "", String startDate = "", String endDate = ""}) async {
-
-    final statusString = status != "" ? status : (allStatuses
+  Future<TotalOrdersResponseModel> fetchTotalOrdersCount(
+      {bool allStatuses = false,
+        int pageNumber = 1,
+        int pageLimit = 10,
+        String status = "",
+        String orderType = "",
+        String userId = "",
+        String startDate = "",
+        String endDate = ""}) async {
+    final statusString = status != ""
+        ? status
+        : (allStatuses
         ? TextConstants.orderScreenStatus
         : TextConstants.processing);
 
     orderType = orderType != "" ? orderType : "";
 
-    var getOrdersParameter = "?author=$userId&page=$pageNumber&per_page=$pageLimit&created_via=$orderType&after=$startDate&before=$endDate&search=&status="; //Build #1.0.134: updated new parameters startDate, endDate
+    var getOrdersParameter =
+        "?author=$userId&page=$pageNumber&per_page=$pageLimit&created_via=$orderType&after=$startDate&before=$endDate&search=&status="; //Build #1.0.134: updated new parameters startDate, endDate
     // Encode for URL (spaces become '+', commas become '%2C')
     final encodedStatus = Uri.encodeQueryComponent(statusString);
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/${UrlMethodConstants.totalOrders}$getOrdersParameter$encodedStatus";
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/${UrlMethodConstants.totalOrders}$getOrdersParameter$encodedStatus";
     //"${UrlParameterConstants.getOrdersEndParameter}"; # Build 1.0.172 removed them so that when applied date filter, data is fetching properly.
 
     if (kDebugMode) {
@@ -1603,6 +1575,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         print("OrderRepository - Raw Response Type: ${response.runtimeType}");
         print("OrderRepository - Raw Response: ${response.toString()}");
       }
+
       /// Build #1.0.149
       /// The issue was passing a `String` (raw JSON) to `TotalOrdersResponseModel.fromJson` instead of a `Map<String, dynamic>` due to improper response handling.
       /// Updated code ensuring the `String` response is decoded with `json.decode` before processing in `fetchTotalOrdersCount`.
@@ -1612,7 +1585,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         try {
           responseData = json.decode(response);
           if (responseData is! Map<String, dynamic>) {
-            throw Exception("Decoded response is not a Map<String, dynamic>: ${responseData.runtimeType}");
+            throw Exception(
+                "Decoded response is not a Map<String, dynamic>: ${responseData.runtimeType}");
           }
         } catch (e, s) {
           if (kDebugMode) {
@@ -1636,8 +1610,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   }
 
   Future<OrderModel> getOrder({required String orderId}) async {
-
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}$orderId";
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}$orderId";
 
     if (kDebugMode) {
       print("OrderRepository.getOrder - GET URL: $url");
@@ -1657,7 +1631,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       else {
         throw Exception("Unexpected response type: ${response.runtimeType}");
       }
-    } catch (e,s) {
+    } catch (e, s) {
       if (kDebugMode) {
         print("OrderRepository - Error in getOrders: $e");
         print("Stack trace: $s");
@@ -1699,8 +1673,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
           throw Exception("Order not found");
         }
 
-        return OrderModel.fromJson(
-            Map<String, dynamic>.from(decoded.first));
+        return OrderModel.fromJson(Map<String, dynamic>.from(decoded.first));
       }
 
       // Step 3: Handle direct MAP response (rare)
@@ -1709,7 +1682,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       }
 
       throw Exception("Unexpected response format: ${decoded.runtimeType}");
-
     } catch (e, s) {
       if (kDebugMode) {
         print("OrderRepository - Error in getOrder: $e");
@@ -1719,11 +1691,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
   }
 
-
-
   Future<Map<String, dynamic>> syncOfflineDeletedOrders(
       List<Map<String, dynamic>> orders) async {
-
     final String url =
         "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.deleteofflineorders}";
 
@@ -1735,16 +1704,15 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
       final products = (order["products"] ?? []) as List;
 
-      final String clientOrderId =
-      (order["order_id"] ??
+      final String clientOrderId = (order["order_id"] ??
           order["client_order_id"] ??
           order["local_order_id"] ??
-          "").toString();
+          "")
+          .toString();
 
       if (clientOrderId.isEmpty) {
         throw Exception("❌ client_order_id is missing");
       }
-
 
       // ---------------------------------------------------------
       // ⭐ PRODUCTS (NORMAL + CUSTOM)
@@ -1762,17 +1730,14 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
         // ✅ EXTRACT SKU SAFELY
         final String sku =
-        (item["sku"] ??
-            item["product_sku"] ??
-            item["SKU"] ??
-            "").toString();
+        (item["sku"] ?? item["product_sku"] ?? item["SKU"] ?? "")
+            .toString();
 
-        final dynamic pidRaw =
-            item["product_id"] ??
-                item["id"] ??
-                item["productId"] ??
-                item["productID"] ??
-                item["meta"]?["product_id"];
+        final dynamic pidRaw = item["product_id"] ??
+            item["id"] ??
+            item["productId"] ??
+            item["productID"] ??
+            item["meta"]?["product_id"];
 
         final int? pid =
         pidRaw == null ? null : int.tryParse(pidRaw.toString());
@@ -1807,8 +1772,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       for (final p in (order["payouts"] ?? [])) {
         final double amount =
             double.tryParse(p["amount"]?.toString() ?? "0") ?? 0.0;
-        final int? pid =
-        int.tryParse(p["payout_product_id"]?.toString() ?? "");
+        final int? pid = int.tryParse(p["payout_product_id"]?.toString() ?? "");
 
         if (pid != null && pid > 0) {
           lineItems.add({
@@ -1834,11 +1798,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         final double amount =
             double.tryParse(c["amount"]?.toString() ?? "0") ?? 0.0;
 
-        final dynamic pidRaw =
-            c["cashback_product_id"] ??
-                c["product_id"] ??
-                c["id"] ??
-                c["cashbackProductId"];
+        final dynamic pidRaw = c["cashback_product_id"] ??
+            c["product_id"] ??
+            c["id"] ??
+            c["cashbackProductId"];
 
         final int? pid =
         pidRaw == null ? null : int.tryParse(pidRaw.toString());
@@ -1930,7 +1893,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       final int? wooOrderId = result?["order_id"];
 
       if (wooOrderId != null) {
-
         // 🔥 CLEAN LOCAL PRODUCT CACHE
         for (final sku in deletedSkus) {
           await _deleteProductLocally(sku);
@@ -1943,8 +1905,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         "success": true,
         "wooOrderId": wooOrderId,
       };
-    }
-    catch (e) {
+    } catch (e) {
       print("❌ Delete Sync Error: $e");
       return {
         "success": false,
@@ -1952,6 +1913,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       };
     }
   }
+
   Future<List<TaxModel>> getAllTaxes() async {
     final String url = UrlMethodConstants.taxes;
 
@@ -2022,9 +1984,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
       return response;
     } catch (e) {
-      throw Exception(_extractRedeemError(e));   // <----- ADD THIS
+      throw Exception(_extractRedeemError(e)); // <----- ADD THIS
     }
   }
+
   String _extractRedeemError(dynamic e) {
     try {
       if (e is String) {
@@ -2040,7 +2003,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
     return "Unable to redeem loyalty points";
   }
-
 
   Future<dynamic> addLoyaltyPoints({
     required int orderId,
@@ -2094,6 +2056,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
     return response;
   }
+
   Future<List<Map<String, dynamic>>> fetchDiscountRules() async {
     final String url = UrlMethodConstants.discountRules;
 
@@ -2121,8 +2084,12 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   }
 
   // 3. Apply Coupon to Order
-  Future<OrderModel> applyCouponToOrder({required int orderId, required ApplyCouponRequestModel request,}) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+  Future<OrderModel> applyCouponToOrder({
+    required int orderId,
+    required ApplyCouponRequestModel request,
+  }) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
 
     if (kDebugMode) {
       print("OrderRepository - POST URL: $url");
@@ -2138,7 +2105,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     if (response is String) {
       try {
         final responseData = json.decode(response);
-        return OrderModel.fromJson(responseData);  //Build #1.0.92: Updated: using OrderModel rather than UpdateOrderResponseModel
+        return OrderModel.fromJson(
+            responseData); //Build #1.0.92: Updated: using OrderModel rather than UpdateOrderResponseModel
       } catch (e) {
         if (kDebugMode) print("Error parsing apply coupon response: $e");
         throw Exception("Failed to parse apply coupon response");
@@ -2230,8 +2198,6 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     );
   }
 
-
-
   // Build #1.0.49: Added changeOrderStatus api call code
   Future<UpdateOrderResponseModel> changeOrderStatus({
     required int orderId,
@@ -2277,8 +2243,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   }
 
   // Build #1.0.49: Added applyDiscount api call code
-  Future<ApplyDiscountResponse> applyDiscount(int orderId, String discountCode) async {
-    String url = "${UrlHelper.baseUrl}${UrlParameterConstants.applyDiscount}$orderId";
+  Future<ApplyDiscountResponse> applyDiscount(
+      int orderId, String discountCode) async {
+    String url =
+        "${UrlHelper.baseUrl}${UrlParameterConstants.applyDiscount}$orderId";
 
     if (kDebugMode) {
       print("ProductRepository - ApplyDiscount URL: $url");
@@ -2300,7 +2268,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         return ApplyDiscountResponse.fromJson(responseData);
       } catch (e) {
         if (kDebugMode) {
-          print("ProductRepository - Error parsing apply discount response: $e");
+          print(
+              "ProductRepository - Error parsing apply discount response: $e");
         }
         throw Exception("Failed to parse apply discount response");
       }
@@ -2312,8 +2281,11 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   }
 
   // Build #1.0.274 : Added new function for add merchant discount
-  Future<OrderModel> addMerchantDiscount({required int orderId, required AddMerchantDiscountRequestModel request}) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}${EndUrlConstants.addDiscountEndUrl}";
+  Future<OrderModel> addMerchantDiscount(
+      {required int orderId,
+        required AddMerchantDiscountRequestModel request}) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}${EndUrlConstants.addDiscountEndUrl}";
 
     if (kDebugMode) {
       print("OrderRepository - POST URL for add merchant discount: $url");
@@ -2331,7 +2303,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         final responseData = json.decode(response);
         return OrderModel.fromJson(responseData);
       } catch (e) {
-        if (kDebugMode) print("Error parsing add merchant discount response: $e");
+        if (kDebugMode)
+          print("Error parsing add merchant discount response: $e");
         throw Exception("Failed to parse add merchant discount response");
       }
     } else if (response is Map<String, dynamic>) {
@@ -2343,8 +2316,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
   // Build #1.0.53 : Add Payout to Order
   @Deprecated("This API is deprecated, please use 'addPayoutAsProduct'")
-  Future<OrderModel> addPayout({required int orderId, required AddPayoutRequestModel request}) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+  Future<OrderModel> addPayout(
+      {required int orderId, required AddPayoutRequestModel request}) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
 
     if (kDebugMode) {
       print("OrderRepository - POST URL for add payout: $url");
@@ -2371,6 +2346,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       throw Exception("Unexpected response type in add payout POST");
     }
   }
+
 // Build #1.0.199 : Add Payout as Product (Hive-Only Permanent Offline)
   Future<OrderModel> addPayoutAsProduct({
     required int orderId,
@@ -2396,7 +2372,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
       // 🧩 Update existing order map
       final updatedOrder = Map<String, dynamic>.from(existingOrder);
-      final payouts = List<Map<String, dynamic>>.from(updatedOrder["payouts"] ?? []);
+      final payouts =
+      List<Map<String, dynamic>>.from(updatedOrder["payouts"] ?? []);
       payouts.add(payoutEntry);
       updatedOrder["payouts"] = payouts;
 
@@ -2408,7 +2385,8 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         productsTotal += price * qty;
       }
 
-      double payoutsTotal = payouts.fold(0.0, (sum, p) => sum + (p["amount"] ?? 0.0));
+      double payoutsTotal =
+      payouts.fold(0.0, (sum, p) => sum + (p["amount"] ?? 0.0));
       updatedOrder["gross_total"] = productsTotal + payoutsTotal;
 
       // 💾 Save updated order back to Hive
@@ -2429,10 +2407,12 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
   }
 
-
   // Build #1.0.53 : Remove Payout from Order
-  Future<OrderModel> removeFeeLine({required int orderId, required RemoveFeeLinesRequestModel request}) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+  Future<OrderModel> removeFeeLine(
+      {required int orderId,
+        required RemoveFeeLinesRequestModel request}) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
 
     if (kDebugMode) {
       print("OrderRepository - PUT URL for remove fee line: $url");
@@ -2461,8 +2441,10 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   }
 
   // Build #1.0.64: removeCoupon API call
-  Future<OrderModel> removeCoupon({required int orderId, required RemoveCouponRequestModel request}) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+  Future<OrderModel> removeCoupon(
+      {required int orderId, required RemoveCouponRequestModel request}) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
 
     if (kDebugMode) {
       print("OrderRepository - PUT URL for remove coupon: $url");

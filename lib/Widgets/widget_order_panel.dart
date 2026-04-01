@@ -1006,10 +1006,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           _listVersion++;
         });
       },
-      child: BarcodeKeyboardListener(
+      child:
+
+      BarcodeKeyboardListener(
         // Build #1.0.44 : Added - Wrap with BarcodeKeyboardListener for barcode scanning
         // key:  _scannerKey,//Build #1.0.268: 3. Add key for scanner event
-        bufferDuration: Duration(milliseconds: 700),
+        bufferDuration: Duration(milliseconds: 70),
         //Build #1.0.78: Removed orderHelper.addItemToOrder from the API success block, as it’s now in OrderBloc.updateOrderProducts.
         // Kept local addItemToOrder for non-API orders.
         // Ensured loader is shown during API calls and hidden afterward.
@@ -1017,7 +1019,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         caseSensitive: true,
         onBarcodeScanned: (barcode) async {
           if (ScannerMutex.noOrderBusy) {
-            print("🚫 BLOCKED BY ScannerMutex.noOrderBusy");
+            print(" BLOCKED BY ScannerMutex.noOrderBusy");
             return;
           }
 
@@ -1091,7 +1093,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             bool foundOffline = false;
             final normalizedSku = OrderHelper.normalizeSku(trimmedBarcode);
 
-// 🔥 ALWAYS VALIDATE WITH BACKEND FIRST
+        // 🔥 ALWAYS VALIDATE WITH BACKEND FIRST
             final apiProducts = await ProductRepository()
                 .fetchProductBySku(normalizedSku, forceRefresh: true);
 
@@ -1199,7 +1201,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                   productMap = Map<String, dynamic>.from(productMap['product']);
                 }
 
-// ✅ STORE FINAL MAP FOR LATER USE
+         // ✅ STORE FINAL MAP FOR LATER USE
                 resolvedProductMap = productMap;
 
                 if (kDebugMode) {
@@ -1235,9 +1237,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               print("📌 STACKTRACE → $s");
             }
 
-// ---------------------------------------------------------------------------
-// 2️⃣ PRODUCT CACHE (Custom Items + Normal SKU)
-// ---------------------------------------------------------------------------
+          // ---------------------------------------------------------------------------
+          // 2️⃣ PRODUCT CACHE (Custom Items + Normal SKU)
+          // ---------------------------------------------------------------------------
             try {
               if (product == null) {
                 final cached = await productBox.get(cacheKey); // <-- await here
@@ -1486,7 +1488,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             } catch (e) {
               print("⚠ Backend validation failed: $e");
             }
-// 🚨 If backend says product does NOT exist
+      // 🚨 If backend says product does NOT exist
             if (!existsInBackend && !isCustomItem) {
               print("⛔ Backend confirms product deleted → cleaning ALL local cache");
 
@@ -2252,6 +2254,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           ],
         ),
       ),
+
+
     );
   }
 
@@ -2331,6 +2335,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 //   }
 
   //Build #1.0.67: Handler methods for response and error
+
+
   Future<void> _handleResponse(
       APIResponse response,
       Map<String, dynamic> orderItem, {

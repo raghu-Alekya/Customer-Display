@@ -21,18 +21,13 @@ import '../Database/order_panel_db_helper.dart';
 import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/api_response.dart';
-import '../Models/Orders/orders_model.dart';
 import '../Models/Search/product_search_model.dart';
-import '../Models/Search/product_variation_model.dart';
 import '../Providers/Age/age_verification_provider.dart';
-import '../Repositories/Category/category_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
 import '../Utilities/printer_settings.dart';
-import '../Utilities/responsive_layout.dart';
 import '../Utilities/svg_images_utility.dart';
 import 'ManualPriceDialog.dart';
-import 'OrderPopupHelper.dart';
 
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 
@@ -259,7 +254,6 @@ class TopBar extends StatefulWidget {
 }
 
 class _TopBarState extends State<TopBar> {
-  late BuildContext _context;
   final _searchController = TextEditingController();
   final _searchFocusNode  = FocusNode();
   Timer?        _debounce;
@@ -372,7 +366,6 @@ class _TopBarState extends State<TopBar> {
 
   void _listenToScale() {
     if (_scaleSubscription != null) return;
-    // Let native status events drive "connecting" vs connected (avoids duplicate flashes).
     _scaleLog('🔌 Subscribing to native magellan_scale/events...');
 
     _scaleSubscription = _scaleEventChannel.receiveBroadcastStream().listen(
@@ -402,7 +395,6 @@ class _TopBarState extends State<TopBar> {
               final double w    = (data['weight'] as num?)?.toDouble() ?? 0.0;
               final String unit = data['unit']   as String? ?? 'lb';
               _scaleLog('⚖️ Weight: $w $unit');
-              // Convert to kg for internal storage, show in lb
               double kg = w;
               if (unit == 'lb') kg = w * 0.453592;
               else if (unit == 'g') kg = w / 1000;
@@ -479,7 +471,6 @@ class _TopBarState extends State<TopBar> {
     if (kDebugMode) debugPrint('[Scale] $msg');
   }
 
-  /// Cancel EventChannel subscription and tell native side to stop.
   void _stopScale() {
     _scaleSubscription?.cancel();
     _scaleSubscription = null;
@@ -490,7 +481,6 @@ class _TopBarState extends State<TopBar> {
     _weightProvider?.updateWeight(0.0);
   }
 
-  /// Reconnect: tell native to restart, re-subscribe if needed.
   Future<void> _reconnectScale() async {
     _scaleLog('🔄 Reconnecting...');
     if (mounted) setState(() {
@@ -502,7 +492,6 @@ class _TopBarState extends State<TopBar> {
     } catch (e) {
       _scaleLog('❌ Reconnect error: $e');
     }
-    // If subscription was somehow cancelled, re-create it
     if (_scaleSubscription == null) {
       _listenToScale();
     }
@@ -512,49 +501,84 @@ class _TopBarState extends State<TopBar> {
   // SEARCH
   // ══════════════════════════════════════════════════════════════════════════════
 
-  // FIXED — reads ALL products_ keys directly, no dedup loss
-  // REPLACE the existing _loadCachedProducts with this:
   _loadCachedProducts() async {
     try {
-      // Step 1: Kick off background pre-fetch of ALL categories
-      // This ensures all subcategory products land in Isar cache
-      final repo = CategoryRepository();
-      unawaited(repo.prefetchAllCategoryProducts().then((_) async {
-        // Step 2: Once prefetch done, reload _cachedProducts so search is complete
-        if (!mounted) return;
-        await _reloadAllProductsFromIsar();
-      }));
-
-      // Step 3: Also load whatever is already in cache right now (instant)
       await _reloadAllProductsFromIsar();
-
     } catch (e) {
       if (kDebugMode) print("❌ _loadCachedProducts error: $e");
       if (mounted) setState(() => _cacheLoaded = true);
     }
   }
 
-// NEW helper — reads ALL products_* keys from Isar into _cachedProducts
-  Future<void> _reloadAllProductsFromIsar() async {
-    try {
-      final isar = await IsarService.instance;
-      final cachedEntries = await isar.isarCacheEntrys
-          .where()
-          .filter()
-          .keyStartsWith("products_")
-          .findAll();
+  /// Same IDs as [_buildLocalResultsList] so products cached only under `id` /
+  /// `product_id` (e.g. Indigo) are indexed, not only [fast_key_product_id].
+  static int? _productIdFromCacheMap(dynamic product) {
+    if (product is! Map) return null;
+    final dynamic raw =
+        product["fast_key_product_id"] ?? product["product_id"] ?? product["id"];
+    if (raw is int) return raw;
+    return int.tryParse(raw?.toString() ?? "");
+  }
 
-      final Map<int, dynamic> uniqueProducts = {};
-      for (final entry in cachedEntries) {
+  /// Category `products_*`, Indigo `indigo_products_*`, and [StorageProvider.productCache] `all_products_list`.
+  static Future<Map<int, dynamic>> _uniqueProductsFromAllCaches() async {
+    final isar = await IsarService.instance;
+    final Map<int, dynamic> uniqueProducts = {};
+
+    void mergeProductList(List<dynamic> products) {
+      for (final product in products) {
         try {
-          final List<dynamic> products = json.decode(entry.json);
-          for (final product in products) {
-            final int? productId = product["fast_key_product_id"];
-            if (productId == null) continue;
-            uniqueProducts[productId] = product; // overwrite = latest wins
-          }
+          final int? productId = _productIdFromCacheMap(product);
+          if (productId == null) continue;
+          uniqueProducts[productId] = product;
         } catch (_) {}
       }
+    }
+
+    final indigoEntries = await isar.isarCacheEntrys
+        .where()
+        .filter()
+        .keyStartsWith("indigo_products_")
+        .findAll();
+    for (final entry in indigoEntries) {
+      try {
+        mergeProductList(json.decode(entry.json) as List<dynamic>);
+      } catch (_) {}
+    }
+
+    try {
+      final allList = await StorageProvider.productCache.get("all_products_list");
+      if (allList is List) {
+        for (final item in allList) {
+          if (item is! Map) continue;
+          final m = Map<String, dynamic>.from(item);
+          if (m["products"] is List && (m["products"] as List).isNotEmpty) {
+            final first = (m["products"] as List).first;
+            if (first is Map) mergeProductList([first]);
+          } else {
+            mergeProductList([m]);
+          }
+        }
+      }
+    } catch (_) {}
+
+    final cachedEntries = await isar.isarCacheEntrys
+        .where()
+        .filter()
+        .keyStartsWith("products_")
+        .findAll();
+    for (final entry in cachedEntries) {
+      try {
+        mergeProductList(json.decode(entry.json) as List<dynamic>);
+      } catch (_) {}
+    }
+
+    return uniqueProducts;
+  }
+
+  Future<void> _reloadAllProductsFromIsar() async {
+    try {
+      final uniqueProducts = await _uniqueProductsFromAllCaches();
 
       if (mounted) {
         setState(() {
@@ -582,23 +606,7 @@ class _TopBarState extends State<TopBar> {
   }
 
   getAllCachedProducts() async {
-    final isar = await IsarService.instance;  // ← ADD THIS LINE
-
-    final cachedEntries = await isar.isarCacheEntrys
-        .where()
-        .filter()
-        .keyStartsWith("products_")
-        .findAll();
-
-    final Map<int, dynamic> uniqueProducts = {};
-    for (final entry in cachedEntries) {
-      final List<dynamic> products = json.decode(entry.json);
-      for (final product in products) {
-        final int? productId = product["fast_key_product_id"];
-        if (productId == null) continue;
-        uniqueProducts.putIfAbsent(productId, () => product);
-      }
-    }
+    final uniqueProducts = await _uniqueProductsFromAllCaches();
     return uniqueProducts.values.toList();
   }
 
@@ -612,20 +620,6 @@ class _TopBarState extends State<TopBar> {
     }
   }
 
-  // void _onSearchChanged() {
-  //   if (_debounce?.isActive ?? false) _debounce?.cancel();
-  //   _debounce = Timer(const Duration(milliseconds: 350), () {
-  //     final query = _searchController.text.toLowerCase();
-  //     if (query.isEmpty) { _removeOverlay(); setState(() {}); return; }
-  //     if (_overlayEntry == null) _showSearchResultsOverlay();
-  //     else _overlayEntry?.markNeedsBuild();
-  //     setState(() {});
-  //   });
-  // }
-
-  // FIXED — refreshes cache on each search so newly loaded categories appear
-
-// REPLACE existing _onSearchChanged with this:
   void _onSearchChanged() {
     if (_debounce?.isActive ?? false) _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), () async {
@@ -635,7 +629,6 @@ class _TopBarState extends State<TopBar> {
         setState(() {});
         return;
       }
-      // Always re-read Isar so newly cached categories are included
       await _reloadAllProductsFromIsar();
       if (!mounted) return;
       if (_overlayEntry == null) _showSearchResultsOverlay();
@@ -702,19 +695,35 @@ class _TopBarState extends State<TopBar> {
     if (!_cacheLoaded) return const Center(child: CircularProgressIndicator());
     if (_cachedProducts.isEmpty) return const Center(child: Text("No products in cache"));
 
-    // ── Deduplicate by product ID + filter by name or SKU ──────────────────────
+    int? _resolveProductId(dynamic p) {
+      final dynamic raw = p["fast_key_product_id"] ?? p["product_id"] ?? p["id"];
+      if (raw is int) return raw;
+      return int.tryParse(raw?.toString() ?? "");
+    }
+
+    String _resolveName(dynamic p) {
+      return (p["fast_key_item_name"] ?? p["name"] ?? "Unknown").toString();
+    }
+
+    String _resolvePrice(dynamic p) {
+      final dynamic raw = p["fast_key_item_price"] ?? p["price"] ?? p["regular_price"] ?? "0.00";
+      return raw.toString();
+    }
+
+    String _resolveSku(dynamic p) {
+      return (p["sku"] ?? p["fast_key_item_sku"] ?? "").toString();
+    }
+
     final Map<int, dynamic> uniqueById = {};
     for (final p in _cachedProducts) {
-      final int? pid = p["fast_key_product_id"] is int
-          ? p["fast_key_product_id"]
-          : int.tryParse(p["fast_key_product_id"]?.toString() ?? "");
+      final int? pid = _resolveProductId(p);
       if (pid == null) continue;
 
-      final name = (p["fast_key_item_name"] ?? "").toString().trim().toLowerCase();
-      final sku  = (p["sku"] ?? "").toString().trim().toLowerCase();
+      final name = _resolveName(p).trim().toLowerCase();
+      final sku  = _resolveSku(p).trim().toLowerCase();
 
       if (query.isEmpty || name.contains(query) || sku.contains(query)) {
-        uniqueById[pid] = p; // overwrite — latest cached version wins
+        uniqueById[pid] = p;
       }
     }
 
@@ -722,7 +731,6 @@ class _TopBarState extends State<TopBar> {
       ..sort((a, b) {
         final na = (a["fast_key_item_name"] ?? "").toString().toLowerCase();
         final nb = (b["fast_key_item_name"] ?? "").toString().toLowerCase();
-        // Exact starts-with matches float to the top
         final sa = na.startsWith(query);
         final sb = nb.startsWith(query);
         if (sa && !sb) return -1;
@@ -738,11 +746,10 @@ class _TopBarState extends State<TopBar> {
       itemBuilder: (context, i) {
         final p = list[i];
 
-        final name  = p["fast_key_item_name"]?.toString() ?? "Unknown";
-        final price = p["fast_key_item_price"]?.toString() ?? "0.00";
-        final sku   = p["sku"]?.toString() ?? "";
+        final name  = _resolveName(p);
+        final price = _resolvePrice(p);
+        final sku   = _resolveSku(p);
 
-        // ── Resolve best available image ───────────────────────────────────────
         String? imageUrl;
         final imagesRaw = p["images"];
         if (imagesRaw != null) {
@@ -787,30 +794,18 @@ class _TopBarState extends State<TopBar> {
                 "\$$price",
                 style: const TextStyle(fontWeight: FontWeight.w500),
               ),
-
-              // if (sku.isNotEmpty) ...[
-              //   const SizedBox(width: 8),
-              //   Text(
-              //     "SKU: $sku",
-              //     style: const TextStyle(fontSize: 11, color: Colors.grey),
-              //   ),
-              // ],
-
             ],
           ),
           onTap: () async {
-            // ── Build base ProductResponse from cache row ──────────────────────
+            final int productId = _resolveProductId(p) ?? 0;
             ProductResponse fullProduct = ProductResponse(
-              id:     int.tryParse(p["fast_key_product_id"]?.toString() ?? "0") ?? 0,
+              id:     productId,
               name:   name,
               price:  price,
               sku:    sku.isNotEmpty ? sku : null,
               images: imageUrl != null ? [imageUrl!] : [],
             );
 
-            // ── Enrich with tags directly from the cached product map ──────────
-            // No extra Isar round-trip needed — tags are already stored in the
-            // normalized cache row written by _cacheProductsAndVariations.
             try {
               final rawTags = p["tags"];
               if (rawTags is List && rawTags.isNotEmpty) {
@@ -830,7 +825,6 @@ class _TopBarState extends State<TopBar> {
                       "${fullProduct.id}: ${fullProduct.tags?.map((t) => t.name).toList()}");
                 }
               } else {
-                // ── Fallback: scan all products_ Isar entries for this product ──
                 final isar    = await IsarService.instance;
                 final entries = await isar.isarCacheEntrys
                     .where()
@@ -842,8 +836,8 @@ class _TopBarState extends State<TopBar> {
                   final List<dynamic> cached = jsonDecode(entry.json);
                   final match = cached.firstWhere(
                         (item) =>
-                    item["fast_key_product_id"]?.toString() ==
-                        p["fast_key_product_id"]?.toString(),
+                    ((item["fast_key_product_id"] ?? item["product_id"] ?? item["id"])?.toString() ==
+                        productId.toString()),
                     orElse: () => null,
                   );
                   if (match != null) {
@@ -936,12 +930,9 @@ class _TopBarState extends State<TopBar> {
 
   // ══════════════════════════════════════════════════════════════════════════════
   // PRODUCT TAP HANDLER
-  // Mirrors _onIndigoProductTapped — full flow: age check → EBT → produce
-  // (auto-weight) → variants → variable price → simple add.
   // ══════════════════════════════════════════════════════════════════════════════
 
   Future<void> _handleProductTap(ProductResponse product) async {
-    // ── Guard: only act on valid screens ──────────────────────────────────────
     final screen = widget.screen;
     if (screen != Screen.FASTKEY &&
         screen != Screen.CATEGORY &&
@@ -950,23 +941,15 @@ class _TopBarState extends State<TopBar> {
       return;
     }
 
-    // ── Prevent re-entrant taps ───────────────────────────────────────────────
     if (_dialogOpen) {
       if (kDebugMode) print("TopBar: dialog already open, ignoring tap");
       return;
     }
 
-    // ── Step 1: fully dismiss search UI BEFORE any async work ────────────────
-    // Unfocus first so the keyboard hides (doesn't steal context)
     _searchFocusNode.unfocus();
-    // Remove overlay entry and wait for Flutter to fully flush the removal
     _removeOverlay();
-    // Give the framework one full frame to remove the overlay from the tree
-    // before we try to push a dialog on top. Without this, the overlay can
-    // still intercept the dialog's barrier tap on the first frame.
     await WidgetsBinding.instance.endOfFrame;
 
-    // ── Safety: bail if widget was disposed during that frame ─────────────────
     if (!mounted) return;
 
     try {
@@ -1067,7 +1050,6 @@ class _TopBarState extends State<TopBar> {
       if (hasProduceTag) {
         if (kDebugMode) print("🌿 Produce detected → AutoWeightPriceDialog");
 
-        // Wait one extra frame so any previous dialog/overlay paint is done
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted) return;
 
@@ -1075,15 +1057,10 @@ class _TopBarState extends State<TopBar> {
         Map<String, dynamic>? result;
         try {
           result = await showDialog<Map<String, dynamic>>(
-            // Use the live `context` getter — never the stale `_context` field
-            // after async gaps, because the Element may have been rebuilt.
             context: context,
             barrierDismissible: false,
-            useRootNavigator: true,   // ← ensures it sits above all overlays
+            useRootNavigator: true,
             builder: (dialogCtx) => ChangeNotifierProvider.value(
-              // Re-inject WeightProvider into the dialog's subtree because
-              // using useRootNavigator: true creates a new Navigator scope
-              // that is above the Provider, so we must pass it down manually.
               value: Provider.of<WeightProvider>(context, listen: false),
               child: AutoWeightPriceDialog(
                 productName: product.name ?? "Product",
@@ -1136,36 +1113,17 @@ class _TopBarState extends State<TopBar> {
         return;
       }
 
-      // ── 8. VARIANTS ────────────────────────────────────────────────────────
-      List<Map<String, dynamic>> variants =
+      // ── 8. VARIANTS — resolved from local Isar cache only ─────────────────
+      // NOTE: API variant fetch intentionally skipped.
+      // Variants are resolved from local Isar cache only (_getVariantsFromCache).
+      // If none found in cache, product is treated as simple.
+      final List<Map<String, dynamic>> variants =
       await _getVariantsFromCache(product.id!);
-      bool hasVariants = variants.isNotEmpty;
-
-      if (!hasVariants) {
-        productBloc.fetchProductVariations(product.id!);
-        final response = await productBloc.variationStream
-            .firstWhere((r) => r.status == Status.COMPLETED)
-            .timeout(const Duration(seconds: 10),
-          //     onTimeout: () {
-          //   return ApiResponse<List<ProductVariation>>.completed([]);
-          // }
-        );
-
-        if (response.data != null && response.data!.isNotEmpty) {
-          hasVariants = true;
-          variants = response.data!.map((v) => {
-            "id":    v.id,
-            "name":  v.name ?? "Variant",
-            "price": v.price ?? "0",
-            "image": v.image?.src ?? "",
-            "sku":   v.sku ?? "",
-          }).toList();
-        }
-      }
+      final bool hasVariants = variants.isNotEmpty;
 
       if (!mounted) return;
 
-      if (hasVariants && variants.isNotEmpty) {
+      if (hasVariants) {
         if (kDebugMode) print("🔀 Variants (${variants.length}) → VariantsDialog");
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted) return;
@@ -1496,7 +1454,6 @@ class _TopBarState extends State<TopBar> {
 
   @override
   Widget build(BuildContext context) {
-    _context = context;
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
     return Container(
@@ -1569,7 +1526,6 @@ class _TopBarState extends State<TopBar> {
           const SizedBox(width: 50),
 
           // ── Scale weight display ─────────────────────────────────────────────
-
           Consumer<WeightProvider>(
             builder: (context, weightProvider, _) {
               final bool connected = weightProvider.isConnected;
@@ -1678,7 +1634,6 @@ class _TopBarState extends State<TopBar> {
           const SizedBox(width: 16),
 
           // ── Cash drawer ──────────────────────────────────────────────────────
-
           GestureDetector(
             onTap: () async {
               final isAuthorized = await _showCashDrawerPinPopup(context);

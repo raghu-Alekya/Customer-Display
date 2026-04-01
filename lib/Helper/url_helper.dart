@@ -114,7 +114,7 @@ class UrlMethodConstants {
   static const taxes = "pinaka-pos/v1/assets/all-taxes";
   static const String loyaltyRemove = "loyalty/remove-loyalty-points";
   static const String deleteofflineorders = "orders/sync-offline-orders";
-  static const String cashbackservices = "assets/cash-back-service";
+  static const String cashbackservices = "assets/cash-back-service";  ///
   static const String discountRules = "pinaka-pos/v1/assets/discount-rules";
 }
 
@@ -138,11 +138,11 @@ class EndUrlConstants { // Build #1.0.13
   static const  String getFastKeyProductsEndUrl   = "/get-by-fastkey-id/";
   static const String deleteFastKeyEndUrl         = "/delete-fastkey"; // Build #1.0.19
   static const String allCategoriesEndUrl         = "?page=1&per_page=100&hide_empty=true&parent="; // Build #1.0.21
-  static const String createPaymentEndUrl         = "/create-payment";  // Build #1.0.25
+  // static const String createPaymentEndUrl         = "/create-payment";  // Build #1.0.25
   static const String paymentmeta         = "/update-payment-meta";  // Build #1.0.25
 
   static const String paymentByIdEndUrl           = "/get-payment-by-id?payment_id=";
-  static const String paymentByOrderIdEndUrl      = "/get-payments-by-order-id?order_id=";
+  // static const String paymentByOrderIdEndUrl      = "/get-payments-by-order-id?order_id=";
   static const String variationsEndUrl            = "/variations"; //Build 1.1.36
   static const String voidPaymentEndUrl           = "/void-payment";  // Build #1.0.49
   static const String createShiftEndUrl           = "/create-shift"; // Build #1.0.70
