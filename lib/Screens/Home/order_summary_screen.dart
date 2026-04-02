@@ -2830,7 +2830,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     setState(() => isSummaryLoading = true);
 
-    // paymentBloc.getPaymentsByOrderId(orderId!);
+    paymentBloc.getPaymentsByOrderId(orderId!);
 
     _paymentListSubscription?.cancel();
     _paymentListSubscription =
@@ -3552,113 +3552,113 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       notes: '',
     );
 
-    // paymentBloc.createPayment(paymentRequest);
+    paymentBloc.createPayment(paymentRequest);
 
-    // StreamSubscription? subscription;
-    // subscription =
-    //     paymentBloc.createPaymentStream.listen((paymentResponse) async {
-    //       if (kDebugMode) print("Payment stream response: $paymentResponse");
-    //
-    //       if (paymentResponse.status == Status.ERROR) {
-    //         if (!skipPopup)
-    //           _hidePaymentProgressDialog();
-    //         else if (Navigator.canPop(context)) Navigator.pop(context);
-    //
-    //         ScaffoldMessenger.of(context).showSnackBar(
-    //           SnackBar(
-    //             content: Text("Payment failed: ${paymentResponse.message}"),
-    //             backgroundColor: Colors.red,
-    //           ),
-    //         );
-    //
-    //         setState(() {
-    //           _processingPaymentMethod = null;
-    //           isLoading = false;
-    //           _successPopupShown = false;
-    //         });
-    //
-    //         subscription?.cancel();
-    //         return;
-    //       }
-    //
-    //       if (paymentResponse.status == Status.COMPLETED &&
-    //           paymentResponse.data != null &&
-    //           paymentResponse.data!.message == "Payment Created Successfully") {
-    //         final paymentData = paymentResponse.data!;
-    //         paidAmount = amount;
-    //         paymentId = paymentData.paymentId.toString();
-    //
-    //         final bool isFullPayment = amount >= remainingBalance;
-    //         final bool isPartialPayment = !isFullPayment && amount > 0;
-    //
-    //         // Update balances
-    //         tenderAmount += amount;
-    //         if (isFullPayment) {
-    //           balanceAmount = 0.0;
-    //           changeAmount = amount - remainingBalance;
-    //         } else {
-    //           balanceAmount = remainingBalance - amount;
-    //           changeAmount = 0.0;
-    //         }
-    //         balanceAmount = double.parse(balanceAmount.toStringAsFixed(2));
-    //
-    //         // ─── Save last payment info ───
-    //         _lastPayment = LastPaymentInfo(
-    //           method: selectedPaymentMethod!,
-    //           amount: amount,
-    //           paymentId: paymentId,
-    //           sunmiTxnId: null,
-    //         );
-    //
-    //         try {
-    //           final box = StorageProvider.offlineOrders;
-    //           final key = (orderId ?? 0).toString();
-    //           final hasKey = await box.containsKey(key);
-    //           final raw = hasKey ? await box.get(key) : null;
-    //           final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
-    //           existing["lastPayment"] = _lastPayment!.toJson();
-    //           existing["balanceAmount"] = balanceAmount;
-    //           existing["paidAmount"] = tenderAmount;
-    //           existing["tenderAmount"] = tenderAmount;
-    //           existing["ebtTotal"] = ebtTotal;
-    //           await box.put(key, existing);
-    //         } catch (e) {
-    //           print("⚠ Hive update error: $e");
-    //         }
-    //
-    //         if (mounted)
-    //           setState(() {
-    //             _processingPaymentMethod = null;
-    //             isLoading = false;
-    //             _currentPaymentRemainingBalance =
-    //             isPartialPayment ? balanceAmount : null;
-    //           });
-    //
-    //         // ─── Show success popup only for full payment ───
-    //         if (isFullPayment && !_successPopupShown) {
-    //           _successPopupShown = true;
-    //
-    //           final box = StorageProvider.offlineOrders;
-    //           final key = (orderId ?? 0).toString();
-    //           final rawBox = await box.get(key);
-    //           final cr = rawBox is Map ? rawBox["coupon_response"] : null;
-    //           final couponResponse =
-    //           cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
-    //
-    //           _showPaymentDialog(
-    //             context,
-    //             amount,
-    //             changeAmount: changeAmount,
-    //             showChange: changeAmount > 0,
-    //             couponResponse: couponResponse,
-    //           );
-    //         }
-    //
-    //         amountController.clear();
-    //         _fetchPaymentsByOrderId();
-    //         subscription?.cancel();
-    //       }
-    //     });
+    StreamSubscription? subscription;
+    subscription =
+        paymentBloc.createPaymentStream.listen((paymentResponse) async {
+          if (kDebugMode) print("Payment stream response: $paymentResponse");
+
+          if (paymentResponse.status == Status.ERROR) {
+            if (!skipPopup)
+              _hidePaymentProgressDialog();
+            else if (Navigator.canPop(context)) Navigator.pop(context);
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Payment failed: ${paymentResponse.message}"),
+                backgroundColor: Colors.red,
+              ),
+            );
+
+            setState(() {
+              _processingPaymentMethod = null;
+              isLoading = false;
+              _successPopupShown = false;
+            });
+
+            subscription?.cancel();
+            return;
+          }
+
+          if (paymentResponse.status == Status.COMPLETED &&
+              paymentResponse.data != null &&
+              paymentResponse.data!.message == "Payment Created Successfully") {
+            final paymentData = paymentResponse.data!;
+            paidAmount = amount;
+            paymentId = paymentData.paymentId.toString();
+
+            final bool isFullPayment = amount >= remainingBalance;
+            final bool isPartialPayment = !isFullPayment && amount > 0;
+
+            // Update balances
+            tenderAmount += amount;
+            if (isFullPayment) {
+              balanceAmount = 0.0;
+              changeAmount = amount - remainingBalance;
+            } else {
+              balanceAmount = remainingBalance - amount;
+              changeAmount = 0.0;
+            }
+            balanceAmount = double.parse(balanceAmount.toStringAsFixed(2));
+
+            // ─── Save last payment info ───
+            _lastPayment = LastPaymentInfo(
+              method: selectedPaymentMethod!,
+              amount: amount,
+              paymentId: paymentId,
+              sunmiTxnId: null,
+            );
+
+            try {
+              final box = StorageProvider.offlineOrders;
+              final key = (orderId ?? 0).toString();
+              final hasKey = await box.containsKey(key);
+              final raw = hasKey ? await box.get(key) : null;
+              final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
+              existing["lastPayment"] = _lastPayment!.toJson();
+              existing["balanceAmount"] = balanceAmount;
+              existing["paidAmount"] = tenderAmount;
+              existing["tenderAmount"] = tenderAmount;
+              existing["ebtTotal"] = ebtTotal;
+              await box.put(key, existing);
+            } catch (e) {
+              print("⚠ Hive update error: $e");
+            }
+
+            if (mounted)
+              setState(() {
+                _processingPaymentMethod = null;
+                isLoading = false;
+                _currentPaymentRemainingBalance =
+                isPartialPayment ? balanceAmount : null;
+              });
+
+            // ─── Show success popup only for full payment ───
+            if (isFullPayment && !_successPopupShown) {
+              _successPopupShown = true;
+
+              final box = StorageProvider.offlineOrders;
+              final key = (orderId ?? 0).toString();
+              final rawBox = await box.get(key);
+              final cr = rawBox is Map ? rawBox["coupon_response"] : null;
+              final couponResponse =
+              cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+
+              _showPaymentDialog(
+                context,
+                amount,
+                changeAmount: changeAmount,
+                showChange: changeAmount > 0,
+                couponResponse: couponResponse,
+              );
+            }
+
+            amountController.clear();
+            _fetchPaymentsByOrderId();
+            subscription?.cancel();
+          }
+        });
   }
 
   void _hidePaymentProgressDialog() {
@@ -3834,7 +3834,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   // isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.card,
                                   // ❌ FORCE DISABLE
                                   isLoading: false,
-                                  isDisabled: false,
+                                  isDisabled: true,
                                   onTap: () async {
                                     _selectPaymentMethod(
                                       TextConstants.card,
@@ -4189,7 +4189,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          ////**88 */ Back button
+          //// Back button
           InkWell(
             borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
             onTap: () async {
@@ -4252,6 +4252,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               // ✅ CASE 2: Coupon applied but no payment yet
               // CASE 2: Coupon applied
               if (couponExists) {
+
                 // ⭐ ISSUE COUPON → show exit confirmation popup
                 if (isCouponActive) {
                   print("🎟 Issue coupon → showing exit confirmation");
@@ -5551,27 +5552,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               ],
                               if (hasAutoDiscount) ...[
                                 const SizedBox(width: 5),
-                                _discountBadge(
-                                  "Autodiscount",
-                                  Colors.red,
-                                  amount: autoDiscount,
-                                ),
+                                _discountBadge("Autodiscount", Colors.red),
                               ],
                               if (isComboDiscount) ...[
                                 const SizedBox(width: 5),
-                                _discountBadge(
-                                  "combo discount",
-                                  Colors.orange,
-                                  amount: comboDiscount + mixMatchDiscount,
-                                ),
+                                _discountBadge("combo discount", Colors.orange),
                               ],
                               if (isMultipackDiscount) ...[
                                 const SizedBox(width: 5),
-                                _discountBadge(
-                                  "Multipack",
-                                  Colors.blue,
-                                  amount: multipackDiscount,
-                                ),
+                                _discountBadge("Multipack", Colors.blue),
                               ],
                             ],
                           ),
@@ -5648,13 +5637,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   /// 🔹 Reusable badge widget
   /// 🔹 Reusable badge widget
-  Widget _discountBadge(String text, Color color, {double? amount}) {
-    final double? displayAmount =
-    (amount != null && amount > 0) ? amount : null;
+  Widget _discountBadge(String text, Color color) {
     return Text(
-      displayAmount == null
-          ? text
-          : '$text  -${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}',
+      text,
       style: TextStyle(
         fontSize: 9,
         fontWeight: FontWeight.bold,
@@ -7279,7 +7264,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     );
 
     try {
-      final response = await OrderRepository().CouponApply(offlineOrder!);
+      final payload = Map<String, dynamic>.from(offlineOrder!);
+
+// Issue coupon requests must send an explicit empty coupon_lines array.
+      payload["coupon_lines"] = [];
+
+      final response = await OrderRepository().CouponApply(payload);
 
       if (loaderOpen) {
         Navigator.of(context).pop();
@@ -7341,7 +7331,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       existing["coupon_applied"] = true;
       existing["coupon_applied_at"] = DateTime.now().toIso8601String();
       existing["coupon_amount"] = discountAmount;
-
+      existing["generated_coupon_only"] = true;
       await box.put(key, existing);
       offlineOrder = existing;
 
@@ -7799,7 +7789,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // 🔥 CLEAR COUPON BEFORE SYNC
       offlineOrder["coupon_response"] = {"coupons": []};
-
+      offlineOrder["generated_coupon_only"] = false;
       await box.put(orderKey, offlineOrder);
 
       // 🔥 CALL SAME SYNC METHOD
@@ -7836,6 +7826,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       offlineOrder["coupon_applied"] = false;
       offlineOrder["applied_coupons"] = [];
       offlineOrder["coupon_response"] = {"coupons": []};
+      offlineOrder["generated_coupon_only"] = false;
       await box.put(orderKey, offlineOrder);
 
       await CustomerDisplayHelper.updateCustomerDisplay(
@@ -8062,6 +8053,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           {"code": code}
         ]
       };
+      offlineOrder["generated_coupon_only"] = false;
 
       // ✅ Use LOCAL order ID instead of Woo ID for syncing
 
@@ -10168,16 +10160,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       bytes += ticket.emptyLines(1);
     }
-
-    // Prefer discount coming from GetOrderModel/API (json['discount']) for printing.
-    // Falls back to passed-in discountValue (offline) and finally the screen's discount.
-    final double discount = () {
-      final raw = _order["discount"] ?? _order["order_discount"] ?? _order["discount_amount"];
-      final parsed = raw == null ? null : double.tryParse(raw.toString());
-      final fromGetOrder = parsed ?? (discountValue != 0 ? discountValue : null);
-      if (fromGetOrder == null) return this.discount;
-      return fromGetOrder != 0 ? -(fromGetOrder.abs()) : 0.0;
-    }();
 
     // -------------------------------
     // TOTALS (unchanged from your version)

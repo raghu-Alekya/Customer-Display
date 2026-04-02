@@ -102,33 +102,34 @@ class PaymentRepository {  // Build #1.0.25 - added by naveen
 
 
   // 3. Get Payments by Order ID
-  // Future<List<PaymentListModel>> getPaymentsByOrderId(int orderId) async {
-  //   final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.payments}${EndUrlConstants.paymentByOrderIdEndUrl}$orderId";
-  //
-  //   if (kDebugMode) {
-  //     print("PaymentRepository - GET URL: $url");
-  //   }
-  //
-  //   final response = await _helper.get(url, true);
-  //
-  //   if (kDebugMode) {
-  //     print("PaymentRepository - Raw Response: $response");
-  //   }
-  //
-  //   if (response is String) {
-  //     try {
-  //       final responseData = json.decode(response) as List;
-  //       return responseData.map((e) => PaymentListModel.fromJson(e)).toList();
-  //     } catch (e) {
-  //       if (kDebugMode) print("Error parsing payments list response: $e");
-  //       throw Exception("Failed to parse payments list response");
-  //     }
-  //   } else if (response is List) {
-  //     return response.map((e) => PaymentListModel.fromJson(e)).toList();
-  //   } else {
-  //     throw Exception("Unexpected response type in payments list GET");
-  //   }
-  // }
+
+  Future<List<PaymentListModel>> getPaymentsByOrderId(int orderId) async {
+    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.payments}${EndUrlConstants.paymentByOrderIdEndUrl}$orderId";
+
+    if (kDebugMode) {
+      print("PaymentRepository - GET URL: $url");
+    }
+
+    final response = await _helper.get(url, true);
+
+    if (kDebugMode) {
+      print("PaymentRepository - Raw Response: $response");
+    }
+
+    if (response is String) {
+      try {
+        final responseData = json.decode(response) as List;
+        return responseData.map((e) => PaymentListModel.fromJson(e)).toList();
+      } catch (e) {
+        if (kDebugMode) print("Error parsing payments list response: $e");
+        throw Exception("Failed to parse payments list response");
+      }
+    } else if (response is List) {
+      return response.map((e) => PaymentListModel.fromJson(e)).toList();
+    } else {
+      throw Exception("Unexpected response type in payments list GET");
+    }
+  }
 
   // Build #1.0.49: Added voidPayment api call code
 

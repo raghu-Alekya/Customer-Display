@@ -23,7 +23,6 @@ import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/auto_search.dart';
 import '../../Helper/customerdisplayhelper.dart';
 import '../../Providers/Age/age_verification_provider.dart';
-import '../../Repositories/Category/category_repository.dart';
 import '../../Utilities/global_utility.dart';
 import '../../Models/FastKey/fastkey_product_model.dart';
 import '../../Models/Orders/orders_model.dart';
@@ -1228,7 +1227,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
 // PATCH: Replace ONLY _showAddItemDialog() in _FastKeyScreenState.
 //
 // WHAT IS CHANGED (only 2 things):
-//   1. Data source: ProductBloc API  →  local Isar cache (same as TopBar)
+//   1. Data source: ProductBloc API  →  TopBar.mergedCachedProductsForSearch()
 //   2. Search filtering: StreamBuilder  →  in-memory filter on _filteredList
 //
 // WHAT IS NOT CHANGED (zero UI or logic differences):
@@ -1243,10 +1242,6 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
 //      _refreshFastKeyTabItems, _getCachedProductFromIsar, _resolveFastKeyMeta)
 // ══════════════════════════════════════════════════════════════════════════════
 
-// ── ADD this import at the top of fastkey_screen.dart (if not already) ───────
-// import 'package:pinaka_pos/Repositories/Category/category_repository.dart';
-// ─────────────────────────────────────────────────────────────────────────────
-
   Future<void> _showAddItemDialog() async {
     var size = MediaQuery.of(context).size;
     searchController.clear();
@@ -1259,14 +1254,15 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
     /// ⭐ NEW: Store multiple selections (unchanged from original)
     List<Map<String, dynamic>> selectedProducts = [];
 
-    // ── NEW: load local Isar cache once (same source as TopBar) ────────────
+    // Same merged caches as TopBar search (not CategoryRepository.products_* only).
     List<dynamic> _allCached = [];
     try {
-      final repo = CategoryRepository();
-      _allCached = await repo.getAllCachedProducts();
+      _allCached = await TopBar.mergedCachedProductsForSearch();
     } catch (e) {
       debugPrint('FastKey _showAddItemDialog: cache load error → $e');
     }
+
+    Timer? _dialogSearchDebounce;
 
     // ── NEW: the filtered subset shown in the right-side ListView ───────────
     List<dynamic> _filteredList = [];
@@ -1285,33 +1281,53 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
       return p['fast_key_item_image']?.toString() ?? '';
     }
 
+    int? _resolveProductId(dynamic p) {
+      final dynamic raw = p['fast_key_product_id'] ?? p['product_id'] ?? p['id'];
+      if (raw is int) return raw;
+      return int.tryParse(raw?.toString() ?? '');
+    }
+
+    String _resolveName(dynamic p) {
+      return (p['fast_key_item_name'] ?? p['name'] ?? 'Unknown').toString();
+    }
+
+    String _resolvePrice(dynamic p) {
+      final dynamic raw =
+          p['fast_key_item_price'] ?? p['price'] ?? p['regular_price'] ?? '0.00';
+      return raw.toString();
+    }
+
+    String _resolveSku(dynamic p) {
+      return (p['sku'] ?? p['fast_key_item_sku'] ?? '').toString();
+    }
+
     // ── NEW: build sorted + deduplicated filtered list (mirrors TopBar) ─────
     List<dynamic> _buildFiltered(String query) {
-      // Print what the user typed
-      debugPrint('Raw user query: "$query"');
-
-      // Use query as-is for strict matching
-      final searchQuery = query;
+      final searchQuery = query.toLowerCase().trim();
       debugPrint('Processed search query: "$searchQuery"');
 
       if (searchQuery.isEmpty) return [];
 
-      final Map<String, dynamic> unique = {};
+      final Map<int, dynamic> unique = {};
 
       for (final p in _allCached) {
-        final name = (p['fast_key_item_name'] ?? '').toString();
-        if (name.isEmpty) continue;
+        final int? pid = _resolveProductId(p);
+        if (pid == null) continue;
 
-        // ✅ strict contains: will NOT match if trailing spaces exist
-        if (!name.toLowerCase().contains(searchQuery)) continue;
+        final name = _resolveName(p).trim().toLowerCase();
+        final sku = _resolveSku(p).trim().toLowerCase();
 
-        unique[name] = p;
+        if (!name.contains(searchQuery) && !sku.contains(searchQuery)) continue;
+
+        unique[pid] = p;
       }
 
       final result = unique.values.toList()
         ..sort((a, b) {
-          final na = (a['fast_key_item_name'] ?? '').toString().toLowerCase();
-          final nb = (b['fast_key_item_name'] ?? '').toString().toLowerCase();
+          final na =
+              (a['fast_key_item_name'] ?? '').toString().toLowerCase();
+          final nb =
+              (b['fast_key_item_name'] ?? '').toString().toLowerCase();
 
           final sa = na.startsWith(searchQuery);
           final sb = nb.startsWith(searchQuery);
@@ -1331,6 +1347,24 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
+            void _scheduleSearchRefresh() {
+              _dialogSearchDebounce?.cancel();
+              _dialogSearchDebounce =
+                  Timer(const Duration(milliseconds: 350), () async {
+                try {
+                  _allCached = await TopBar.mergedCachedProductsForSearch();
+                } catch (e) {
+                  debugPrint(
+                      'FastKey _showAddItemDialog: cache refresh error → $e');
+                }
+                if (!dialogContext.mounted) return;
+                final q = searchController.text;
+                setStateDialog(() {
+                  _filteredList = _buildFiltered(q);
+                });
+              });
+            }
+
             return AlertDialog(
               // ── UNCHANGED ─────────────────────────────────────────────────
               backgroundColor: themeHelper.themeMode == ThemeMode.dark
@@ -1360,11 +1394,11 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                             hintText: TextConstants.typeSearchText,
                           ),
                           onChanged: (value) {
-                            // ── CHANGED: local filter instead of API call ───
+                            // Same debounce + merged cache refresh as TopBar search.
                             setStateDialog(() {
-                              _filteredList =
-                                  _buildFiltered(value.toLowerCase());
+                              _filteredList = _buildFiltered(value);
                             });
+                            _scheduleSearchRefresh();
                           },
                         ),
                       ),
@@ -1413,15 +1447,12 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                                 itemBuilder: (context, index) {
                                   final p = _filteredList[index];
 
-                                  final String name =
-                                      p['fast_key_item_name']?.toString() ??
-                                          'No Name';
-                                  final String price =
-                                      p['fast_key_item_price']?.toString() ??
-                                          '0.00';
+                                  final String name = _resolveName(p).isNotEmpty
+                                      ? _resolveName(p)
+                                      : 'No Name';
+                                  final String price = _resolvePrice(p);
                                   final String pid =
-                                      p['fast_key_product_id']?.toString() ??
-                                          '';
+                                      (_resolveProductId(p) ?? '').toString();
                                   final String imageUrl = _resolveImage(p);
 
                                   final bool isSelected = selectedProducts
@@ -1548,7 +1579,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
           },
         );
       },
-    );
+    ).whenComplete(() => _dialogSearchDebounce?.cancel());
   }
 
 

@@ -148,7 +148,8 @@ class FastKeyBloc { // Build #1.0.15
             product.image,
             product.price,
             product.productId,
-            minAge: int.parse(tagg?.slug ?? "0"),
+            // minAge: int.parse(tagg?.slug ?? "0"),
+            minAge: int.tryParse(tagg?.slug ?? "") ?? 0,
             slNumber: product.slNumber,
             hasVariant: product.hasVariant ?? false,
           );

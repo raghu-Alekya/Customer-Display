@@ -120,31 +120,32 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
   }
 
   // 3. Get Payments by Order ID
-  // Future<void> getPaymentsByOrderId(int orderId) async {
-  //   if (_paymentsListController.isClosed) return;
-  //
-  //   paymentsListSink.add(APIResponse.loading(TextConstants.loading));
-  //   try {
-  //     final response = await _paymentRepository.getPaymentsByOrderId(orderId);
-  //
-  //     if (kDebugMode) {
-  //       print("PaymentBloc - Retrieved payments for order ID: $orderId");
-  //       print("PaymentBloc - Found ${response.length} payment(s)");
-  //       if (response.isNotEmpty) {
-  //         print("PaymentBloc - First payment method: ${response.first.paymentMethod}");
-  //       }
-  //     }
-  //
-  //     paymentsListSink.add(APIResponse.completed(response));
-  //   } catch (e) {
-  //     if (e.toString().contains('SocketException')) {
-  //       paymentsListSink.add(APIResponse.error("Network error. Please check your connection."));
-  //     } else {
-  //       paymentsListSink.add(APIResponse.error("Failed to get payments list: ${e.toString()}"));
-  //     }
-  //     if (kDebugMode) print("Exception in getPaymentsByOrderId: $e");
-  //   }
-  // }
+
+  Future<void> getPaymentsByOrderId(int orderId) async {
+    if (_paymentsListController.isClosed) return;
+
+    paymentsListSink.add(APIResponse.loading(TextConstants.loading));
+    try {
+      final response = await _paymentRepository.getPaymentsByOrderId(orderId);
+
+      if (kDebugMode) {
+        print("PaymentBloc - Retrieved payments for order ID: $orderId");
+        print("PaymentBloc - Found ${response.length} payment(s)");
+        if (response.isNotEmpty) {
+          print("PaymentBloc - First payment method: ${response.first.paymentMethod}");
+        }
+      }
+
+      paymentsListSink.add(APIResponse.completed(response));
+    } catch (e) {
+      if (e.toString().contains('SocketException')) {
+        paymentsListSink.add(APIResponse.error("Network error. Please check your connection."));
+      } else {
+        paymentsListSink.add(APIResponse.error("Failed to get payments list: ${e.toString()}"));
+      }
+      if (kDebugMode) print("Exception in getPaymentsByOrderId: $e");
+    }
+  }
 
   // 4.  Build #1.0.49: Added Void Payment api func
 

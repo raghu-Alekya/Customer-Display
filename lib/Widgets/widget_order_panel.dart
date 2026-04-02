@@ -168,6 +168,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   String normalizeSku(String sku) {
     return sku.trim().toLowerCase().replaceAll(" ", "");
   }
+
+  String _sanitizeScannedBarcode(String barcode) {
+    // Normalize scanner payloads that may include Enter/tab/control characters.
+    return barcode.replaceAll(RegExp(r'[\x00-\x1F\x7F]'), '').trim();
+  }
   late final CategoryRepository _categoryRepository;
 
 
@@ -1033,12 +1038,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           //  ⛔ HARD BLOCK — prevents duplicate scans
           if (_scanLocked) return;
 
-          final trimmedBarcode = barcode;
+          final trimmedBarcode = _sanitizeScannedBarcode(barcode);
 
           // ⛔ Ignore junk frames
           if (trimmedBarcode.length < 6) return;
           try {
-            final trimmedBarcode = barcode;
             if (kDebugMode) print("🔹 Scanned → $trimmedBarcode");
 
             final upper = trimmedBarcode.toUpperCase();
@@ -1062,6 +1066,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               await Future.delayed(const Duration(milliseconds: 1200));
 
               _ageVerificationActive = false;
+              _scanLocked = false;
 
               // 🔥 VERY IMPORTANT — STOP HERE
               return;
@@ -1990,6 +1995,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             if (_isLoading) {
               _isLoading = false;
               if (mounted) setState(() {});
+            }
+            // Safety unlock in case any early-return path leaves lock set.
+            if (_scanLocked && !_ageVerificationActive) {
+              _scanLocked = false;
             }
           }
         },
@@ -4448,8 +4457,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             final customLen =
                                                 customItems.length;
 
-                                            // Index-based update: orderItems = [products..., custom_items..., payouts..., cashbacks...]
                                             // Update only the tapped line so variants do not impact each other
+
                                             if (index < productsLen) {
                                               final product =
                                               products[index];
@@ -4459,6 +4468,118 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                       ?.toString() ??
                                                       '0') ??
                                                       0.0;
+
+                                              // the change, show a snackbar, and remove the merchant discount.
+
+                                              final currentProducts =
+                                              List<Map<String, dynamic>>.from(
+                                                  products);
+                                              double simulatedProductTotal = 0.0;
+                                              for (int i = 0;
+                                              i < currentProducts.length;
+                                              i++) {
+                                                final p = currentProducts[i];
+                                                final pPrice = double.tryParse(
+                                                    p['price']?.toString() ??
+                                                        '0') ??
+                                                    0.0;
+                                                final pQty = int.tryParse(
+                                                    (i == index
+                                                        ? newQuantity
+                                                        : p['quantity'])
+                                                        ?.toString() ??
+                                                        '1') ??
+                                                    1;
+                                                simulatedProductTotal +=
+                                                    pPrice * pQty;
+                                              }
+
+                                              double simulatedCustomTotal = 0.0;
+                                              for (final c in customItems) {
+                                                final cQty = int.tryParse(
+                                                    c['quantity']
+                                                        ?.toString() ??
+                                                        '1') ??
+                                                    1;
+                                                final cPrice = double.tryParse(
+                                                    c['custom_item_price']
+                                                        ?.toString() ??
+                                                        c['amount']
+                                                            ?.toString() ??
+                                                        c['price']
+                                                            ?.toString() ??
+                                                        '0') ??
+                                                    0.0;
+                                                simulatedCustomTotal +=
+                                                    cPrice * cQty;
+                                              }
+
+                                              final double simulatedGross =
+                                                  simulatedProductTotal +
+                                                      simulatedCustomTotal +
+                                                      (((offlineOrder['payouts']
+                                                      as List?) ??
+                                                          [])
+                                                          .fold<double>(
+                                                          0,
+                                                              (s, p) =>
+                                                          s +
+                                                              (double.tryParse(p['amount']
+                                                                  ?.toString() ??
+                                                                  '0') ??
+                                                                  0.0))) +
+                                                      (((offlineOrder['cashbacks']
+                                                      as List?) ??
+                                                          [])
+                                                          .fold<double>(
+                                                          0,
+                                                              (s, c) =>
+                                                          s +
+                                                              (double.tryParse(c['amount']
+                                                                  ?.toString() ??
+                                                                  '0') ??
+                                                                  0.0)));
+
+                                              final double orderDiscountSim =
+                                              (offlineOrder['orderDiscount']
+                                              is num)
+                                                  ? (offlineOrder[
+                                              'orderDiscount']
+                                              as num)
+                                                  .toDouble()
+                                                  : 0.0;
+                                              double merchantDiscountSim =
+                                              (offlineOrder[
+                                              'merchantDiscount']
+                                              is num)
+                                                  ? (offlineOrder[
+                                              'merchantDiscount']
+                                              as num)
+                                                  .toDouble()
+                                                  : 0.0;
+
+                                              final double maxAllowedDiscountSim =
+                                              (simulatedGross -
+                                                  orderDiscountSim)
+                                                  .clamp(0.0,
+                                                  double.infinity);
+
+                                              if (merchantDiscountSim > maxAllowedDiscountSim) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(
+                                                    backgroundColor: Colors.red,
+                                                    content: Text(
+                                                      'Reduce quantity not allowed: please remove merchant discount first.',
+                                                      style: TextStyle(color: Colors.white),
+                                                    ),
+                                                  ),
+                                                );
+
+                                                // Do not apply quantity change
+
+                                                return;
+                                              }
+
                                               product['quantity'] =
                                                   newQuantity;
                                               product['items_count'] =
@@ -4469,7 +4590,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                 print(
                                                     "🟢 Updated PRODUCT → ${product['name'] ?? product['product_name']} | Qty: $newQuantity");
                                               }
-                                            } else if (tappedItemType
+                                            }
+                                            else if (tappedItemType
                                                 .contains('custom') &&
                                                 index >= productsLen &&
                                                 index <
@@ -6392,6 +6514,4 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // }
 }
 
-// extension on Box {
-//   void clearCache() {}
-// }
+

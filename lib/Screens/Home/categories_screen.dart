@@ -1816,9 +1816,33 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               }
               return <String, dynamic>{};
             }).where((v) => v.isNotEmpty).toList();
+
+            // Recovery path: when variation cache is stale/missing, fetch once from API.
+            if (offlineVariations.isEmpty && productId > 0) {
+              final fetched = await _fetchVariationsFromApi(productId);
+              if (fetched.isNotEmpty) {
+                offlineVariations = fetched;
+                await productBox.put(cacheKey, {
+                  "variations": fetched,
+                  "timestamp": DateTime.now().toIso8601String(),
+                });
+              }
+            }
           } catch (e, st) {
             if (kDebugMode) { print("⚠️ [Indigo] Error loading variations: $e"); print(st); }
           }
+
+          if (offlineVariations.isEmpty) {
+            if (mounted && loadingDialogShown) Navigator.of(context, rootNavigator: true).pop();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text("No variants available for this product right now."),
+                duration: Duration(seconds: 2),
+              ));
+            }
+            return;
+          }
+
           if (mounted && loadingDialogShown) Navigator.of(context, rootNavigator: true).pop();
           await showDialog(
             context: context,
@@ -1887,6 +1911,60 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       if (kDebugMode) print("_getCachedProductFromIsar error: $e");
       return null;
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchVariationsFromApi(int productId) async {
+    try {
+      final token = await _getAuthTokenFromDb();
+      final url = Uri.parse(
+          "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations");
+      final response = await http.get(url, headers: {"Authorization": "Bearer $token"});
+      if (response.statusCode != 200) return <Map<String, dynamic>>[];
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) return <Map<String, dynamic>>[];
+
+      return decoded
+          .whereType<Map>()
+          .map<Map<String, dynamic>>((v) {
+            final map = v.map((key, value) => MapEntry(key.toString(), value));
+            final attrs = map["attributes"];
+            final String fallbackName = attrs is List
+                ? attrs
+                    .whereType<Map>()
+                    .map((a) => (a["option"] ?? "").toString())
+                    .where((x) => x.isNotEmpty)
+                    .join(" - ")
+                : "";
+            return {
+              "id": map["id"],
+              "name": (map["name"] ?? "").toString().isNotEmpty
+                  ? map["name"]
+                  : (fallbackName.isNotEmpty ? fallbackName : "Unnamed Variant"),
+              "price": (map["price"] ?? map["regular_price"] ?? "0").toString(),
+              "sku": map["sku"] ?? "",
+              "image": (map["image"] is Map && map["image"]["src"] != null)
+                  ? map["image"]["src"]
+                  : (map["image"] is String ? map["image"] : ""),
+            };
+          })
+          .where((v) => v["id"] != null)
+          .toList();
+    } catch (_) {
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<String> _getAuthTokenFromDb() async {
+    final db = await DBHelper.instance.database;
+    final result = await db.query(
+      AppDBConst.userTable,
+      where:
+          '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+      orderBy: '${AppDBConst.userId} DESC',
+      limit: 1,
+    );
+    if (result.isEmpty) throw Exception('No active user token found');
+    return result.first[AppDBConst.userToken] as String;
   }
 
   Future<void> _waitForNestedLoadingOrTimeout() async {
@@ -2546,9 +2624,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     return [_buildIndigoSection()];
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Helper: category bar widget (NEW — replaces direct CategoryList usage)
-  // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildCategoryBar(
       BuildContext context,
@@ -2832,26 +2907,116 @@ class _IndigoProductCard extends StatelessWidget {
     final cardBg = isDark ? const Color(0xFF26253A) : Colors.white;
     final borderColor = isDark ? const Color(0xFF3A3A52) : const Color(0xFFE3F2FD);
     final nameColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-    final unitColor = isDark ? Colors.white54 : Colors.grey.shade500;
     final priceColor = isDark ? Colors.grey.shade500 : const Color(0xFF1A1A1A);
+
+    // ── Derive badge flags ─────────────────────────────────────────────────
+    final bool isEbt = product.tags.any((t) {
+      final name = t.name.toLowerCase();
+      final slug = t.slug.toLowerCase();
+      return name.contains('ebt') || slug.contains('ebt');
+    });
+
+    // final bool hasVariants = product.tags != null && product.tags!.isNotEmpty;
+
+    // ── All other tags (excluding EBT, age-number slugs) ──────────────────
+    final List<IndigoTag> displayTags = product.tags.where((t) {
+      final slug = t.slug.toLowerCase();
+      final name = t.name.toLowerCase();
+      // skip EBT (shown separately) and pure numeric age slugs like "18", "21"
+      return name.contains('ebt') || slug.contains('ebt') ||
+          slug == 'ebt-eligible' || name.contains('ebt eligible');
+      if (RegExp(r'^\d{1,2}$').hasMatch(slug)) return false;
+      return t.name.trim().isNotEmpty;
+    }).toList();
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: borderColor, width: 1),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.15 : 0.04), blurRadius: 3, offset: const Offset(0, 1))]),
-
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDark ? 0.15 : 0.04),
+              blurRadius: 3,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(product.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: nameColor, fontFamily: 'poppins', height: 1.2)),
-              const SizedBox(height: 2),
-              // Text(product.sku.isNotEmpty ? product.sku : "1 Unit", maxLines: 1, overflow: TextOverflow.ellipsis,
-              //     style: TextStyle(fontSize: 9, color: unitColor, fontFamily: 'poppins')),
+
+              // ── Product name ─────────────────────────────────────────────
+              Text(
+                product.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: nameColor,
+                  fontFamily: 'poppins',
+                  height: 1.2,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text("\$${product.price}", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: priceColor, fontFamily: 'poppins')),
+
+              // ── Price ────────────────────────────────────────────────────
+              Text(
+                "\$${product.price}",
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: priceColor,
+                  fontFamily: 'poppins',
+                ),
+              ),
+
+              const SizedBox(height: 5),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: [
+
+                    // EBT badge
+                    if (isEbt)
+                      _TagBadge(
+                        label: 'EBT',
+                        bgColor: isDark ? const Color(0xFF1B3A1F) : const Color(0xFFE8F5E9),
+                        borderColor: isDark ? const Color(0xFF2E7D32) : const Color(0xFFA5D6A7),
+                        textColor: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
+                      ),
+
+                    // Variants badge
+                    // if (hasVariants)
+                    //   _TagBadge(
+                    //     label: 'Variants',
+                    //     bgColor: isDark ? const Color(0xFF1E1640) : const Color(0xFFEDE7F6),
+                    //     borderColor: isDark ? const Color(0xFF4527A0) : const Color(0xFFB39DDB),
+                    //     textColor: isDark ? const Color(0xFFB39DDB) : const Color(0xFF4527A0),
+                    //     leadingIcon: _VariantIconPainter(
+                    //       color: isDark ? const Color(0xFFB39DDB) : const Color(0xFF4527A0),
+                    //     ),
+                    //   ),
+
+                    // All other tags from IndigoTag list
+                    // ...displayTags.map(
+                    //       (tag) => _TagBadge(
+                    //     label: tag.name,
+                    //     bgColor: isDark ? const Color(0xFF1A2535) : const Color(0xFFE3F2FD),
+                    //     borderColor: isDark ? const Color(0xFF1565C0) : const Color(0xFF90CAF9),
+                    //     textColor: isDark ? const Color(0xFF90CAF9) : const Color(0xFF1565C0),
+                    //   ),
+                    // ),
+                  ],
+                ),
+              // ],
+
             ],
           ),
         ),
@@ -2859,3 +3024,90 @@ class _IndigoProductCard extends StatelessWidget {
     );
   }
 }
+
+// String _formatTaxRates(List<IndigoTaxRate> taxRates) {
+//   if (taxRates.isEmpty) return '';
+//
+//   final taxStrings = taxRates.map((tax) {
+//     final rateStr = tax.rate.toStringAsFixed(1).replaceAll('.0', '');
+//     return '${tax.label} ${rateStr}%';
+//   }).toList();
+//
+//   return taxStrings.join(' + ');
+// }
+
+// ── Reusable badge pill ────────────────────────────────────────────────────────
+
+class _TagBadge extends StatelessWidget {
+  final String label;
+  final Color bgColor;
+  final Color borderColor;
+  final Color textColor;
+  final _VariantIconPainter? leadingIcon;
+
+  const _TagBadge({
+    required this.label,
+    required this.bgColor,
+    required this.borderColor,
+    required this.textColor,
+    this.leadingIcon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: borderColor, width: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (leadingIcon != null) ...[
+            SizedBox(
+              width: 10,
+              height: 10,
+              child: CustomPaint(painter: leadingIcon!),
+            ),
+            const SizedBox(width: 3),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'poppins',
+              letterSpacing: 0.2,
+              color: textColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _VariantIconPainter extends CustomPainter {
+  final Color color;
+  const _VariantIconPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color..style = PaintingStyle.fill;
+    const r = Radius.circular(1);
+    final s = size.width * 0.42;
+    final gap = size.width * 0.16;
+    canvas.drawRRect(RRect.fromLTRBR(0, 0, s, s, r), paint);
+    canvas.drawRRect(RRect.fromLTRBR(s + gap, 0, size.width, s, r), paint);
+    canvas.drawRRect(RRect.fromLTRBR(0, s + gap, s, size.height, r), paint);
+    paint.color = color.withOpacity(0.45);
+    canvas.drawRRect(RRect.fromLTRBR(s + gap, s + gap, size.width, size.height, r), paint);
+  }
+
+  @override
+  bool shouldRepaint(_VariantIconPainter old) => old.color != color;
+}
+

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:isar/isar.dart';
 import 'package:pinaka_pos/Widgets/weighing_scale_widget.dart';
@@ -20,6 +21,7 @@ import '../Database/isar_service.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
+import '../Helper/url_helper.dart';
 import '../Helper/api_response.dart';
 import '../Models/Search/product_search_model.dart';
 import '../Providers/Age/age_verification_provider.dart';
@@ -41,7 +43,6 @@ const _scaleMethodChannel = MethodChannel('magellan_scale');
 /// EventChannel stream that carries JSON events from UsbSerialManager.kt.
 const _scaleEventChannel = EventChannel('magellan_scale/events');
 
-
 // ══════════════════════════════════════════════════════════════════════════════
 // 7-SEGMENT LCD DISPLAY
 // ══════════════════════════════════════════════════════════════════════════════
@@ -60,18 +61,18 @@ class _SegmentPainter extends CustomPainter {
   });
 
   static const Map<String, List<bool>> _segments = {
-    '0': [true,  true,  true,  true,  true,  true,  false],
-    '1': [false, true,  true,  false, false, false, false],
-    '2': [true,  true,  false, true,  true,  false, true ],
-    '3': [true,  true,  true,  true,  false, false, true ],
-    '4': [false, true,  true,  false, false, true,  true ],
-    '5': [true,  false, true,  true,  false, true,  true ],
-    '6': [true,  false, true,  true,  true,  true,  true ],
-    '7': [true,  true,  true,  false, false, false, false],
-    '8': [true,  true,  true,  true,  true,  true,  true ],
-    '9': [true,  true,  true,  true,  false, true,  true ],
+    '0': [true, true, true, true, true, true, false],
+    '1': [false, true, true, false, false, false, false],
+    '2': [true, true, false, true, true, false, true],
+    '3': [true, true, true, true, false, false, true],
+    '4': [false, true, true, false, false, true, true],
+    '5': [true, false, true, true, false, true, true],
+    '6': [true, false, true, true, true, true, true],
+    '7': [true, true, true, false, false, false, false],
+    '8': [true, true, true, true, true, true, true],
+    '9': [true, true, true, true, false, true, true],
     '.': [false, false, false, false, false, false, false],
-    '-': [false, false, false, false, false, false, true ],
+    '-': [false, false, false, false, false, false, true],
     ' ': [false, false, false, false, false, false, false],
   };
 
@@ -95,23 +96,29 @@ class _SegmentPainter extends CustomPainter {
 
     void seg(bool on, Offset p1, Offset p2) {
       canvas.drawLine(
-        p1, p2,
+        p1,
+        p2,
         Paint()
-          ..color       = on ? onColor : offColor
+          ..color = on ? onColor : offColor
           ..strokeWidth = s
-          ..strokeCap   = StrokeCap.round
-          ..style       = PaintingStyle.stroke,
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke,
       );
     }
 
     final mid = h / 2;
-    seg(segs[0], Offset(gap + s * 0.5, s * 0.5),         Offset(w - gap - s * 0.5, s * 0.5));
-    seg(segs[1], Offset(w - s * 0.5, gap + s * 0.5),     Offset(w - s * 0.5, mid - gap));
-    seg(segs[2], Offset(w - s * 0.5, mid + gap),          Offset(w - s * 0.5, h - gap - s * 0.5));
-    seg(segs[3], Offset(gap + s * 0.5, h - s * 0.5),      Offset(w - gap - s * 0.5, h - s * 0.5));
-    seg(segs[4], Offset(s * 0.5, mid + gap),               Offset(s * 0.5, h - gap - s * 0.5));
-    seg(segs[5], Offset(s * 0.5, gap + s * 0.5),          Offset(s * 0.5, mid - gap));
-    seg(segs[6], Offset(gap + s * 0.5, mid),               Offset(w - gap - s * 0.5, mid));
+    seg(segs[0], Offset(gap + s * 0.5, s * 0.5),
+        Offset(w - gap - s * 0.5, s * 0.5));
+    seg(segs[1], Offset(w - s * 0.5, gap + s * 0.5),
+        Offset(w - s * 0.5, mid - gap));
+    seg(segs[2], Offset(w - s * 0.5, mid + gap),
+        Offset(w - s * 0.5, h - gap - s * 0.5));
+    seg(segs[3], Offset(gap + s * 0.5, h - s * 0.5),
+        Offset(w - gap - s * 0.5, h - s * 0.5));
+    seg(segs[4], Offset(s * 0.5, mid + gap),
+        Offset(s * 0.5, h - gap - s * 0.5));
+    seg(segs[5], Offset(s * 0.5, gap + s * 0.5), Offset(s * 0.5, mid - gap));
+    seg(segs[6], Offset(gap + s * 0.5, mid), Offset(w - gap - s * 0.5, mid));
   }
 
   @override
@@ -122,17 +129,17 @@ class _SegmentPainter extends CustomPainter {
 class SevenSegmentDisplay extends StatelessWidget {
   final String text;
   final double digitHeight;
-  final Color  onColor;
-  final Color  offColor;
+  final Color onColor;
+  final Color offColor;
   final double spacing;
 
   const SevenSegmentDisplay({
     super.key,
     required this.text,
     this.digitHeight = 34,
-    this.onColor     = const Color(0xFF1A1A1A),
-    this.offColor    = const Color(0xFFD8D8D8),
-    this.spacing     = 3,
+    this.onColor = const Color(0xFF1A1A1A),
+    this.offColor = const Color(0xFFD8D8D8),
+    this.spacing = 3,
   });
 
   @override
@@ -141,18 +148,18 @@ class SevenSegmentDisplay extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: text.split('').map((ch) {
         final isDot = ch == '.';
-        final w     = isDot ? digitHeight * 0.22 : digitHeight * 0.60;
+        final w = isDot ? digitHeight * 0.22 : digitHeight * 0.60;
         return Padding(
           padding: EdgeInsets.only(right: isDot ? 1 : spacing),
           child: SizedBox(
-            width:  w,
+            width: w,
             height: digitHeight,
             child: CustomPaint(
               painter: _SegmentPainter(
-                char:     ch,
-                onColor:  onColor,
+                char: ch,
+                onColor: onColor,
                 offColor: offColor,
-                strokeW:  digitHeight * 0.088,
+                strokeW: digitHeight * 0.088,
               ),
             ),
           ),
@@ -249,31 +256,38 @@ class TopBar extends StatefulWidget {
     _TopBarState.clearUserDataCache();
   }
 
+  /// Same merged Isar/storage product list used by the TopBar search overlay
+  /// (Indigo caches, `all_products_list`, and `products_*` keys).
+  static Future<List<dynamic>> mergedCachedProductsForSearch() async {
+    final unique = await _TopBarState._uniqueProductsFromAllCaches();
+    return unique.values.toList();
+  }
+
   @override
   State<TopBar> createState() => _TopBarState();
 }
 
 class _TopBarState extends State<TopBar> {
   final _searchController = TextEditingController();
-  final _searchFocusNode  = FocusNode();
-  Timer?        _debounce;
+  final _searchFocusNode = FocusNode();
+  Timer? _debounce;
   OverlayEntry? _overlayEntry;
   final _searchFieldKey = GlobalKey();
 
   final orderHelper = OrderHelper();
   late OrderBloc _orderBloc;
 
-  bool   isAddingItemLoading = false;
-  int?   userId;
+  bool isAddingItemLoading = false;
+  int? userId;
   String? userRole;
   String? userDisplayName;
-  bool   isLoading = false;
+  bool isLoading = false;
 
   bool _isSearchEnabled = true;
-  var  _printerSettings = PrinterSettings();
+  var _printerSettings = PrinterSettings();
 
   List<dynamic> _cachedProducts = [];
-  bool          _cacheLoaded    = false;
+  bool _cacheLoaded = false;
   final ProductBloc productBloc = ProductBloc(ProductRepository());
 
   bool _dialogOpen = false;
@@ -292,8 +306,8 @@ class _TopBarState extends State<TopBar> {
   static Future<Map<String, dynamic>?>? _initialUserFuture;
 
   static void clearUserDataCache() {
-    _cachedUserData    = null;
-    _isUserDataLoaded  = false;
+    _cachedUserData = null;
+    _isUserDataLoaded = false;
     _initialUserFuture = null;
     if (kDebugMode) print("🧹 TopBar user data cache cleared");
   }
@@ -321,27 +335,28 @@ class _TopBarState extends State<TopBar> {
     if (!_isUserDataLoaded) {
       _initialUserFuture = UserDbHelper().getUserData();
       _initialUserFuture!.then((userData) {
-        _cachedUserData   = userData;
+        _cachedUserData = userData;
         _isUserDataLoaded = true;
         if (userData != null) {
-          userId          = userData[AppDBConst.userId] as int?;
+          userId = userData[AppDBConst.userId] as int?;
           userDisplayName = userData[AppDBConst.userDisplayName] as String?;
-          userRole        = userData[AppDBConst.userRole] as String?;
+          userRole = userData[AppDBConst.userRole] as String?;
         }
         if (mounted) setState(() {});
       });
     } else {
       if (_cachedUserData != null) {
-        userId          = _cachedUserData![AppDBConst.userId] as int?;
-        userDisplayName = _cachedUserData![AppDBConst.userDisplayName] as String?;
-        userRole        = _cachedUserData![AppDBConst.userRole] as String?;
+        userId = _cachedUserData![AppDBConst.userId] as int?;
+        userDisplayName =
+            _cachedUserData![AppDBConst.userDisplayName] as String?;
+        userRole = _cachedUserData![AppDBConst.userRole] as String?;
       }
     }
   }
 
   static void clearUserCache() {
-    _cachedUserData    = null;
-    _isUserDataLoaded  = false;
+    _cachedUserData = null;
+    _isUserDataLoaded = false;
     _initialUserFuture = null;
     if (kDebugMode) print("🧹 TopBar user data cache cleared");
   }
@@ -369,7 +384,7 @@ class _TopBarState extends State<TopBar> {
     _scaleLog('🔌 Subscribing to native magellan_scale/events...');
 
     _scaleSubscription = _scaleEventChannel.receiveBroadcastStream().listen(
-          (event) {
+      (event) {
         try {
           final Map<String, dynamic> data = jsonDecode(event as String);
           final String type = data['type'] as String? ?? '';
@@ -378,13 +393,14 @@ class _TopBarState extends State<TopBar> {
 
           switch (type) {
             case 'status':
-              final status  = data['status']  as String? ?? '';
+              final status = data['status'] as String? ?? '';
               final message = data['message'] as String? ?? '';
               _scaleLog('📊 Status: $status — $message');
-              if (mounted) setState(() {
-                _scaleStatus  = message;
-                _isConnecting = status == 'connecting';
-              });
+              if (mounted)
+                setState(() {
+                  _scaleStatus = message;
+                  _isConnecting = status == 'connecting';
+                });
               _weightProvider?.setConnected(status == 'connected');
               if (status == 'disconnected' || status == 'error') {
                 _weightProvider?.updateWeight(0.0);
@@ -392,12 +408,14 @@ class _TopBarState extends State<TopBar> {
               break;
 
             case 'weight':
-              final double w    = (data['weight'] as num?)?.toDouble() ?? 0.0;
-              final String unit = data['unit']   as String? ?? 'lb';
+              final double w = (data['weight'] as num?)?.toDouble() ?? 0.0;
+              final String unit = data['unit'] as String? ?? 'lb';
               _scaleLog('⚖️ Weight: $w $unit');
               double kg = w;
-              if (unit == 'lb') kg = w * 0.453592;
-              else if (unit == 'g') kg = w / 1000;
+              if (unit == 'lb')
+                kg = w * 0.453592;
+              else if (unit == 'g')
+                kg = w / 1000;
               else if (unit == 'oz') kg = w * 0.0283495;
               final double lb = unit == 'lb' ? w : kg * 2.20462;
               final displayText = '${lb.toStringAsFixed(3)} lb';
@@ -423,18 +441,20 @@ class _TopBarState extends State<TopBar> {
       onError: (e) {
         _scaleLog('❌ EventChannel error: $e');
         _weightProvider?.setConnected(false);
-        if (mounted) setState(() {
-          _scaleStatus  = 'Channel error';
-          _isConnecting = false;
-        });
+        if (mounted)
+          setState(() {
+            _scaleStatus = 'Channel error';
+            _isConnecting = false;
+          });
       },
       onDone: () {
         _scaleLog('⚠️ EventChannel closed.');
         _weightProvider?.setConnected(false);
-        if (mounted) setState(() {
-          _scaleStatus  = 'Disconnected';
-          _isConnecting = false;
-        });
+        if (mounted)
+          setState(() {
+            _scaleStatus = 'Disconnected';
+            _isConnecting = false;
+          });
       },
       cancelOnError: false,
     );
@@ -483,10 +503,11 @@ class _TopBarState extends State<TopBar> {
 
   Future<void> _reconnectScale() async {
     _scaleLog('🔄 Reconnecting...');
-    if (mounted) setState(() {
-      _isConnecting = true;
-      _scaleStatus  = 'Reconnecting...';
-    });
+    if (mounted)
+      setState(() {
+        _isConnecting = true;
+        _scaleStatus = 'Reconnecting...';
+      });
     try {
       await _scaleMethodChannel.invokeMethod('reconnect');
     } catch (e) {
@@ -514,8 +535,9 @@ class _TopBarState extends State<TopBar> {
   /// `product_id` (e.g. Indigo) are indexed, not only [fast_key_product_id].
   static int? _productIdFromCacheMap(dynamic product) {
     if (product is! Map) return null;
-    final dynamic raw =
-        product["fast_key_product_id"] ?? product["product_id"] ?? product["id"];
+    final dynamic raw = product["fast_key_product_id"] ??
+        product["product_id"] ??
+        product["id"];
     if (raw is int) return raw;
     return int.tryParse(raw?.toString() ?? "");
   }
@@ -547,7 +569,8 @@ class _TopBarState extends State<TopBar> {
     }
 
     try {
-      final allList = await StorageProvider.productCache.get("all_products_list");
+      final allList =
+          await StorageProvider.productCache.get("all_products_list");
       if (allList is List) {
         for (final item in allList) {
           if (item is! Map) continue;
@@ -583,10 +606,11 @@ class _TopBarState extends State<TopBar> {
       if (mounted) {
         setState(() {
           _cachedProducts = uniqueProducts.values.toList();
-          _cacheLoaded    = true;
+          _cacheLoaded = true;
         });
         if (kDebugMode) {
-          print("✅ _cachedProducts refreshed: ${_cachedProducts.length} total products");
+          print(
+              "✅ _cachedProducts refreshed: ${_cachedProducts.length} total products");
         }
       }
     } catch (e) {
@@ -631,8 +655,10 @@ class _TopBarState extends State<TopBar> {
       }
       await _reloadAllProductsFromIsar();
       if (!mounted) return;
-      if (_overlayEntry == null) _showSearchResultsOverlay();
-      else _overlayEntry?.markNeedsBuild();
+      if (_overlayEntry == null)
+        _showSearchResultsOverlay();
+      else
+        _overlayEntry?.markNeedsBuild();
       setState(() {});
     });
   }
@@ -646,10 +672,11 @@ class _TopBarState extends State<TopBar> {
 
   void _showSearchResultsOverlay() {
     if (_overlayEntry != null || _dialogOpen) return;
-    final box = _searchFieldKey.currentContext?.findRenderObject() as RenderBox?;
+    final box =
+        _searchFieldKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
     final offset = box.localToGlobal(Offset.zero);
-    final size   = box.size;
+    final size = box.size;
 
     _overlayEntry = OverlayEntry(
       builder: (context) {
@@ -659,13 +686,16 @@ class _TopBarState extends State<TopBar> {
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
-                onTap: () { _removeOverlay(); _searchFocusNode.unfocus(); },
+                onTap: () {
+                  _removeOverlay();
+                  _searchFocusNode.unfocus();
+                },
               ),
             ),
             Positioned(
               width: size.width,
-              left:  offset.dx,
-              top:   offset.dy + size.height,
+              left: offset.dx,
+              top: offset.dy + size.height,
               child: Material(
                 elevation: 6,
                 child: Container(
@@ -675,7 +705,7 @@ class _TopBarState extends State<TopBar> {
                         ? ThemeNotifier.secondaryBackground
                         : Colors.white,
                     borderRadius: const BorderRadius.only(
-                      bottomLeft:  Radius.circular(8),
+                      bottomLeft: Radius.circular(8),
                       bottomRight: Radius.circular(8),
                     ),
                   ),
@@ -693,10 +723,12 @@ class _TopBarState extends State<TopBar> {
   Widget _buildLocalResultsList() {
     final query = _searchController.text.toLowerCase().trim();
     if (!_cacheLoaded) return const Center(child: CircularProgressIndicator());
-    if (_cachedProducts.isEmpty) return const Center(child: Text("No products in cache"));
+    if (_cachedProducts.isEmpty)
+      return const Center(child: Text("No products in cache"));
 
     int? _resolveProductId(dynamic p) {
-      final dynamic raw = p["fast_key_product_id"] ?? p["product_id"] ?? p["id"];
+      final dynamic raw =
+          p["fast_key_product_id"] ?? p["product_id"] ?? p["id"];
       if (raw is int) return raw;
       return int.tryParse(raw?.toString() ?? "");
     }
@@ -706,7 +738,10 @@ class _TopBarState extends State<TopBar> {
     }
 
     String _resolvePrice(dynamic p) {
-      final dynamic raw = p["fast_key_item_price"] ?? p["price"] ?? p["regular_price"] ?? "0.00";
+      final dynamic raw = p["fast_key_item_price"] ??
+          p["price"] ??
+          p["regular_price"] ??
+          "0.00";
       return raw.toString();
     }
 
@@ -720,7 +755,7 @@ class _TopBarState extends State<TopBar> {
       if (pid == null) continue;
 
       final name = _resolveName(p).trim().toLowerCase();
-      final sku  = _resolveSku(p).trim().toLowerCase();
+      final sku = _resolveSku(p).trim().toLowerCase();
 
       if (query.isEmpty || name.contains(query) || sku.contains(query)) {
         uniqueById[pid] = p;
@@ -746,9 +781,9 @@ class _TopBarState extends State<TopBar> {
       itemBuilder: (context, i) {
         final p = list[i];
 
-        final name  = _resolveName(p);
+        final name = _resolveName(p);
         final price = _resolvePrice(p);
-        final sku   = _resolveSku(p);
+        final sku = _resolveSku(p);
 
         String? imageUrl;
         final imagesRaw = p["images"];
@@ -775,15 +810,15 @@ class _TopBarState extends State<TopBar> {
               borderRadius: BorderRadius.circular(8),
               child: imageUrl != null
                   ? Image.network(
-                imageUrl,
-                fit: BoxFit.cover,
-                loadingBuilder: (ctx, child, progress) => progress == null
-                    ? child
-                    : const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2)),
-                errorBuilder: (_, __, ___) =>
-                const Icon(Icons.broken_image, size: 40),
-              )
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (ctx, child, progress) => progress == null
+                          ? child
+                          : const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2)),
+                      errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.broken_image, size: 40),
+                    )
                   : const Icon(Icons.image, size: 40),
             ),
           ),
@@ -799,10 +834,10 @@ class _TopBarState extends State<TopBar> {
           onTap: () async {
             final int productId = _resolveProductId(p) ?? 0;
             ProductResponse fullProduct = ProductResponse(
-              id:     productId,
-              name:   name,
-              price:  price,
-              sku:    sku.isNotEmpty ? sku : null,
+              id: productId,
+              name: name,
+              price: price,
+              sku: sku.isNotEmpty ? sku : null,
               images: imageUrl != null ? [imageUrl!] : [],
             );
 
@@ -812,7 +847,7 @@ class _TopBarState extends State<TopBar> {
                 fullProduct.tags = rawTags.map((t) {
                   if (t is Map) {
                     return SKU.Tags(
-                      id:   t["id"],
+                      id: t["id"],
                       name: t["name"]?.toString(),
                       slug: t["slug"]?.toString(),
                     );
@@ -825,7 +860,7 @@ class _TopBarState extends State<TopBar> {
                       "${fullProduct.id}: ${fullProduct.tags?.map((t) => t.name).toList()}");
                 }
               } else {
-                final isar    = await IsarService.instance;
+                final isar = await IsarService.instance;
                 final entries = await isar.isarCacheEntrys
                     .where()
                     .filter()
@@ -835,8 +870,10 @@ class _TopBarState extends State<TopBar> {
                 for (final entry in entries) {
                   final List<dynamic> cached = jsonDecode(entry.json);
                   final match = cached.firstWhere(
-                        (item) =>
-                    ((item["fast_key_product_id"] ?? item["product_id"] ?? item["id"])?.toString() ==
+                    (item) => ((item["fast_key_product_id"] ??
+                                item["product_id"] ??
+                                item["id"])
+                            ?.toString() ==
                         productId.toString()),
                     orElse: () => null,
                   );
@@ -846,7 +883,7 @@ class _TopBarState extends State<TopBar> {
                       fullProduct.tags = fallbackTags.map((t) {
                         if (t is Map) {
                           return SKU.Tags(
-                            id:   t["id"],
+                            id: t["id"],
                             name: t["name"]?.toString(),
                             slug: t["slug"]?.toString(),
                           );
@@ -864,7 +901,8 @@ class _TopBarState extends State<TopBar> {
                 }
               }
             } catch (e) {
-              debugPrint("❌ Tag enrichment failed for product ${fullProduct.id}: $e");
+              debugPrint(
+                  "❌ Tag enrichment failed for product ${fullProduct.id}: $e");
             }
 
             _handleProductTap(fullProduct);
@@ -878,9 +916,41 @@ class _TopBarState extends State<TopBar> {
   // VARIANT CACHE HELPER
   // ══════════════════════════════════════════════════════════════════════════════
 
-  Future<List<Map<String, dynamic>>> _getVariantsFromCache(int productId) async {
+  Future<List<Map<String, dynamic>>> _getVariantsFromCache(
+      int productId) async {
     try {
-      final isar    = await IsarService.instance;
+      final productBox = StorageProvider.productCache;
+      List<Map<String, dynamic>> _normalizeVariants(dynamic raw) {
+        if (raw is! List || raw.isEmpty) return <Map<String, dynamic>>[];
+        return raw
+            .whereType<Map>()
+            .map<Map<String, dynamic>>((v) {
+              final map = v.map((key, value) => MapEntry(key.toString(), value));
+              final attrs = map["attributes"];
+              final String fallbackName = attrs is List
+                  ? attrs
+                      .whereType<Map>()
+                      .map((a) => (a["option"] ?? "").toString())
+                      .where((x) => x.isNotEmpty)
+                      .join(" - ")
+                  : "";
+              return {
+                "id": map["id"],
+                "name": (map["name"] ?? "").toString().isNotEmpty
+                    ? map["name"]
+                    : (fallbackName.isNotEmpty ? fallbackName : "Variant"),
+                "price": map["regular_price"] ?? map["price"] ?? "0",
+                "image": (map["image"] is Map && map["image"]["src"] != null)
+                    ? map["image"]["src"]
+                    : (map["image"] is String ? map["image"] : ""),
+                "sku": map["sku"] ?? "",
+              };
+            })
+            .where((v) => v["id"] != null)
+            .toList();
+      }
+
+      final isar = await IsarService.instance;
       final entries = await isar.isarCacheEntrys
           .where()
           .filter()
@@ -890,42 +960,83 @@ class _TopBarState extends State<TopBar> {
       for (final entry in entries) {
         final List<dynamic> products = jsonDecode(entry.json);
         final match = products.firstWhere(
-              (p) => p["fast_key_product_id"]?.toString() == productId.toString(),
+          (p) => p["fast_key_product_id"]?.toString() == productId.toString(),
           orElse: () => null,
         );
         if (match == null) continue;
 
-        final rawVariations = match["variations"];
-        if (rawVariations is! List || rawVariations.isEmpty) continue;
-
-        final List<Map<String, dynamic>> variants = [];
-        for (final v in rawVariations) {
-          if (v is Map<String, dynamic>) {
-            variants.add({
-              "id":    v["id"],
-              "name":  v["name"] ?? (v["attributes"] as List?)
-                  ?.map((a) => a["option"])
-                  .join(" - "),
-              "price": v["regular_price"] ?? v["price"] ?? "0",
-              "image": v["image"]?["src"],
-              "sku":   v["sku"],
-            });
-          } else if (v is int) {
-            variants.add({
-              "id":    v,
-              "name":  "Variant",
-              "price": match["price"] ?? "0",
-              "image": match["image"],
-              "sku":   match["sku"],
-            });
-          }
-        }
+        final rawVariations = match["variations"] ??
+            (await productBox.get("product_${productId}_variations"))?["variations"];
+        final variants = _normalizeVariants(rawVariations);
         if (variants.isNotEmpty) return variants;
       }
+
+      // Fallback path: direct variation cache key (used by category preload).
+      final cached = await productBox.get("product_${productId}_variations");
+      final fallbackVariants =
+          _normalizeVariants(cached is Map ? cached["variations"] : null);
+      if (fallbackVariants.isNotEmpty) return fallbackVariants;
     } catch (e) {
       debugPrint("_getVariantsFromCache error: $e");
     }
     return [];
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchVariationsFromApi(int productId) async {
+    try {
+      final token = await _getAuthTokenFromDb();
+      final url = Uri.parse(
+          "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations");
+      final response =
+          await http.get(url, headers: {"Authorization": "Bearer $token"});
+      if (response.statusCode != 200) return <Map<String, dynamic>>[];
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) return <Map<String, dynamic>>[];
+
+      return decoded
+          .whereType<Map>()
+          .map<Map<String, dynamic>>((v) {
+            final map = v.map((key, value) => MapEntry(key.toString(), value));
+            final attrs = map["attributes"];
+            final String fallbackName = attrs is List
+                ? attrs
+                    .whereType<Map>()
+                    .map((a) => (a["option"] ?? "").toString())
+                    .where((x) => x.isNotEmpty)
+                    .join(" - ")
+                : "";
+            return {
+              "id": map["id"],
+              "name": (map["name"] ?? "").toString().isNotEmpty
+                  ? map["name"]
+                  : (fallbackName.isNotEmpty ? fallbackName : "Variant"),
+              "price": (map["price"] ?? map["regular_price"] ?? "0").toString(),
+              "image": (map["image"] is Map && map["image"]["src"] != null)
+                  ? map["image"]["src"]
+                  : (map["image"] is String ? map["image"] : ""),
+              "sku": map["sku"] ?? "",
+            };
+          })
+          .where((v) => v["id"] != null)
+          .toList();
+    } catch (e) {
+      debugPrint("_fetchVariationsFromApi error: $e");
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<String> _getAuthTokenFromDb() async {
+    final db = await DBHelper.instance.database;
+    final result = await db.query(
+      AppDBConst.userTable,
+      where:
+          '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+      orderBy: '${AppDBConst.userId} DESC',
+      limit: 1,
+    );
+    if (result.isEmpty) throw Exception('No active user token found');
+    return result.first[AppDBConst.userToken] as String;
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -961,36 +1072,35 @@ class _TopBarState extends State<TopBar> {
       }
       if (!mounted) return;
 
-      final offlineBox    = StorageProvider.offlineOrders;
+      final offlineBox = StorageProvider.offlineOrders;
       final activeOrderId = ensuredOrderId.toString();
-      final raw           = await offlineBox.get(activeOrderId);
+      final raw = await offlineBox.get(activeOrderId);
       final Map<String, dynamic> rawOrder =
-      Map<String, dynamic>.from(raw is Map ? raw : {});
+          Map<String, dynamic>.from(raw is Map ? raw : {});
 
       // ── 3. Resolve product tags ────────────────────────────────────────────
       final List<SKU.Tags> tags = product.tags ?? [];
 
       // ── 4. Age verification ───────────────────────────────────────────────
       final bool hasAgeRestriction =
-      tags.any((t) => t.name == TextConstants.age_restricted);
+          tags.any((t) => t.name == TextConstants.age_restricted);
 
       if (hasAgeRestriction) {
-        final dynamic hiveAge      = rawOrder["age_verified"];
+        final dynamic hiveAge = rawOrder["age_verified"];
         final bool alreadyVerified = hiveAge == true ||
             hiveAge == 1 ||
             hiveAge?.toString().toLowerCase() == "true";
 
         if (!alreadyVerified) {
           final SKU.Tags ageTag =
-          tags.firstWhere((t) => t.name == TextConstants.age_restricted);
-          final int minAge =
-              int.tryParse(ageTag.slug?.toString() ?? "0") ?? 0;
+              tags.firstWhere((t) => t.name == TextConstants.age_restricted);
+          final int minAge = int.tryParse(ageTag.slug?.toString() ?? "0") ?? 0;
 
           if (kDebugMode) print("🔞 Age verification required (min $minAge)");
 
           _dialogOpen = true;
           final prov = AgeVerificationProvider();
-          final ok   = await prov.verifyAge(context, minAge: minAge);
+          final ok = await prov.verifyAge(context, minAge: minAge);
           _dialogOpen = false;
 
           if (!mounted) return;
@@ -1010,7 +1120,7 @@ class _TopBarState extends State<TopBar> {
       // ── 5. Resolve EBT eligibility ─────────────────────────────────────────
       bool isEbtEligible = false;
       try {
-        final isar          = await IsarService.instance;
+        final isar = await IsarService.instance;
         final cachedEntries = await isar.isarCacheEntrys
             .where()
             .filter()
@@ -1020,11 +1130,16 @@ class _TopBarState extends State<TopBar> {
         for (final entry in cachedEntries) {
           final List<dynamic> products = jsonDecode(entry.json);
           final match = products.firstWhere(
-                (p) => p["fast_key_product_id"]?.toString() == product.id.toString(),
+            (p) =>
+                p["fast_key_product_id"]?.toString() == product.id.toString(),
             orElse: () => null,
           );
           if (match != null) {
-            isEbtEligible = match["is_ebt_eligible"] == true;
+            final dynamic rawEbt = match["is_ebt_eligible"];
+            isEbtEligible = rawEbt == true ||
+                rawEbt == 1 ||
+                rawEbt?.toString() == "1" ||
+                rawEbt?.toString().toLowerCase() == "true";
             if (kDebugMode) {
               print("🥗 EBT → ${match["fast_key_item_name"]} | $isEbtEligible");
             }
@@ -1033,6 +1148,17 @@ class _TopBarState extends State<TopBar> {
         }
       } catch (e) {
         if (kDebugMode) print("⚠️ EBT resolve error: $e");
+      }
+
+      if (!isEbtEligible) {
+        isEbtEligible = tags.any((t) {
+          final name = t.name?.toLowerCase() ?? "";
+          final slug = t.slug?.toLowerCase() ?? "";
+          return name == "ebt" ||
+              name == "ebt eligible" ||
+              slug == "ebt" ||
+              slug == "ebt-eligible";
+        });
       }
 
       if (!mounted) return;
@@ -1044,7 +1170,7 @@ class _TopBarState extends State<TopBar> {
 
       // ── 7. PRODUCE → Auto Weight & Price dialog ────────────────────────────
       final bool hasProduceTag = tags.any((t) =>
-      t.slug?.toLowerCase() == "produce" ||
+          t.slug?.toLowerCase() == "produce" ||
           t.name?.toLowerCase() == "produce");
 
       if (hasProduceTag) {
@@ -1064,7 +1190,7 @@ class _TopBarState extends State<TopBar> {
               value: Provider.of<WeightProvider>(context, listen: false),
               child: AutoWeightPriceDialog(
                 productName: product.name ?? "Product",
-                unitPrice:   unitPrice,
+                unitPrice: unitPrice,
               ),
             ),
           );
@@ -1079,8 +1205,8 @@ class _TopBarState extends State<TopBar> {
           return;
         }
 
-        final double finalPrice  = (result["finalPrice"] as num).toDouble();
-        final double weightValue = (result["weight"]     as num).toDouble();
+        final double finalPrice = (result["finalPrice"] as num).toDouble();
+        final double weightValue = (result["weight"] as num).toDouble();
         if (kDebugMode) {
           print("⚖️ Weight: $weightValue lb  |  Price: \$$finalPrice");
         }
@@ -1095,13 +1221,13 @@ class _TopBarState extends State<TopBar> {
           1,
           product.sku ?? '',
           int.parse(activeOrderId),
-          type:          "weighted",
-          productId:     product.id,
-          variationId:   -1,
-          unitPrice:     unitPrice,
-          salesPrice:    finalPrice,
-          regularPrice:  unitPrice,
-          combo:         null,
+          type: "weighted",
+          productId: product.id,
+          variationId: -1,
+          unitPrice: unitPrice,
+          salesPrice: finalPrice,
+          regularPrice: unitPrice,
+          combo: null,
           isEbtEligible: isEbtEligible,
           onItemAdded: () {
             _removeOverlay();
@@ -1117,14 +1243,27 @@ class _TopBarState extends State<TopBar> {
       // NOTE: API variant fetch intentionally skipped.
       // Variants are resolved from local Isar cache only (_getVariantsFromCache).
       // If none found in cache, product is treated as simple.
-      final List<Map<String, dynamic>> variants =
-      await _getVariantsFromCache(product.id!);
+      List<Map<String, dynamic>> variants =
+          await _getVariantsFromCache(product.id!);
+      if (variants.isEmpty && (product.variations?.isNotEmpty ?? false)) {
+        variants = await _fetchVariationsFromApi(product.id!);
+        if (variants.isNotEmpty) {
+          await StorageProvider.productCache.put(
+            "product_${product.id}_variations",
+            {
+              "variations": variants,
+              "timestamp": DateTime.now().toIso8601String(),
+            },
+          );
+        }
+      }
       final bool hasVariants = variants.isNotEmpty;
 
       if (!mounted) return;
 
       if (hasVariants) {
-        if (kDebugMode) print("🔀 Variants (${variants.length}) → VariantsDialog");
+        if (kDebugMode)
+          print("🔀 Variants (${variants.length}) → VariantsDialog");
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted) return;
 
@@ -1135,7 +1274,7 @@ class _TopBarState extends State<TopBar> {
             barrierDismissible: false,
             useRootNavigator: true,
             builder: (dialogCtx) => VariantsDialog(
-              title:      product.name ?? "Select Variant",
+              title: product.name ?? "Select Variant",
               variations: variants,
               onAddVariant: (selected, qty) async {
                 final varPrice =
@@ -1149,12 +1288,12 @@ class _TopBarState extends State<TopBar> {
                   qty,
                   selected["sku"] ?? product.sku ?? '',
                   int.parse(activeOrderId),
-                  type:          'variant',
-                  productId:     product.id,
-                  variationId:   selected["id"],
-                  unitPrice:     varPrice,
-                  salesPrice:    varPrice,
-                  regularPrice:  varPrice,
+                  type: 'variant',
+                  productId: product.id,
+                  variationId: selected["id"],
+                  unitPrice: varPrice,
+                  salesPrice: varPrice,
+                  regularPrice: varPrice,
                   isEbtEligible: isEbtEligible,
                   onItemAdded: () {
                     _removeOverlay();
@@ -1163,9 +1302,6 @@ class _TopBarState extends State<TopBar> {
                     widget.onProductSelected?.call(product);
                   },
                 );
-                if (dialogCtx.mounted) {
-                  Navigator.of(dialogCtx, rootNavigator: true).pop();
-                }
               },
             ),
           );
@@ -1181,21 +1317,22 @@ class _TopBarState extends State<TopBar> {
 
       // ── 9. VARIABLE PRICE ──────────────────────────────────────────────────
       final bool hasVariablePriceTag = tags.any((t) =>
-      t.slug?.toLowerCase() == "variable-product" ||
+          t.slug?.toLowerCase() == "variable-product" ||
           t.slug?.toLowerCase() == "variable" ||
           t.name?.toLowerCase() == "variable product" ||
           t.name?.toLowerCase() == "variable");
 
-      final String variableKey       = "variable_price_added_${product.id}";
-      final String savedPriceKey     = "selected_price_${product.id}";
-      final bool   popupAlreadyShown = rawOrder[variableKey] == true;
+      final String variableKey = "variable_price_added_${product.id}";
+      final String savedPriceKey = "selected_price_${product.id}";
+      final bool popupAlreadyShown = rawOrder[variableKey] == true;
 
       double finalPrice = unitPrice;
 
       if (hasVariablePriceTag) {
         if (popupAlreadyShown) {
           final savedPrice = rawOrder[savedPriceKey];
-          finalPrice = double.tryParse(savedPrice?.toString() ?? "") ?? unitPrice;
+          finalPrice =
+              double.tryParse(savedPrice?.toString() ?? "") ?? unitPrice;
           if (kDebugMode) print("💲 Variable price re-used: \$$finalPrice");
         } else {
           await WidgetsBinding.instance.endOfFrame;
@@ -1206,9 +1343,9 @@ class _TopBarState extends State<TopBar> {
           try {
             enteredPrice = await ManualPriceDialog.show(
               context,
-              productName:  product.name ?? "Product",
+              productName: product.name ?? "Product",
               productImage: _getProductImage(product),
-              minPrice:     unitPrice,
+              minPrice: unitPrice,
             );
           } finally {
             _dialogOpen = false;
@@ -1220,8 +1357,8 @@ class _TopBarState extends State<TopBar> {
             return;
           }
 
-          finalPrice              = enteredPrice;
-          rawOrder[variableKey]   = true;
+          finalPrice = enteredPrice;
+          rawOrder[variableKey] = true;
           rawOrder[savedPriceKey] = finalPrice;
           await offlineBox.put(activeOrderId, rawOrder);
           if (kDebugMode) print("💲 Variable price entered: \$$finalPrice");
@@ -1242,16 +1379,16 @@ class _TopBarState extends State<TopBar> {
         1,
         product.sku ?? '',
         int.tryParse(activeOrderId) ?? 0,
-        type:           "simple",
-        productId:      product.id!,
-        variationId:    -1,
-        variationName:  null,
+        type: "simple",
+        productId: product.id!,
+        variationId: -1,
+        variationName: null,
         variationCount: 0,
-        combo:          null,
-        salesPrice:     finalPrice,
-        regularPrice:   finalPrice,
-        unitPrice:      finalPrice,
-        isEbtEligible:  isEbtEligible,
+        combo: null,
+        salesPrice: finalPrice,
+        regularPrice: finalPrice,
+        unitPrice: finalPrice,
+        isEbtEligible: isEbtEligible,
         onItemAdded: () {
           _removeOverlay();
           _clearSearch();
@@ -1259,7 +1396,6 @@ class _TopBarState extends State<TopBar> {
           widget.onProductSelected?.call(product);
         },
       );
-
     } catch (e, st) {
       if (kDebugMode) print("❌ _handleProductTap Exception: $e\n$st");
       _dialogOpen = false;
@@ -1282,9 +1418,9 @@ class _TopBarState extends State<TopBar> {
       final userData = _cachedUserData;
       if (userData != null && userData[AppDBConst.userId] != null) {
         setState(() {
-          userId          = userData[AppDBConst.userId] as int;
+          userId = userData[AppDBConst.userId] as int;
           userDisplayName = userData[AppDBConst.userDisplayName];
-          userRole        = userData[AppDBConst.userRole];
+          userRole = userData[AppDBConst.userRole];
         });
       }
       return;
@@ -1292,9 +1428,9 @@ class _TopBarState extends State<TopBar> {
     final userData = await UserDbHelper().getUserData();
     if (userData != null && userData[AppDBConst.userId] != null) {
       setState(() {
-        userId          = userData[AppDBConst.userId] as int;
+        userId = userData[AppDBConst.userId] as int;
         userDisplayName = userData[AppDBConst.userDisplayName];
-        userRole        = userData[AppDBConst.userRole];
+        userRole = userData[AppDBConst.userRole];
       });
     }
   }
@@ -1304,148 +1440,152 @@ class _TopBarState extends State<TopBar> {
     bool isError = false;
 
     return await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            final isDark = Theme.of(context).brightness == Brightness.dark;
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) {
+            return StatefulBuilder(
+              builder: (context, setState) {
+                final isDark = Theme.of(context).brightness == Brightness.dark;
 
-            return Dialog(
-              insetPadding: const EdgeInsets.symmetric(horizontal: 40),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              backgroundColor: isDark ? const Color(0xFF2F3241) : Colors.white,
-              child: SizedBox(
-                width: 320,
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.lock_outline,
-                          color: Colors.redAccent,
-                          size: 30,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        "Authentication Required",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'Inter',
-                          color: isDark ? Colors.white : Colors.black,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        "Enter PIN to open cash drawer",
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontFamily: 'Inter',
-                          color: isDark ? Colors.white60 : Colors.grey[600],
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 18),
-                      _PinBoxField(
-                        controller: pinController,
-                        hasError: isError,
-                      ),
-                      if (isError) ...[
-                        const SizedBox(height: 8),
-                        const Text(
-                          "You are not authorized to access this feature.",
-                          style: TextStyle(fontSize: 11, color: Colors.red),
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-                      Row(
+                return Dialog(
+                  insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  backgroundColor:
+                      isDark ? const Color(0xFF2F3241) : Colors.white,
+                  child: SizedBox(
+                    width: 320,
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Expanded(
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: isDark
-                                    ? const Color(0xFF50535F)
-                                    : const Color(0xFFE0E0E0),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 10),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8)),
-                              ),
-                              onPressed: () => Navigator.pop(ctx, false),
-                              child: Text(
-                                "Cancel",
-                                style: TextStyle(
-                                  color: isDark ? Colors.white70 : Colors.black87,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.lock_outline,
+                              color: Colors.redAccent,
+                              size: 30,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.redAccent,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 10),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8)),
-                              ),
-                              onPressed: () async {
-                                final pin = pinController.text.trim();
-                                if (pin.length != 6) {
-                                  setState(() => isError = true);
-                                  return;
-                                }
-                                setState(() => isError = false);
-                                try {
-                                  final response =
-                                  await OrderRepository().validateLoginPin(pin);
-                                  final decoded = json.decode(response);
-                                  if (decoded["success"] == true) {
-                                    Navigator.pop(ctx, true);
-                                  } else {
-                                    setState(() => isError = true);
-                                    pinController.clear();
-                                  }
-                                } catch (e) {
-                                  setState(() => isError = true);
-                                  pinController.clear();
-                                }
-                              },
-                              child: const Text(
-                                "Confirm",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
+                          const SizedBox(height: 12),
+                          Text(
+                            "Authentication Required",
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: 'Inter',
+                              color: isDark ? Colors.white : Colors.black,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            "Enter PIN to open cash drawer",
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'Inter',
+                              color: isDark ? Colors.white60 : Colors.grey[600],
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 18),
+                          _PinBoxField(
+                            controller: pinController,
+                            hasError: isError,
+                          ),
+                          if (isError) ...[
+                            const SizedBox(height: 8),
+                            const Text(
+                              "You are not authorized to access this feature.",
+                              style: TextStyle(fontSize: 11, color: Colors.red),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: isDark
+                                        ? const Color(0xFF50535F)
+                                        : const Color(0xFFE0E0E0),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: Text(
+                                    "Cancel",
+                                    style: TextStyle(
+                                      color: isDark
+                                          ? Colors.white70
+                                          : Colors.black87,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.redAccent,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  onPressed: () async {
+                                    final pin = pinController.text.trim();
+                                    if (pin.length != 6) {
+                                      setState(() => isError = true);
+                                      return;
+                                    }
+                                    setState(() => isError = false);
+                                    try {
+                                      final response = await OrderRepository()
+                                          .validateLoginPin(pin);
+                                      final decoded = json.decode(response);
+                                      if (decoded["success"] == true) {
+                                        Navigator.pop(ctx, true);
+                                      } else {
+                                        setState(() => isError = true);
+                                        pinController.clear();
+                                      }
+                                    } catch (e) {
+                                      setState(() => isError = true);
+                                      pinController.clear();
+                                    }
+                                  },
+                                  child: const Text(
+                                    "Confirm",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             );
           },
-        );
-      },
-    ) ?? false;
+        ) ??
+        false;
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -1469,7 +1609,8 @@ class _TopBarState extends State<TopBar> {
             themeHelper.themeMode == ThemeMode.dark
                 ? 'assets/svg/app_logo.svg'
                 : 'assets/svg/app_icon.svg',
-            height: 40, width: 40,
+            height: 40,
+            width: 40,
           ),
           const SizedBox(width: 80),
 
@@ -1488,8 +1629,9 @@ class _TopBarState extends State<TopBar> {
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? const Color(0xFF605F5F)
                         : Colors.grey.withOpacity(0.1),
-                    blurRadius:   2,
-                    spreadRadius: themeHelper.themeMode == ThemeMode.dark ? 2 : 4,
+                    blurRadius: 2,
+                    spreadRadius:
+                        themeHelper.themeMode == ThemeMode.dark ? 2 : 4,
                     offset: const Offset(0, 0),
                   ),
                 ],
@@ -1497,25 +1639,25 @@ class _TopBarState extends State<TopBar> {
               height: 46,
               key: _searchFieldKey,
               child: TextField(
-                enabled:    _isSearchEnabled,
+                enabled: _isSearchEnabled,
                 controller: _searchController,
-                focusNode:  _searchFocusNode,
+                focusNode: _searchFocusNode,
                 decoration: InputDecoration(
-                  hintText:   TextConstants.searchHint,
+                  hintText: TextConstants.searchHint,
                   prefixIcon: Icon(Icons.search,
                       color: Theme.of(context).iconTheme.color),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
-                    icon: Icon(Icons.clear,
-                        color: Theme.of(context).iconTheme.color),
-                    onPressed: _clearSearch,
-                  )
+                          icon: Icon(Icons.clear,
+                              color: Theme.of(context).iconTheme.color),
+                          onPressed: _clearSearch,
+                        )
                       : null,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(20),
                     borderSide: BorderSide.none,
                   ),
-                  filled:    true,
+                  filled: true,
                   fillColor: themeHelper.themeMode == ThemeMode.dark
                       ? ThemeNotifier.searchBarBackground
                       : Colors.white,
@@ -1531,9 +1673,9 @@ class _TopBarState extends State<TopBar> {
               final bool connected = weightProvider.isConnected;
               final isDark = themeHelper.themeMode == ThemeMode.dark;
 
-              final parts    = weightProvider.weightText.trim().split(' ');
-              final numPart  = parts.isNotEmpty ? parts[0] : '0.00';
-              final unitPart = parts.length > 1  ? parts[1] : 'lb';
+              final parts = weightProvider.weightText.trim().split(' ');
+              final numPart = parts.isNotEmpty ? parts[0] : '0.00';
+              final unitPart = parts.length > 1 ? parts[1] : 'lb';
 
               return GestureDetector(
                 onLongPress: _reconnectScale,
@@ -1551,9 +1693,9 @@ class _TopBarState extends State<TopBar> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: SevenSegmentDisplay(
-                          text:        numPart,
+                          text: numPart,
                           digitHeight: 28,
-                          onColor:  isDark
+                          onColor: isDark
                               ? const Color(0xFFEEEEEE)
                               : const Color(0xFF1A1A1A),
                           offColor: isDark
@@ -1575,9 +1717,9 @@ class _TopBarState extends State<TopBar> {
                         child: Text(
                           unitPart,
                           style: const TextStyle(
-                            fontSize:   15,
+                            fontSize: 15,
                             fontWeight: FontWeight.w600,
-                            color:      Colors.white,
+                            color: Colors.white,
                             letterSpacing: 0.5,
                             height: 1.0,
                           ),
@@ -1600,7 +1742,8 @@ class _TopBarState extends State<TopBar> {
                             children: [
                               if (_isConnecting)
                                 SizedBox(
-                                  width: 14, height: 14,
+                                  width: 14,
+                                  height: 14,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 1.5,
                                     color: Colors.grey.shade400,
@@ -1615,9 +1758,9 @@ class _TopBarState extends State<TopBar> {
                                     ? 'Connecting...'
                                     : 'Scale disconnected',
                                 style: TextStyle(
-                                  fontSize:   13,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w500,
-                                  color:      Colors.grey.shade500,
+                                  color: Colors.grey.shade500,
                                 ),
                               ),
                             ],
@@ -1640,8 +1783,8 @@ class _TopBarState extends State<TopBar> {
               if (!isAuthorized) return;
               await PrinterSettings.openDrawer(context: context);
               List<int> bytes = [];
-              final ticket    = await _printerSettings.getTicket();
-              bytes          += ticket.feed(1);
+              final ticket = await _printerSettings.getTicket();
+              bytes += ticket.feed(1);
               await _printerSettings.printTicket(bytes, ticket);
             },
             child: Container(
@@ -1659,7 +1802,8 @@ class _TopBarState extends State<TopBar> {
               ),
               child: SvgPicture.asset(
                 SvgUtils.cashDrawerIcon,
-                width: 26, height: 26,
+                width: 26,
+                height: 26,
                 colorFilter: ColorFilter.mode(
                   themeHelper.themeMode == ThemeMode.dark
                       ? Colors.white70
@@ -1689,7 +1833,8 @@ class _TopBarState extends State<TopBar> {
               ),
               child: SvgPicture.asset(
                 SvgUtils.changeModeIcon,
-                width: 26, height: 26,
+                width: 26,
+                height: 26,
                 colorFilter: ColorFilter.mode(
                   themeHelper.themeMode == ThemeMode.dark
                       ? Colors.white70
@@ -1725,7 +1870,8 @@ class _TopBarState extends State<TopBar> {
               ),
               child: SvgPicture.asset(
                 SvgUtils.themeIcon,
-                width: 26, height: 26,
+                width: 26,
+                height: 26,
                 colorFilter: ColorFilter.mode(
                   themeHelper.themeMode == ThemeMode.dark
                       ? Colors.white70
@@ -1765,9 +1911,10 @@ class _TopBarState extends State<TopBar> {
           IconButton(
             icon: isLoading
                 ? const SizedBox(
-              height: 20, width: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(Icons.refresh),
             onPressed: isLoading ? null : refreshProducts,
           ),

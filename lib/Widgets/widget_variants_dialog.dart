@@ -331,6 +331,7 @@ class _VariantsDialogState extends State<VariantsDialog> with SingleTickerProvid
                                 widget.variations[selectedIndex!],
                                 variantQuantities[selectedIndex!]!,
                               );
+                              await closeDialog();
                             }
 
                             if (mounted) {
