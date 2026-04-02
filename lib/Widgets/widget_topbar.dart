@@ -1222,6 +1222,7 @@ class _TopBarState extends State<TopBar> {
           product.sku ?? '',
           int.parse(activeOrderId),
           type: "weighted",
+          weightQty: weightValue,
           productId: product.id,
           variationId: -1,
           unitPrice: unitPrice,

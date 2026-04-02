@@ -2791,7 +2791,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       print("🗑 [Hive] Redeem REMOVED → OrderId: $orderId");
     }
   }
-
   Future<void> _fetchPaymentsByOrderId() async {
     if (kDebugMode) print("###### _fetchPaymentsByOrderId");
 
@@ -3834,7 +3833,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   // isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.card,
                                   // ❌ FORCE DISABLE
                                   isLoading: false,
-                                  isDisabled: true,
+                                  isDisabled: false,
                                   onTap: () async {
                                     _selectPaymentMethod(
                                       TextConstants.card,
@@ -4189,7 +4188,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          //// Back button
+          ////**88 */ Back button
           InkWell(
             borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
             onTap: () async {
@@ -4252,7 +4251,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               // ✅ CASE 2: Coupon applied but no payment yet
               // CASE 2: Coupon applied
               if (couponExists) {
-
                 // ⭐ ISSUE COUPON → show exit confirmation popup
                 if (isCouponActive) {
                   print("🎟 Issue coupon → showing exit confirmation");
@@ -5552,15 +5550,27 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               ],
                               if (hasAutoDiscount) ...[
                                 const SizedBox(width: 5),
-                                _discountBadge("Autodiscount", Colors.red),
+                                _discountBadge(
+                                  "Autodiscount",
+                                  Colors.red,
+                                  amount: autoDiscount,
+                                ),
                               ],
                               if (isComboDiscount) ...[
                                 const SizedBox(width: 5),
-                                _discountBadge("combo discount", Colors.orange),
+                                _discountBadge(
+                                  "combo discount",
+                                  Colors.orange,
+                                  amount: comboDiscount + mixMatchDiscount,
+                                ),
                               ],
                               if (isMultipackDiscount) ...[
                                 const SizedBox(width: 5),
-                                _discountBadge("Multipack", Colors.blue),
+                                _discountBadge(
+                                  "Multipack",
+                                  Colors.blue,
+                                  amount: multipackDiscount,
+                                ),
                               ],
                             ],
                           ),
@@ -5637,9 +5647,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   /// 🔹 Reusable badge widget
   /// 🔹 Reusable badge widget
-  Widget _discountBadge(String text, Color color) {
+  Widget _discountBadge(String text, Color color, {double? amount}) {
+    final double? displayAmount =
+    (amount != null && amount > 0) ? amount : null;
     return Text(
-      text,
+      displayAmount == null
+          ? text
+          : '$text  -${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}',
       style: TextStyle(
         fontSize: 9,
         fontWeight: FontWeight.bold,
@@ -7264,12 +7278,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     );
 
     try {
-      final payload = Map<String, dynamic>.from(offlineOrder!);
-
-// Issue coupon requests must send an explicit empty coupon_lines array.
-      payload["coupon_lines"] = [];
-
-      final response = await OrderRepository().CouponApply(payload);
+      final response = await OrderRepository().CouponApply(offlineOrder!);
 
       if (loaderOpen) {
         Navigator.of(context).pop();
@@ -7331,7 +7340,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       existing["coupon_applied"] = true;
       existing["coupon_applied_at"] = DateTime.now().toIso8601String();
       existing["coupon_amount"] = discountAmount;
-      existing["generated_coupon_only"] = true;
+
       await box.put(key, existing);
       offlineOrder = existing;
 
@@ -7789,7 +7798,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // 🔥 CLEAR COUPON BEFORE SYNC
       offlineOrder["coupon_response"] = {"coupons": []};
-      offlineOrder["generated_coupon_only"] = false;
+
       await box.put(orderKey, offlineOrder);
 
       // 🔥 CALL SAME SYNC METHOD
@@ -7826,7 +7835,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       offlineOrder["coupon_applied"] = false;
       offlineOrder["applied_coupons"] = [];
       offlineOrder["coupon_response"] = {"coupons": []};
-      offlineOrder["generated_coupon_only"] = false;
       await box.put(orderKey, offlineOrder);
 
       await CustomerDisplayHelper.updateCustomerDisplay(
@@ -8053,7 +8061,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           {"code": code}
         ]
       };
-      offlineOrder["generated_coupon_only"] = false;
 
       // ✅ Use LOCAL order ID instead of Woo ID for syncing
 
@@ -8619,7 +8626,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       orderId: orderId ?? 0,
       title: "Void ($method)",
       amount: -voidedAmount,
-      paymentMethod: "void",
+      // IMPORTANT: use the original payment method so per-method totals (Pay by Cash)
+      // correctly subtract the negative void amount.
+      paymentMethod: method,
       shiftId: shiftId,
       vendorId: vendorId,
       userId: userId ?? 0,
@@ -8631,7 +8640,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       createdAt: now,
       remainingBalance:
       (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
-      status: PaymentDbStatus.pending,
+      status: PaymentDbStatus.voided,
       serverPaymentId: int.tryParse(_lastPayment?.paymentId ?? "0"),
     );
 
@@ -8646,7 +8655,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       await _savePaymentToHive(
         amount: -voidedAmount,
-        paymentMethod: "void",
+        paymentMethod: method,
         transactionId: "void_${savedVoid.id}",
         localPayment: savedVoid,
       );
@@ -8678,9 +8687,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           isPaymentStarted = false; // visually reset "payment in progress"
         }
 
+        // Clear the input + payment-method highlight so we don't remain in "EBT zone"
+        // when the user voids and continues paying.
+        selectedPaymentMethod = TextConstants.cash;
+
         // Always update main UI flags based on new calculated balance
         isPaymentStarted = tenderAmount > 0;
       });
+
+      // Reset keypad input (amount field) after void.
+      // (Do it outside setState so it also updates controller text.)
+      _resetAmountAfterPay();
 
       // ────────────────────────────────────────────────
       //  5. Optional: Show feedback (non-intrusive)
@@ -8849,6 +8866,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         onNextPayment: () {
           print("Next Payment tapped → closing partial dialog cleanly");
           Navigator.of(dialogCtx).pop();
+
+          // Clear keypad/method highlight after partial flow so it
+          // doesn't remain in the EBT zone.
+          if (mounted) {
+            setState(() {
+              selectedPaymentMethod = TextConstants.cash;
+            });
+            _resetAmountAfterPay();
+          }
         },
       ),
     );
@@ -10161,6 +10187,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       bytes += ticket.emptyLines(1);
     }
 
+    // Prefer discount coming from GetOrderModel/API (json['discount']) for printing.
+    // Falls back to passed-in discountValue (offline) and finally the screen's discount.
+    final double discount = () {
+      final raw = _order["discount"] ?? _order["order_discount"] ?? _order["discount_amount"];
+      final parsed = raw == null ? null : double.tryParse(raw.toString());
+      final fromGetOrder = parsed ?? (discountValue != 0 ? discountValue : null);
+      if (fromGetOrder == null) return this.discount;
+      return fromGetOrder != 0 ? -(fromGetOrder.abs()) : 0.0;
+    }();
+
     // -------------------------------
     // TOTALS (unchanged from your version)
     // -------------------------------
@@ -10644,6 +10680,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         ),
       );
     }
+
+    // If user navigates back to this screen later, make sure we don't keep
+    // the keypad/EBT highlight from the previous payment flow.
+    selectedPaymentMethod = TextConstants.cash;
+    _rawAmount = 0;
+    amountController.text = '${TextConstants.currencySymbol}0.00';
+    _isAmountEntered = false;
+    _amountErrorText = null;
 
     ///ToDO: Change the status of order to 'completed' here
     // Build #1.0.49: Added Call Order Status Update API code

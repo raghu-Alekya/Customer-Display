@@ -332,9 +332,17 @@ class NestedGridWidget extends StatelessWidget {
                 final isReordered = reorderedIndices.isNotEmpty &&
                     reorderedIndices[itemIndex] != null;
                 final item = items[itemIndex];
-                final bool showEbtTag =
-                    item['is_ebt_eligible'] == true || _isProductEbtEligible(item);
 
+                // Normalise EBT eligibility from multiple possible flags/encodings
+                final dynamic rawEbtFlag = item['is_ebt_eligible'] ??
+                    item['ebt_eligible'] ??
+                    item['isEbtEligible'];
+                final bool ebtFromFlag = rawEbtFlag == true ||
+                    rawEbtFlag == 1 ||
+                    rawEbtFlag == '1';
+
+                final bool showEbtTag =
+                    ebtFromFlag || _isProductEbtEligible(item);
 
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
@@ -593,6 +601,7 @@ class NestedGridWidget extends StatelessWidget {
                                 productSku,
                                 activeOrderId,
                                 type: 'weighted', // Use a special type for weighed items
+                                weightQty: weight,
                                 productId: productId,
                                 variationId: -1,
                                 salesPrice: finalPrice,
@@ -984,150 +993,90 @@ class NestedGridWidget extends StatelessWidget {
                           }
                         },
                         child: _getCardWidget(
-                            Padding(
-                              padding: const EdgeInsets.all(10.0),
-                              child: Row(
-                                children: [
-                                  //_buildImage(item["fast_key_item_image"]),
-                                  const SizedBox(width: 7),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                      mainAxisAlignment:
-                                      MainAxisAlignment.spaceAround,
-                                      children: [
-                                        Text(
-                                          item["fast_key_item_name"],
-                                          style: TextStyle(
-                                            fontSize: 12,
-
-                                            fontWeight: FontWeight.bold,
-                                            color: themeHelper.themeMode == ThemeMode.dark
-                                                ? ThemeNotifier.textDark
-                                                : ThemeNotifier.textLight,
-                                          ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          softWrap: true,
+                          Padding(
+                            padding: const EdgeInsets.all(10.0),
+                            child: Row(
+                              children: [
+                                const SizedBox(width: 7),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                    children: [
+                                      Text(
+                                        item["fast_key_item_name"],
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: themeHelper.themeMode == ThemeMode.dark
+                                              ? ThemeNotifier.textDark
+                                              : ThemeNotifier.textLight,
                                         ),
-                                        Row(
-                                          children: [
-                                            Text(
-                                              '${TextConstants.currencySymbol}${double.tryParse(item["fast_key_item_price"].toString())?.toStringAsFixed(2) ?? "0.00"}',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w500,
-                                                color: themeHelper
-                                                    .themeMode ==
-                                                    ThemeMode.dark
-                                                    ? ThemeNotifier.textDark
-                                                    : ThemeNotifier
-                                                    .textLight,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        softWrap: true,
+                                      ),
+
+                                      // ── Price + badges row ─────────────────────────────
+                                      Row(
+                                        children: [
+                                          Text(
+                                            '${TextConstants.currencySymbol}${double.tryParse(item["fast_key_item_price"].toString())?.toStringAsFixed(2) ?? "0.00"}',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w500,
+                                              color: themeHelper.themeMode == ThemeMode.dark
+                                                  ? ThemeNotifier.textDark
+                                                  : ThemeNotifier.textLight,
+                                            ),
+                                          ),
+
+                                          const SizedBox(width: 6),
+
+                                          // ✅ Variant icon
+                                          if (item['has_variants'] == true ||
+                                              (item['variations'] is List &&
+                                                  item['variations'].isNotEmpty) ||
+                                              item['type'] == 'variable')
+                                            SvgPicture.asset(
+                                              SvgUtils.variationIcon,
+                                              height: 10,
+                                              width: 10,
+                                            ),
+
+                                          const SizedBox(width: 4),
+
+                                          // ✅ EBT badge — same style as categories screen
+                                          if (showEbtTag)
+                                            Container(
+                                              padding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 4,
+                                                  vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green.shade600,
+                                                borderRadius:
+                                                BorderRadius.circular(4),
+                                              ),
+                                              child: const Text(
+                                                'EBT',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 8,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
                                               ),
                                             ),
-                                            const SizedBox(
-                                                width:
-                                                16), // Space between price and variations
-                                            //
-                                            // FutureBuilder<bool>(
-                                            //   future: _fastKeyHasVariants(item),
-                                            //   builder: (context, snapshot) {
-                                            //     if (snapshot.data == true) {
-                                            //       return SvgPicture.asset(
-                                            //         SvgUtils.variationIcon,
-                                            //         height: 10,
-                                            //         width: 10,
-                                            //       );
-                                            //     }
-                                            //     return const SizedBox.shrink();
-                                            //   },
-                                            // ),
-                                            const SizedBox(width: 16),
-
-                                            if (
-                                            item['has_variants'] == true ||
-                                                (item['variations'] is List && item['variations'].isNotEmpty) ||
-                                                item['type'] == 'variable'
-                                            )
-
-
-                                              Padding(
-                                                padding: const EdgeInsets.only(left: 4),
-                                                child: SvgPicture.asset(
-                                                  SvgUtils.variationIcon,
-                                                  height: 10,
-                                                  width: 10,
-                                                ),
-                                              ),
-
-                                            const SizedBox(width: 7),
-
-                                            //
-                                            // if (item['variations'] !=
-                                            //     null &&
-                                            //     item['variations']
-                                            //         .isNotEmpty) // Build #1.0.157: show variationIcon with count
-                                            //   Row(
-                                            //     children: [
-                                            //       SvgPicture.asset(
-                                            //           SvgUtils
-                                            //               .variationIcon,
-                                            //           height: 10,
-                                            //           width: 10),
-                                            //       // SizedBox(width: 4),
-                                            //       // Text(
-                                            //       //   '${item["variations"].length}',
-                                            //       //   style: TextStyle(
-                                            //       //     fontSize: 12,
-                                            //       //     color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
-                                            //       //   ),
-                                            //       // ),
-                                            //     ],
-                                            //   ),
-
-                                            const SizedBox(width: 7),
-                                            if (showEbtTag)
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical:1 ),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.green.shade600,
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                                child: const Text(
-                                                  "EBT",
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 6,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                        // if (showEbtTag)
-                                        //   Container(
-                                        //     padding: const EdgeInsets.symmetric(horizontal: 4, vertical:1 ),
-                                        //     decoration: BoxDecoration(
-                                        //       color: Colors.green.shade600,
-                                        //       borderRadius: BorderRadius.circular(4),
-                                        //     ),
-                                        //     child: const Text(
-                                        //       "EBT",
-                                        //       style: TextStyle(
-                                        //         color: Colors.white,
-                                        //         fontSize: 6,
-                                        //         fontWeight: FontWeight.bold,
-                                        //       ),
-                                        //     ),
-                                        //   ),
-                                      ],
-                                    ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                            themeHelper),
+                          ),
+                          themeHelper,
+                        ),
                       ),
                       if (enableIcons == true &&
                           itemIndex ==

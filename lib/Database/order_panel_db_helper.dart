@@ -158,30 +158,118 @@ class OrderHelper {
 
       for (final entry in cachedEntries) {
         final List products = json.decode(entry.json);
+
         final product = products.firstWhere(
-              (p) => p["fast_key_product_id"] == productId || p["id"] == productId,
+              (p) {
+            final pid = int.tryParse(
+                (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                -1;
+            return pid == productId;
+          },
           orElse: () => null,
         );
 
         if (product == null) continue;
-        if (product["tax_status"] == "none") return 0.0;
 
-        final taxRates = product["tax"]?["tax_rates"];
+        final taxStatus =
+        (product["tax_status"] ?? "taxable").toString().toLowerCase();
+
+        if (taxStatus == "none") return 0.0;
+
+        // Support both cached shapes:
+        // 1) product["tax_rates"] (flat)
+        // 2) product["tax"]["tax_rates"] (nested)
+        final taxRates = product["tax_rates"] ?? product["tax"]?["tax_rates"];
+
         if (taxRates is List && taxRates.isNotEmpty) {
           double taxTotal = 0.0;
+
           for (final tax in taxRates) {
             final double rate =
                 double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
+
             final double rawTax = (taxableBase * rate) / 100;
-            final double roundedTax = (rawTax * 100).roundToDouble() / 100;
+            final double roundedTax =
+                (rawTax * 100).roundToDouble() / 100;
+
             taxTotal += roundedTax;
+
+            print("🧾 TAX LINE → rate:$rate base:$taxableBase tax:$roundedTax");
           }
+
+          print("✅ TOTAL TAX → $taxTotal");
           return (taxTotal * 100).roundToDouble() / 100;
+        }
+
+        // Fallback: some cached products store a single tax rate instead of tax_rates array.
+        final fallbackRate = double.tryParse(
+          (product["tax_rate"] ?? product["tax"]?["rate"] ?? "0")
+              .toString(),
+        ) ??
+            0.0;
+        if (fallbackRate > 0) {
+          final tax = ((taxableBase * fallbackRate) / 100 * 100)
+              .roundToDouble() /
+              100;
+          print(
+              "🧾 TAX FALLBACK → rate:$fallbackRate base:$taxableBase tax:$tax");
+          return tax;
+        }
+      }
+
+      // Fallback: check all_products_list cache when product is not in current products_* buckets.
+      final allProductsEntry = isar.isarCacheEntrys
+          .where()
+          .keyEqualTo("productCache::all_products_list")
+          .findFirstSync();
+      if (allProductsEntry != null) {
+        final dynamic decoded = json.decode(allProductsEntry.json);
+        final List allProducts = decoded is List ? decoded : <dynamic>[];
+        final product = allProducts.cast<dynamic>().firstWhere(
+              (p) {
+            final pid = int.tryParse(
+                (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                -1;
+            return pid == productId;
+          },
+          orElse: () => null,
+        );
+
+        if (product != null) {
+          final taxStatus =
+          (product["tax_status"] ?? "taxable").toString().toLowerCase();
+          if (taxStatus == "none") return 0.0;
+
+          final taxRates = product["tax_rates"] ?? product["tax"]?["tax_rates"];
+          if (taxRates is List && taxRates.isNotEmpty) {
+            double taxTotal = 0.0;
+            for (final tax in taxRates) {
+              final double rate =
+                  double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
+              final double rawTax = (taxableBase * rate) / 100;
+              final double roundedTax = (rawTax * 100).roundToDouble() / 100;
+              taxTotal += roundedTax;
+            }
+            return (taxTotal * 100).roundToDouble() / 100;
+          }
+
+          final fallbackRate = double.tryParse(
+            (product["tax_rate"] ?? product["tax"]?["rate"] ?? "0")
+                .toString(),
+          ) ??
+              0.0;
+          if (fallbackRate > 0) {
+            final tax = ((taxableBase * fallbackRate) / 100 * 100)
+                .roundToDouble() /
+                100;
+            return tax;
+          }
         }
       }
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print("❌ Error calculating tax for product $productId: $e");
+      }
     }
     return 0.0;
   }
@@ -205,11 +293,17 @@ class OrderHelper {
       grossTotal += price * qty;
 
       // Build #1.0.280: If tax_rate is present on the product map (custom items), use it directly.
-      final taxRate = double.tryParse(p['tax_rate']?.toString() ?? '0') ?? 0.0;
-      if (taxRate > 0) {
-        final double rawItemTax = (price * taxRate) / 100;
-        final double roundedItemTax = (rawItemTax * 100).roundToDouble() / 100;
-        orderTax += roundedItemTax * qty;
+      final pid = int.tryParse((p['product_id'] ?? p['id']).toString()) ?? 0;
+
+      final lineTaxStatus =
+      (p['tax_status'] ?? 'taxable').toString().toLowerCase();
+      final lineTaxRate =
+          double.tryParse((p['tax_rate'] ?? '0').toString()) ?? 0.0;
+
+      if (lineTaxStatus == 'taxable' && lineTaxRate > 0) {
+        orderTax += ((price * qty) * lineTaxRate) / 100;
+      } else if (pid > 0) {
+        orderTax += getProductTaxFromHive(pid, price, qty);
       } else {
         final pid = int.tryParse((p['product_id'] ?? p['id']).toString()) ?? 0;
         if (pid > 0) {
@@ -2116,6 +2210,91 @@ class OrderHelper {
   //// code added here **88
   static final Set<String> _activeAdds = {};
 
+  double _combinedTaxRate(dynamic taxRates, dynamic fallbackRate) {
+    if (taxRates is List && taxRates.isNotEmpty) {
+      double total = 0.0;
+      for (final t in taxRates) {
+        total += double.tryParse((t["rate"] ?? "0").toString()) ?? 0.0;
+      }
+      if (total > 0) return total;
+    }
+    return double.tryParse((fallbackRate ?? "0").toString()) ?? 0.0;
+  }
+
+  Future<Map<String, dynamic>> _resolveProductTaxMeta(int productId) async {
+    String status = "taxable";
+    String taxClass = "";
+    double rate = 0.0;
+
+    try {
+      final isar = IsarService.sync;
+      if (isar != null) {
+        final cachedEntries = isar.isarCacheEntrys
+            .where()
+            .filter()
+            .keyStartsWith("products_")
+            .findAllSync();
+
+        for (final entry in cachedEntries) {
+          final List products = json.decode(entry.json);
+          final product = products.firstWhere(
+                (p) {
+              final pid = int.tryParse(
+                  (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                  -1;
+              return pid == productId;
+            },
+            orElse: () => null,
+          );
+
+          if (product == null) continue;
+          status = (product["tax_status"] ?? "taxable").toString();
+          taxClass = (product["tax_class"] ?? "").toString();
+          final taxRates = product["tax_rates"] ?? product["tax"]?["tax_rates"];
+          rate = _combinedTaxRate(
+            taxRates,
+            product["tax_rate"] ?? product["tax"]?["rate"],
+          );
+          return {
+            "tax_status": status,
+            "tax_class": taxClass,
+            "tax_rate": rate,
+          };
+        }
+      }
+
+      // Fallback to flattened product list cache.
+      final allProducts = await StorageProvider.productCache.get("all_products_list");
+      if (allProducts is List) {
+        final product = allProducts.cast<dynamic>().firstWhere(
+              (p) {
+            final pid = int.tryParse(
+                (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                -1;
+            return pid == productId;
+          },
+          orElse: () => null,
+        );
+
+        if (product != null) {
+          status = (product["tax_status"] ?? "taxable").toString();
+          taxClass = (product["tax_class"] ?? "").toString();
+          final taxRates = product["tax_rates"] ?? product["tax"]?["tax_rates"];
+          rate = _combinedTaxRate(
+            taxRates,
+            product["tax_rate"] ?? product["tax"]?["rate"],
+          );
+        }
+      }
+    } catch (_) {}
+
+    return {
+      "tax_status": status,
+      "tax_class": taxClass,
+      "tax_rate": rate,
+    };
+  }
+
   Future<void> addItemToOrder(
       int? serverItemId,
       String name,
@@ -2126,6 +2305,7 @@ class OrderHelper {
       int orderId, {
         VoidCallback? onItemAdded,
         String? type,
+        double? weightQty,
         int? productId = -1,
         int? variationId = -1,
         String? variationName,
@@ -2181,6 +2361,33 @@ class OrderHelper {
       final rawNormVar = (variationId ?? 0).toInt();
       final normVariationId = rawNormVar <= 0 ? 0 : rawNormVar;
 
+      const double defaultNonEbtTaxRate = 9.1;
+      String effectiveTaxStatus = (taxStatus ?? '').trim();
+      String? effectiveTaxClass = taxClass;
+      double effectiveTaxRate = taxRate ?? 0.0;
+      if (normProductId > 0 &&
+          (effectiveTaxStatus.isEmpty || effectiveTaxRate <= 0)) {
+        final meta = await _resolveProductTaxMeta(normProductId);
+        effectiveTaxStatus =
+        (meta["tax_status"]?.toString().trim().isNotEmpty == true)
+            ? meta["tax_status"].toString()
+            : (effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus);
+        effectiveTaxClass = (meta["tax_class"]?.toString().isNotEmpty == true)
+            ? meta["tax_class"].toString()
+            : effectiveTaxClass;
+        effectiveTaxRate = (meta["tax_rate"] as num?)?.toDouble() ?? effectiveTaxRate;
+      }
+      // Business rule: all non-EBT items are taxable; EBT items are tax-free.
+      if (isEbtEligible) {
+        effectiveTaxStatus = "none";
+        effectiveTaxRate = 0.0;
+      } else {
+        effectiveTaxStatus = "taxable";
+        if (effectiveTaxRate <= 0) {
+          effectiveTaxRate = defaultNonEbtTaxRate;
+        }
+      }
+
       // Find existing item to merge quantity (scan/search/selection)
       final existingIndex = products.indexWhere((p) {
         // Normalize stored ids to int because some flows store them as String/num
@@ -2230,11 +2437,64 @@ class OrderHelper {
 
       if (existingIndex != -1) {
         final existing = products[existingIndex];
+        final incomingType = (type ?? '').toString().toLowerCase();
+        final existingType = (existing['type'] ?? '').toString().toLowerCase();
+        final bool incomingWeighted = incomingType.contains('weighted');
+        final bool existingWeighted = existingType.contains('weighted');
+
         final oldQty = (existing['quantity'] ?? 0).toInt();
-        final newQty = oldQty + quantity;
+        final int newQty;
+        final double unitPrice = (existing['unit_price'] as num?)?.toDouble() ??
+            (existing['regular_price'] as num?)?.toDouble() ??
+            (existing['sales_price'] as num?)?.toDouble() ??
+            (existing['price'] as num?)?.toDouble() ??
+            0.0;
+
+        // For weighted items, we merge by accumulating weight + total price,
+        // while keeping quantity fixed at 1 (so totals remain correct).
+        double mergedLinePrice;
+        double mergedWeightQty = 0.0;
+        if (incomingWeighted || existingWeighted) {
+          newQty = 1;
+
+          final double oldLinePrice =
+              (existing['price'] as num?)?.toDouble() ?? 0.0;
+          mergedLinePrice = oldLinePrice + price;
+
+          final double oldWeight =
+              (existing['weight_qty'] as num?)?.toDouble() ??
+                  ((unitPrice > 0) ? (oldLinePrice / unitPrice) : 0.0);
+          final double addWeight =
+              weightQty ?? ((unitPrice > 0) ? (price / unitPrice) : 0.0);
+          mergedWeightQty = oldWeight + addWeight;
+        } else {
+          newQty = oldQty + quantity;
+          mergedLinePrice = (existing['price'] ?? 0).toDouble();
+        }
 
         final mergedEbt =
             (existing['is_ebt_eligible'] == true) || (isEbtEligible == true);
+        double itemTaxRate = double.tryParse(
+            (existing['tax_rate'] ?? effectiveTaxRate).toString()) ??
+            0.0;
+        String itemTaxStatus =
+        (existing['tax_status'] ?? effectiveTaxStatus).toString().toLowerCase();
+        if (mergedEbt) {
+          itemTaxStatus = "none";
+          itemTaxRate = 0.0;
+        } else {
+          itemTaxStatus = "taxable";
+          if (itemTaxRate <= 0) itemTaxRate = defaultNonEbtTaxRate;
+        }
+
+        double itemTax = 0.0;
+
+        if (itemTaxStatus == "taxable" && itemTaxRate > 0) {
+          final double taxableBase =
+              (incomingWeighted || existingWeighted) ? mergedLinePrice : (mergedLinePrice * newQty);
+          itemTax = taxableBase * (itemTaxRate / 100);
+          print("🔁 UPDATED TAX → rate:$itemTaxRate qty:$newQty tax:$itemTax");
+        }
 
         print("🔁 EXISTING ITEM FOUND → $name");
         print("   Old Qty: $oldQty → New Qty: $newQty");
@@ -2244,7 +2504,15 @@ class OrderHelper {
           ...existing,
           'quantity': newQty,
           'is_ebt_eligible': mergedEbt,
-          'price': existing['price'],
+          'price': mergedLinePrice,
+          'tax_status': itemTaxStatus,
+          'tax_class': existing['tax_class'] ?? effectiveTaxClass,
+          'tax_rate': itemTaxRate,
+
+          // 🔥 UPDATE TAX
+          'item_tax': itemTax,
+          if (incomingWeighted || existingWeighted) 'weight_qty': mergedWeightQty,
+
         };
 
         print("🔁 SAME PRODUCT → Qty incremented.");
@@ -2257,7 +2525,9 @@ class OrderHelper {
           'name': name,
           'image': image,
           'price': price,
-          'quantity': quantity,
+          'quantity': (type ?? '').toString().toLowerCase().contains('weighted')
+              ? 1
+              : quantity,
           'sku': sku,
           'type': (variationId != null && variationId > 0)
               ? 'variant'
@@ -2275,12 +2545,15 @@ class OrderHelper {
           'sales_price': salesPrice,
           'regular_price': regularPrice,
           'unit_price': unitPrice,
+          if ((type ?? '').toString().toLowerCase().contains('weighted'))
+            'weight_qty': weightQty ??
+                ((unitPrice != null && unitPrice > 0) ? (price / unitPrice) : 0.0),
 
           /// ⭐ NOW SAVED CORRECTLY
           'is_ebt_eligible': isEbtEligible,
-          'tax_status': taxStatus,
-          'tax_class': taxClass,
-          'tax_rate': taxRate,
+          'tax_status': effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus,
+          'tax_class': effectiveTaxClass,
+          'tax_rate': effectiveTaxRate,
 
           // Discount fields (0 for new items; preserve when merged from existing)
           'auto_discount': 0.0,

@@ -32,6 +32,7 @@ import '../../Preferences/pinaka_preferences.dart';
 import '../../Repositories/Auth/store_validation_repository.dart';
 import '../../Repositories/Orders/order_repository.dart';
 import '../../Repositories/Search/product_search_repository.dart';
+import '../../Utilities/svg_images_utility.dart';
 import '../../Utilities/textfield_search.dart';
 import '../../Widgets/widget_logs_toast.dart';
 import '../../Widgets/widget_alert_popup_dialogs.dart';
@@ -50,6 +51,7 @@ import '../../Models/FastKey/fastkey_model.dart';
 import '../../Blocs/FastKey/fastkey_product_bloc.dart';
 import '../../Repositories/FastKey/fastkey_product_repository.dart';
 import '../../Utilities/shimmer_effect.dart';
+import '../../Utilities/svg_images_utility.dart';
 import '../../Database/db_helper.dart';
 import '../../Widgets/widget_variants_dialog.dart';
 import '../Auth/login_screen.dart';
@@ -583,24 +585,26 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
     }
 
     try {
-      final isar = await IsarService.instance;
-      final entries = await isar.isarCacheEntrys.where().findAll();
+      // Reuse the same merged caches that TopBar search uses so we also see
+      // products coming from Indigo and "all_products_list", not just
+      // local "products_*" Isar entries. This fixes cases where tags/EBT
+      // flags are only present in those caches (e.g. Monster Energy 16 oz).
+      final allCached = await TopBar.mergedCachedProductsForSearch();
 
-      for (final entry in entries) {
-        if (!entry.key.startsWith("products_")) continue;
+      int? _resolveId(dynamic raw) {
+        if (raw is! Map) return null;
+        final m = Map<String, dynamic>.from(raw);
+        final dynamic idRaw =
+            m["fast_key_product_id"] ?? m["product_id"] ?? m["id"];
+        if (idRaw is int) return idRaw;
+        return int.tryParse(idRaw?.toString() ?? "");
+      }
 
-        final List<dynamic> products = jsonDecode(entry.json);
-
-        for (final raw in products) {
-          if (raw is! Map) continue;
-          final map = Map<String, dynamic>.from(raw);
-          final idStr =
-          (map["fast_key_product_id"] ?? map["id"])?.toString();
-          final pid = int.tryParse(idStr ?? "");
-          if (pid != null) {
-            _productMetaCache[pid] = map;
-          }
-        }
+      for (final raw in allCached) {
+        final pid = _resolveId(raw);
+        if (pid == null) continue;
+        final map = Map<String, dynamic>.from(raw as Map);
+        _productMetaCache[pid] = map;
       }
 
       return _productMetaCache[productId];
@@ -899,6 +903,12 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
       final minAge = int.tryParse(item["fast_key_item_min_age"]?.toString() ?? "0") ?? 0;
       final hasAgeRestriction = minAge > 0;
 
+      // Determine EBT eligibility using same rules as grid/meta resolver
+      bool isEbtEligible = item["is_ebt_eligible"] == true;
+      if (!isEbtEligible) {
+        isEbtEligible = _isProductEbtEligible(item);
+      }
+
       print("🧾 Selected → id:$productId | name:$productName | price:$productPrice | variant:$hasVariants | age:$minAge");
 
       // 🧠 Determine order type
@@ -1015,6 +1025,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                 salesPrice: variantPrice,
                 regularPrice: variantPrice,
                 unitPrice: variantPrice,
+                isEbtEligible: isEbtEligible,
                 onItemAdded: () async {
                   print("✅ Variant added locally");
                   await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
@@ -1041,6 +1052,7 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
           salesPrice: productPrice,
           regularPrice: productPrice,
           unitPrice: productPrice,
+          isEbtEligible: isEbtEligible,
           onItemAdded: () async {
             print("✅ Product added locally");
             await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
@@ -1455,6 +1467,27 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                                       (_resolveProductId(p) ?? '').toString();
                                   final String imageUrl = _resolveImage(p);
 
+                                  // Detect EBT + variants using same rules as grid/order flow
+                                  final List<dynamic> rawTags =
+                                      (p['tags'] as List?) ?? const [];
+                                  final bool isEbtEligible = rawTags.any((t) {
+                                    if (t is! Map) return false;
+                                    final name =
+                                        (t['name'] ?? '').toString().toLowerCase();
+                                    final slug =
+                                        (t['slug'] ?? '').toString().toLowerCase();
+                                    return name.contains('ebt') ||
+                                        slug.contains('ebt') ||
+                                        slug == 'ebt-eligible';
+                                  });
+
+                                  final String type =
+                                      (p['type'] ?? '').toString().toLowerCase();
+                                  final List<dynamic> variations =
+                                      (p['variations'] as List?) ?? const [];
+                                  final bool hasVariants =
+                                      type == 'variable' || variations.isNotEmpty;
+
                                   final bool isSelected = selectedProducts
                                       .any((s) => s['id'].toString() == pid);
 
@@ -1476,9 +1509,51 @@ class _FastKeyScreenState extends State<FastKeyScreen> with WidgetsBindingObserv
                                         : const Icon(Icons.image),
 
                                     title: Text(name),
-                                    subtitle: Text(
-                                      '${TextConstants.currencySymbol}'
-                                          '${double.tryParse(price)?.toStringAsFixed(2) ?? "0.00"}',
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          '${TextConstants.currencySymbol}'
+                                              '${double.tryParse(price)?.toStringAsFixed(2) ?? "0.00"}',
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (hasVariants)
+                                              Padding(
+                                                padding:
+                                                    const EdgeInsets.only(right: 6),
+                                                child: SvgPicture.asset(
+                                                  SvgUtils.variationIcon,
+                                                  height: 10,
+                                                  width: 10,
+                                                ),
+                                              ),
+                                            if (isEbtEligible)
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 4,
+                                                        vertical: 1),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.green.shade600,
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                ),
+                                                child: const Text(
+                                                  'EBT',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 8,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
                                     ),
 
                                     /// ⭐ UNCHANGED: multi-select logic

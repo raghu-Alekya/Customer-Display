@@ -64,9 +64,12 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
   // Track if we've shown the rescan message
   bool _hasShownRescanMessage = false;
 
+  final FocusNode _scannerFocusNode = FocusNode();
+
   @override
   void initState() {
     super.initState();
+    _scannerFocusNode.requestFocus();
     _dobController.addListener(_onDobChanged);
     if (_isAndroid) {
       _barcodeController.addListener(_onAndroidBarcodeChanged);
@@ -75,6 +78,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
 
   @override
   void dispose() {
+    _scannerFocusNode.dispose();
     _dobController.dispose();
     _barcodeController.dispose();
     _scanTimer?.cancel();
@@ -117,7 +121,8 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
     _scannerBuffer += input;
 
     // Print the full buffer as a single line
-    print("Driving Licence: ${_scannerBuffer.replaceAll('\n', '').replaceAll('\r', '')}");
+    print(
+        "Driving Licence: ${_scannerBuffer.replaceAll('\n', '').replaceAll('\r', '')}");
 
     // Reset & start timeout timer
     _scannerBufferTimer?.cancel();
@@ -142,7 +147,9 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
     print("═" * 80);
     print("COMPLETE SCAN RECEIVED — ${bufferCopy.length} raw chars");
     print("Buffer preview (first 300):");
-    print(bufferCopy.length > 300 ? bufferCopy.substring(0, 300) + '...' : bufferCopy);
+    print(bufferCopy.length > 300
+        ? bufferCopy.substring(0, 300) + '...'
+        : bufferCopy);
     print("═" * 80);
 
     // Minimal cleaning — only remove leading/trailing whitespace, keep internal \n
@@ -161,7 +168,8 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
     final dbbMatch = RegExp(r'DBB(\d{8})').firstMatch(cleanedBuffer);
     if (dbbMatch != null) {
       final dobDigits = dbbMatch.group(1)!;
-      final formatted = "${dobDigits.substring(0,2)}/${dobDigits.substring(2,4)}/${dobDigits.substring(4)}";
+      final formatted =
+          "${dobDigits.substring(0, 2)}/${dobDigits.substring(2, 4)}/${dobDigits.substring(4)}";
       print("→ DIRECT DBB EXTRACTION SUCCESS: $formatted");
       _setDobAndNotify(formatted);
       setState(() {
@@ -205,7 +213,8 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
       final dbbMatch = RegExp(r'DBB(\d{8})').firstMatch(barcode);
       if (dbbMatch != null) {
         final dobDigits = dbbMatch.group(1)!;
-        final formatted = "${dobDigits.substring(0,2)}/${dobDigits.substring(2,4)}/${dobDigits.substring(4)}";
+        final formatted =
+            "${dobDigits.substring(0, 2)}/${dobDigits.substring(2, 4)}/${dobDigits.substring(4)}";
         print("→ Fallback direct DBB success: $formatted");
         _setDobAndNotify(formatted);
         setState(() {
@@ -228,12 +237,12 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
   bool _looksLikeAAMVAFormat(String data) {
     // Check for common AAMVA field patterns
     final patterns = [
-      r'DAA\d{8}',  // Expiration date
-      r'DBB\d{8}',  // Date of birth
-      r'DBD\d{8}',  // Issue date
-      r'DCS[^A-Z]*',  // Last name
-      r'DAC[^A-Z]*',  // First name
-      r'DAQ[^A-Z]*',  // License number
+      r'DAA\d{8}', // Expiration date
+      r'DBB\d{8}', // Date of birth
+      r'DBD\d{8}', // Issue date
+      r'DCS[^A-Z]*', // Last name
+      r'DAC[^A-Z]*', // First name
+      r'DAQ[^A-Z]*', // License number
     ];
 
     for (final pattern in patterns) {
@@ -336,15 +345,16 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
     }
 
     // --- Map the fields ---
-    data['First Name']     = getFieldExact('DAC') ?? getFieldExact('DCT') ?? 'Not found';
-    data['Last Name']      = getFieldExact('DCS') ?? 'Not found';
-    data['Middle Name']    = getFieldExact('DAD') ?? '';
+    data['First Name'] =
+        getFieldExact('DAC') ?? getFieldExact('DCT') ?? 'Not found';
+    data['Last Name'] = getFieldExact('DCS') ?? 'Not found';
+    data['Middle Name'] = getFieldExact('DAD') ?? '';
     data['License Number'] = getFieldExact('DAQ') ?? 'Not found';
-    data['Street']         = getFieldExact('DAG') ?? 'Not found';
-    data['City']           = getFieldExact('DAI') ?? 'Not found';
-    data['State']          = getFieldExact('DAJ') ?? 'Not found';
-    data['Postal Code']    = getFieldExact('DAK') ?? 'Not found';
-    data['Country']        = getFieldExact('DCG') ?? 'USA';
+    data['Street'] = getFieldExact('DAG') ?? 'Not found';
+    data['City'] = getFieldExact('DAI') ?? 'Not found';
+    data['State'] = getFieldExact('DAJ') ?? 'Not found';
+    data['Postal Code'] = getFieldExact('DAK') ?? 'Not found';
+    data['Country'] = getFieldExact('DCG') ?? 'USA';
 
     final genderCode = getFieldExact('DBC');
     data['Gender'] = genderCode == '1'
@@ -354,18 +364,20 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
         : 'Unknown';
 
     String formatDate(String? rawDate) {
-      if (rawDate == null || rawDate.length != 8 || !RegExp(r'^\d{8}$').hasMatch(rawDate)) {
+      if (rawDate == null ||
+          rawDate.length != 8 ||
+          !RegExp(r'^\d{8}$').hasMatch(rawDate)) {
         return 'Not found';
       }
       final month = rawDate.substring(0, 2);
-      final day   = rawDate.substring(2, 4);
-      final year  = rawDate.substring(4, 8);
+      final day = rawDate.substring(2, 4);
+      final year = rawDate.substring(4, 8);
       return "$month/$day/$year";
     }
 
     // --- Extract dates with exact 8-digit fallback ---
     data['Date of Birth'] = formatDate(getFieldExact('DBB', length: 8));
-    data['Issue Date']    = formatDate(getFieldExact('DBD', length: 8));
+    data['Issue Date'] = formatDate(getFieldExact('DBD', length: 8));
     data['Expiration Date'] = formatDate(getFieldExact('DBA', length: 8));
 
     // --- Print nicely ---
@@ -375,7 +387,6 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
 
     return data;
   }
-
 
   void _parseLicense(String raw) {
     setState(() {
@@ -463,7 +474,8 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
       _scanTime = DateTime.now();
       _isProcessingScan = false;
 
-      if (data['Date of Birth'] != 'Not found' && data['Last Name'] != 'Not found') {
+      if (data['Date of Birth'] != 'Not found' &&
+          data['Last Name'] != 'Not found') {
         _scanStatusMessage = '✅ Valid license scanned';
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
@@ -584,10 +596,16 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
             return;
           }
 
-          final age = now.year - dob.year - ((now.month < dob.month || (now.month == dob.month && now.day < dob.day)) ? 1 : 0);
+          final age = now.year -
+              dob.year -
+              ((now.month < dob.month ||
+                  (now.month == dob.month && now.day < dob.day))
+                  ? 1
+                  : 0);
 
           if (age < widget.minimumAge) {
-            _errorMessage = 'You must be at least ${widget.minimumAge} years old.';
+            _errorMessage =
+            'You must be at least ${widget.minimumAge} years old.';
             setState(() {});
             return;
           }
@@ -647,10 +665,12 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
 
     String formattedText = digitsOnly;
     if (digitsOnly.length >= 2) {
-      formattedText = '${digitsOnly.substring(0, 2)}/${digitsOnly.substring(2)}';
+      formattedText =
+      '${digitsOnly.substring(0, 2)}/${digitsOnly.substring(2)}';
     }
     if (digitsOnly.length >= 4) {
-      formattedText = '${digitsOnly.substring(0, 2)}/${digitsOnly.substring(2, 4)}/${digitsOnly.substring(4)}';
+      formattedText =
+      '${digitsOnly.substring(0, 2)}/${digitsOnly.substring(2, 4)}/${digitsOnly.substring(4)}';
     }
 
     if (digitsOnly.length == 1) {
@@ -701,7 +721,8 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
       int monthNum = int.parse(month);
       int dayNum = int.parse(day);
 
-      int maxDays = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][monthNum - 1];
+      int maxDays =
+      [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][monthNum - 1];
 
       if (dayNum >= 1 && dayNum <= maxDays) {
         formattedText = '$month/$day/';
@@ -856,7 +877,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
           ),
           child: _isScanningLicense
               ? RawKeyboardListener(
-            focusNode: FocusNode()..requestFocus(),
+            focusNode: _scannerFocusNode,
             onKey: _handleKeyboardEvent,
             child: _buildScannerUI(themeHelper),
           )
@@ -928,7 +949,8 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
                       color: Colors.red,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.close, color: Colors.white, size: 20),
+                    child:
+                    const Icon(Icons.close, color: Colors.white, size: 20),
                   ),
                 ),
               ],
@@ -954,15 +976,18 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
             // Scan status message
             if (_scanStatusMessage.isNotEmpty) ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 margin: const EdgeInsets.only(bottom: 8),
                 decoration: BoxDecoration(
-                  color: _scanStatusMessage.contains('✅') || _scanStatusMessage.contains('auto-filled')
+                  color: _scanStatusMessage.contains('✅') ||
+                      _scanStatusMessage.contains('auto-filled')
                       ? Colors.green.shade50
                       : Colors.orange.shade50,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: _scanStatusMessage.contains('✅') || _scanStatusMessage.contains('auto-filled')
+                    color: _scanStatusMessage.contains('✅') ||
+                        _scanStatusMessage.contains('auto-filled')
                         ? Colors.green.shade200
                         : Colors.orange.shade200,
                   ),
@@ -970,10 +995,12 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
                 child: Row(
                   children: [
                     Icon(
-                      _scanStatusMessage.contains('✅') || _scanStatusMessage.contains('auto-filled')
+                      _scanStatusMessage.contains('✅') ||
+                          _scanStatusMessage.contains('auto-filled')
                           ? Icons.check_circle
                           : Icons.warning,
-                      color: _scanStatusMessage.contains('✅') || _scanStatusMessage.contains('auto-filled')
+                      color: _scanStatusMessage.contains('✅') ||
+                          _scanStatusMessage.contains('auto-filled')
                           ? Colors.green
                           : Colors.orange,
                       size: 16,
@@ -985,7 +1012,8 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
-                          color: _scanStatusMessage.contains('✅') || _scanStatusMessage.contains('auto-filled')
+                          color: _scanStatusMessage.contains('✅') ||
+                              _scanStatusMessage.contains('auto-filled')
                               ? Colors.green.shade800
                               : Colors.orange.shade800,
                         ),
@@ -1026,11 +1054,12 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
             SizedBox(
               height: MediaQuery.of(context).size.height * 0.42,
               child: RawKeyboardListener(
-                focusNode: FocusNode()..requestFocus(),
+                focusNode: _scannerFocusNode,
                 onKey: (RawKeyEvent event) {
                   // Capture keyboard input for scanner (for manual testing)
                   if (event is RawKeyDownEvent) {
-                    if (event.character != null && event.character!.isNotEmpty) {
+                    if (event.character != null &&
+                        event.character!.isNotEmpty) {
                       // Simulate scanner input
                       _accumulateScannerInput(event.character!);
                     }
@@ -1063,7 +1092,8 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
                   child: ElevatedButton(
                     onPressed: _isVerifyEnabled ? _onVerifyAge : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _isVerifyEnabled ? Colors.red : Colors.grey[400],
+                      backgroundColor:
+                      _isVerifyEnabled ? Colors.red : Colors.grey[400],
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
@@ -1121,12 +1151,14 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
-                color: _scanStatusMessage.contains('✅') || _scanStatusMessage.contains('auto-filled')
+                color: _scanStatusMessage.contains('✅') ||
+                    _scanStatusMessage.contains('auto-filled')
                     ? Colors.green.shade50
                     : Colors.orange.shade50,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: _scanStatusMessage.contains('✅') || _scanStatusMessage.contains('auto-filled')
+                  color: _scanStatusMessage.contains('✅') ||
+                      _scanStatusMessage.contains('auto-filled')
                       ? Colors.green.shade200
                       : Colors.orange.shade200,
                 ),
@@ -1134,10 +1166,12 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
               child: Row(
                 children: [
                   Icon(
-                    _scanStatusMessage.contains('✅') || _scanStatusMessage.contains('auto-filled')
+                    _scanStatusMessage.contains('✅') ||
+                        _scanStatusMessage.contains('auto-filled')
                         ? Icons.check_circle
                         : Icons.warning,
-                    color: _scanStatusMessage.contains('✅') || _scanStatusMessage.contains('auto-filled')
+                    color: _scanStatusMessage.contains('✅') ||
+                        _scanStatusMessage.contains('auto-filled')
                         ? Colors.green
                         : Colors.orange,
                     size: 16,
@@ -1149,7 +1183,8 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
-                        color: _scanStatusMessage.contains('✅') || _scanStatusMessage.contains('auto-filled')
+                        color: _scanStatusMessage.contains('✅') ||
+                            _scanStatusMessage.contains('auto-filled')
                             ? Colors.green.shade800
                             : Colors.orange.shade800,
                       ),
@@ -1187,7 +1222,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
           SizedBox(
             height: MediaQuery.of(context).size.height * 0.42,
             child: RawKeyboardListener(
-              focusNode: FocusNode()..requestFocus(),
+              focusNode: _scannerFocusNode,
               onKey: (RawKeyEvent event) {
                 // Capture keyboard input for scanner (for manual testing)
                 if (event is RawKeyDownEvent) {
@@ -1223,7 +1258,8 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
                 child: ElevatedButton(
                   onPressed: _isVerifyEnabled ? _onVerifyAge : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _isVerifyEnabled ? Colors.red : Colors.grey[400],
+                    backgroundColor:
+                    _isVerifyEnabled ? Colors.red : Colors.grey[400],
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
@@ -1250,14 +1286,18 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
               const SizedBox(width: 40),
               const Text(
                 'Scanning Driver License',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.blue),
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.blue),
               ),
               IconButton(
                 onPressed: _stopLicenseScanning,
                 icon: Container(
                   width: 32,
                   height: 32,
-                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                  decoration: const BoxDecoration(
+                      color: Colors.red, shape: BoxShape.circle),
                   child: const Icon(Icons.close, color: Colors.white, size: 20),
                 ),
               ),
@@ -1274,16 +1314,20 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _scanStatusMessage.contains('Valid') || _scanStatusMessage.contains('✅')
+                color: _scanStatusMessage.contains('Valid') ||
+                    _scanStatusMessage.contains('✅')
                     ? Colors.green.shade50
-                    : _scanStatusMessage.contains('Incomplete') || _scanStatusMessage.contains('⚠️')
+                    : _scanStatusMessage.contains('Incomplete') ||
+                    _scanStatusMessage.contains('⚠️')
                     ? Colors.orange.shade50
                     : Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: _scanStatusMessage.contains('Valid') || _scanStatusMessage.contains('✅')
+                  color: _scanStatusMessage.contains('Valid') ||
+                      _scanStatusMessage.contains('✅')
                       ? Colors.green.shade200
-                      : _scanStatusMessage.contains('Incomplete') || _scanStatusMessage.contains('⚠️')
+                      : _scanStatusMessage.contains('Incomplete') ||
+                      _scanStatusMessage.contains('⚠️')
                       ? Colors.orange.shade200
                       : Colors.blue.shade200,
                 ),
@@ -1292,14 +1336,18 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    _scanStatusMessage.contains('Valid') || _scanStatusMessage.contains('✅')
+                    _scanStatusMessage.contains('Valid') ||
+                        _scanStatusMessage.contains('✅')
                         ? Icons.check_circle
-                        : _scanStatusMessage.contains('Incomplete') || _scanStatusMessage.contains('⚠️')
+                        : _scanStatusMessage.contains('Incomplete') ||
+                        _scanStatusMessage.contains('⚠️')
                         ? Icons.warning
                         : Icons.info,
-                    color: _scanStatusMessage.contains('Valid') || _scanStatusMessage.contains('✅')
+                    color: _scanStatusMessage.contains('Valid') ||
+                        _scanStatusMessage.contains('✅')
                         ? Colors.green
-                        : _scanStatusMessage.contains('Incomplete') || _scanStatusMessage.contains('⚠️')
+                        : _scanStatusMessage.contains('Incomplete') ||
+                        _scanStatusMessage.contains('⚠️')
                         ? Colors.orange
                         : Colors.blue,
                     size: 16,
@@ -1307,7 +1355,8 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
                   const SizedBox(width: 8),
                   Text(
                     _scanStatusMessage,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
@@ -1321,7 +1370,8 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Text(
                 'License scanned successfully. DOB auto-filled below.',
-                style: TextStyle(color: Colors.green, fontWeight: FontWeight.w500),
+                style:
+                TextStyle(color: Colors.green, fontWeight: FontWeight.w500),
               ),
             ),
           Expanded(
@@ -1329,11 +1379,15 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.qr_code_scanner, size: 64, color: Colors.blue.shade200),
+                  Icon(Icons.qr_code_scanner,
+                      size: 64, color: Colors.blue.shade200),
                   const SizedBox(height: 16),
-                  const Text('Waiting for barcode scan...', style: TextStyle(fontSize: 16, color: Colors.grey)),
+                  const Text('Waiting for barcode scan...',
+                      style: TextStyle(fontSize: 16, color: Colors.grey)),
                   const SizedBox(height: 8),
-                  const Text('Point the scanner at the driver license barcode', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Colors.grey)),
+                  const Text('Point the scanner at the driver license barcode',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: Colors.grey)),
                 ],
               ),
             ),
@@ -1342,7 +1396,9 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
           ElevatedButton.icon(
             onPressed: _stopLicenseScanning,
             icon: const Icon(Icons.arrow_back),
-            label: Text(_parsedData.isEmpty ? 'Cancel Scanning' : 'Back to Main Screen'),
+            label: Text(_parsedData.isEmpty
+                ? 'Cancel Scanning'
+                : 'Back to Main Screen'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF4C5F7D),
               foregroundColor: Colors.white,
@@ -1506,13 +1562,12 @@ class AgeVerificationHelper {
     return showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) =>
-          AgeVerificationPopup(
-            minimumAge: minimumAge,
-            onManualVerify: onManualVerify,
-            onAgeVerified: onAgeVerified,
-            onCancel: onCancel,
-          ),
+      builder: (context) => AgeVerificationPopup(
+        minimumAge: minimumAge,
+        onManualVerify: onManualVerify,
+        onAgeVerified: onAgeVerified,
+        onCancel: onCancel,
+      ),
     );
   }
 }

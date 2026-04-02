@@ -24,6 +24,7 @@ import '../../Repositories/Orders/order_repository.dart';
 import '../../Repositories/Search/product_search_repository.dart';
 import '../../Utilities/responsive_layout.dart';
 import '../../Utilities/shimmer_effect.dart';
+import '../../Utilities/svg_images_utility.dart';
 import '../../Widgets/ManualPriceDialog.dart';
 import '../../Widgets/weighing_scale_widget.dart';
 import '../../Widgets/widget_logs_toast.dart';
@@ -56,8 +57,6 @@ import 'package:provider/provider.dart';
 // ✅ FIX: Minimum age of a cached Indigo entry before a background refresh is
 // allowed.  Prevents a refresh from firing on every single cache hit.
 const _indigoBgRefreshThreshold = Duration(minutes: 30);
-
-
 
 class CategoryBarWithAllButton extends StatelessWidget {
   final bool isLoading;
@@ -124,18 +123,17 @@ class CategoryBarWithAllButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: isDark
-                    ? const Color(0x25CCC8C8)
-                    : const Color(0x50BDB9B9),
+                color:
+                    isDark ? const Color(0x25CCC8C8) : const Color(0x50BDB9B9),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
           padding:
-          // const EdgeInsets.only(vertical: 8, horizontal: 10),
+              // const EdgeInsets.only(vertical: 8, horizontal: 10),
 
-          const EdgeInsets.symmetric(vertical:20, horizontal: 10),
+              const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -161,14 +159,13 @@ class CategoryBarWithAllButton extends StatelessWidget {
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: recentCategories.map((cat) {
-                        final uiIndex = visibleCategories
-                            .indexWhere((v) => v.id == cat.id);
+                        final uiIndex =
+                            visibleCategories.indexWhere((v) => v.id == cat.id);
                         // Highlighted only when drilling in AND this is active
                         final bool isSelected = !showCategoryGrid &&
                             selectedCategoryIndex != null &&
                             selectedCategoryIndex! < allCategories.length &&
-                            allCategories[selectedCategoryIndex!].id ==
-                                cat.id;
+                            allCategories[selectedCategoryIndex!].id == cat.id;
 
                         return Padding(
                           padding: const EdgeInsets.only(right: 6),
@@ -196,7 +193,6 @@ class CategoryBarWithAllButton extends StatelessWidget {
     );
   }
 }
-
 
 class CategoryGridOverlay extends StatelessWidget {
   final List<Map<String, dynamic>> categoryListItems;
@@ -259,7 +255,6 @@ class CategoryGridOverlay extends StatelessWidget {
     );
   }
 }
-
 
 class SubCategoryCardRow extends StatelessWidget {
   final List<Map<String, dynamic>> subCategoryListItems;
@@ -343,21 +338,21 @@ class SubCategoryCardRow extends StatelessWidget {
                   onTap: () => onCardTapped(index),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? const Color(0xFFFFE5E5)
                           : isDark
-                          ? const Color(0xFF26253A)
-                          : Colors.white,
+                              ? const Color(0xFF26253A)
+                              : Colors.white,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: isSelected
                             ? const Color(0xFFFE6464)
                             : isDark
-                            ? Colors.white12
-                            : const Color(0xFFE0E0E0),
+                                ? Colors.white12
+                                : const Color(0xFFE0E0E0),
                         width: isSelected ? 1.8 : 1.0,
                       ),
                       boxShadow: [
@@ -394,8 +389,8 @@ class SubCategoryCardRow extends StatelessWidget {
                               color: isSelected
                                   ? const Color(0xFFFE6464)
                                   : isDark
-                                  ? Colors.white
-                                  : const Color(0xFF2C3E50),
+                                      ? Colors.white
+                                      : const Color(0xFF2C3E50),
                             ),
                           ),
                         ),
@@ -433,16 +428,15 @@ class SubCategoryCardRow extends StatelessWidget {
       return Platform.isWindows
           ? Image.asset('assets/default.png', width: size, height: size)
           : Image.file(
-        File(imagePath),
-        height: size,
-        width: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Icon(Icons.image, size: size),
-      );
+              File(imagePath),
+              height: size,
+              width: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Icon(Icons.image, size: size),
+            );
     }
   }
 }
-
 
 class SubCategoryPillBar extends StatelessWidget {
   final List<Map<String, dynamic>> subCategoryListItems;
@@ -472,7 +466,6 @@ class SubCategoryPillBar extends StatelessWidget {
   }
 }
 
-
 class _AllChip extends StatelessWidget {
   final bool isDark;
   final bool isActive;
@@ -490,14 +483,13 @@ class _AllChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding:
-        const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: isActive
               ? const Color(0xFFFE6464)
               : isDark
-              ? ThemeNotifier.secondaryBackground
-              : const Color(0xFFF0F0F0),
+                  ? ThemeNotifier.secondaryBackground
+                  : const Color(0xFFF0F0F0),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -509,8 +501,8 @@ class _AllChip extends StatelessWidget {
               color: isActive
                   ? Colors.white
                   : isDark
-                  ? Colors.white54
-                  : Colors.black54,
+                      ? Colors.white54
+                      : Colors.black54,
             ),
             const SizedBox(width: 5),
             Text(
@@ -521,8 +513,8 @@ class _AllChip extends StatelessWidget {
                 color: isActive
                     ? Colors.white
                     : isDark
-                    ? Colors.white70
-                    : Colors.black87,
+                        ? Colors.white70
+                        : Colors.black87,
               ),
             ),
           ],
@@ -553,21 +545,20 @@ class _RecentCategoryChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding:
-        const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
           color: isSelected
               ? const Color(0xFFFFE5E5)
               : isDark
-              ? ThemeNotifier.secondaryBackground
-              : const Color(0xFFF5F5F5),
+                  ? ThemeNotifier.secondaryBackground
+                  : const Color(0xFFF5F5F5),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
                 ? const Color(0xFFFE6464)
                 : isDark
-                ? Colors.white12
-                : Colors.black12,
+                    ? Colors.white12
+                    : Colors.black12,
             width: isSelected ? 1.8 : 1.0,
           ),
         ),
@@ -587,8 +578,8 @@ class _RecentCategoryChip extends StatelessWidget {
                 color: isSelected
                     ? const Color(0xFFFE6464)
                     : isDark
-                    ? Colors.white
-                    : Colors.black87,
+                        ? Colors.white
+                        : Colors.black87,
               ),
             ),
           ],
@@ -619,12 +610,12 @@ class _RecentCategoryChip extends StatelessWidget {
       return Platform.isWindows
           ? Image.asset('assets/default.png', width: size, height: size)
           : Image.file(
-        File(imagePath),
-        height: size,
-        width: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Icon(Icons.image, size: size),
-      );
+              File(imagePath),
+              height: size,
+              width: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Icon(Icons.image, size: size),
+            );
     }
   }
 }
@@ -644,10 +635,9 @@ class _CategoryGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardBg =
-    isDark ? const Color(0xFF26253A) : const Color(0xFFF3F4F8);
+    final cardBg = isDark ? const Color(0xFF26253A) : const Color(0xFFF3F4F8);
     final borderColor =
-    isDark ? const Color(0xFF3A3A52) : const Color(0xFFE8EAF0);
+        isDark ? const Color(0xFF3A3A52) : const Color(0xFFE8EAF0);
     final textColor = isDark ? Colors.white : const Color(0xFF2C3E50);
 
     return GestureDetector(
@@ -717,14 +707,11 @@ class _CategoryGridCard extends StatelessWidget {
       return Platform.isWindows
           ? Image.asset('assets/default.png', fit: BoxFit.contain)
           : Image.file(File(imagePath),
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) =>
-          const Icon(Icons.image, size: 28));
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 28));
     }
   }
 }
-
-
 
 class IndigoCategoryModel {
   final int id;
@@ -758,14 +745,14 @@ class IndigoCategoryModel {
   }
 
   Map<String, dynamic> toJson() => {
-    "id": id,
-    "name": name,
-    "slug": slug,
-    "parent": parent,
-    "description": description,
-    "count": count,
-    "image": image,
-  };
+        "id": id,
+        "name": name,
+        "slug": slug,
+        "parent": parent,
+        "description": description,
+        "count": count,
+        "image": image,
+      };
 }
 
 class IndigoCategoryBasedProducts {
@@ -779,6 +766,7 @@ class IndigoCategoryBasedProducts {
   final List<IndigoTag> tags;
   final List<String> images;
   final List<IndigoTaxRate> taxRates;
+  final String type;
 
   IndigoCategoryBasedProducts({
     required this.id,
@@ -791,6 +779,8 @@ class IndigoCategoryBasedProducts {
     required this.tags,
     required this.images,
     required this.taxRates,
+    required this.type, // ✅ ADD THIS
+
   });
 
   factory IndigoCategoryBasedProducts.fromJson(Map<String, dynamic> json) {
@@ -802,7 +792,8 @@ class IndigoCategoryBasedProducts {
     List<IndigoCategory> categoryList = [];
     if (json['categories'] != null && json['categories'] is List) {
       categoryList = (json['categories'] as List)
-          .map((c) => IndigoCategory.fromJson(Map<String, dynamic>.from(c as Map)))
+          .map((c) =>
+              IndigoCategory.fromJson(Map<String, dynamic>.from(c as Map)))
           .toList();
     }
 
@@ -819,7 +810,7 @@ class IndigoCategoryBasedProducts {
         json['tax']['tax_rates'] is List) {
       taxRateList = (json['tax']['tax_rates'] as List)
           .map((tr) =>
-          IndigoTaxRate.fromJson(Map<String, dynamic>.from(tr as Map)))
+              IndigoTaxRate.fromJson(Map<String, dynamic>.from(tr as Map)))
           .toList();
     }
 
@@ -834,22 +825,28 @@ class IndigoCategoryBasedProducts {
       tags: tagList,
       images: imageList,
       taxRates: taxRateList,
+      type: json['type']?.toString() ?? 'simple', // ✅ ADD THIS
+
     );
   }
 
   Map<String, dynamic> toJson() => {
-    "id": id,
-    "name": name,
-    "sku": sku,
-    "price": price,
-    "regular_price": regularPrice,
-    "sale_price": salePrice,
-    "categories": categories.map((c) => c.toJson()).toList(),
-    "tags": tags.map((t) => t.toJson()).toList(),
-    "images": images,
-    "tax_rates": taxRates.map((tr) => tr.toJson()).toList(),
+        "id": id,
+        "name": name,
+        "sku": sku,
+        "price": price,
+        "regular_price": regularPrice,
+        "sale_price": salePrice,
+        "categories": categories.map((c) => c.toJson()).toList(),
+        "tags": tags.map((t) => t.toJson()).toList(),
+        "images": images,
+        "tax_rates": taxRates.map((tr) => tr.toJson()).toList(),
+        "type": type, // ✅ ADD THIS
+
   };
 }
+
+
 
 class IndigoCategory {
   final int id;
@@ -859,10 +856,10 @@ class IndigoCategory {
   IndigoCategory({required this.id, required this.name, required this.slug});
 
   factory IndigoCategory.fromJson(Map<String, dynamic> json) => IndigoCategory(
-    id: json['id'] ?? 0,
-    name: json['name']?.toString() ?? '',
-    slug: json['slug']?.toString() ?? '',
-  );
+        id: json['id'] ?? 0,
+        name: json['name']?.toString() ?? '',
+        slug: json['slug']?.toString() ?? '',
+      );
 
   Map<String, dynamic> toJson() => {"id": id, "name": name, "slug": slug};
 }
@@ -875,10 +872,10 @@ class IndigoTag {
   IndigoTag({required this.id, required this.name, required this.slug});
 
   factory IndigoTag.fromJson(Map<String, dynamic> json) => IndigoTag(
-    id: json['id'] ?? 0,
-    name: json['name']?.toString() ?? '',
-    slug: json['slug']?.toString() ?? '',
-  );
+        id: json['id'] ?? 0,
+        name: json['name']?.toString() ?? '',
+        slug: json['slug']?.toString() ?? '',
+      );
 
   Map<String, dynamic> toJson() => {"id": id, "name": name, "slug": slug};
 }
@@ -897,20 +894,20 @@ class IndigoTaxRate {
   });
 
   factory IndigoTaxRate.fromJson(Map<String, dynamic> json) => IndigoTaxRate(
-    label: json['label']?.toString() ?? '',
-    rate: (json['rate'] != null)
-        ? double.tryParse(json['rate'].toString()) ?? 0.0
-        : 0.0,
-    compound: json['compound'] ?? false,
-    shipping: json['shipping'] ?? false,
-  );
+        label: json['label']?.toString() ?? '',
+        rate: (json['rate'] != null)
+            ? double.tryParse(json['rate'].toString()) ?? 0.0
+            : 0.0,
+        compound: json['compound'] ?? false,
+        shipping: json['shipping'] ?? false,
+      );
 
   Map<String, dynamic> toJson() => {
-    "label": label,
-    "rate": rate,
-    "compound": compound,
-    "shipping": shipping,
-  };
+        "label": label,
+        "rate": rate,
+        "compound": compound,
+        "shipping": shipping,
+      };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -923,12 +920,12 @@ class IndigoCategoryRepository {
     final token = await _getTokenFromDb();
     final url = Uri.parse(
         '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.categories}'
-            '?page=1&per_page=100&hide_empty=true&parent=$parentCategoryId');
+        '?page=1&per_page=100&hide_empty=true&parent=$parentCategoryId');
 
     if (kDebugMode) print(" Indigo categoriess URL: $url");
 
     final response =
-    await http.get(url, headers: {"Authorization": "Bearer $token"});
+        await http.get(url, headers: {"Authorization": "Bearer $token"});
 
     if (response.statusCode == 200) {
       List data = jsonDecode(response.body);
@@ -944,7 +941,7 @@ class IndigoCategoryRepository {
     final result = await db.query(
       AppDBConst.userTable,
       where:
-      '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+          '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
       orderBy: '${AppDBConst.userId} DESC',
       limit: 1,
     );
@@ -964,13 +961,11 @@ class IndigoCategoryBasedProductsRepository {
     // '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.assets}/$categoryId');
 
     final response =
-    await http.get(url, headers: {"Authorization": "Bearer $token"});
+        await http.get(url, headers: {"Authorization": "Bearer $token"});
 
     if (response.statusCode == 200) {
       List data = jsonDecode(response.body);
-      return data
-          .map((e) => IndigoCategoryBasedProducts.fromJson(e))
-          .toList();
+      return data.map((e) => IndigoCategoryBasedProducts.fromJson(e)).toList();
     } else {
       throw Exception("Failed to load products");
     }
@@ -981,7 +976,7 @@ class IndigoCategoryBasedProductsRepository {
     final result = await db.query(
       AppDBConst.userTable,
       where:
-      '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+          '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
       orderBy: '${AppDBConst.userId} DESC',
       limit: 1,
     );
@@ -1018,13 +1013,17 @@ class _IndigoCategoryRepositoryWithCache {
     final entry = await _readEntryFromIsar(cacheKey);
     if (entry != null) {
       if (kDebugMode) {
-        print("📦 [Indigo] Isar hit: sub-categories (parent: $parentCategoryId)");
+        print(
+            "📦 [Indigo] Isar hit: sub-categories (parent: $parentCategoryId)");
       }
       // ✅ FIX: Only refresh when cache is stale — not on every single read.
       if (_isStale(entry.timestamp)) {
-        _scheduleRefresh(cacheKey, () => _fetchAndWriteToIsar(parentCategoryId));
+        _scheduleRefresh(
+            cacheKey, () => _fetchAndWriteToIsar(parentCategoryId));
       } else {
-        if (kDebugMode) print("⏱️ [Indigo] Sub-cat cache is fresh, skipping BG refresh (parent: $parentCategoryId)");
+        if (kDebugMode)
+          print(
+              "⏱️ [Indigo] Sub-cat cache is fresh, skipping BG refresh (parent: $parentCategoryId)");
       }
       return _decodeCategories(entry.json);
     }
@@ -1032,18 +1031,24 @@ class _IndigoCategoryRepositoryWithCache {
       return await _fetchAndWriteToIsar(parentCategoryId);
     } catch (e) {
       if (kDebugMode) {
-        print("⚠️ [Indigo] API failed & no cache for sub-categories (parent: $parentCategoryId): $e");
+        print(
+            "⚠️ [Indigo] API failed & no cache for sub-categories (parent: $parentCategoryId): $e");
       }
       return [];
     }
   }
 
-  Future<List<IndigoCategoryModel>> _fetchAndWriteToIsar(int parentCategoryId) async {
-    if (kDebugMode) print("🌍 [Indigo] Fetching sub-categories from API (parent: $parentCategoryId)");
+  Future<List<IndigoCategoryModel>> _fetchAndWriteToIsar(
+      int parentCategoryId) async {
+    if (kDebugMode)
+      print(
+          "🌍 [Indigo] Fetching sub-categories from API (parent: $parentCategoryId)");
     final cats = await _remote.indigoFetchCategories(parentCategoryId);
     final jsonStr = json.encode(cats.map((c) => c.toJson()).toList());
     await _writeToIsar(_indigoSubCatKey(parentCategoryId), jsonStr);
-    if (kDebugMode) print("💾 [Indigo] Cached ${cats.length} sub-categories (parent: $parentCategoryId)");
+    if (kDebugMode)
+      print(
+          "💾 [Indigo] Cached ${cats.length} sub-categories (parent: $parentCategoryId)");
     return cats;
   }
 
@@ -1056,14 +1061,17 @@ class _IndigoCategoryRepositoryWithCache {
         final existing = await _readEntryFromIsar(_indigoSubCatKey(id));
         if (existing == null) {
           await _fetchAndWriteToIsar(id);
-          if (kDebugMode) print("🔥 [Indigo] Pre-warmed sub-categories (parent: $id)");
+          if (kDebugMode)
+            print("🔥 [Indigo] Pre-warmed sub-categories (parent: $id)");
         } else if (_isStale(existing.timestamp)) {
           // ✅ FIX: Was calling _refreshInBackground unconditionally for every
           // cached entry during pre-warm, hitting the server for ALL categories
           // even when data was fresh. Now only refreshes stale entries.
-          _scheduleRefresh(_indigoSubCatKey(id), () => _fetchAndWriteToIsar(id));
+          _scheduleRefresh(
+              _indigoSubCatKey(id), () => _fetchAndWriteToIsar(id));
         } else {
-          if (kDebugMode) print("⏱️ [Indigo] Pre-warm skipped (cache fresh) for parent: $id");
+          if (kDebugMode)
+            print("⏱️ [Indigo] Pre-warm skipped (cache fresh) for parent: $id");
         }
       } catch (e) {
         if (kDebugMode) print("⚠️ [Indigo] Pre-warm failed (parent: $id): $e");
@@ -1104,7 +1112,10 @@ class _IndigoCategoryRepositoryWithCache {
   List<IndigoCategoryModel> _decodeCategories(String jsonStr) {
     try {
       final List<dynamic> raw = json.decode(jsonStr);
-      return raw.map((e) => IndigoCategoryModel.fromJson(Map<String, dynamic>.from(e))).toList();
+      return raw
+          .map(
+              (e) => IndigoCategoryModel.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
     } catch (e) {
       if (kDebugMode) print(" [Indigo] Decode error (categories): $e");
       return [];
@@ -1115,7 +1126,8 @@ class _IndigoCategoryRepositoryWithCache {
   // for [key], preventing duplicate concurrent API calls.
   void _scheduleRefresh(String key, Future<void> Function() work) {
     if (_inFlightRefreshes.containsKey(key)) {
-      if (kDebugMode) print("⏳ [Indigo] BG refresh already in-flight for [$key], skipping");
+      if (kDebugMode)
+        print("⏳ [Indigo] BG refresh already in-flight for [$key], skipping");
       return;
     }
     final task = work().whenComplete(() => _inFlightRefreshes.remove(key));
@@ -1140,34 +1152,44 @@ class _IndigoProductRepositoryWithCache {
   // ✅ FIX: Same in-flight deduplication for products.
   static final Map<String, Future<void>> _inFlightRefreshes = {};
 
-  Future<List<IndigoCategoryBasedProducts>> fetchProducts(int categoryId) async {
+  Future<List<IndigoCategoryBasedProducts>> fetchProducts(
+      int categoryId) async {
     final cacheKey = _indigoProductKey(categoryId);
     // ✅ FIX: Read the full entry so we can check its timestamp.
     final entry = await _readEntryFromIsar(cacheKey);
     if (entry != null) {
-      if (kDebugMode) print("📦 [Indigo] Isar hit: products (category: $categoryId)");
+      if (kDebugMode)
+        print("📦 [Indigo] Isar hit: products (category: $categoryId)");
       // ✅ FIX: Only refresh when cache is stale — not on every single read.
       if (_isStale(entry.timestamp)) {
         _scheduleRefresh(cacheKey, () => _fetchAndWriteToIsar(categoryId));
       } else {
-        if (kDebugMode) print("⏱️ [Indigo] Product cache is fresh, skipping BG refresh (category: $categoryId)");
+        if (kDebugMode)
+          print(
+              "⏱️ [Indigo] Product cache is fresh, skipping BG refresh (category: $categoryId)");
       }
       return _decodeProducts(entry.json);
     }
     try {
       return await _fetchAndWriteToIsar(categoryId);
     } catch (e) {
-      if (kDebugMode) print(" [Indigo] API failed & no cache for products (category: $categoryId): $e");
+      if (kDebugMode)
+        print(
+            " [Indigo] API failed & no cache for products (category: $categoryId): $e");
       return [];
     }
   }
 
-  Future<List<IndigoCategoryBasedProducts>> _fetchAndWriteToIsar(int categoryId) async {
-    if (kDebugMode) print(" [Indigo] Fetching products from API (category: $categoryId)");
+  Future<List<IndigoCategoryBasedProducts>> _fetchAndWriteToIsar(
+      int categoryId) async {
+    if (kDebugMode)
+      print(" [Indigo] Fetching products from API (category: $categoryId)");
     final products = await _remote.fetchProducts(categoryId);
     final jsonStr = json.encode(products.map((p) => p.toJson()).toList());
     await _writeToIsar(_indigoProductKey(categoryId), jsonStr);
-    if (kDebugMode) print(" [Indigo] Cached ${products.length} products (category: $categoryId)");
+    if (kDebugMode)
+      print(
+          " [Indigo] Cached ${products.length} products (category: $categoryId)");
     return products;
   }
 
@@ -1179,15 +1201,20 @@ class _IndigoProductRepositoryWithCache {
         final existing = await _readEntryFromIsar(_indigoProductKey(id));
         if (existing == null) {
           await _fetchAndWriteToIsar(id);
-          if (kDebugMode) print(" [Indigo] Pre-warmed products (category: $id)");
+          if (kDebugMode)
+            print(" [Indigo] Pre-warmed products (category: $id)");
         } else if (_isStale(existing.timestamp)) {
           // ✅ FIX: Same as above — only refresh stale product caches during pre-warm.
-          _scheduleRefresh(_indigoProductKey(id), () => _fetchAndWriteToIsar(id));
+          _scheduleRefresh(
+              _indigoProductKey(id), () => _fetchAndWriteToIsar(id));
         } else {
-          if (kDebugMode) print("⏱️ [Indigo] Pre-warm skipped (cache fresh) for category: $id");
+          if (kDebugMode)
+            print(
+                "⏱️ [Indigo] Pre-warm skipped (cache fresh) for category: $id");
         }
       } catch (e) {
-        if (kDebugMode) print(" [Indigo] Pre-warm products failed (category: $id): $e");
+        if (kDebugMode)
+          print(" [Indigo] Pre-warm products failed (category: $id): $e");
       }
     }
   }
@@ -1225,7 +1252,10 @@ class _IndigoProductRepositoryWithCache {
   List<IndigoCategoryBasedProducts> _decodeProducts(String jsonStr) {
     try {
       final List<dynamic> raw = json.decode(jsonStr);
-      return raw.map((e) => IndigoCategoryBasedProducts.fromJson(Map<String, dynamic>.from(e))).toList();
+      return raw
+          .map((e) => IndigoCategoryBasedProducts.fromJson(
+              Map<String, dynamic>.from(e)))
+          .toList();
     } catch (e) {
       if (kDebugMode) print(" [Indigo] Decode error (products): $e");
       return [];
@@ -1234,7 +1264,8 @@ class _IndigoProductRepositoryWithCache {
 
   void _scheduleRefresh(String key, Future<void> Function() work) {
     if (_inFlightRefreshes.containsKey(key)) {
-      if (kDebugMode) print("⏳ [Indigo] BG refresh already in-flight for [$key], skipping");
+      if (kDebugMode)
+        print("⏳ [Indigo] BG refresh already in-flight for [$key], skipping");
       return;
     }
     final task = work().whenComplete(() => _inFlightRefreshes.remove(key));
@@ -1322,9 +1353,10 @@ class _CategoriesScreenState extends State<CategoriesScreen>
 
   // ── Indigo state ──────────────────────────────────────────────────────────
   final _IndigoCategoryRepositoryWithCache _indigoCategoryRepo =
-  _IndigoCategoryRepositoryWithCache(IndigoCategoryRepository());
+      _IndigoCategoryRepositoryWithCache(IndigoCategoryRepository());
   final _IndigoProductRepositoryWithCache _indigoProductRepo =
-  _IndigoProductRepositoryWithCache(IndigoCategoryBasedProductsRepository());
+      _IndigoProductRepositoryWithCache(
+          IndigoCategoryBasedProductsRepository());
 
   List<IndigoCategoryModel> _indigoSubCategories = [];
   List<IndigoCategoryBasedProducts> _indigoProducts = [];
@@ -1332,7 +1364,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   bool _isLoadingIndigoSubCategories = false;
   bool _isLoadingIndigoProducts = false;
   String? _indigoError;
-  static const int _indigoPageSize = 30;  ///
+  static const int _indigoPageSize = 30;
+
+  ///
   int _visibleIndigoProductCount = _indigoPageSize;
   bool _isIndigoPaginating = false;
   final Map<int, Map<String, dynamic>> _productMetaCache = {};
@@ -1390,7 +1424,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   bool _onProductsScrollNotification(ScrollNotification notification) {
     if (!_shouldEnableLazyLoad()) return false;
     if (notification.metrics.axis != Axis.vertical) return false;
-    final remaining = notification.metrics.maxScrollExtent - notification.metrics.pixels;
+    final remaining =
+        notification.metrics.maxScrollExtent - notification.metrics.pixels;
     if (remaining < 300) _loadMoreVisibleProducts();
     return false;
   }
@@ -1408,8 +1443,10 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         onWillPop: () async => false,
         child: Dialog(
           backgroundColor: dialogBg,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
             child: Column(
@@ -1419,21 +1456,31 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isDark ? const Color(0xFF3B1F1F) : const Color(0xFFFFEDED),
+                    color: isDark
+                        ? const Color(0xFF3B1F1F)
+                        : const Color(0xFFFFEDED),
                   ),
-                  child: const Icon(Icons.info_outline_rounded, size: 34, color: Color(0xFFE74C3C)),
+                  child: const Icon(Icons.info_outline_rounded,
+                      size: 34, color: Color(0xFFE74C3C)),
                 ),
                 const SizedBox(height: 18),
-                const SizedBox(height: 34, width: 34,
-                    child: CircularProgressIndicator(strokeWidth: 3, color: Color(0xFFE74C3C))),
+                const SizedBox(
+                    height: 34,
+                    width: 34,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 3, color: Color(0xFFE74C3C))),
                 const SizedBox(height: 18),
                 Text("Loading Categories",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textPrimary)),
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: textPrimary)),
                 const SizedBox(height: 8),
                 Text(
                   "Please wait while we securely sync your latest data.\nThis may not take much time. Do not close the app.",
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 13, height: 1.5, color: textSecondary),
+                  style: TextStyle(
+                      fontSize: 13, height: 1.5, color: textSecondary),
                 ),
               ],
             ),
@@ -1448,7 +1495,11 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     if (navigator.canPop()) navigator.pop();
   }
 
-  final Set<String> _hiddenCategoryNames = {"promotions", "uncategorized", "default"};
+  final Set<String> _hiddenCategoryNames = {
+    "promotions",
+    "uncategorized",
+    "default"
+  };
 
   List<CategoryModel> get visibleCategories {
     return categories.where((c) {
@@ -1505,7 +1556,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     // Previously it could be triggered from both _autoTapAllCategories and
     // _loadTopLevelCategories, doubling the number of API calls on first launch.
     if (_indigoPreWarmDone) {
-      if (kDebugMode) print("⏱️ [Indigo] Pre-warm already done this session, skipping");
+      if (kDebugMode)
+        print("⏱️ [Indigo] Pre-warm already done this session, skipping");
       return;
     }
     _indigoPreWarmDone = true;
@@ -1515,13 +1567,15 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     await _indigoCategoryRepo.preWarmAll(topLevelIds);
     for (final parentId in topLevelIds) {
       try {
-        final subCats = await _indigoCategoryRepo.indigoFetchCategories(parentId);
+        final subCats =
+            await _indigoCategoryRepo.indigoFetchCategories(parentId);
         if (subCats.isNotEmpty) {
           final subCatIds = subCats.map((s) => s.id).toList();
           await _indigoProductRepo.preWarmAll(subCatIds);
           await _indigoCategoryRepo.preWarmAll(subCatIds);
           for (final subId in subCatIds) {
-            final nested = await _indigoCategoryRepo.indigoFetchCategories(subId);
+            final nested =
+                await _indigoCategoryRepo.indigoFetchCategories(subId);
             if (nested.isNotEmpty) {
               final nestedIds = nested.map((n) => n.id).toList();
               await _indigoProductRepo.preWarmAll(nestedIds);
@@ -1529,7 +1583,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           }
         }
       } catch (e) {
-        if (kDebugMode) print(" [Indigo] Pre-warm step failed (parent: $parentId): $e");
+        if (kDebugMode)
+          print(" [Indigo] Pre-warm step failed (parent: $parentId): $e");
       }
     }
     if (kDebugMode) print(" [Indigo] Full pre-warm complete.");
@@ -1555,7 +1610,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       _selectedIndigoSubCategoryIndex = null;
     });
 
-    final cats = await _indigoCategoryRepo.indigoFetchCategories(parentCategoryId);
+    final cats =
+        await _indigoCategoryRepo.indigoFetchCategories(parentCategoryId);
     if (!mounted) return;
 
     // Auto-select index 0 immediately together with subcategories in ONE setState
@@ -1569,7 +1625,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       }
     });
 
-    if (kDebugMode) print(" [UI] Loaded ${cats.length} Indigo sub-categories for parent $parentCategoryId");
+    if (kDebugMode)
+      print(
+          " [UI] Loaded ${cats.length} Indigo sub-categories for parent $parentCategoryId");
 
     // Load products for first sub-category without any extra setState flicker
     if (cats.isNotEmpty && !_isAutoLoading) {
@@ -1591,7 +1649,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       _indigoProducts = products;
       _isLoadingIndigoProducts = false;
     });
-    if (kDebugMode) print(" [UI] Loaded ${products.length} Indigo products for sub-category $categoryId");
+    if (kDebugMode)
+      print(
+          " [UI] Loaded ${products.length} Indigo products for sub-category $categoryId");
   }
 
   Future<void> _loadMoreIndigoProducts() async {
@@ -1631,7 +1691,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         if (orderId == null) {
           final msg = OrderHelper.lastEnsureOrderError ??
               "Failed to create or restore order. Please try again.";
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+          if (mounted)
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text(msg)));
           return;
         }
 
@@ -1640,7 +1702,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         final Map<String, dynamic> item = {
           'fast_key_product_id': product.id,
           'fast_key_item_name': product.name,
-          'fast_key_item_image': product.images.isNotEmpty ? product.images.first : '',
+          'fast_key_item_image':
+              product.images.isNotEmpty ? product.images.first : '',
           'fast_key_item_price': product.price,
           'fast_key_item_sku': product.sku,
           'fast_key_item_min_age': 0,
@@ -1650,21 +1713,30 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           'type': 'simple',
         };
 
-        final int productId = int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
-        final cachedProduct = productId > 0 ? await _getCachedProductFromIsar(productId) : null;
+        final int productId =
+            int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
+        final cachedProduct =
+            productId > 0 ? await _getCachedProductFromIsar(productId) : null;
 
         List<Map<String, dynamic>> tags = product.tags.map((t) {
-          return {"id": t.id, "name": (t.name ?? "").trim(), "slug": (t.slug ?? "").trim().toLowerCase()};
+          return {
+            "id": t.id,
+            "name": (t.name ?? "").trim(),
+            "slug": (t.slug ?? "").trim().toLowerCase()
+          };
         }).toList();
 
-        if (tags.isEmpty && cachedProduct != null && cachedProduct["tags"] is List) {
+        if (tags.isEmpty &&
+            cachedProduct != null &&
+            cachedProduct["tags"] is List) {
           for (final t in (cachedProduct["tags"] as List)) {
             if (t is Map) tags.add(Map<String, dynamic>.from(t));
           }
         }
 
         if (kDebugMode && tags.isNotEmpty) {
-          print("Tags for ${product.name}: ${tags.map((t) => "${t['name']} (${t['slug']})").join(", ")}");
+          print(
+              "Tags for ${product.name}: ${tags.map((t) => "${t['name']} (${t['slug']})").join(", ")}");
         }
 
         int minAge = 0;
@@ -1672,14 +1744,20 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           final slug = (t["slug"] ?? "").toString().trim();
           if (RegExp(r'^\d{1,2}$').hasMatch(slug)) {
             final age = int.tryParse(slug);
-            if (age != null && age >= 18 && age <= 99) { minAge = age; break; }
+            if (age != null && age >= 18 && age <= 99) {
+              minAge = age;
+              break;
+            }
           }
         }
         if (minAge == 0) {
           for (final t in tags) {
             final nameLower = (t["name"] ?? "").toString().toLowerCase().trim();
-            if (nameLower.contains("age restricted") || nameLower.contains("restricted") ||
-                nameLower.contains("age verification") || nameLower.contains("21+") || nameLower.contains("18+")) {
+            if (nameLower.contains("age restricted") ||
+                nameLower.contains("restricted") ||
+                nameLower.contains("age verification") ||
+                nameLower.contains("21+") ||
+                nameLower.contains("18+")) {
               final combined = nameLower + " " + (t["slug"] ?? "");
               final match = RegExp(r'(\d{1,2})').firstMatch(combined);
               minAge = int.tryParse(match?.group(1) ?? "21") ?? 21;
@@ -1689,10 +1767,12 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         }
 
         final bool hasAgeRestriction = minAge >= 18;
-        if (kDebugMode && hasAgeRestriction) print("→ Age restriction DETECTED: $minAge+  → ${product.name}");
+        if (kDebugMode && hasAgeRestriction)
+          print("→ Age restriction DETECTED: $minAge+  → ${product.name}");
 
         final String productName = product.name;
-        bool isEbtEligible = item["is_ebt_eligible"] == true || cachedProduct?["is_ebt_eligible"] == true;
+        bool isEbtEligible = item["is_ebt_eligible"] == true ||
+            cachedProduct?["is_ebt_eligible"] == true;
         if (!isEbtEligible && tags.isNotEmpty) {
           isEbtEligible = tags.any((t) {
             final name = (t["name"] ?? "").toString().toLowerCase();
@@ -1701,18 +1781,32 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           });
         }
 
-        final dynamic priceSource = item["fast_key_item_price"] ?? cachedProduct?["fast_key_item_price"] ?? cachedProduct?["price"];
-        var productPrice = double.tryParse(priceSource?.toString() ?? "0") ?? 0.0;
-        final String productSku = cachedProduct?["sku"] ?? item["fast_key_item_sku"] ?? "SKU-$productId";
-        final dynamic rawImage = cachedProduct?["fast_key_item_image"] ?? cachedProduct?["image"] ?? item["fast_key_item_image"];
-        final String productImage = rawImage is String ? rawImage : (rawImage is Map ? rawImage["src"] ?? "" : "");
+        final dynamic priceSource = item["fast_key_item_price"] ??
+            cachedProduct?["fast_key_item_price"] ??
+            cachedProduct?["price"];
+        var productPrice =
+            double.tryParse(priceSource?.toString() ?? "0") ?? 0.0;
+        final String productSku = cachedProduct?["sku"] ??
+            item["fast_key_item_sku"] ??
+            "SKU-$productId";
+        final dynamic rawImage = cachedProduct?["fast_key_item_image"] ??
+            cachedProduct?["image"] ??
+            item["fast_key_item_image"];
+        final String productImage = rawImage is String
+            ? rawImage
+            : (rawImage is Map ? rawImage["src"] ?? "" : "");
         final bool hasVariants = (cachedProduct?["has_variants"] == true) ||
-            (item["type"] == "variable" || (item["variations"] != null && (item["variations"] as List).isNotEmpty));
-        final dynamic minAgeSource = cachedProduct?["min_age"] ?? item["fast_key_item_min_age"];
-        if (minAge == 0) minAge = int.tryParse(minAgeSource?.toString() ?? "0") ?? 0;
+            (item["type"] == "variable" ||
+                (item["variations"] != null &&
+                    (item["variations"] as List).isNotEmpty));
+        final dynamic minAgeSource =
+            cachedProduct?["min_age"] ?? item["fast_key_item_min_age"];
+        if (minAge == 0)
+          minAge = int.tryParse(minAgeSource?.toString() ?? "0") ?? 0;
 
         final box = StorageProvider.offlineOrders;
-        int activeOrderId = orderHelper.activeOrderId ?? (await box.get('lastOrderId')) ?? 1000;
+        int activeOrderId =
+            orderHelper.activeOrderId ?? (await box.get('lastOrderId')) ?? 1000;
         if (orderHelper.activeOrderId == null) {
           orderHelper.activeOrderId = activeOrderId;
           await box.put('lastOrderId', activeOrderId);
@@ -1721,8 +1815,10 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         if (hasAgeRestriction && minAge > 0) {
           final orderKey = activeOrderId.toString();
           final rawOrder = await box.get(orderKey);
-          final hiveOrder = Map<String, dynamic>.from(rawOrder is Map ? rawOrder : {});
-          final alreadyVerified = hiveOrder["age_verified"] == true || hiveOrder["age_verified"] == 1 ||
+          final hiveOrder =
+              Map<String, dynamic>.from(rawOrder is Map ? rawOrder : {});
+          final alreadyVerified = hiveOrder["age_verified"] == true ||
+              hiveOrder["age_verified"] == 1 ||
               hiveOrder["age_verified"]?.toString().toLowerCase() == "true";
           if (!alreadyVerified) {
             final prov = AgeVerificationProvider();
@@ -1740,13 +1836,23 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         });
 
         if (hasProduceTag) {
-          final result = await showDialog(context: context, barrierDismissible: false,
-              builder: (_) => AutoWeightPriceDialog(productName: productName, unitPrice: productPrice));
+          final result = await showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => AutoWeightPriceDialog(
+                  productName: productName, unitPrice: productPrice));
           if (result == null) return;
-          await orderHelper.addItemToOrder(null, productName, productImage, result["finalPrice"], 1, productSku,
-              activeOrderId, type: 'weighted', productId: productId, variationId: -1,
-              salesPrice: result["finalPrice"], regularPrice: productPrice, unitPrice: productPrice,
-              isEbtEligible: isEbtEligible, onItemAdded: () async => _refreshOrderList());
+          await orderHelper.addItemToOrder(null, productName, productImage,
+              result["finalPrice"], 1, productSku, activeOrderId,
+              type: 'weighted',
+              weightQty: (result["weight"] as num?)?.toDouble(),
+              productId: productId,
+              variationId: -1,
+              salesPrice: result["finalPrice"],
+              regularPrice: productPrice,
+              unitPrice: productPrice,
+              isEbtEligible: isEbtEligible,
+              onItemAdded: () async => _refreshOrderList());
           return;
         }
 
@@ -1760,24 +1866,36 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         if (hasVariablePriceTag && !hasVariants) {
           final orderKey = activeOrderId.toString();
           final rawOrder = await box.get(orderKey);
-          final hiveOrder = Map<String, dynamic>.from(rawOrder is Map ? rawOrder : {});
+          final hiveOrder =
+              Map<String, dynamic>.from(rawOrder is Map ? rawOrder : {});
           final variableKey = "variable_price_added_$productId";
           final savedPriceKey = "selected_price_$productId";
           final savedPrice = hiveOrder[savedPriceKey];
-          if (savedPrice != null) productPrice = double.tryParse(savedPrice.toString()) ?? productPrice;
-          final alreadyAddedBefore = hiveOrder[variableKey] == true || hiveOrder[variableKey] == 1 ||
+          if (savedPrice != null)
+            productPrice =
+                double.tryParse(savedPrice.toString()) ?? productPrice;
+          final alreadyAddedBefore = hiveOrder[variableKey] == true ||
+              hiveOrder[variableKey] == 1 ||
               hiveOrder[variableKey]?.toString().toLowerCase() == "true";
           if (alreadyAddedBefore) {
             finalPrice = savedPrice ?? productPrice;
-            await orderHelper.addItemToOrder(null, productName, productImage, finalPrice, 1, productSku,
-                activeOrderId, type: 'product', productId: productId, variationId: -1,
-                salesPrice: finalPrice, regularPrice: finalPrice, unitPrice: finalPrice,
-                isEbtEligible: isEbtEligible, onItemAdded: () async {});
+            await orderHelper.addItemToOrder(null, productName, productImage,
+                finalPrice, 1, productSku, activeOrderId,
+                type: 'product',
+                productId: productId,
+                variationId: -1,
+                salesPrice: finalPrice,
+                regularPrice: finalPrice,
+                unitPrice: finalPrice,
+                isEbtEligible: isEbtEligible,
+                onItemAdded: () async {});
             _refreshOrderList();
             return;
           }
           final enteredPrice = await ManualPriceDialog.show(context,
-              productName: productName, productImage: productImage, minPrice: productPrice);
+              productName: productName,
+              productImage: productImage,
+              minPrice: productPrice);
           if (enteredPrice == null) return;
           finalPrice = enteredPrice;
           hiveOrder[variableKey] = true;
@@ -1788,8 +1906,12 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         if (hasVariants) {
           bool loadingDialogShown = false;
           if (mounted) {
-            showDialog(context: context, barrierDismissible: false,
-                builder: (_) => const PopScope(canPop: false, child: Center(child: CircularProgressIndicator())));
+            showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => const PopScope(
+                    canPop: false,
+                    child: Center(child: CircularProgressIndicator())));
             loadingDialogShown = true;
           }
           List<Map<String, dynamic>> offlineVariations = [];
@@ -1799,23 +1921,45 @@ class _CategoriesScreenState extends State<CategoriesScreen>
             final cachedData = await productBox.get(cacheKey);
             List rawVariations = [];
             if (cachedData != null) {
-              if (cachedData is Map && cachedData["variations"] is List) rawVariations = cachedData["variations"];
-              else if (cachedData is List) rawVariations = cachedData;
+              if (cachedData is Map && cachedData["variations"] is List)
+                rawVariations = cachedData["variations"];
+              else if (cachedData is List)
+                rawVariations = cachedData;
               else if (cachedData is String) {
-                try { final decoded = jsonDecode(cachedData); rawVariations = decoded is Map ? decoded["variations"] ?? [] : decoded; } catch (_) {}
+                try {
+                  final decoded = jsonDecode(cachedData);
+                  rawVariations =
+                      decoded is Map ? decoded["variations"] ?? [] : decoded;
+                } catch (_) {}
               }
             }
-            offlineVariations = rawVariations.map<Map<String, dynamic>>((v) {
-              if (v is String) { try { v = jsonDecode(v); } catch (_) {} }
-              if (v is Map) {
-                final map = v.map((key, value) => MapEntry(key.toString(), value));
-                map["image"] = (map["image"] is Map && map["image"]["src"] != null) ? map["image"]["src"] : (map["image"] is String ? map["image"] : "");
-                map["name"] = (map["name"] is Map && map["name"]["rendered"] != null) ? map["name"]["rendered"] : (map["name"] is String ? map["name"] : "Unnamed Variant");
-                map["price"] = map["price"]?.toString() ?? "0";
-                return map;
-              }
-              return <String, dynamic>{};
-            }).where((v) => v.isNotEmpty).toList();
+            offlineVariations = rawVariations
+                .map<Map<String, dynamic>>((v) {
+                  if (v is String) {
+                    try {
+                      v = jsonDecode(v);
+                    } catch (_) {}
+                  }
+                  if (v is Map) {
+                    final map =
+                        v.map((key, value) => MapEntry(key.toString(), value));
+                    map["image"] =
+                        (map["image"] is Map && map["image"]["src"] != null)
+                            ? map["image"]["src"]
+                            : (map["image"] is String ? map["image"] : "");
+                    map["name"] =
+                        (map["name"] is Map && map["name"]["rendered"] != null)
+                            ? map["name"]["rendered"]
+                            : (map["name"] is String
+                                ? map["name"]
+                                : "Unnamed Variant");
+                    map["price"] = map["price"]?.toString() ?? "0";
+                    return map;
+                  }
+                  return <String, dynamic>{};
+                })
+                .where((v) => v.isNotEmpty)
+                .toList();
 
             // Recovery path: when variation cache is stale/missing, fetch once from API.
             if (offlineVariations.isEmpty && productId > 0) {
@@ -1829,51 +1973,78 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               }
             }
           } catch (e, st) {
-            if (kDebugMode) { print("⚠️ [Indigo] Error loading variations: $e"); print(st); }
+            if (kDebugMode) {
+              print("⚠️ [Indigo] Error loading variations: $e");
+              print(st);
+            }
           }
 
           if (offlineVariations.isEmpty) {
-            if (mounted && loadingDialogShown) Navigator.of(context, rootNavigator: true).pop();
+            if (mounted && loadingDialogShown)
+              Navigator.of(context, rootNavigator: true).pop();
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text("No variants available for this product right now."),
+                content:
+                    Text("No variants available for this product right now."),
                 duration: Duration(seconds: 2),
               ));
             }
             return;
           }
 
-          if (mounted && loadingDialogShown) Navigator.of(context, rootNavigator: true).pop();
+          if (mounted && loadingDialogShown)
+            Navigator.of(context, rootNavigator: true).pop();
           await showDialog(
             context: context,
             builder: (ctx) => VariantsDialog(
               title: productName,
               variations: offlineVariations,
               onAddVariant: (selectedVariant, qty) async {
-                final variantId = int.tryParse(selectedVariant["id"].toString()) ?? -1;
+                final variantId =
+                    int.tryParse(selectedVariant["id"].toString()) ?? -1;
                 final variantName = selectedVariant["name"] ?? "Variant";
-                final variantPrice = double.tryParse(selectedVariant["price"].toString()) ?? productPrice;
+                final variantPrice =
+                    double.tryParse(selectedVariant["price"].toString()) ??
+                        productPrice;
                 final variantSku = selectedVariant["sku"] ?? productSku;
                 final variantImage = selectedVariant["image"] ?? productImage;
-                await orderHelper.addItemToOrder(0, variantName, variantImage, variantPrice, qty, variantSku,
-                    activeOrderId, type: 'variant', productId: productId, variationId: variantId,
-                    variationName: variantName, salesPrice: variantPrice, regularPrice: variantPrice,
-                    unitPrice: variantPrice, isEbtEligible: isEbtEligible, onItemAdded: () async => _refreshOrderList());
+                await orderHelper.addItemToOrder(0, variantName, variantImage,
+                    variantPrice, qty, variantSku, activeOrderId,
+                    type: 'variant',
+                    productId: productId,
+                    variationId: variantId,
+                    variationName: variantName,
+                    salesPrice: variantPrice,
+                    regularPrice: variantPrice,
+                    unitPrice: variantPrice,
+                    isEbtEligible: isEbtEligible,
+                    onItemAdded: () async => _refreshOrderList());
               },
             ),
           );
         } else {
-          await orderHelper.addItemToOrder(null, productName, productImage, finalPrice, 1, productSku,
-              activeOrderId, type: 'product', productId: productId, variationId: -1,
-              salesPrice: finalPrice, regularPrice: productPrice, unitPrice: productPrice,
-              isEbtEligible: isEbtEligible, onItemAdded: () async => _refreshOrderList());
+          await orderHelper.addItemToOrder(null, productName, productImage,
+              finalPrice, 1, productSku, activeOrderId,
+              type: 'product',
+              productId: productId,
+              variationId: -1,
+              salesPrice: finalPrice,
+              regularPrice: productPrice,
+              unitPrice: productPrice,
+              isEbtEligible: isEbtEligible,
+              onItemAdded: () async => _refreshOrderList());
         }
-        if (kDebugMode) print("🎉 [Indigo] Product flow completed → $productName");
+        if (kDebugMode)
+          print("🎉 [Indigo] Product flow completed → $productName");
       } catch (e, s) {
-        if (kDebugMode) { print("❌ [Indigo] ERROR: $e"); print(s); }
+        if (kDebugMode) {
+          print("❌ [Indigo] ERROR: $e");
+          print(s);
+        }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(TextConstants.errorAddingItem), backgroundColor: Colors.red,
+              content: Text(TextConstants.errorAddingItem),
+              backgroundColor: Colors.red,
               duration: const Duration(seconds: 2)));
         }
       }
@@ -1892,7 +2063,11 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       }
 
       final isar = await IsarService.instance;
-      final allEntries = await isar.isarCacheEntrys.where().filter().keyStartsWith('products_').findAll();
+      final allEntries = await isar.isarCacheEntrys
+          .where()
+          .filter()
+          .keyStartsWith('products_')
+          .findAll();
       for (final entry in allEntries) {
         final List<dynamic> products = json.decode(entry.json);
         for (final product in products) {
@@ -1913,12 +2088,14 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     }
   }
 
-  Future<List<Map<String, dynamic>>> _fetchVariationsFromApi(int productId) async {
+  Future<List<Map<String, dynamic>>> _fetchVariationsFromApi(
+      int productId) async {
     try {
       final token = await _getAuthTokenFromDb();
       final url = Uri.parse(
           "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations");
-      final response = await http.get(url, headers: {"Authorization": "Bearer $token"});
+      final response =
+          await http.get(url, headers: {"Authorization": "Bearer $token"});
       if (response.statusCode != 200) return <Map<String, dynamic>>[];
       final decoded = jsonDecode(response.body);
       if (decoded is! List) return <Map<String, dynamic>>[];
@@ -1939,7 +2116,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               "id": map["id"],
               "name": (map["name"] ?? "").toString().isNotEmpty
                   ? map["name"]
-                  : (fallbackName.isNotEmpty ? fallbackName : "Unnamed Variant"),
+                  : (fallbackName.isNotEmpty
+                      ? fallbackName
+                      : "Unnamed Variant"),
               "price": (map["price"] ?? map["regular_price"] ?? "0").toString(),
               "sku": map["sku"] ?? "",
               "image": (map["image"] is Map && map["image"]["src"] != null)
@@ -1985,7 +2164,10 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   Future<void> _autoTapAllCategories() async {
     if (categories.isEmpty || _hasAutoTappedOnce) return;
     _hasAutoTappedOnce = true;
-    setState(() { _isAutoLoading = true; _autoLoadCompleted = false; });
+    setState(() {
+      _isAutoLoading = true;
+      _autoLoadCompleted = false;
+    });
     _showAutoLoadingDialog();
     for (int i = 0; i < categories.length; i++) {
       if (!mounted) break;
@@ -1999,7 +2181,10 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     _preWarmAllIndigoData();
     _hideAutoLoadingDialog();
     if (!mounted) return;
-    setState(() { _isAutoLoading = false; _autoLoadCompleted = true; });
+    setState(() {
+      _isAutoLoading = false;
+      _autoLoadCompleted = true;
+    });
     if (kDebugMode) print("✅ Auto load completed; pagination enabled");
   }
 
@@ -2007,7 +2192,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     if (categories.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     final int? index = prefs.getInt('lastSelectedCategoryIndex');
-    final int safeIndex = (index != null && index >= 0 && index < categories.length) ? index : 0;
+    final int safeIndex =
+        (index != null && index >= 0 && index < categories.length) ? index : 0;
     if (!mounted) return;
     // Restore recent list with the last-used category
     if (safeIndex < categories.length) {
@@ -2015,7 +2201,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     }
     setState(() {
       _selectedCategoryIndex = safeIndex;
-      _showCategoryGrid = false;                      // show pills after restore
+      _showCategoryGrid = false; // show pills after restore
       navigationPath = [categories[safeIndex].name];
       categoryHierarchy = [0, categories[safeIndex].id];
       currentCategoryLevel = 1;
@@ -2027,7 +2213,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     });
     await _loadSubCategories(categories[safeIndex].id);
     _loadIndigoSubCategories(categories[safeIndex].id);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCategory(safeIndex));
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _scrollToCategory(safeIndex));
     await prefs.setInt('lastSelectedCategoryIndex', safeIndex);
   }
 
@@ -2052,7 +2239,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     _recentCategories.removeWhere((c) => c.id == category.id);
     _recentCategories.insert(0, category);
     if (_recentCategories.length > _maxRecentCategories) {
-      _recentCategories.removeRange(_maxRecentCategories, _recentCategories.length);
+      _recentCategories.removeRange(
+          _maxRecentCategories, _recentCategories.length);
     }
   }
 
@@ -2075,15 +2263,19 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     }
     _categoryBloc.fetchCategories(0);
     try {
-      await for (final response in _categoryBloc.categoriesStream.timeout(
-          const Duration(seconds: 25))) {
+      await for (final response in _categoryBloc.categoriesStream
+          .timeout(const Duration(seconds: 25))) {
         if (!mounted) break;
         if (response.status == Status.COMPLETED && response.data != null) {
           categories = response.data!.categories;
-          setState(() { isLoading = false; isLoadingNestedContent = false; });
+          setState(() {
+            isLoading = false;
+            isLoadingNestedContent = false;
+          });
           final bool isProductCacheEmpty = await _isProductCacheEmpty();
           if (isProductCacheEmpty) {
-            WidgetsBinding.instance.addPostFrameCallback((_) => _autoTapAllCategories());
+            WidgetsBinding.instance
+                .addPostFrameCallback((_) => _autoTapAllCategories());
           } else {
             setState(() => _autoLoadCompleted = true);
             _preWarmAllIndigoData();
@@ -2092,16 +2284,23 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           break;
         }
         if (response.status == Status.ERROR) {
-          setState(() { isLoading = false; isLoadingNestedContent = false; });
+          setState(() {
+            isLoading = false;
+            isLoadingNestedContent = false;
+          });
           if (response.message?.contains("Unauthorised") ?? false) {
-            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen()));
+            Navigator.pushReplacement(
+                context, MaterialPageRoute(builder: (_) => LoginScreen()));
           }
           break;
         }
       }
     } on TimeoutException {
       if (!mounted) return;
-      setState(() { isLoading = false; isLoadingNestedContent = false; });
+      setState(() {
+        isLoading = false;
+        isLoadingNestedContent = false;
+      });
       if (kDebugMode) print("⚠️ _loadTopLevelCategories timed out");
     }
   }
@@ -2110,8 +2309,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   Future<void> _loadSubCategories(int parentId) async {
     _categoryBloc.fetchCategories(parentId);
     try {
-      await for (final response in _categoryBloc.categoriesStream.timeout(
-          const Duration(seconds: 25))) {
+      await for (final response in _categoryBloc.categoriesStream
+          .timeout(const Duration(seconds: 25))) {
         if (!mounted) break;
         if (response.status == Status.COMPLETED && response.data != null) {
           setState(() {
@@ -2131,7 +2330,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
             });
           }
 
-          if (Misc.enableCategoryProductWithSubCategoryList || subCategories.isEmpty) {
+          if (Misc.enableCategoryProductWithSubCategoryList ||
+              subCategories.isEmpty) {
             _loadProductsByCategory(parentId);
           }
           break;
@@ -2157,29 +2357,46 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     });
     _categoryBloc.fetchProductsByCategory(categoryId);
     try {
-      await for (final response in _categoryBloc.productsStream.timeout(
-          const Duration(seconds: 30))) {
+      await for (final response in _categoryBloc.productsStream
+          .timeout(const Duration(seconds: 30))) {
         if (!mounted) break;
         if (response.status == Status.COMPLETED && response.data != null) {
           final Map<int, Map<String, dynamic>> uniqueProducts = {};
           for (final product in response.data!.products) {
-            final tags = (product.tags ?? []).map((t) => {
-              "id": t.id,
-              "name": t.name?.toLowerCase() ?? "",
-              "slug": t.slug?.toLowerCase() ?? "",
-            }).toList();
-            final ageRestrictedLower = TextConstants.age_restricted.toLowerCase();
+            final tags = (product.tags ?? [])
+                .map((t) => {
+                      "id": t.id,
+                      "name": (t.name ?? "").toString().toLowerCase(),
+                      "slug": (t.slug ?? "").toString().toLowerCase(),
+                    })
+                .toList();
+            final ageRestrictedLower =
+                TextConstants.age_restricted.toLowerCase();
             final ageTag = tags.firstWhere(
-                  (t) => (t["name"]?.toString() ?? "").toLowerCase() == ageRestrictedLower ||
-                  (t["slug"]?.toString() ?? "").toLowerCase() == ageRestrictedLower,
+              (t) =>
+                  (t["name"]?.toString() ?? "").toLowerCase() ==
+                      ageRestrictedLower ||
+                  (t["slug"]?.toString() ?? "").toLowerCase() ==
+                      ageRestrictedLower,
               orElse: () => <String, dynamic>{},
             );
             int minAge = int.tryParse(ageTag["slug"]?.toString() ?? "0") ?? 0;
             if (minAge == 0 && ageTag.isNotEmpty) minAge = 18;
+
+            final bool isEbtEligible = tags.any((t) {
+              final name = (t["name"] ?? "").toString().toLowerCase();
+              final slug = (t["slug"] ?? "").toString().toLowerCase();
+              return name.contains("ebt") || slug.contains("ebt");
+            });
+
+            final bool hasVariantsFlag =
+                (product.type?.toLowerCase() == "variable") ||
+                    ((product.variations?.isNotEmpty) ?? false);
             uniqueProducts[product.id] = {
               'fast_key_product_id': product.id,
               'fast_key_item_name': product.name,
-              'fast_key_item_image': product.images.isNotEmpty ? product.images.first : '',
+              'fast_key_item_image':
+                  product.images.isNotEmpty ? product.images.first : '',
               'fast_key_item_price': product.price,
               'fast_key_item_sku': product.sku ?? '',
               'fast_key_item_min_age': minAge,
@@ -2187,10 +2404,14 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               'fast_key_item_tags': tags,
               'variations': product.variations,
               'type': product.type,
+              'is_ebt_eligible': isEbtEligible,
+              'has_variants': hasVariantsFlag,
             };
           }
           setState(() {
-            _allCategoryProducts..clear()..addAll(uniqueProducts.values);
+            _allCategoryProducts
+              ..clear()
+              ..addAll(uniqueProducts.values);
             _applyVisibleProducts(reset: true);
             isShowingSubCategories = false;
             isLoadingNestedContent = false;
@@ -2205,7 +2426,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     } on TimeoutException {
       if (!mounted) return;
       setState(() => isLoadingNestedContent = false);
-      if (kDebugMode) print("⚠️ _loadProductsByCategory timed out for $categoryId");
+      if (kDebugMode)
+        print("⚠️ _loadProductsByCategory timed out for $categoryId");
     }
   }
 
@@ -2220,7 +2442,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
 
     setState(() {
       _selectedCategoryIndex = index;
-      _showCategoryGrid = false;                  // collapse grid, show pills
+      _showCategoryGrid = false; // collapse grid, show pills
       navigationPath = [categories[index].name];
       subCategories.clear();
       _resetPaginationState();
@@ -2240,7 +2462,11 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   Future<bool> _isProductCacheEmpty() async {
     try {
       final isar = await IsarService.instance;
-      final any = await isar.isarCacheEntrys.where().filter().keyStartsWith('products_').findFirst();
+      final any = await isar.isarCacheEntrys
+          .where()
+          .filter()
+          .keyStartsWith('products_')
+          .findFirst();
       return any == null;
     } catch (e) {
       if (kDebugMode) print("_isProductCacheEmpty error: $e");
@@ -2255,7 +2481,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       _selectedSubCategoryIndex = index;
       if (currentCategoryLevel < categoryHierarchy.length) {
         navigationPath = navigationPath.sublist(0, currentCategoryLevel);
-        categoryHierarchy = categoryHierarchy.sublist(0, currentCategoryLevel + 1);
+        categoryHierarchy =
+            categoryHierarchy.sublist(0, currentCategoryLevel + 1);
       }
       navigationPath.add(selectedSubCategory.name);
       categoryHierarchy.add(selectedSubCategory.id);
@@ -2292,9 +2519,14 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   Stopwatch? refreshUIStopwatch;
 
   void _onItemSelected(int index, bool variantAdded) async {
-    if (index == 0 && showBackButton) { _onBackToCategories(); return; }
+    if (index == 0 && showBackButton) {
+      _onBackToCategories();
+      return;
+    }
     if (variantAdded == true) {
-      if (!Misc.enableUILogMessages) { if (Navigator.canPop(context)) _closeOnlyDialog(); }
+      if (!Misc.enableUILogMessages) {
+        if (Navigator.canPop(context)) _closeOnlyDialog();
+      }
       _refreshOrderList();
       return;
     }
@@ -2309,36 +2541,54 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       Stopwatch? addProductStopwatch;
       if (Misc.enableUILogMessages) addProductStopwatch = Stopwatch()..start();
       subscription = orderBloc.updateOrderStream.listen((response) async {
-        if (!mounted) { subscription?.cancel(); return; }
+        if (!mounted) {
+          subscription?.cancel();
+          return;
+        }
         if (response.status == Status.LOADING) {
           const Center(child: CircularProgressIndicator());
         } else if (response.status == Status.COMPLETED) {
           if (kDebugMode) print("Item added to order $dbOrderId via API");
           if (Misc.showDebugSnackBar) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text("Item '${selectedProduct[AppDBConst.fastKeyItemName]}' added to order"),
-                backgroundColor: Colors.green, duration: const Duration(seconds: 2)));
+                content: Text(
+                    "Item '${selectedProduct[AppDBConst.fastKeyItemName]}' added to order"),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 2)));
           }
           if (Misc.enableUILogMessages && addProductStopwatch != null) {
             addProductStopwatch.stop();
-            globalProcessSteps.add(ProcessStep(name: TextConstants.addProductToOrder,
+            globalProcessSteps.add(ProcessStep(
+                name: TextConstants.addProductToOrder,
                 timeTaken: addProductStopwatch.elapsedMilliseconds / 1000.0));
           }
-          if (Misc.enableUILogMessages) refreshUIStopwatch = Stopwatch()..start();
+          if (Misc.enableUILogMessages)
+            refreshUIStopwatch = Stopwatch()..start();
           _refreshOrderList();
           subscription?.cancel();
         } else if (response.status == Status.ERROR) {
-          if (Misc.enableUILogMessages && addProductStopwatch != null) { addProductStopwatch.stop(); globalProcessSteps.clear(); }
+          if (Misc.enableUILogMessages && addProductStopwatch != null) {
+            addProductStopwatch.stop();
+            globalProcessSteps.clear();
+          }
           _refreshOrderList();
           subscription?.cancel();
         }
       });
-      await orderBloc.updateOrderProducts(orderId: serverOrderId, dbOrderId: dbOrderId,
-          lineItems: [OrderLineItem(productId: selectedProduct[AppDBConst.fastKeyProductId], quantity: 1)]);
+      await orderBloc.updateOrderProducts(
+          orderId: serverOrderId,
+          dbOrderId: dbOrderId,
+          lineItems: [
+            OrderLineItem(
+                productId: selectedProduct[AppDBConst.fastKeyProductId],
+                quantity: 1)
+          ]);
     } catch (e) {
       if (kDebugMode) print("Exception in _onItemSelected: $e");
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(TextConstants.errorAddingItem),
-          backgroundColor: Colors.red, duration: const Duration(seconds: 2)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(TextConstants.errorAddingItem),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 2)));
     } finally {
       _updateOrderSubscription?.cancel();
       _updateOrderSubscription = null;
@@ -2358,8 +2608,10 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       categoryProducts.clear();
       _selectedSubCategoryIndex = null;
     });
-    if (index == 0) _loadSubCategories(categories[_selectedCategoryIndex!].id);
-    else _loadSubCategories(categoryHierarchy.last);
+    if (index == 0)
+      _loadSubCategories(categories[_selectedCategoryIndex!].id);
+    else
+      _loadSubCategories(categoryHierarchy.last);
   }
 
   void _refreshOrderList() {
@@ -2367,13 +2619,20 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     setState(() => _refreshCounter++);
     if (Misc.enableUILogMessages && refreshUIStopwatch != null) {
       refreshUIStopwatch?.stop();
-      globalProcessSteps.add(ProcessStep(name: TextConstants.refreshDBUITime,
+      globalProcessSteps.add(ProcessStep(
+          name: TextConstants.refreshDBUITime,
           timeTaken: refreshUIStopwatch!.elapsedMilliseconds / 1000.0));
     }
     if (Misc.enableUILogMessages && globalProcessSteps.isNotEmpty) {
-      showDialog(context: context, barrierDismissible: false,
-          builder: (dialogContext) => LogsToast(steps: globalProcessSteps,
-              onClose: () { globalProcessSteps.clear(); Navigator.of(dialogContext).pop(); }));
+      showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => LogsToast(
+              steps: globalProcessSteps,
+              onClose: () {
+                globalProcessSteps.clear();
+                Navigator.of(dialogContext).pop();
+              }));
     }
   }
 
@@ -2395,23 +2654,28 @@ class _CategoriesScreenState extends State<CategoriesScreen>
 
   Widget _buildIndigoSection() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final dividerColor = isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF1F1F3);
-    final breadcrumbColor = isDark ? const Color(0xFFB0B0D0) : const Color(0xFF4C5F7D);
+    final dividerColor =
+        isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF1F1F3);
+    final breadcrumbColor =
+        isDark ? const Color(0xFFB0B0D0) : const Color(0xFF4C5F7D);
 
-    final indigoSubCatItems = _indigoSubCategories.map((cat) => {
-      'name': cat.name,
-      'image': cat.image ?? '',
-      'count': cat.count,
-    }).toList();
+    final indigoSubCatItems = _indigoSubCategories
+        .map((cat) => {
+              'name': cat.name,
+              'image': cat.image ?? '',
+              'count': cat.count,
+            })
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-
         // ── Row 1: Breadcrumb  +  subcategory image-chips ─────────────────
         // Matches Figma: "Vegetables >"  [Beans & Peas]  [Leafy Greens] ...
-        if (navigationPath.isNotEmpty || _isLoadingIndigoSubCategories || indigoSubCatItems.isNotEmpty)
+        if (navigationPath.isNotEmpty ||
+            _isLoadingIndigoSubCategories ||
+            indigoSubCatItems.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
             child: Row(
@@ -2441,109 +2705,114 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                 Expanded(
                   child: _isLoadingIndigoSubCategories
                       ? const SizedBox(
-                    height: 48,
-                    child: Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Color(0xFFE74C3C)),
-                      ),
-                    ),
-                  )
+                          height: 48,
+                          child: Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Color(0xFFE74C3C)),
+                            ),
+                          ),
+                        )
                       : indigoSubCatItems.isEmpty
-                      ? const SizedBox.shrink()
-                      : SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: List.generate(
-                        indigoSubCatItems.length,
-                            (index) {
-                          final sub = indigoSubCatItems[index];
-                          final bool isSelected =
-                              _selectedIndigoSubCategoryIndex == index;
-                          final String imgPath =
-                              (sub['image'] as String?) ?? 'assets/default.png';
+                          ? const SizedBox.shrink()
+                          : SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: List.generate(
+                                  indigoSubCatItems.length,
+                                  (index) {
+                                    final sub = indigoSubCatItems[index];
+                                    final bool isSelected =
+                                        _selectedIndigoSubCategoryIndex ==
+                                            index;
+                                    final String imgPath =
+                                        (sub['image'] as String?) ??
+                                            'assets/default.png';
 
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: GestureDetector(
-                              onTap: () {
-                                setState(() =>
-                                _selectedIndigoSubCategoryIndex =
-                                    index);
-                                _loadIndigoProductsBySubCategory(
-                                    _indigoSubCategories[index].id);
-                              },
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 7),
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? const Color(0xFFFFE5E5)
-                                      : isDark
-                                      ? const Color(0xFF26253A)
-                                      : Colors.white,
-                                  borderRadius:
-                                  BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? const Color(0xFFFE6464)
-                                        : isDark
-                                        ? Colors.white12
-                                        : const Color(0xFFDDDDDD),
-                                    width: isSelected ? 1.5 : 1.0,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    // Thumbnail
-                                    ClipRRect(
-                                      borderRadius:
-                                      BorderRadius.circular(4),
-                                      child: imgPath.startsWith('http')
-                                          ? Image.network(imgPath,
-                                          width: 28,
-                                          height: 28,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) =>
-                                          const Icon(
-                                              Icons.image,
-                                              size: 28))
-                                          : Image.asset(
-                                          'assets/default.png',
-                                          width: 28,
-                                          height: 28,
-                                          fit: BoxFit.cover),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    // Name
-                                    Text(
-                                      sub['name'] as String,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: isSelected
-                                            ? FontWeight.w700
-                                            : FontWeight.w500,
-                                        color: isSelected
-                                            ? const Color(0xFFFE6464)
-                                            : isDark
-                                            ? Colors.white
-                                            : const Color(
-                                            0xFF2C3E50),
+                                    return Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() =>
+                                              _selectedIndigoSubCategoryIndex =
+                                                  index);
+                                          _loadIndigoProductsBySubCategory(
+                                              _indigoSubCategories[index].id);
+                                        },
+                                        child: AnimatedContainer(
+                                          duration:
+                                              const Duration(milliseconds: 180),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 7),
+                                          decoration: BoxDecoration(
+                                            color: isSelected
+                                                ? const Color(0xFFFFE5E5)
+                                                : isDark
+                                                    ? const Color(0xFF26253A)
+                                                    : Colors.white,
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                            border: Border.all(
+                                              color: isSelected
+                                                  ? const Color(0xFFFE6464)
+                                                  : isDark
+                                                      ? Colors.white12
+                                                      : const Color(0xFFDDDDDD),
+                                              width: isSelected ? 1.5 : 1.0,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              // Thumbnail
+                                              ClipRRect(
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                                child: imgPath
+                                                        .startsWith('http')
+                                                    ? Image.network(imgPath,
+                                                        width: 28,
+                                                        height: 28,
+                                                        fit: BoxFit.cover,
+                                                        errorBuilder:
+                                                            (_, __, ___) =>
+                                                                const Icon(
+                                                                    Icons.image,
+                                                                    size: 28))
+                                                    : Image.asset(
+                                                        'assets/default.png',
+                                                        width: 28,
+                                                        height: 28,
+                                                        fit: BoxFit.cover),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              // Name
+                                              Text(
+                                                sub['name'] as String,
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: isSelected
+                                                      ? FontWeight.w700
+                                                      : FontWeight.w500,
+                                                  color: isSelected
+                                                      ? const Color(0xFFFE6464)
+                                                      : isDark
+                                                          ? Colors.white
+                                                          : const Color(
+                                                              0xFF2C3E50),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    );
+                                  },
                                 ),
                               ),
                             ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -2572,33 +2841,33 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                 style: TextStyle(fontSize: 12, color: Colors.grey)),
           )
         else if (_indigoProducts.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 4, 10, 12),
-              child: LayoutBuilder(builder: (context, constraints) {
-                const int cols = 4;
-                const double gap = 8.0;
-                final double cardW =
-                    (constraints.maxWidth - gap * (cols - 1)) / cols;
-                const double cardH = 72.0;
-                return Wrap(
-                  spacing: gap,
-                  runSpacing: gap,
-                  children: _indigoProducts
-                      .take(_visibleIndigoProductCount)
-                      .map((product) {
-                    return SizedBox(
-                      width: cardW,
-                      height: cardH,
-                      child: _IndigoProductCard(
-                        product: product,
-                        isDark: isDark,
-                        onTap: () => _onIndigoProductTapped(product),
-                      ),
-                    );
-                  }).toList(),
-                );
-              }),
-            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 4, 10, 12),
+            child: LayoutBuilder(builder: (context, constraints) {
+              const int cols = 4;
+              const double gap = 8.0;
+              final double cardW =
+                  (constraints.maxWidth - gap * (cols - 1)) / cols;
+              const double cardH = 72.0;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: _indigoProducts
+                    .take(_visibleIndigoProductCount)
+                    .map((product) {
+                  return SizedBox(
+                    width: cardW,
+                    height: cardH,
+                    child: _IndigoProductCard(
+                      product: product,
+                      isDark: isDark,
+                      onTap: () => _onIndigoProductTapped(product),
+                    ),
+                  );
+                }).toList(),
+              );
+            }),
+          ),
         if (_isIndigoPaginating &&
             _visibleIndigoProductCount < _indigoProducts.length)
           const Padding(
@@ -2624,12 +2893,11 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     return [_buildIndigoSection()];
   }
 
-
   Widget _buildCategoryBar(
-      BuildContext context,
-      List<Map<String, dynamic>> categoryListItems,
-      List<CategoryModel> visibleCats,
-      ) {
+    BuildContext context,
+    List<Map<String, dynamic>> categoryListItems,
+    List<CategoryModel> visibleCats,
+  ) {
     return CategoryBarWithAllButton(
       isLoading: isLoading,
       categoryListItems: categoryListItems,
@@ -2649,7 +2917,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       },
       onCategoryTapped: (uiIndex) {
         final selectedCategory = visibleCats[uiIndex];
-        final realIndex = categories.indexWhere((c) => c.id == selectedCategory.id);
+        final realIndex =
+            categories.indexWhere((c) => c.id == selectedCategory.id);
         if (realIndex != -1) _onCategoryTapped(realIndex);
       },
       onReorder: (oldIndex, newIndex) {
@@ -2661,9 +2930,11 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           if (_selectedCategoryIndex != null) {
             if (_selectedCategoryIndex == oldIndex) {
               _selectedCategoryIndex = newIndex;
-            } else if (oldIndex < _selectedCategoryIndex! && newIndex >= _selectedCategoryIndex!) {
+            } else if (oldIndex < _selectedCategoryIndex! &&
+                newIndex >= _selectedCategoryIndex!) {
               _selectedCategoryIndex = _selectedCategoryIndex! - 1;
-            } else if (oldIndex > _selectedCategoryIndex! && newIndex <= _selectedCategoryIndex!) {
+            } else if (oldIndex > _selectedCategoryIndex! &&
+                newIndex <= _selectedCategoryIndex!) {
               _selectedCategoryIndex = _selectedCategoryIndex! + 1;
             }
           }
@@ -2686,17 +2957,21 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       return !_hiddenCategoryNames.contains(name);
     }).toList();
 
-    final categoryListItems = visibleCats.map((category) => {
-      'title': category.name,
-      'image': category.image ?? 'assets/default.png',
-      'itemCount': category.count,
-    }).toList();
+    final categoryListItems = visibleCats
+        .map((category) => {
+              'title': category.name,
+              'image': category.image ?? 'assets/default.png',
+              'itemCount': category.count,
+            })
+        .toList();
 
-    final subCategoryListItems = subCategories.map((subCategory) => {
-      'name': subCategory.name,
-      'image': subCategory.image ?? 'assets/default.png',
-      'count': subCategory.count,
-    }).toList();
+    final subCategoryListItems = subCategories
+        .map((subCategory) => {
+              'name': subCategory.name,
+              'image': subCategory.image ?? 'assets/default.png',
+              'count': subCategory.count,
+            })
+        .toList();
 
     Widget buildProductsWidget(Widget child) {
       return NotificationListener<ScrollNotification>(
@@ -2704,15 +2979,18 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     }
 
     BoxDecoration innerBoxDecoration() => BoxDecoration(
-      color: isDark ? const Color(0xFF1D1C2C) : Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      boxShadow: [
-        BoxShadow(
-          color: isDark ? Colors.black.withOpacity(0.3) : Colors.black.withOpacity(0.05),
-          blurRadius: 6, offset: const Offset(0, 3),
-        ),
-      ],
-    );
+          color: isDark ? const Color(0xFF1D1C2C) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: isDark
+                  ? Colors.black.withOpacity(0.3)
+                  : Colors.black.withOpacity(0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        );
 
     // ── The content area: either category grid OR subcategory+products ──────
     Widget _buildContentArea() {
@@ -2721,14 +2999,16 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         return Expanded(
           child: SingleChildScrollView(
             child: Container(
-              margin: const EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 12),
+              margin: const EdgeInsets.only(
+                  left: 10, right: 10, top: 0, bottom: 12),
               decoration: innerBoxDecoration(),
               child: CategoryGridOverlay(
                 categoryListItems: categoryListItems,
                 onCategoryTapped: (uiIndex) {
                   final selectedCategory = visibleCats[uiIndex];
-                  final realIndex = categories.indexWhere((c) => c.id == selectedCategory.id);
-                  if (realIndex != -1) _onCategoryTapped(realIndex);   //////balu
+                  final realIndex =
+                      categories.indexWhere((c) => c.id == selectedCategory.id);
+                  if (realIndex != -1) _onCategoryTapped(realIndex); //////balu
                 },
               ),
             ),
@@ -2743,7 +3023,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           onNotification: _onIndigoProductsScrollNotification,
           child: SingleChildScrollView(
             child: Container(
-              margin: const EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 12),
+              margin: const EdgeInsets.only(
+                  left: 10, right: 10, top: 0, bottom: 12),
               decoration: innerBoxDecoration(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2786,17 +3067,23 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                     : SharedPreferenceTextConstants.navLeftOrderRight;
               }
               PinakaPreferences.layoutSelectionNotifier.value = newLayout;
-              await UserDbHelper().saveUserSettings({AppDBConst.layoutSelection: newLayout}, modeChange: true);
+              await UserDbHelper().saveUserSettings(
+                  {AppDBConst.layoutSelection: newLayout},
+                  modeChange: true);
               setState(() {});
             },
             onProductSelected: (product) async {
               try {
-                if (kDebugMode) print("###### serverOrderId: ${orderHelper.activeOrderId}");
+                if (kDebugMode)
+                  print("###### serverOrderId: ${orderHelper.activeOrderId}");
                 _refreshOrderList();
               } catch (e, s) {
-                if (kDebugMode) print("Exception in onProductSelected: $e, Stack: $s");
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(TextConstants.errorAddingItem),
-                    backgroundColor: Colors.red, duration: const Duration(seconds: 2)));
+                if (kDebugMode)
+                  print("Exception in onProductSelected: $e, Stack: $s");
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(TextConstants.errorAddingItem),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 2)));
               }
             },
           ),
@@ -2807,29 +3094,40 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                 if (sidebarPosition == SidebarPosition.left)
                   custom_widgets.NavigationBar(
                     selectedSidebarIndex: _selectedSidebarIndex,
-                    onSidebarItemSelected: (index) => setState(() => _selectedSidebarIndex = index),
+                    onSidebarItemSelected: (index) =>
+                        setState(() => _selectedSidebarIndex = index),
                     isVertical: true,
                   ),
                 if (sidebarPosition == SidebarPosition.right ||
-                    (sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
-                  RightOrderPanel(key: const ValueKey('order_panel'), quantities: quantities,
-                      refreshOrderList: _refreshOrderList, refreshKey: _refreshCounter),
+                    (sidebarPosition == SidebarPosition.bottom &&
+                        orderPanelPosition == OrderPanelPosition.left))
+                  RightOrderPanel(
+                      key: const ValueKey('order_panel'),
+                      quantities: quantities,
+                      refreshOrderList: _refreshOrderList,
+                      refreshKey: _refreshCounter),
                 Expanded(
                   child: Column(
                     children: [
-                      _buildCategoryBar(context, categoryListItems, visibleCats),
+                      _buildCategoryBar(
+                          context, categoryListItems, visibleCats),
                       _buildContentArea(),
                     ],
                   ),
                 ),
                 if (sidebarPosition != SidebarPosition.right &&
-                    !(sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
-                  RightOrderPanel(key: const ValueKey('order_panel'), quantities: quantities,
-                      refreshOrderList: _refreshOrderList, refreshKey: _refreshCounter),
+                    !(sidebarPosition == SidebarPosition.bottom &&
+                        orderPanelPosition == OrderPanelPosition.left))
+                  RightOrderPanel(
+                      key: const ValueKey('order_panel'),
+                      quantities: quantities,
+                      refreshOrderList: _refreshOrderList,
+                      refreshKey: _refreshCounter),
                 if (sidebarPosition == SidebarPosition.right)
                   custom_widgets.NavigationBar(
                     selectedSidebarIndex: _selectedSidebarIndex,
-                    onSidebarItemSelected: (index) => setState(() => _selectedSidebarIndex = index),
+                    onSidebarItemSelected: (index) =>
+                        setState(() => _selectedSidebarIndex = index),
                     isVertical: true,
                   ),
               ],
@@ -2838,7 +3136,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           if (sidebarPosition == SidebarPosition.bottom)
             custom_widgets.NavigationBar(
               selectedSidebarIndex: _selectedSidebarIndex,
-              onSidebarItemSelected: (index) => setState(() => _selectedSidebarIndex = index),
+              onSidebarItemSelected: (index) =>
+                  setState(() => _selectedSidebarIndex = index),
               isVertical: false,
             ),
         ],
@@ -2856,34 +3155,57 @@ class _IndigoSubCategoryCard extends StatelessWidget {
   final bool isDark;
   final VoidCallback onTap;
 
-  const _IndigoSubCategoryCard({required this.category, required this.isDark, required this.onTap});
+  const _IndigoSubCategoryCard(
+      {required this.category, required this.isDark, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final cardBg = isDark ? const Color(0xFF26253A) : const Color(0xFFF3F4F8);
-    final borderColor = isDark ? const Color(0xFF3A3A52) : const Color(0xFFE8EAF0);
+    final borderColor =
+        isDark ? const Color(0xFF3A3A52) : const Color(0xFFE8EAF0);
     final textColor = isDark ? Colors.white : const Color(0xFF2C3E50);
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(12),
+        decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: borderColor, width: 1),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.12 : 0.04), blurRadius: 4, offset: const Offset(0, 2))]),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withOpacity(isDark ? 0.12 : 0.04),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2))
+            ]),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(flex: 70,
-                child: Padding(padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+            Expanded(
+                flex: 70,
+                child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
                     child: category.image.isNotEmpty
-                        ? Image.network(category.image, fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => _placeholder(),
-                        loadingBuilder: (_, child, prog) => prog == null ? child : _placeholder())
+                        ? Image.network(category.image,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => _placeholder(),
+                            loadingBuilder: (_, child, prog) =>
+                                prog == null ? child : _placeholder())
                         : _placeholder())),
-            Expanded(flex: 30,
-                child: Container(alignment: Alignment.topCenter, padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
-                    child: Text(category.name, maxLines: 2, overflow: TextOverflow.ellipsis,
+            Expanded(
+                flex: 30,
+                child: Container(
+                    alignment: Alignment.topCenter,
+                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+                    child: Text(category.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: textColor, fontFamily: 'poppins', height: 1.25)))),
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: textColor,
+                            fontFamily: 'poppins',
+                            height: 1.25)))),
           ],
         ),
       ),
@@ -2891,7 +3213,9 @@ class _IndigoSubCategoryCard extends StatelessWidget {
   }
 
   Widget _placeholder() {
-    return Center(child: Icon(Icons.category_outlined, size: 28, color: isDark ? Colors.white24 : Colors.black26));
+    return Center(
+        child: Icon(Icons.category_outlined,
+            size: 28, color: isDark ? Colors.white24 : Colors.black26));
   }
 }
 
@@ -2900,34 +3224,26 @@ class _IndigoProductCard extends StatelessWidget {
   final bool isDark;
   final VoidCallback onTap;
 
-  const _IndigoProductCard({required this.product, required this.isDark, required this.onTap});
+  const _IndigoProductCard(
+      {required this.product, required this.isDark, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final cardBg = isDark ? const Color(0xFF26253A) : Colors.white;
-    final borderColor = isDark ? const Color(0xFF3A3A52) : const Color(0xFFE3F2FD);
+    final borderColor =
+    isDark ? const Color(0xFF3A3A52) : const Color(0xFFE3F2FD);
     final nameColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
     final priceColor = isDark ? Colors.grey.shade500 : const Color(0xFF1A1A1A);
 
-    // ── Derive badge flags ─────────────────────────────────────────────────
+    // ── EBT badge flag ─────────────────────────────────────────────────────
     final bool isEbt = product.tags.any((t) {
       final name = t.name.toLowerCase();
       final slug = t.slug.toLowerCase();
       return name.contains('ebt') || slug.contains('ebt');
     });
 
-    // final bool hasVariants = product.tags != null && product.tags!.isNotEmpty;
-
-    // ── All other tags (excluding EBT, age-number slugs) ──────────────────
-    final List<IndigoTag> displayTags = product.tags.where((t) {
-      final slug = t.slug.toLowerCase();
-      final name = t.name.toLowerCase();
-      // skip EBT (shown separately) and pure numeric age slugs like "18", "21"
-      return name.contains('ebt') || slug.contains('ebt') ||
-          slug == 'ebt-eligible' || name.contains('ebt eligible');
-      if (RegExp(r'^\d{1,2}$').hasMatch(slug)) return false;
-      return t.name.trim().isNotEmpty;
-    }).toList();
+    // ✅ FIX: Derive hasVariants from product.type, not from tags
+    final bool hasVariants = product.type == 'variable';
 
     return GestureDetector(
       onTap: onTap,
@@ -2950,8 +3266,7 @@ class _IndigoProductCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-
-              // ── Product name ─────────────────────────────────────────────
+              // ── Product name ───────────────────────────────────────────
               Text(
                 product.name,
                 maxLines: 1,
@@ -2966,7 +3281,7 @@ class _IndigoProductCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
 
-              // ── Price ────────────────────────────────────────────────────
+              // ── Price ──────────────────────────────────────────────────
               Text(
                 "\$${product.price}",
                 style: TextStyle(
@@ -2978,45 +3293,46 @@ class _IndigoProductCard extends StatelessWidget {
               ),
 
               const SizedBox(height: 5),
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: [
 
-                    // EBT badge
-                    if (isEbt)
-                      _TagBadge(
-                        label: 'EBT',
-                        bgColor: isDark ? const Color(0xFF1B3A1F) : const Color(0xFFE8F5E9),
-                        borderColor: isDark ? const Color(0xFF2E7D32) : const Color(0xFFA5D6A7),
-                        textColor: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
-                      ),
+              // ── Badges row ─────────────────────────────────────────────
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ✅ Variants icon — shown only when type == "variable"
+                  if (hasVariants) ...[
+                    SvgPicture.asset(
+                      SvgUtils.variationIcon,
+                      height: 10,
+                      width: 10,
 
-                    // Variants badge
-                    // if (hasVariants)
-                    //   _TagBadge(
-                    //     label: 'Variants',
-                    //     bgColor: isDark ? const Color(0xFF1E1640) : const Color(0xFFEDE7F6),
-                    //     borderColor: isDark ? const Color(0xFF4527A0) : const Color(0xFFB39DDB),
-                    //     textColor: isDark ? const Color(0xFFB39DDB) : const Color(0xFF4527A0),
-                    //     leadingIcon: _VariantIconPainter(
-                    //       color: isDark ? const Color(0xFFB39DDB) : const Color(0xFF4527A0),
-                    //     ),
-                    //   ),
-
-                    // All other tags from IndigoTag list
-                    // ...displayTags.map(
-                    //       (tag) => _TagBadge(
-                    //     label: tag.name,
-                    //     bgColor: isDark ? const Color(0xFF1A2535) : const Color(0xFFE3F2FD),
-                    //     borderColor: isDark ? const Color(0xFF1565C0) : const Color(0xFF90CAF9),
-                    //     textColor: isDark ? const Color(0xFF90CAF9) : const Color(0xFF1565C0),
-                    //   ),
-                    // ),
+                    ),
+                    const SizedBox(width: 4),
                   ],
-                ),
-              // ],
 
+                  // EBT badge
+                  if (isEbt)
+                    Container(
+                      padding:
+                      const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade600,
+                        borderRadius:
+                        BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'EBT',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+
+                ],
+              ),
             ],
           ),
         ),
@@ -3089,14 +3405,15 @@ class _TagBadge extends StatelessWidget {
   }
 }
 
-
 class _VariantIconPainter extends CustomPainter {
   final Color color;
   const _VariantIconPainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color..style = PaintingStyle.fill;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
     const r = Radius.circular(1);
     final s = size.width * 0.42;
     final gap = size.width * 0.16;
@@ -3104,10 +3421,10 @@ class _VariantIconPainter extends CustomPainter {
     canvas.drawRRect(RRect.fromLTRBR(s + gap, 0, size.width, s, r), paint);
     canvas.drawRRect(RRect.fromLTRBR(0, s + gap, s, size.height, r), paint);
     paint.color = color.withOpacity(0.45);
-    canvas.drawRRect(RRect.fromLTRBR(s + gap, s + gap, size.width, size.height, r), paint);
+    canvas.drawRRect(
+        RRect.fromLTRBR(s + gap, s + gap, size.width, size.height, r), paint);
   }
 
   @override
   bool shouldRepaint(_VariantIconPainter old) => old.color != color;
 }
-
