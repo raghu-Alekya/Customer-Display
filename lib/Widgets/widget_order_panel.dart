@@ -158,6 +158,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   double cashbackFee = 0.0;
   bool _scanLocked = false;
   bool _ageVerificationActive = false;
+  bool _isWeightDialogOpen = false;
   String? _lastScannedBarcode;
   DateTime? _lastScanTime;
 
@@ -1099,6 +1100,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
           // ⛔ Ignore junk frames
           if (trimmedBarcode.length < 6) return;
+          _scanLocked = true;
           try {
             final trimmedBarcode = barcode;
             if (kDebugMode) print("🔹 Scanned → $trimmedBarcode");
@@ -1751,6 +1753,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             });
 
             if (hasProduceTag) {
+              if (_isWeightDialogOpen) {
+                print("🚫 Weight dialog already open, ignoring duplicate scan");
+                return;
+              }
               print(
                   "🏷 Produce tag detected on product → Showing AutoWeightPriceDialog");
 
@@ -1758,6 +1764,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               _isLoading = false;
               if (mounted) setState(() {});
 
+              _isWeightDialogOpen = true;
               final result = await showDialog<Map<String, dynamic>>(
                 context: context,
                 barrierDismissible: false,
@@ -1765,7 +1772,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                   productName: productName,
                   unitPrice: productPrice,
                 ),
-              );
+              ).whenComplete(() {
+                _isWeightDialogOpen = false;
+              });
 
               if (result == null) {
                 print("Auto weight cancelled by user");
@@ -2018,6 +2027,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           } catch (e, s) {
             print("❌ Scan failed: $e\n$s");
           } finally {
+            _scanLocked = false;
             // Only reset loading flags
             if (_isLoading) {
               _isLoading = false;
