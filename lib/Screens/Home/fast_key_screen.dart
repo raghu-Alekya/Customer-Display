@@ -2685,6 +2685,11 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       });
 
       item['is_ebt_eligible'] = isEbt;
+      if (item['meta_data'] == null &&
+          cached != null &&
+          cached['meta_data'] != null) {
+        item['meta_data'] = cached['meta_data'];
+      }
 
       debugPrint(
         "🥗 EBT → productId=$productId | isEbt=$isEbt",
