@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
@@ -55,8 +56,11 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'My App',
+        // No global button themes: each ElevatedButton / TextButton / OutlinedButton
+        // keeps its own backgroundColor / foregroundColor, and hover/splash follow that.
         theme: ThemeData(
-          primarySwatch: Colors.blue,
+          useMaterial3: true,
+          primarySwatch: Colors.orange,
         ),
         builder: (context, child) {
           if (child == null) return const SizedBox.shrink();

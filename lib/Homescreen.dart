@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:keyos_app/widgets/settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'bloc/promotion_bloc.dart';
@@ -183,94 +184,116 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
 
               /// 🔹 BOTTOM BUTTONS
-          Flexible(
-            flex: 1,
-              child:
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF5E2A84), Color(0xFF3B1A5A)],
-                  ),
-                  borderRadius: BorderRadius.vertical(
-                    bottom: Radius.circular(30),
-                  ),
-                ),
-
-                child: Column(
-                  children: [
-
-                    const Text(
-                      "Select your Preference",
-                      style: TextStyle(
-                        color: Colors.orange,
-                        fontWeight: FontWeight.bold,
-                      ),
+              Flexible(
+                flex: 1,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF5E2A84), Color(0xFF3B1A5A)],
                     ),
-
-                    const SizedBox(height: 10),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-
-                        /// 🔹 Dine In
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                          ),
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const FoodUiScreen(orderType: "Dine-In"), // ✅
-                              ),
-                            );
-                          },
-                          child: Row(
-                            children: [
-                              Image.asset("assets/dinner.png", width: 20, height: 20),
-                              const SizedBox(width: 8),
-                              const Text("Dine in"),
-                            ],
-                          ),
+                    borderRadius: BorderRadius.vertical(
+                      bottom: Radius.circular(30),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        "Select your Preference",
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.bold,
                         ),
+                      ),
+                      const SizedBox(height: 10),
 
-                        /// 🔹 Take Away
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.pinkAccent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                          ),
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const  FoodUiScreen(orderType: "Take Away"), // ✅
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          /// 🔹 Dine In
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                            );
-                          },
-                          child: Row(
-                            children: [
-                              Image.asset("assets/take-away.png", width: 20, height: 20),
-                              const SizedBox(width: 8),
-                              const Text("Take Away"),
-                            ],
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 12),
+                            ),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                  const FoodUiScreen(orderType: "Dine-In"),
+                                ),
+                              );
+                            },
+                            child: Row(
+                              children: [
+                                Image.asset("assets/dinner.png",
+                                    width: 20, height: 20),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  "Dine in",
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
                           ),
-                        )
-                      ],
-                    )
-                  ],
+
+                          /// 🔹 Take Away
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.pinkAccent,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 12),
+                            ),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                  const FoodUiScreen(orderType: "Take Away"),
+                                ),
+                              );
+                            },
+                            child: Row(
+                              children: [
+                                Image.asset("assets/take-away.png",
+                                    width: 20, height: 20),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  "Take Away",
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          /// 🔹 Settings
+                          IconButton(
+                            icon: const Icon(Icons.settings, color: Colors.white),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                  const PrinterSettingsAndTestScreen(), // your settings screen
+                                ),
+                              );
+                            },
+                            tooltip: 'Printer Settings',
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-          ),
+              )
             ],
           ),
         ),

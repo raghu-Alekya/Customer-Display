@@ -3,7 +3,9 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  permission_handler_windows
   screen_retriever
+  thermal_printer
   window_manager
 )
 

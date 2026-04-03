@@ -533,7 +533,12 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
 
                       Navigator.pop(context, true);
                     },
-                    child: const Text("Add to Cart"),
+                    child: const Text(
+                      "Add to Cart",
+                      style: TextStyle(
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ),
               ],

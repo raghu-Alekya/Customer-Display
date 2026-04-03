@@ -33,6 +33,7 @@ class _CartScreenState extends State<CartScreen> {
 
   double get tax => total * 0.091;
   double get grandTotal => total + tax;
+  bool get hasItems => CartManager.cartItems.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -171,6 +172,7 @@ class _CartScreenState extends State<CartScreen> {
                               color: Color(0xFFDF2626),
                               fontSize: 14,
                               decoration: TextDecoration.underline,
+                              decorationColor: Color(0xFFDF2626), // underline color
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -227,11 +229,12 @@ class _CartScreenState extends State<CartScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
+                                      Text(
+                                        product.name,
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
 
-                                      Text(product.name,
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold)),
-
+                                      // ✅ ADDONS NAME (existing)
                                       if (addons.isNotEmpty)
                                         Padding(
                                           padding: const EdgeInsets.only(top: 4),
@@ -256,7 +259,7 @@ class _CartScreenState extends State<CartScreen> {
                                                     GestureDetector(
                                                       onTap: () {
                                                         setState(() {
-                                                          addons.remove(addon); // removes only clicked addon
+                                                          addons.remove(addon);
                                                         });
                                                       },
                                                       child: const Icon(
@@ -272,6 +275,26 @@ class _CartScreenState extends State<CartScreen> {
                                           ),
                                         ),
 
+                                      // // ✅ ADDON PRICES (NEW - like your image)
+                                      // if (addons.isNotEmpty)
+                                      //   Padding(
+                                      //     padding: const EdgeInsets.only(top: 4),
+                                      //     child: Column(
+                                      //       crossAxisAlignment: CrossAxisAlignment.start,
+                                      //       children: addons.map<Widget>((addon) {
+                                      //         return Text(
+                                      //           "\$${addon.price}",
+                                      //           style: const TextStyle(
+                                      //             fontSize: 11,
+                                      //             color: Colors.grey,
+                                      //             decoration: TextDecoration.lineThrough, // optional
+                                      //           ),
+                                      //         );
+                                      //       }).toList(),
+                                      //     ),
+                                      //   ),
+
+                                      // ✅ CUSTOMIZE BUTTON (IMPROVED)
                                       if (addons.isNotEmpty)
                                         GestureDetector(
                                           onTap: () async {
@@ -288,33 +311,34 @@ class _CartScreenState extends State<CartScreen> {
                                               ),
                                             );
 
-                                            if (result is Map) {
+                                            if (result != null && result is Map<String, dynamic>) {
                                               setState(() {
-                                                item["qty"] = result["qty"] as int;
-                                                item["addons"] = result["addons"] as List;
+                                                item["qty"] = result["qty"] ?? item["qty"];
+                                                item["addons"] = result["addons"] ?? item["addons"];
                                               });
                                             }
                                           },
-                                          child: Container(
-                                            margin: const EdgeInsets.only(top: 4),
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              border: Border.all(color: Colors.orange),
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
-                                            child: const Text(
+                                          child: const Padding(
+                                            padding: EdgeInsets.only(top: 4),
+                                            child: Text(
                                               "Customize",
-                                              style: TextStyle(fontSize: 10, color: Colors.orange),
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.orange,
+                                                decoration: TextDecoration.underline,
+                                                decorationColor: Colors.orange,
+                                                fontWeight: FontWeight.w500,
+                                              ),
                                             ),
                                           ),
-                                        )
+                                        ),
                                     ],
                                   ),
                                 ),
 
                                 /// QTY
                                 Expanded(
-                                  flex: 3,
+                                  flex: 2,
                                   child: Row(
                                     children: [
                                       _qty("-", () {
@@ -334,22 +358,41 @@ class _CartScreenState extends State<CartScreen> {
                                 ),
 
                                 /// PRICE
-                                Expanded(
-                                  flex: 2,
-                                  child: Text(
-                                    "\$${finalPrice.toStringAsFixed(2)}",
-                                    style: const TextStyle(
-                                      color: Colors.green,
-                                      fontWeight: FontWeight.bold,
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    // ✅ Main Price
+                                     Text(
+                                      "\$${finalPrice.toStringAsFixed(2)}",
+                                      style: const TextStyle(
+                                        color: Colors.green,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
-                                  ),
+
+                                    // ✅ Addon Prices (CORRECT ACCESS)
+                                    if (addons.isNotEmpty)
+                                      ...addons.map((addon) {
+                                        return Text(
+                                          "\$${addon.price}", // ✅ FIXED (model access)
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey,
+                                          ),
+                                        );
+                                      }).toList(),
+                                  ],
                                 ),
 
                                 /// DELETE
                                 Expanded(
                                   flex: 1,
                                   child: IconButton(
-                                    icon: const Icon(Icons.delete, size: 18),
+                                    icon: const Icon(
+                                      Icons.delete,
+                                      size: 18,
+                                      color: Color(0xFFE01F1F), // red color
+                                    ),
                                     onPressed: () {
                                       setState(() {
                                         CartManager.cartItems.removeAt(index);
@@ -397,7 +440,8 @@ class _CartScreenState extends State<CartScreen> {
 
             /// 🔶 CONFIRM BUTTON
             GestureDetector(
-              onTap: () {
+              onTap: hasItems
+                  ? () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -409,26 +453,27 @@ class _CartScreenState extends State<CartScreen> {
                     ),
                   ),
                 );
-              },
+              }
+                  : null,
               child: Container(
                 height: 50,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF8A00),
+                  color: hasItems ? const Color(0xFFFF8A00) : Colors.grey.shade400,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Center(
+                child: Center(
                   child: Text(
                     "Confirm Order",
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: hasItems ? Colors.white : Colors.white70,
                     ),
                   ),
                 ),
               ),
-            )
+            ),
           ],
         ),
       ),

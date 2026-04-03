@@ -89,16 +89,17 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
 
     for (var item in CartManager.cartItems) {
       final product = item["product"];
-      final qty = item["qty"];
+      final qty = (item["qty"] as num?)?.toDouble() ?? 0;
       final addons = item["addons"] as List;
 
-      double price =
-          double.tryParse(product.price.replaceAll("₹", "")) ?? 0;
+      // Product price may include a currency symbol like "₹"; strip it before parsing.
+      final rawPrice = (product.price ?? '').toString().replaceAll('₹', '');
+      final price = double.tryParse(rawPrice) ?? 0;
 
-      double addonTotal = 0;
-      for (var a in addons) {
-        addonTotal += a.price;
-      }
+      final addonTotal = addons.fold<double>(
+        0,
+        (sum, a) => sum + (a.price as num).toDouble(),
+      );
 
       total += (price + addonTotal) * qty;
     }
@@ -753,7 +754,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
             Row(
               children: [
                 Text(
-                  '\$${item.price}',
+                  '\$${item.price.replaceAll("₹", "")}',
                   style: const TextStyle(
                     color: Color(0xFF129A50),
                     fontWeight: FontWeight.w700,
