@@ -7,6 +7,7 @@ import 'package:pinaka_pos/Repositories/Orders/order_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:isar/isar.dart'; // Build #1.0.104
 import '../Constants/text.dart';
+import '../Helper/Extentions/money_rounding_helper.dart';
 import '../Models/Category/category_product_model.dart';
 import '../Models/Orders/get_orders_model.dart' as model;
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
@@ -189,8 +190,7 @@ class OrderHelper {
                 double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
 
             final double rawTax = (taxableBase * rate) / 100;
-            final double roundedTax =
-                (rawTax * 100).roundToDouble() / 100;
+            final double roundedTax = roundTaxHalfUp(rawTax);
 
             taxTotal += roundedTax;
 
@@ -198,7 +198,7 @@ class OrderHelper {
           }
 
           print("✅ TOTAL TAX → $taxTotal");
-          return (taxTotal * 100).roundToDouble() / 100;
+          return roundTaxHalfUp(taxTotal);
         }
 
         // Fallback: some cached products store a single tax rate instead of tax_rates array.
@@ -208,9 +208,8 @@ class OrderHelper {
         ) ??
             0.0;
         if (fallbackRate > 0) {
-          final tax = ((taxableBase * fallbackRate) / 100 * 100)
-              .roundToDouble() /
-              100;
+          final tax =
+          roundTaxHalfUp((taxableBase * fallbackRate) / 100);
           print(
               "🧾 TAX FALLBACK → rate:$fallbackRate base:$taxableBase tax:$tax");
           return tax;
@@ -247,10 +246,10 @@ class OrderHelper {
               final double rate =
                   double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
               final double rawTax = (taxableBase * rate) / 100;
-              final double roundedTax = (rawTax * 100).roundToDouble() / 100;
+              final double roundedTax = roundTaxHalfUp(rawTax);
               taxTotal += roundedTax;
             }
-            return (taxTotal * 100).roundToDouble() / 100;
+            return roundTaxHalfUp(taxTotal);
           }
 
           final fallbackRate = double.tryParse(
@@ -259,9 +258,8 @@ class OrderHelper {
           ) ??
               0.0;
           if (fallbackRate > 0) {
-            final tax = ((taxableBase * fallbackRate) / 100 * 100)
-                .roundToDouble() /
-                100;
+            final tax =
+            roundTaxHalfUp((taxableBase * fallbackRate) / 100);
             return tax;
           }
         }
@@ -301,7 +299,8 @@ class OrderHelper {
           double.tryParse((p['tax_rate'] ?? '0').toString()) ?? 0.0;
 
       if (lineTaxStatus == 'taxable' && lineTaxRate > 0) {
-        orderTax += ((price * qty) * lineTaxRate) / 100;
+        orderTax +=
+            roundTaxHalfUp(((price * qty) * lineTaxRate) / 100);
       } else if (pid > 0) {
         orderTax += getProductTaxFromHive(pid, price, qty);
       } else {
@@ -320,9 +319,11 @@ class OrderHelper {
 
       final taxRate = double.tryParse(c['tax_rate']?.toString() ?? '0') ?? 0.0;
       if (taxRate > 0) {
-        orderTax += ((price * taxRate) / 100) * qty;
+        orderTax += roundTaxHalfUp(((price * taxRate) / 100) * qty);
       }
     }
+
+    orderTax = roundTaxHalfUp(orderTax);
 
     // 3. Payouts & cashbacks
     double payoutTotal = payouts.fold(0.0,
@@ -2491,8 +2492,9 @@ class OrderHelper {
 
         if (itemTaxStatus == "taxable" && itemTaxRate > 0) {
           final double taxableBase =
-              (incomingWeighted || existingWeighted) ? mergedLinePrice : (mergedLinePrice * newQty);
-          itemTax = taxableBase * (itemTaxRate / 100);
+          (incomingWeighted || existingWeighted) ? mergedLinePrice : (mergedLinePrice * newQty);
+          itemTax =
+              roundTaxHalfUp(taxableBase * (itemTaxRate / 100));
           print("🔁 UPDATED TAX → rate:$itemTaxRate qty:$newQty tax:$itemTax");
         }
 

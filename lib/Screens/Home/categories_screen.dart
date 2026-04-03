@@ -1710,7 +1710,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           'has_age_restriction': false,
           'fast_key_item_tags': <Map<String, dynamic>>[],
           'variations': <dynamic>[],
-          'type': 'simple',
+          // Preserve backend type (simple/variable/...) for variant flow.
+          'type': product.type,
         };
 
         final int productId =
@@ -1795,8 +1796,10 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         final String productImage = rawImage is String
             ? rawImage
             : (rawImage is Map ? rawImage["src"] ?? "" : "");
+        final String resolvedType =
+            (cachedProduct?["type"] ?? item["type"] ?? "").toString().toLowerCase();
         final bool hasVariants = (cachedProduct?["has_variants"] == true) ||
-            (item["type"] == "variable" ||
+            (resolvedType == "variable" ||
                 (item["variations"] != null &&
                     (item["variations"] as List).isNotEmpty));
         final dynamic minAgeSource =

@@ -3922,14 +3922,33 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       return;
                                     }
 
-                                    // 3️⃣ Select EBT payment method with the allowed amount
+                                    // 3️⃣ Respect user-entered partial amount when present.
+                                    final enteredAmount = double.tryParse(
+                                      amountController.text
+                                          .replaceAll(
+                                          TextConstants.currencySymbol, '')
+                                          .trim(),
+                                    ) ??
+                                        0.0;
+
+                                    final amountToUse = enteredAmount > 0
+                                        ? enteredAmount.clamp(0.0, allowedAmount)
+                                        : allowedAmount;
+
+                                    if (amountToUse <= 0) {
+                                      setState(() => _amountErrorText =
+                                          TextConstants.amountValidation);
+                                      return;
+                                    }
+
+                                    // 4️⃣ Select EBT payment method with the resolved amount
                                     _selectPaymentMethod(
                                       TextConstants.ebtText,
                                       autoFillAmount: true,
-                                      maxAllowedAmount: allowedAmount,
+                                      maxAllowedAmount: amountToUse,
                                     );
 
-                                    // 4️⃣ Trigger the payment process
+                                    // 5️⃣ Trigger the payment process
                                     _handlePay();
                                   },
                                 ),

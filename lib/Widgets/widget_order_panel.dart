@@ -1943,7 +1943,16 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             // ---------------------------------------------------------------------------
             // 8️⃣ VARIATIONS FLOW
             // =====================================================================
-            if ((product.variations ?? []).isNotEmpty) {
+            // 🔎 Detect products that should open the variants popup based on tags.
+            // This keeps all existing logic the same, we only broaden the condition
+            // for when we *start* loading variants on first tap.
+            final bool hasVariantTag = (product.tags ?? []).any((t) {
+              final name = (t.name ?? "").toLowerCase();
+              final slug = (t.slug ?? "").toLowerCase();
+              return name.contains("variant") || slug.contains("variant");
+            });
+
+            if ((product.variations ?? []).isNotEmpty || hasVariantTag) {
               // 1️⃣ Fetch variants
               productBloc.fetchProductVariations(product.id!);
 
@@ -3913,13 +3922,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           if (isWeighted) {
             final double unitPrice =
                 double.tryParse(item['unit_price']?.toString() ?? '') ?? 0.0;
-            final double w =
-                (item['weight_qty'] as num?)?.toDouble() ??
-                    (unitPrice > 0 ? (price / unitPrice) : 0.0);
+            final double w = (item['weight_qty'] as num?)?.toDouble() ??
+                (unitPrice > 0 ? (price / unitPrice) : 0.0);
             // Trim trailing zeros: 1.500 -> 1.5, 1.000 -> 1
-            displayQty = w
-                .toStringAsFixed(3)
-                .replaceFirst(RegExp(r'\.?0+$'), '');
+            displayQty =
+                w.toStringAsFixed(3).replaceFirst(RegExp(r'\.?0+$'), '');
           }
 
           double itemTax = 0.0;
@@ -5397,21 +5404,117 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                     children: [
                                                       // PRICE × QTY
                                                       if (!isCouponOrPayout)
-                                                        Text(
-                                                          "${TextConstants.currencySymbol}${(orderItem['item_price'] ?? orderItem['price'] ?? 0).toStringAsFixed(2)} × ${(orderItem['display_qty'] ?? (orderItem['items_count'] ?? orderItem['quantity'] ?? 1))}",
-                                                          style: TextStyle(
-                                                            color: themeHelper
-                                                                        .themeMode ==
-                                                                    ThemeMode
-                                                                        .dark
-                                                                ? ThemeNotifier
-                                                                    .textDark
-                                                                : Colors
-                                                                    .black54,
-                                                            fontSize: 12,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                          ),
+                                                        Builder(
+                                                          builder: (_) {
+                                                            final String
+                                                                itemTypeStr =
+                                                                (orderItem['item_type'] ??
+                                                                        '')
+                                                                    .toString()
+                                                                    .toLowerCase();
+                                                            final bool
+                                                                isWeightedRow =
+                                                                itemTypeStr
+                                                                    .contains(
+                                                                        'weighted');
+
+                                                            // For weighing items: derive unit price from line total ÷ weight
+                                                            if (isWeightedRow) {
+                                                              final dynamic
+                                                                  rawQty =
+                                                                  orderItem[
+                                                                          'display_qty'] ??
+                                                                      orderItem[
+                                                                          'weight_qty'] ??
+                                                                      orderItem[
+                                                                          'quantity'] ??
+                                                                      1;
+                                                              final double qty = (rawQty
+                                                                      is num)
+                                                                  ? rawQty
+                                                                      .toDouble()
+                                                                  : double.tryParse(
+                                                                          rawQty
+                                                                              .toString()) ??
+                                                                      1.0;
+
+                                                              final double lineTotal = ((orderItem['original_total'] ??
+                                                                      orderItem[
+                                                                          'item_price'] ??
+                                                                      orderItem[
+                                                                          'price'] ??
+                                                                      0) as num)
+                                                                  .toDouble();
+
+                                                              final double
+                                                                  unitPrice =
+                                                                  qty > 0
+                                                                      ? lineTotal /
+                                                                          qty
+                                                                      : lineTotal;
+
+                                                              final String
+                                                                  qtyStr =
+                                                                  qty.toString();
+
+                                                              return Text(
+                                                                "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)} × $qtyStr",
+                                                                style:
+                                                                    TextStyle(
+                                                                  color: themeHelper
+                                                                              .themeMode ==
+                                                                          ThemeMode
+                                                                              .dark
+                                                                      ? ThemeNotifier
+                                                                          .textDark
+                                                                      : Colors
+                                                                          .black54,
+                                                                  fontSize: 12,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                ),
+                                                              );
+                                                            }
+
+                                                            // Non‑weighing items: keep existing behaviour (item_price × qty)
+                                                            final double price =
+                                                                ((orderItem['item_price'] ??
+                                                                        orderItem[
+                                                                            'price'] ??
+                                                                        0) as num)
+                                                                    .toDouble();
+                                                            final dynamic
+                                                                rawQty =
+                                                                orderItem[
+                                                                        'display_qty'] ??
+                                                                    orderItem[
+                                                                        'items_count'] ??
+                                                                    orderItem[
+                                                                        'quantity'] ??
+                                                                    1;
+                                                            final String
+                                                                qtyStr = rawQty
+                                                                    .toString();
+
+                                                            return Text(
+                                                              "${TextConstants.currencySymbol}${price.toStringAsFixed(2)} × $qtyStr",
+                                                              style: TextStyle(
+                                                                color: themeHelper
+                                                                            .themeMode ==
+                                                                        ThemeMode
+                                                                            .dark
+                                                                    ? ThemeNotifier
+                                                                        .textDark
+                                                                    : Colors
+                                                                        .black54,
+                                                                fontSize: 12,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                              ),
+                                                            );
+                                                          },
                                                         ),
 
                                                       // Space only when price exists AND (EBT or Variant to show)

@@ -742,15 +742,18 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
-    if (widget.activeOrderId == null) {
-      orderItems.clear();
+    final int? requestOrderId = widget.activeOrderId;
+    if (requestOrderId == null) {
+      if (mounted) setState(() => orderItems.clear());
       return;
     }
 
     // 1️⃣ Try SQLite items
     try {
       List<Map<String, dynamic>> items =
-      await orderHelper.getOrderItems(widget.activeOrderId!);
+      await orderHelper.getOrderItems(requestOrderId);
+
+      if (!mounted || widget.activeOrderId != requestOrderId) return;
 
       if (items.isNotEmpty) {
         print("🟦 SQLite Order Items Loaded: $items");
@@ -801,12 +804,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         return;
       }
     } catch (_) {}
+    if (!mounted || widget.activeOrderId != requestOrderId) return;
+
     final deletedBox = StorageProvider.deletedOrders;
 
-    final deleted = await deletedBox.get(widget.activeOrderId.toString());
+    final deleted = await deletedBox.get(requestOrderId.toString());
+
+    if (!mounted || widget.activeOrderId != requestOrderId) return;
 
     if (deleted != null) {
-      print("🔥 Loading DELETED ORDER ITEMS for ID = ${widget.activeOrderId}");
+      print("🔥 Loading DELETED ORDER ITEMS for ID = $requestOrderId");
       _order[AppDBConst.orderStatus] = "cancelled";
 
       final List productList = deleted["products"] ?? [];
@@ -860,7 +867,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     }
 
     // 3️⃣ Nothing found
-    orderItems.clear();
+    if (mounted && widget.activeOrderId == requestOrderId) {
+      setState(() => orderItems.clear());
+    }
   }
 
   @override
@@ -2532,7 +2541,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                           ],
                                         ),
                                         Text(
-                                            "-${TextConstants.currencySymbol}${(orderDiscount.abs() + itemLevelDiscountTotal).toStringAsFixed(2)}",
+                                          // After:
+                                            "-${TextConstants.currencySymbol}${orderDiscount.abs().toStringAsFixed(2)}",
                                             style: TextStyle(
                                                 color: Colors.green,
                                                 fontSize: 14)),

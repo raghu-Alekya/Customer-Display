@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:isar/isar.dart';
 import 'package:pinaka_pos/Database/isar_cache_entry.dart';
@@ -19,6 +20,7 @@ import '../Constants/text.dart';
 import '../Database/db_helper.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
+import '../Helper/url_helper.dart';
 import '../Helper/api_response.dart';
 import '../Models/Search/product_variation_model.dart';
 import '../Providers/Age/age_verification_provider.dart';
@@ -32,6 +34,7 @@ import '../Utilities/svg_images_utility.dart';
 import 'ManualPriceDialog.dart';
 import 'OrderPopupHelper.dart';
 import 'widget_logs_toast.dart';
+import 'widget_topbar.dart';
 
 class NestedGridWidget extends StatelessWidget {
   final bool isHorizontal;
@@ -87,38 +90,32 @@ class NestedGridWidget extends StatelessWidget {
     required this.isPaginating,
   });
   Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
-    if (_productMetaCache.isNotEmpty) {
-      return _productMetaCache[productId];
-    }
+    // Same merged list as TopBar search / FastKey screen (not only products_* Isar keys).
+    if (!_productMetaInitialized) {
+      try {
+        final allCached = await TopBar.mergedCachedProductsForSearch();
+        int? resolveId(dynamic raw) {
+          if (raw is! Map) return null;
+          final m = Map<String, dynamic>.from(raw);
+          final dynamic idRaw =
+              m["fast_key_product_id"] ?? m["product_id"] ?? m["id"];
+          if (idRaw is int) return idRaw;
+          return int.tryParse(idRaw?.toString() ?? "");
+        }
 
-    try {
-      final isar = await IsarService.instance;
-      final entries = await isar.isarCacheEntrys.where().findAll();
-
-      for (final entry in entries) {
-        if (!entry.key.startsWith("products_")) continue;
-
-        final List<dynamic> products = jsonDecode(entry.json);
-
-        for (final raw in products) {
-          if (raw is! Map) continue;
-          final map = Map<String, dynamic>.from(raw);
-          final idStr =
-          (map["fast_key_product_id"] ?? map["id"])?.toString();
-          final pid = int.tryParse(idStr ?? "");
-          if (pid != null) {
-            _productMetaCache[pid] = map;
-          }
+        for (final raw in allCached) {
+          final pid = resolveId(raw);
+          if (pid == null) continue;
+          _productMetaCache[pid] = Map<String, dynamic>.from(raw as Map);
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print("⚠️ merged product cache failed → $e");
         }
       }
-
-      return _productMetaCache[productId];
-    } catch (e) {
-      if (kDebugMode) {
-        print("⚠️ Isar cache lookup failed → $e");
-      }
+      _productMetaInitialized = true;
     }
-    return null;
+    return _productMetaCache[productId];
   }
   Future<bool> _fastKeyHasVariants(Map<String, dynamic> item) async {
     final int? productId =
@@ -157,7 +154,8 @@ class NestedGridWidget extends StatelessWidget {
   }
 
   bool _isProductEbtEligible(Map<String, dynamic> item) {
-    if (item["is_ebt_eligible"] == true) return true;
+    if (_truthyEbtNested(item["is_ebt_eligible"])) return true;
+    if (_ebtMetaNested(item["meta_data"])) return true;
 
     final dynamic tagsRaw = item["fast_key_item_tags"] ?? item["tags"];
     if (tagsRaw is List) {
@@ -339,7 +337,23 @@ class NestedGridWidget extends StatelessWidget {
                     item['isEbtEligible'];
                 final bool ebtFromFlag = rawEbtFlag == true ||
                     rawEbtFlag == 1 ||
-                    rawEbtFlag == '1';
+                    rawEbtFlag == '1' ||
+                    rawEbtFlag == 'true';
+
+                final String itemTypeStr =
+                    (item['type'] ?? '').toString().toLowerCase();
+                final dynamic hvDb = item['fast_key_item_has_variant'];
+                final bool hasVariantFromApiRow = hvDb == 1 ||
+                    hvDb == true ||
+                    hvDb == '1';
+                final bool showVariantIcon = hasVariantFromApiRow ||
+                    item['has_variants'] == true ||
+                    item['has_variants'] == 1 ||
+                    item['has_variants'] == '1' ||
+                    item['has_variants'] == 'true' ||
+                    (item['variations'] is List &&
+                        (item['variations'] as List).isNotEmpty) ||
+                    itemTypeStr == 'variable';
 
                 final bool showEbtTag =
                     ebtFromFlag || _isProductEbtEligible(item);
@@ -390,6 +404,9 @@ class NestedGridWidget extends StatelessWidget {
                             // 🧠 Hydrate from Isar cache (same flow as category load)
                             final productId =
                                 int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
+                            if (productId > 0) {
+                              await _enrichFastKeyItemSkuForNested(item);
+                            }
                             final cachedProduct =
                             productId > 0 ? await _getCachedProductFromIsar(productId) : null;
 
@@ -467,9 +484,23 @@ class NestedGridWidget extends StatelessWidget {
                                 : (rawImage is Map ? rawImage["src"] ?? "" : "");
 
                             // ✅ Detect variants & restrictions
-                            final hasVariants = (cachedProduct?["has_variants"] == true) ||
-                                (item["type"] == "variable" ||
-                                    (item["variations"] != null && item["variations"].isNotEmpty));
+                            // Use the same rules as FastKey screen + DB flag so
+                            // tap behaviour matches category grid behaviour.
+                            final dynamic hvDb = item['fast_key_item_has_variant'];
+                            final bool hasVariantFromApiRow =
+                                hvDb == 1 || hvDb == true || hvDb == '1';
+
+                            final String typeStr =
+                                (item["type"] ?? cachedProduct?["type"] ?? "")
+                                    .toString()
+                                    .toLowerCase();
+
+                            final bool hasVariants =
+                                hasVariantFromApiRow ||
+                                (cachedProduct?["has_variants"] == true) ||
+                                typeStr == "variable" ||
+                                (item["variations"] != null &&
+                                    item["variations"].isNotEmpty);
 
                             // 🔞 Detect min age (field OR tags)
                             final dynamic minAgeSource =
@@ -884,6 +915,44 @@ class NestedGridWidget extends StatelessWidget {
                                 }
                               }
 
+                              // 🔥 Same as category screen: fetch WooCommerce variations when cache is empty
+                              if (offlineVariations.isEmpty && productId > 0) {
+                                final fetched =
+                                    await _fetchVariationsFromApiNestedGrid(productId);
+                                if (fetched.isNotEmpty) {
+                                  offlineVariations = fetched;
+                                  try {
+                                    final box = StorageProvider.productCache;
+                                    await box.put(
+                                      "product_${productId}_variations",
+                                      {
+                                        "variations": fetched,
+                                        "timestamp":
+                                            DateTime.now().toIso8601String(),
+                                      },
+                                    );
+                                  } catch (_) {}
+                                }
+                              }
+
+                              if (offlineVariations.isEmpty) {
+                                if (context.mounted && loadingDialogShown) {
+                                  Navigator.of(context, rootNavigator: true)
+                                      .pop();
+                                }
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        "No variants available for this product right now.",
+                                      ),
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                                return;
+                              }
+
                               // Dismiss loading dialog before showing VariantsDialog
                               if (context.mounted && loadingDialogShown) {
                                 Navigator.of(context, rootNavigator: true).pop();
@@ -1033,11 +1102,9 @@ class NestedGridWidget extends StatelessWidget {
 
                                           const SizedBox(width: 6),
 
-                                          // ✅ Variant icon
-                                          if (item['has_variants'] == true ||
-                                              (item['variations'] is List &&
-                                                  item['variations'].isNotEmpty) ||
-                                              item['type'] == 'variable')
+                                          // ✅ Variant icon (truthy flags + tag-based variable)
+                                          if (showVariantIcon ||
+                                              _isVariableProduct(item))
                                             SvgPicture.asset(
                                               SvgUtils.variationIcon,
                                               height: 10,
@@ -1184,4 +1251,100 @@ class NestedGridWidget extends StatelessWidget {
     onItemTapped(index, variantAdded: true);
   }
 
+}
+
+// ── Fast Keys: SKU Hive enrich + WooCommerce variations API (category parity) ──
+
+Future<void> _enrichFastKeyItemSkuForNested(Map<String, dynamic> item) async {
+  final sku = (item['fast_key_item_sku'] ?? '').toString().trim();
+  if (sku.isEmpty || sku == 'N/A') return;
+  try {
+    final box = StorageProvider.productCache;
+    final raw = await box.get('sku_${sku.toLowerCase()}');
+    if (raw is! Map) return;
+    final products = raw['products'];
+    if (products is! List || products.isEmpty) return;
+    final first = products.first;
+    if (first is! Map) return;
+    final p = Map<String, dynamic>.from(first);
+    final typeStr = (p['type'] ?? item['type'] ?? '').toString();
+    if (typeStr.isNotEmpty) item['type'] = typeStr;
+    if (item['variations'] == null && p['variations'] is List) {
+      item['variations'] = p['variations'];
+    }
+    if ((item['fast_key_item_tags'] == null ||
+            (item['fast_key_item_tags'] is List &&
+                (item['fast_key_item_tags'] as List).isEmpty)) &&
+        p['tags'] != null) {
+      item['fast_key_item_tags'] = p['tags'];
+    }
+    if (p['is_ebt_eligible'] == true) {
+      item['is_ebt_eligible'] = true;
+    }
+  } catch (_) {}
+}
+
+Future<String> _getAuthTokenForNestedGrid() async {
+  final db = await DBHelper.instance.database;
+  final result = await db.query(
+    AppDBConst.userTable,
+    where:
+        '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+    orderBy: '${AppDBConst.userId} DESC',
+    limit: 1,
+  );
+  if (result.isEmpty) {
+    throw Exception('No active user token found');
+  }
+  return result.first[AppDBConst.userToken] as String;
+}
+
+Future<List<Map<String, dynamic>>> _fetchVariationsFromApiNestedGrid(
+    int productId) async {
+  try {
+    final token = await _getAuthTokenForNestedGrid();
+    final url = Uri.parse(
+      "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations",
+    );
+    final response =
+        await http.get(url, headers: {"Authorization": "Bearer $token"});
+    if (response.statusCode != 200) return <Map<String, dynamic>>[];
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List) return <Map<String, dynamic>>[];
+
+    return decoded
+        .whereType<Map>()
+        .map<Map<String, dynamic>>((v) {
+          final map = v.map((key, value) => MapEntry(key.toString(), value));
+          final attrs = map["attributes"];
+          final String fallbackName = attrs is List
+              ? attrs
+                  .whereType<Map>()
+                  .map((a) => (a["option"] ?? "").toString())
+                  .where((x) => x.isNotEmpty)
+                  .join(" - ")
+              : "";
+          return {
+            "id": map["id"],
+            "name": (map["name"] ?? "").toString().isNotEmpty
+                ? map["name"]
+                : (fallbackName.isNotEmpty
+                    ? fallbackName
+                    : "Unnamed Variant"),
+            "price":
+                (map["price"] ?? map["regular_price"] ?? "0").toString(),
+            "sku": map["sku"] ?? "",
+            "image": (map["image"] is Map && map["image"]["src"] != null)
+                ? map["image"]["src"]
+                : (map["image"] is String ? map["image"] : ""),
+          };
+        })
+        .where((v) => v["id"] != null)
+        .toList();
+  } catch (e) {
+    if (kDebugMode) {
+      print("⚠️ _fetchVariationsFromApiNestedGrid: $e");
+    }
+    return <Map<String, dynamic>>[];
+  }
 }
