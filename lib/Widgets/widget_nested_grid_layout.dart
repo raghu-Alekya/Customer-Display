@@ -1278,10 +1278,38 @@ Future<void> _enrichFastKeyItemSkuForNested(Map<String, dynamic> item) async {
         p['tags'] != null) {
       item['fast_key_item_tags'] = p['tags'];
     }
-    if (p['is_ebt_eligible'] == true) {
+    if (_truthyEbtNested(p['is_ebt_eligible']) ||
+        _ebtMetaNested(p['meta_data'])) {
       item['is_ebt_eligible'] = true;
     }
+    if (item['meta_data'] == null && p['meta_data'] != null) {
+      item['meta_data'] = p['meta_data'];
+    }
   } catch (_) {}
+}
+
+bool _truthyEbtNested(dynamic v) {
+  if (v == true || v == 1) return true;
+  if (v is String) {
+    final s = v.toLowerCase().trim();
+    return s == '1' || s == 'true' || s == 'yes';
+  }
+  return false;
+}
+
+bool _ebtMetaNested(dynamic meta) {
+  if (meta is! List) return false;
+  for (final m in meta) {
+    if (m is! Map) continue;
+    final key = (m['key'] ?? '').toString().toLowerCase();
+    if (key != '_is_ebt_eligible' &&
+        key != 'is_ebt_eligible' &&
+        key != '_ebt_eligible') {
+      continue;
+    }
+    if (_truthyEbtNested(m['value'])) return true;
+  }
+  return false;
 }
 
 Future<String> _getAuthTokenForNestedGrid() async {
