@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:keyos_app/widgets/kiosk_header_widgets.dart';
 
 class UpiMethodScreen extends StatelessWidget {
   final String orderType;
@@ -34,52 +35,11 @@ class UpiMethodScreen extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  OutlinedButton.icon(
+                  KioskMenuBackButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new,
-                      size: 12,
-                      color: Color(0xFFFF9900),
-                    ),
-                    label: const Text(
-                      'Back',
-                      style: TextStyle(
-                        color: Color(0xFFFF9900),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFFFD08A)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                    ),
                   ),
                   const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEAF0FA),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFD3DDEB)),
-                    ),
-                    child: Text(
-                      orderType,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Color(0xFF5D78A5),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
+                  KioskOrderTypeChip(orderType: orderType),
                 ],
               ),
               const SizedBox(height: 26),

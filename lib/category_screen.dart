@@ -7,6 +7,7 @@ import 'package:keyos_app/repository/addon_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'Homescreen.dart';
+import 'promo_carousel_utils.dart';
 import 'bloc/promotion_bloc.dart';
 import 'bloc/store_details_bloc.dart';
 import 'bloc/category_bloc.dart';
@@ -18,6 +19,8 @@ import 'customize_screen.dart';
 import 'model/category_model.dart';
 import 'model/product model.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:keyos_app/widgets/kiosk_header_widgets.dart';
+import 'package:keyos_app/widgets/kiosk_loading.dart';
 
 class FoodUiScreen extends StatefulWidget {
   final String orderType;
@@ -60,11 +63,33 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
   @override
   void initState() {
     super.initState();
-    promoPageController = PageController();
+    promoPageController = PageController(
+      initialPage: promoVirtualBasePage(promoImages.length),
+    );
     searchController = TextEditingController();
     _startPromoAutoSlide();
     _loadBannerPromotions();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadStoreDetailsIfNeeded());
+  }
+
+  List<String> get _activePromoList =>
+      bannerImages.isNotEmpty ? bannerImages : promoImages;
+
+  void _advanceCategoryPromo() {
+    final list = _activePromoList;
+    if (!mounted || list.length < 2) return;
+    if (!promoPageController.hasClients) return;
+    final cur = promoPageController.page!.round();
+    final next = cur + 1;
+    if (next >= kPromoVirtualPageCount - 20) {
+      promoPageController.jumpToPage(promoVirtualBasePage(list.length));
+      return;
+    }
+    promoPageController.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeInOut,
+    );
   }
 
   Future<void> _loadStoreDetailsIfNeeded() async {
@@ -85,16 +110,12 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
   }
 
   void _startPromoAutoSlide() {
-    if (promoImages.length < 2) return;
-    promoTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (!mounted || promoImages.isEmpty) return;
-      final nextPage = (currentPromoIndex + 1) % promoImages.length;
-      promoPageController.animateToPage(
-        nextPage,
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeInOut,
-      );
-    });
+    if (_activePromoList.length < 2) return;
+    promoTimer?.cancel();
+    promoTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _advanceCategoryPromo(),
+    );
   }
   double _getTotalPrice() {
     double total = 0;
@@ -145,12 +166,14 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                     bannerImages = state.images;
                     currentPromoIndex = 0;
                   });
-                  promoPageController.jumpToPage(0);
+                  promoPageController
+                      .jumpToPage(promoVirtualBasePage(state.images.length));
                   for (final src in state.images) {
                     if (src.startsWith('http://') || src.startsWith('https://')) {
                       precacheImage(NetworkImage(src), context);
                     }
                   }
+                  _startPromoAutoSlide();
                 }
               },
             ),
@@ -235,23 +258,31 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
   }
 
   Widget _promoCard() {
-    final images = bannerImages.isNotEmpty ? bannerImages : promoImages;
+    final images = _activePromoList;
     return Container(
       margin: EdgeInsets.zero,
       decoration: const BoxDecoration(),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
         height: 96,
-        child: PageView.builder(
-          controller: promoPageController,
-          itemCount: images.length,
-          onPageChanged: (index) {
-            setState(() {
-              currentPromoIndex = index;
-            });
-          },
-          itemBuilder: (_, index) {
-            final src = images[index];
+        // Keep carousel LTR so slides advance left→right on all devices (RTL locale flips PageView by default).
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: PageView.builder(
+            controller: promoPageController,
+            reverse: false,
+            itemCount: images.isEmpty ? 1 : kPromoVirtualPageCount,
+            onPageChanged: (index) {
+              if (images.isEmpty) return;
+              setState(() {
+                currentPromoIndex = index % images.length;
+              });
+            },
+            itemBuilder: (_, index) {
+            if (images.isEmpty) {
+              return const ColoredBox(color: Colors.black);
+            }
+            final src = images[index % images.length];
             final isNetwork =
                 src.startsWith('http://') || src.startsWith('https://');
 
@@ -266,16 +297,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                         gaplessPlayback: true,
                         loadingBuilder: (context, child, loadingProgress) {
                           if (loadingProgress == null) return child;
-                          return const ColoredBox(
-                            color: Colors.black,
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
-                              ),
-                            ),
-                          );
+                          return const KioskPromoImageLoading();
                         },
                         errorBuilder: (_, __, ___) => const ColoredBox(
                           color: Colors.black,
@@ -304,6 +326,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
               ],
             );
           },
+          ),
         ),
       ),
     );
@@ -344,12 +367,11 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                         width: 52,
                         height: 52,
                         color: Colors.grey.shade200,
-                        child: const Center(
-                          child: SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
+                        alignment: Alignment.center,
+                        child: const KioskWaveDots(
+                          dotSize: 6,
+                          spacing: 4,
+                          color: Color(0xFFFF9900),
                         ),
                       ),
                       errorWidget: (_, __, ___) => const SizedBox(
@@ -390,75 +412,68 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
         children: [
           _storeLogoBlock(),
           const SizedBox(width: 4),
-          _capsule(
-            width: null,
-            height: 30,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF506796),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    widget.orderType,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF506796),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          KioskOrderTypeChip(orderType: widget.orderType),
           const SizedBox(width: 6),
           SizedBox(
             width: 90,
             child: Container(
               height: 30,
-              padding: const EdgeInsets.only(left: 10, right: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
               decoration: BoxDecoration(
                 color: Colors.white,
                 border: Border.all(color: Colors.black12),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Row(
+              clipBehavior: Clip.hardEdge,
+              child: Stack(
+                alignment: Alignment.center,
                 children: [
-                  Expanded(
+                  Positioned.fill(
                     child: TextField(
                       controller: searchController,
+                      textAlign: TextAlign.center,
+                      textAlignVertical: TextAlignVertical.center,
+                      maxLines: 1,
                       textInputAction: TextInputAction.search,
                       onChanged: _onSearchChanged,
                       onSubmitted: (_) => _searchProducts(),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        height: 1.15,
+                      ),
                       decoration: const InputDecoration(
                         hintText: 'Search',
                         hintStyle:
-                        TextStyle(fontSize: 11, color: Colors.black54),
+                            TextStyle(fontSize: 11, color: Colors.black54),
                         border: InputBorder.none,
                         isDense: true,
-                        contentPadding: EdgeInsets.zero,
+                        filled: false,
+                        // Reserve space for trailing search icon so hint/text center in full bar.
+                        contentPadding: EdgeInsets.fromLTRB(4, 6, 30, 6),
                       ),
                     ),
                   ),
-                  InkWell(
-                    onTap: _searchProducts,
-                    child: Container(
-                      height: 22,
-                      width: 26,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFF7A00),
-                        borderRadius: BorderRadius.circular(8),
+                  Positioned(
+                    right: 2,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: InkWell(
+                        onTap: _searchProducts,
+                        child: Container(
+                          height: 22,
+                          width: 26,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF7A00),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.search,
+                            size: 13,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
-                      child:
-                      const Icon(Icons.search, size: 13, color: Colors.white),
                     ),
                   ),
                 ],
@@ -528,7 +543,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
         selectedSubcategory < subcategories.length ? selectedSubcategory : 0;
 
         return Padding(
-          padding: const EdgeInsets.only(left: 8, right: 8, bottom: 8),
+          padding: const EdgeInsets.only(left: 4, right: 8, bottom: 8),
           child: Align(
             alignment: Alignment.centerLeft,
             child: SingleChildScrollView(
@@ -591,7 +606,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
       child: BlocBuilder<CategoryBloc, CategoryState>(
         builder: (context, state) {
           if (state is CategoryLoading || state is CategoryInitial) {
-            return const Center(child: CircularProgressIndicator());
+            return const KioskBlockLoading();
           }
 
           if (state is CategoryError) {
@@ -658,7 +673,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
               : 0;
 
           return ListView.separated(
-            padding: const EdgeInsets.only(left: 8, right: 8, bottom: 12),
+            padding: const EdgeInsets.only(left: 6, right: 2, bottom: 12),
             itemCount: categories.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (_, index) {
@@ -751,7 +766,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
     return BlocBuilder<ProductBloc, ProductState>(
       builder: (context, state) {
         if (state is ProductLoading || state is ProductInitial) {
-          return const Center(child: CircularProgressIndicator());
+          return const KioskBlockLoading(message: 'Loading products...');
         }
 
         if (state is ProductError) {
@@ -773,7 +788,8 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
           return const Center(child: Text('No items found for selected type'));
         }
 
-        return Center( // 🔥 centers the grid
+        return Align(
+          alignment: Alignment.topLeft,
           child: SizedBox(
             width: 450, // 🔥 control total grid width here
             child: GridView.builder(
@@ -785,7 +801,8 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                 crossAxisCount: 3, // ✅ keep 3
                 mainAxisSpacing: 6,
                 crossAxisSpacing: 6,
-                childAspectRatio: 1.2,
+                // Slightly taller cells so larger product images fit without overflow.
+                childAspectRatio: 1.05,
               ),
               itemBuilder: (_, index) {
                 final item = products[index];
@@ -818,53 +835,65 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 13,
-              height: 13,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(Icons.crop_square_rounded, size: 13, color: typeColor),
-                  Icon(Icons.circle, size: 6, color: typeColor),
-                ],
-              ),
-            ),
-            const SizedBox(height: 3),
             Center(child: _productImage(item.imageUrl)),
             const SizedBox(height: 4),
-            Text(
-              item.name,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 2),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '\$${item.price.replaceAll("₹", "")}',
-                  style: const TextStyle(
-                    color: Color(0xFF129A50),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Icon(Icons.crop_square_rounded, size: 16, color: typeColor),
+                      Icon(Icons.circle, size: 8, color: typeColor),
+                    ],
                   ),
                 ),
-                const Spacer(),
-                InkWell(
-                  borderRadius: BorderRadius.circular(6),
-                  onTap: () => _openCustomize(item),
-                  child: Container(
-                    height: 22,
-                    width: 22,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFD8B2),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    child: const Icon(
-                      Icons.add,
-                      size: 13,
-                      color: Color(0xFFFF8A00),
-                    ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.name,
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            '\$${item.price.replaceAll("₹", "")}',
+                            style: const TextStyle(
+                              color: Color(0xFF129A50),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const Spacer(),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(6),
+                            onTap: () => _openCustomize(item),
+                            child: Container(
+                              height: 24,
+                              width: 24,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFD8B2),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: const Icon(
+                                Icons.add,
+                                size: 15,
+                                color: Color(0xFFFF8A00),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -890,17 +919,19 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
     setState(() {});
   }
 
+  static const double _productImageSize = 56;
+
   Widget _productImage(String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) {
       return Container(
-        height: 38,
-        width: 38,
+        height: _productImageSize,
+        width: _productImageSize,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: const Color(0xFFF2F4F7),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: const Icon(Icons.fastfood_rounded, size: 20, color: Colors.black54),
+        child: const Icon(Icons.fastfood_rounded, size: 26, color: Colors.black54),
       );
     }
     // 🔹 Debug: check if this URL is already cached
@@ -915,19 +946,20 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
       borderRadius: BorderRadius.circular(10),
       child: CachedNetworkImage(
         imageUrl: imageUrl,       // <-- use imageUrl here
-        height: 38,
-        width: 38,
+        height: _productImageSize,
+        width: _productImageSize,
         fit: BoxFit.cover,
-        placeholder: (_, __) => const SizedBox(
-          height: 38,
-          width: 38,
-          child: Center(
-            child: CircularProgressIndicator(strokeWidth: 2),
+        placeholder: (_, __) => ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: SizedBox(
+            height: _productImageSize,
+            width: _productImageSize,
+            child: const KioskProductThumbLoading(),
           ),
         ),
         errorWidget: (_, __, ___) => Container(
-          height: 38,
-          width: 38,
+          height: _productImageSize,
+          width: _productImageSize,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: Color(0xFFF2F4F7),

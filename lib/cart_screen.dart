@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:keyos_app/widgets/kiosk_header_widgets.dart';
 import 'package:keyos_app/widgets/payment_method.dart';
 import 'cart_manger.dart';
 import 'customize_screen.dart';
@@ -49,38 +50,9 @@ class _CartScreenState extends State<CartScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
 
-                /// BACK BUTTON
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: const Color(0xFFFF8A00), // ✅ same as text color
-                        width: 1.2,
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min, // 👈 important
-                      children: [
-                        Icon(
-                          Icons.arrow_back,
-                          size: 14,
-                          color: Color(0xFFFF8A00),
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          "Menu",
-                          style: TextStyle(
-                            color: Color(0xFFFF8A00),
-                            fontWeight: FontWeight.w600, // 👈 better UI
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                KioskMenuBackButton(
+                  label: 'Menu',
+                  onPressed: () => Navigator.pop(context),
                 ),
 
                 const Text(
@@ -91,38 +63,7 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                 ),
 
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min, // 👈 important
-                    children: [
-                      /// 🔵 DOT
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF506796), // ✅ your color
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-
-                      const SizedBox(width: 6),
-
-                      /// 📝 TEXT
-                      Text(
-                        widget.orderType.isEmpty ? "Dine-In" : widget.orderType,
-                        style: const TextStyle(
-                          color: Color(0xFF506796), // ✅ your color
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
+                KioskOrderTypeChip(orderType: widget.orderType),
               ],
             ),
 
@@ -186,9 +127,22 @@ class _CartScreenState extends State<CartScreen> {
                     Row(
                       children: const [
                         Expanded(flex: 4, child: Text("Item Name")),
-                        Expanded(flex: 2, child: Text("Qty")),
-                        Expanded(flex: 2, child: Text("Sub Total")),
-                        Expanded(flex: 1, child: Text("action")),
+                        Expanded(
+                          flex: 2,
+                          child: Center(child: Text("Qty")),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Text("Sub Total"),
+                          ),
+                        ),
+                        SizedBox(width: 20),
+                        Expanded(
+                          flex: 1,
+                          child: Center(child: Text("Action")),
+                        ),
                       ],
                     ),
 
@@ -229,9 +183,19 @@ class _CartScreenState extends State<CartScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        product.name,
-                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      Row(
+                                        children: [
+                                          _cartItemImage(product.imageUrl),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              product.name,
+                                              style: const TextStyle(fontWeight: FontWeight.bold),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
                                       ),
 
                                       // ✅ ADDONS NAME (existing)
@@ -340,6 +304,7 @@ class _CartScreenState extends State<CartScreen> {
                                 Expanded(
                                   flex: 2,
                                   child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       _qty("-", () {
                                         if (qty > 1) {
@@ -358,31 +323,32 @@ class _CartScreenState extends State<CartScreen> {
                                 ),
 
                                 /// PRICE
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    // ✅ Main Price
-                                     Text(
-                                      "\$${finalPrice.toStringAsFixed(2)}",
-                                      style: const TextStyle(
-                                        color: Colors.green,
-                                        fontWeight: FontWeight.bold,
+                                Expanded(
+                                  flex: 2,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        "\$${finalPrice.toStringAsFixed(2)}",
+                                        style: const TextStyle(
+                                          color: Colors.green,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
-                                    ),
-
-                                    // ✅ Addon Prices (CORRECT ACCESS)
-                                    if (addons.isNotEmpty)
-                                      ...addons.map((addon) {
-                                        return Text(
-                                          "\$${addon.price}", // ✅ FIXED (model access)
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.grey,
-                                          ),
-                                        );
-                                      }).toList(),
-                                  ],
+                                      if (addons.isNotEmpty)
+                                        ...addons.map((addon) {
+                                          return Text(
+                                            "\$${addon.price}",
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey,
+                                            ),
+                                          );
+                                        }).toList(),
+                                    ],
+                                  ),
                                 ),
+                                const SizedBox(width: 10),
 
                                 /// DELETE
                                 Expanded(
@@ -475,6 +441,38 @@ class _CartScreenState extends State<CartScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cartItemImage(String? imageUrl) {
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F4F7),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(Icons.fastfood_rounded, size: 20, color: Colors.black54),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.network(
+        imageUrl,
+        width: 42,
+        height: 42,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF2F4F7),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.fastfood_rounded, size: 20, color: Colors.black54),
         ),
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:keyos_app/cart_manger.dart';
 import 'package:keyos_app/repository/order_repository.dart';
+import 'package:keyos_app/widgets/kiosk_header_widgets.dart';
 import 'package:keyos_app/widgets/upi_method.dart';
 
 import 'card_method.dart';
@@ -165,31 +166,8 @@ class _PaymentMethodsState extends State<PaymentMethods> {
             children: [
               Row(
                 children: [
-                  OutlinedButton.icon(
+                  KioskMenuBackButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new,
-                      size: 12,
-                      color: Color(0xFFFF8E00),
-                    ),
-                    label: const Text(
-                      'Back',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFFFF8E00),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFFFD39C)),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
                   ),
                   const Spacer(),
                   const Text(
@@ -201,35 +179,7 @@ class _PaymentMethodsState extends State<PaymentMethods> {
                     ),
                   ),
                   const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEAF0FA),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFD6E0EE)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.circle,
-                          size: 6,
-                          color: Color(0xFF5C76A3),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          widget.orderType,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFF4E668E),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  KioskOrderTypeChip(orderType: widget.orderType),
                 ],
               ),
               const SizedBox(height: 16),

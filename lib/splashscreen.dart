@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'bloc/promotion_bloc.dart';
 import 'Homescreen.dart';
+import 'promo_carousel_utils.dart';
+import 'widgets/kiosk_loading.dart';
 
 class KioskScreen extends StatefulWidget {
   const KioskScreen({super.key});
@@ -15,7 +17,7 @@ class KioskScreen extends StatefulWidget {
 }
 
 class _KioskScreenState extends State<KioskScreen> {
-  final PageController _controller = PageController();
+  late final PageController _controller;
   int _currentPage = 0;
   Timer? _timer;
 
@@ -25,25 +27,34 @@ class _KioskScreenState extends State<KioskScreen> {
     'assets/img2.png',
   ];
 
+  void _advanceSplashSlide() {
+    if (!mounted || images.length < 2) return;
+    if (!_controller.hasClients) return;
+    final cur = _controller.page!.round();
+    final next = cur + 1;
+    if (next >= kPromoVirtualPageCount - 20) {
+      _controller.jumpToPage(promoVirtualBasePage(images.length));
+      return;
+    }
+    _controller.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
+    _controller = PageController(
+      initialPage: promoVirtualBasePage(images.length),
+    );
     _loadFullScreenPromotions();
 
-    _timer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (images.isEmpty) return;
-      if (_currentPage < images.length - 1) {
-        _currentPage++;
-      } else {
-        _currentPage = 0;
-      }
-
-      _controller.animateToPage(
-        _currentPage,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-      );
-    });
+    _timer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _advanceSplashSlide(),
+    );
   }
 
   Future<void> _loadFullScreenPromotions() async {
@@ -76,7 +87,7 @@ class _KioskScreenState extends State<KioskScreen> {
             images = state.images;
             _currentPage = 0;
           });
-          _controller.jumpToPage(0);
+          _controller.jumpToPage(promoVirtualBasePage(images.length));
           for (final src in state.images) {
             if (src.startsWith('http://') || src.startsWith('https://')) {
               precacheImage(NetworkImage(src), context);
@@ -97,11 +108,21 @@ class _KioskScreenState extends State<KioskScreen> {
               const Positioned.fill(child: ColoredBox(color: Colors.black)),
 
               /// 🔹 Auto Sliding Images (asset or network)
-              PageView.builder(
-                controller: _controller,
-                itemCount: images.length,
-                itemBuilder: (context, index) {
-                  final src = images[index];
+              Directionality(
+                textDirection: TextDirection.ltr,
+                child: PageView.builder(
+                  controller: _controller,
+                  reverse: false,
+                  itemCount: images.isEmpty ? 1 : kPromoVirtualPageCount,
+                  onPageChanged: (i) {
+                    if (images.isEmpty) return;
+                    setState(() => _currentPage = i % images.length);
+                  },
+                  itemBuilder: (context, index) {
+                  if (images.isEmpty) {
+                    return const ColoredBox(color: Colors.black);
+                  }
+                  final src = images[index % images.length];
                   final isNetwork =
                       src.startsWith('http://') || src.startsWith('https://');
 
@@ -111,15 +132,7 @@ class _KioskScreenState extends State<KioskScreen> {
                     fit: BoxFit.cover,
                     width: double.infinity,
                     height: double.infinity,
-                    placeholder: (_, __) => const ColoredBox(
-                      color: Colors.black,
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          valueColor:
-                          AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      ),
-                    ),
+                    placeholder: (_, __) => const KioskPromoImageLoading(),
                     errorWidget: (_, __, ___) => const ColoredBox(
                       color: Colors.black,
                       child: Center(
@@ -136,6 +149,7 @@ class _KioskScreenState extends State<KioskScreen> {
                           gaplessPlayback: true,
                         );
                 },
+              ),
               ),
 
             /// 🔹 Bottom Text (Responsive)

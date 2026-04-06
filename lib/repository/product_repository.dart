@@ -18,6 +18,15 @@ class ProductRemoteDataSource {
 
   Future<List<ProductModel>> fetchProductsByCategory(int categoryId) async {
     print("🔵 Fetch Products By Category ID: $categoryId");
+    final cacheKey = 'products_cache_category_$categoryId';
+    final cached = await _readCachedProducts(
+      cacheKey,
+      maxAge: const Duration(minutes: 20),
+    );
+    if (cached != null && cached.isNotEmpty) {
+      print("⚡ Returning cached products for category $categoryId");
+      return cached;
+    }
 
     final endpoints = <Uri>[
       Uri.parse('$_customBaseUrl/$categoryId'),
@@ -37,6 +46,7 @@ class ProductRemoteDataSource {
         print("✅ Products Count from $endpoint: ${products.length}");
 
         if (products.isNotEmpty) {
+          await _writeCachedProducts(cacheKey, products);
           return products;
         } else {
           print("⚠️ Empty response, trying next endpoint...");
@@ -58,6 +68,16 @@ class ProductRemoteDataSource {
 
   Future<List<ProductModel>> searchProducts(String query) async {
     print("🔍 Searching Products: $query");
+    final normalizedQuery = query.trim().toLowerCase();
+    final cacheKey = 'products_cache_search_$normalizedQuery';
+    final cached = await _readCachedProducts(
+      cacheKey,
+      maxAge: const Duration(minutes: 10),
+    );
+    if (cached != null && cached.isNotEmpty) {
+      print("⚡ Returning cached search products for: $normalizedQuery");
+      return cached;
+    }
 
     final endpoints = <Uri>[
       Uri.parse(
@@ -78,7 +98,10 @@ class ProductRemoteDataSource {
 
         print("✅ Search Result Count: ${products.length}");
 
-        if (products.isNotEmpty) return products;
+        if (products.isNotEmpty) {
+          await _writeCachedProducts(cacheKey, products);
+          return products;
+        }
       } catch (e) {
         print("❌ Search Error: $e");
         lastError = Exception(e.toString());
@@ -200,5 +223,61 @@ class ProductRemoteDataSource {
 
     print("⚠️ No list found in response");
     return const [];
+  }
+
+  Future<void> _writeCachedProducts(
+    String key,
+    List<ProductModel> products,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final payload = {
+        'ts': DateTime.now().millisecondsSinceEpoch,
+        'items': products
+            .map((p) => {
+                  'id': p.id,
+                  'name': p.name,
+                  'price': p.price,
+                  'image': p.imageUrl ?? '',
+                  'is_veg': p.isVeg,
+                })
+            .toList(growable: false),
+      };
+      await prefs.setString(key, jsonEncode(payload));
+    } catch (e) {
+      print("⚠️ Failed to write products cache for key=$key: $e");
+    }
+  }
+
+  Future<List<ProductModel>?> _readCachedProducts(
+    String key, {
+    required Duration maxAge,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(key);
+      if (raw == null || raw.isEmpty) return null;
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+
+      final ts = decoded['ts'];
+      if (ts is! int) return null;
+      final age = DateTime.now().millisecondsSinceEpoch - ts;
+      if (age > maxAge.inMilliseconds) {
+        return null;
+      }
+
+      final items = decoded['items'];
+      if (items is! List) return null;
+      final products = items
+          .whereType<Map>()
+          .map((e) => ProductModel.fromJson(Map<String, dynamic>.from(e)))
+          .toList(growable: false);
+      return products;
+    } catch (e) {
+      print("⚠️ Failed to read products cache for key=$key: $e");
+      return null;
+    }
   }
 }

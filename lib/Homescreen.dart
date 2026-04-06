@@ -10,6 +10,8 @@ import 'bloc/store_details_bloc.dart';
 import 'model/store_details_model.dart';
 import 'category_screen.dart';
 import 'customize_screen.dart';
+import 'promo_carousel_utils.dart';
+import 'widgets/kiosk_loading.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,9 +22,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
 
-  final PageController _controller = PageController();
+  late final PageController _controller;
   int _currentPage = 0;
-  late Timer _timer;
+  Timer? _slideTimer;
   String selectedType = "Dine-In"; // default
 
   StoreDetails? _storeDetails;
@@ -37,25 +39,40 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _controller = PageController(
+      initialPage: promoVirtualBasePage(images.length),
+    );
     _loadPromotions();
     _loadStoreDetails();
 
-    _timer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (!mounted) return;
-      if (images.isEmpty) return;
+    _restartSlideTimer();
+  }
 
-      if (_currentPage < images.length - 1) {
-        _currentPage++;
-      } else {
-        _currentPage = 0;
-      }
+  /// Always moves to the next page (forward). Content repeats via modulo so the
+  /// carousel loops without animating backward from last → first.
+  void _advancePromoOnePage() {
+    if (!mounted || images.length < 2) return;
+    if (!_controller.hasClients) return;
+    final cur = _controller.page!.round();
+    final next = cur + 1;
+    if (next >= kPromoVirtualPageCount - 20) {
+      _controller.jumpToPage(promoVirtualBasePage(images.length));
+      return;
+    }
+    _controller.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+    );
+  }
 
-      _controller.animateToPage(
-        _currentPage,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-      );
-    });
+  void _restartSlideTimer() {
+    _slideTimer?.cancel();
+    if (images.length < 2) return;
+    _slideTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _advancePromoOnePage(),
+    );
   }
 
   Future<void> _loadPromotions() async {
@@ -74,7 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _timer.cancel();
+    _slideTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -95,12 +112,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 images = state.images;
                 _currentPage = 0;
               });
-              _controller.jumpToPage(0);
+              _controller.jumpToPage(promoVirtualBasePage(images.length));
               for (final src in state.images) {
                 if (src.startsWith('http://') || src.startsWith('https://')) {
                   precacheImage(NetworkImage(src), context);
                 }
               }
+              _restartSlideTimer();
             }
           },
         ),
@@ -155,17 +173,14 @@ class _HomeScreenState extends State<HomeScreen> {
                           builder: (context, state) {
                             if (state is StoreDetailsInitial ||
                                 state is StoreDetailsLoading) {
-                              return SizedBox(
+                              return const SizedBox(
                                 height: 48,
                                 child: Align(
                                   alignment: Alignment.centerLeft,
-                                  child: SizedBox(
-                                    width: 32,
-                                    height: 32,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 3,
-                                      color: Color(0xFF222222),
-                                    ),
+                                  child: KioskWaveDots(
+                                    dotSize: 7,
+                                    spacing: 4,
+                                    color: Color(0xFFFF9900),
                                   ),
                                 ),
                               );
@@ -213,14 +228,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                           width: 48,
                                           height: 48,
                                           color: Colors.black12,
-                                          child: const Center(
-                                            child: SizedBox(
-                                              width: 22,
-                                              height: 22,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            ),
+                                          alignment: Alignment.center,
+                                          child: const KioskWaveDots(
+                                            dotSize: 5,
+                                            spacing: 3,
+                                            color: Color(0xFFFF9900),
                                           ),
                                         ),
                                         errorWidget: (_, __, ___) =>
@@ -309,12 +321,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Stack(
                   children: [
                     const Positioned.fill(child: ColoredBox(color: Colors.black)),
-                    PageView.builder(
-                      controller: _controller,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: images.length,
-                      itemBuilder: (context, index) {
-                        final src = images[index];
+                    Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: PageView.builder(
+                        controller: _controller,
+                        physics: const NeverScrollableScrollPhysics(),
+                        reverse: false,
+                        itemCount:
+                            images.isEmpty ? 1 : kPromoVirtualPageCount,
+                        onPageChanged: (i) {
+                          if (images.isEmpty) return;
+                          setState(
+                            () => _currentPage = i % images.length,
+                          );
+                        },
+                        itemBuilder: (context, index) {
+                        if (images.isEmpty) {
+                          return const ColoredBox(color: Colors.black);
+                        }
+                        final src = images[index % images.length];
                         final isNetwork = src.startsWith('http://') ||
                             src.startsWith('https://');
 
@@ -324,15 +349,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           fit: BoxFit.cover,
                           width: double.infinity,
                           height: double.infinity,
-                          placeholder: (_, __) => const ColoredBox(
-                            color: Colors.black,
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            ),
-                          ),
+                          placeholder: (_, __) => const KioskPromoImageLoading(),
                           errorWidget: (_, __, ___) => const ColoredBox(
                             color: Colors.black,
                             child: Center(
@@ -349,6 +366,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 gaplessPlayback: true,
                               );
                       },
+                    ),
                     ),
                   ],
                 ),
