@@ -73,7 +73,7 @@ class CashMethodScreen extends StatelessWidget {
       final lineTotal = (price + addonTotal) * qty;
       bytes.addAll(generator.row([
         esc.PosColumn(
-          text: '${product.name} x$qty',
+          text: '${product.name}  x  $qty',
           width: 8,
         ),
         esc.PosColumn(

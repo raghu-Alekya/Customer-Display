@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'Homescreen.dart';
 import 'bloc/promotion_bloc.dart';
+import 'bloc/store_details_bloc.dart';
 import 'bloc/category_bloc.dart';
 import 'bloc/product_bloc.dart';
 import 'bloc/sub category_bloc.dart';
@@ -63,6 +64,17 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
     searchController = TextEditingController();
     _startPromoAutoSlide();
     _loadBannerPromotions();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadStoreDetailsIfNeeded());
+  }
+
+  Future<void> _loadStoreDetailsIfNeeded() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    if (!mounted || token == null || token.trim().isEmpty) return;
+    final bloc = context.read<StoreDetailsBloc>();
+    if (bloc.state is! StoreDetailsLoaded) {
+      bloc.add(FetchStoreDetails(token));
+    }
   }
 
   Future<void> _loadBannerPromotions() async {
@@ -297,22 +309,98 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
     );
   }
 
+  /// Logo + store name on the far left (like reference kiosk header).
+  Widget _storeLogoBlock() {
+    return BlocBuilder<StoreDetailsBloc, StoreDetailsState>(
+      builder: (context, state) {
+        if (state is! StoreDetailsLoaded) {
+          return const SizedBox(width: 8);
+        }
+        final d = state.details;
+        final url = d.logo.trim();
+        final hasUrl = url.isNotEmpty &&
+            (url.startsWith('http://') || url.startsWith('https://'));
+        if (!hasUrl && d.name.isEmpty) {
+          return const SizedBox(width: 8);
+        }
+        return Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 100),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (hasUrl)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: CachedNetworkImage(
+                      imageUrl: url,
+                      width: 52,
+                      height: 52,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(
+                        width: 52,
+                        height: 52,
+                        color: Colors.grey.shade200,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      ),
+                      errorWidget: (_, __, ___) => const SizedBox(
+                        width: 52,
+                        height: 52,
+                        child: Icon(Icons.storefront, size: 32, color: Color(0xFF506796)),
+                      ),
+                    ),
+                  ),
+                if (d.name.isNotEmpty) ...[
+                  if (hasUrl) const SizedBox(height: 4),
+                  Text(
+                    d.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF2E5AAC),
+                      height: 1.15,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _topFilters() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const SizedBox(width: 60),
-          const SizedBox(width: 6),
+          _storeLogoBlock(),
+          const SizedBox(width: 4),
           _capsule(
-            width: 100,
+            width: null,
             height: 30,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             child: Center(
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
-                    width: 6,   // 🔥 control dot size here
+                    width: 6,
                     height: 6,
                     decoration: const BoxDecoration(
                       color: Color(0xFF506796),

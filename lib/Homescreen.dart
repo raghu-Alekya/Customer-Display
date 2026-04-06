@@ -6,6 +6,8 @@ import 'package:keyos_app/widgets/settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'bloc/promotion_bloc.dart';
+import 'bloc/store_details_bloc.dart';
+import 'model/store_details_model.dart';
 import 'category_screen.dart';
 import 'customize_screen.dart';
 
@@ -23,6 +25,8 @@ class _HomeScreenState extends State<HomeScreen> {
   late Timer _timer;
   String selectedType = "Dine-In"; // default
 
+  StoreDetails? _storeDetails;
+
   /// 🔹 Replace with your API images
   List<String> images = [
     "assets/home.png",
@@ -34,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadPromotions();
+    _loadStoreDetails();
 
     _timer = Timer.periodic(const Duration(seconds: 3), (timer) {
       if (!mounted) return;
@@ -60,6 +65,13 @@ class _HomeScreenState extends State<HomeScreen> {
     context.read<PromotionBloc>().add(FetchPortraitPromotionImages(token));
   }
 
+  Future<void> _loadStoreDetails() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    if (!mounted || token == null || token.trim().isEmpty) return;
+    context.read<StoreDetailsBloc>().add(FetchStoreDetails(token));
+  }
+
   @override
   void dispose() {
     _timer.cancel();
@@ -72,23 +84,39 @@ class _HomeScreenState extends State<HomeScreen> {
     final width = MediaQuery.of(context).size.width;
     final height = MediaQuery.of(context).size.height;
 
-    return BlocListener<PromotionBloc, PromotionState>(
-      listener: (context, state) {
-        if (state is PromotionLoaded &&
-            state.type == PromotionType.portrait &&
-            state.images.isNotEmpty)  {
-          setState(() {
-            images = state.images;
-            _currentPage = 0;
-          });
-          _controller.jumpToPage(0);
-          for (final src in state.images) {
-            if (src.startsWith('http://') || src.startsWith('https://')) {
-              precacheImage(NetworkImage(src), context);
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<PromotionBloc, PromotionState>(
+          listener: (context, state) {
+            if (state is PromotionLoaded &&
+                state.type == PromotionType.portrait &&
+                state.images.isNotEmpty) {
+              setState(() {
+                images = state.images;
+                _currentPage = 0;
+              });
+              _controller.jumpToPage(0);
+              for (final src in state.images) {
+                if (src.startsWith('http://') || src.startsWith('https://')) {
+                  precacheImage(NetworkImage(src), context);
+                }
+              }
             }
-          }
-        }
-      },
+          },
+        ),
+        BlocListener<StoreDetailsBloc, StoreDetailsState>(
+          listener: (context, state) {
+            if (state is StoreDetailsLoaded) {
+              setState(() => _storeDetails = state.details);
+              final logo = state.details.logo;
+              if (logo.isNotEmpty &&
+                  (logo.startsWith('http://') || logo.startsWith('https://'))) {
+                precacheImage(NetworkImage(logo), context);
+              }
+            }
+          },
+        ),
+      ],
       child: Scaffold(
       backgroundColor: Colors.black,
       body: Center(
@@ -114,16 +142,159 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("New Delhi\nRestaurant"),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: const [
-                          Text("123, Street, City"),
-                          Text("Open Everyday"),
-                          Text("+01 231 546 8945"),
-                        ],
+                      Expanded(
+                        child: BlocBuilder<StoreDetailsBloc, StoreDetailsState>(
+                          buildWhen: (prev, next) =>
+                              next is StoreDetailsInitial ||
+                              next is StoreDetailsLoading ||
+                              next is StoreDetailsLoaded ||
+                              next is StoreDetailsError,
+                          builder: (context, state) {
+                            if (state is StoreDetailsInitial ||
+                                state is StoreDetailsLoading) {
+                              return SizedBox(
+                                height: 48,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: SizedBox(
+                                    width: 32,
+                                    height: 32,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 3,
+                                      color: Color(0xFF222222),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            if (state is StoreDetailsError) {
+                              return Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.storefront_outlined,
+                                    size: 40,
+                                    color: Color(0xFF222222),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'Store',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF222222),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }
+                            final details = (state as StoreDetailsLoaded).details;
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                if (details.logo.isNotEmpty &&
+                                    (details.logo.startsWith('http://') ||
+                                        details.logo.startsWith('https://')))
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 10),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: CachedNetworkImage(
+                                        imageUrl: details.logo,
+                                        width: 48,
+                                        height: 48,
+                                        fit: BoxFit.cover,
+                                        placeholder: (_, __) => Container(
+                                          width: 48,
+                                          height: 48,
+                                          color: Colors.black12,
+                                          child: const Center(
+                                            child: SizedBox(
+                                              width: 22,
+                                              height: 22,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        errorWidget: (_, __, ___) =>
+                                            const SizedBox.shrink(),
+                                      ),
+                                    ),
+                                  ),
+                                Expanded(
+                                  child: Text(
+                                    details.name,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF222222),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (_storeDetails?.address.isNotEmpty == true)
+                              Text(
+                                _storeDetails!.address,
+                                textAlign: TextAlign.end,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF333333),
+                                ),
+                              ),
+                            if (_storeDetails != null &&
+                                _storeDetails!.cityLine.isNotEmpty)
+                              Text(
+                                _storeDetails!.cityLine,
+                                textAlign: TextAlign.end,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF333333),
+                                ),
+                              ),
+                            if (_storeDetails?.country.isNotEmpty == true)
+                              Text(
+                                _storeDetails!.country,
+                                textAlign: TextAlign.end,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF333333),
+                                ),
+                              ),
+                            const Text(
+                              'Open Everyday',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF333333),
+                              ),
+                            ),
+                            if (_storeDetails?.phoneNumber.isNotEmpty == true)
+                              Text(
+                                _storeDetails!.phoneNumber,
+                                textAlign: TextAlign.end,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF333333),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -293,12 +464,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
-              )
+              ),
             ],
           ),
         ),
       ),
-    ));
+    ),
+    );
   }
 }
 

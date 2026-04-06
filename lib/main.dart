@@ -6,11 +6,13 @@ import 'package:keyos_app/repository/category_data_resource.dart';
 import 'package:keyos_app/repository/product_data_resource.dart';
 import 'package:keyos_app/repository/user_login_repository.dart';
 import 'package:keyos_app/repository/promotion_repository.dart';
+import 'package:keyos_app/repository/store_details_repository.dart';
 import 'package:keyos_app/widgets/kiosk_frame.dart';
 
 import 'bloc/category_bloc.dart';
 import 'bloc/product_bloc.dart';
 import 'bloc/promotion_bloc.dart';
+import 'bloc/store_details_bloc.dart';
 import 'bloc/sub category_bloc.dart';
 import 'login_screen.dart';
 import 'bloc/user_login_bloc.dart';
@@ -51,6 +53,10 @@ class MyApp extends StatelessWidget {
         ),
         BlocProvider(
           create: (_) => PromotionBloc(repository: PromotionRepository()),
+        ),
+        BlocProvider(
+          create: (_) =>
+              StoreDetailsBloc(repository: StoreDetailsRepository()),
         ),
       ],
       child: MaterialApp(

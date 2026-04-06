@@ -28,7 +28,7 @@ Future<List<int>> buildReceiptBytes({
     final lineTotal = (price + addonTotal) * qty;
 
     bytes.addAll(generator.row([
-      PosColumn(text: '${product.name} x$qty', width: 8),
+      PosColumn(text: '${product.name}  x  $qty', width: 8),
       PosColumn(
         text: lineTotal.toStringAsFixed(2),
         width: 4,
