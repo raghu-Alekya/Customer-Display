@@ -104,15 +104,20 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
   @override
   @override
   Widget build(BuildContext context) {
+    const horizontalInset = 16.0;
+    const cardPadding = 12.0;
+    /// Same as item row: 40 (thumb) + 8 (gap).
+    const tableLeadWidth = 48.0;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F5F7),
       body: Column(
         children: [
           const SizedBox(height: 20),
 
-          /// 🔶 TOP BAR
+          /// 🔶 TOP BAR (same horizontal inset as card content area)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: horizontalInset),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -120,9 +125,13 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                   label: 'Menu',
                   onPressed: () => Navigator.pop(context),
                 ),
-                const Text("Customize",
-                    style:
-                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text(
+                  "Customize",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 KioskOrderTypeChip(orderType: widget.orderType),
               ],
             ),
@@ -130,11 +139,16 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
 
           const SizedBox(height: 10),
 
-          /// 🔹 MAIN CARD
+          /// 🔹 MAIN CARD — horizontal margin matches top bar; inner [cardPadding] aligns list with header grid
           Expanded(
             child: Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.fromLTRB(
+                horizontalInset,
+                0,
+                horizontalInset,
+                horizontalInset,
+              ),
+              padding: const EdgeInsets.all(cardPadding),
               decoration: BoxDecoration(
                 color: const Color(0xFFF7F7F7),
                 borderRadius: BorderRadius.circular(16),
@@ -142,7 +156,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  /// 🔹 HEADER
+                  /// 🔹 HEADER — spacer + flex match item row below (4+3+2+2)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                     decoration: BoxDecoration(
@@ -150,9 +164,11 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                       borderRadius: BorderRadius.circular(5),
                     ),
                     child: Row(
-                      children: const [
-                        Expanded(
-                          flex: 5,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        SizedBox(width: tableLeadWidth),
+                        const Expanded(
+                          flex: 4,
                           child: Text(
                             "Item Name",
                             style: TextStyle(
@@ -162,28 +178,46 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                             ),
                           ),
                         ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            "Qty",
-                            style: TextStyle(fontSize: 12, color: Colors.black),
+                        const Expanded(
+                          flex: 3,
+                          child: Center(
+                            child: Text(
+                              "Qty",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.black,
+                              ),
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 10),
-
                         Expanded(
                           flex: 2,
-                          child: Text(
-                            "Sub Total",
-                            style: TextStyle(fontSize: 12, color: Colors.black),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              "Sub Total",
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.black,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 10),
                         Expanded(
                           flex: 2,
-                          child: Text(
-                            "Final",
-                            style: TextStyle(fontSize: 12, color: Colors.black),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              "Final",
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.black,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -229,53 +263,68 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                         /// 🔹 QTY
                         Expanded(
                           flex: 3,
-                          child: Row(
-                            children: [
-                              GestureDetector(
-                                onTap: qty > minQty ? () => setState(() => qty--) : null,
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(5),
-                                  ),
-                                  child: Icon(
-                                    Icons.remove,
-                                    size: 14,
-                                    color: qty > minQty ? Colors.black : Colors.grey,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text("$qty"),
-                              const SizedBox(width: 6),
-                              GestureDetector(
-                                onTap: qty < maxQty ? () => setState(() => qty++) : null,
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFF7A00),
-                                    borderRadius: BorderRadius.circular(5),
-                                  ),
-                                  child: Icon(
-                                    Icons.add,
-                                    size: 14,
-                                    color: qty < maxQty ? Colors.white : Colors.white70,
+                          child: Center(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                GestureDetector(
+                                  onTap: qty > minQty ? () => setState(() => qty--) : null,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(5),
+                                    ),
+                                    child: Icon(
+                                      Icons.remove,
+                                      size: 14,
+                                      color: qty > minQty ? Colors.black : Colors.grey,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
-                          )
+                                const SizedBox(width: 6),
+                                Text("$qty"),
+                                const SizedBox(width: 6),
+                                GestureDetector(
+                                  onTap: qty < maxQty ? () => setState(() => qty++) : null,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFF7A00),
+                                      borderRadius: BorderRadius.circular(5),
+                                    ),
+                                    child: Icon(
+                                      Icons.add,
+                                      size: 14,
+                                      color: qty < maxQty ? Colors.white : Colors.white70,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
 
                         Expanded(
                           flex: 2,
-                          child: Text("\$${basePrice.toStringAsFixed(2)}"),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              "\$${basePrice.toStringAsFixed(2)}",
+                              textAlign: TextAlign.end,
+                            ),
+                          ),
                         ),
 
                         Expanded(
                           flex: 2,
-                          child: Text("\$${totalPrice.toStringAsFixed(2)}"),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              "\$${totalPrice.toStringAsFixed(2)}",
+                              textAlign: TextAlign.end,
+                            ),
+                          ),
                         ),
                       ],
                     ),

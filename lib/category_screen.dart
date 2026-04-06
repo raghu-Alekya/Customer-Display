@@ -417,7 +417,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
           SizedBox(
             width: 90,
             child: Container(
-              height: 30,
+              height: 34,
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -439,17 +439,28 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                       onSubmitted: (_) => _searchProducts(),
                       style: const TextStyle(
                         fontSize: 11,
-                        height: 1.15,
+                        height: 1.0,
+                      ),
+                      strutStyle: const StrutStyle(
+                        fontSize: 11,
+                        height: 1.0,
+                        leading: 0,
+                        fontWeight: FontWeight.w400,
+                        forceStrutHeight: true,
                       ),
                       decoration: const InputDecoration(
                         hintText: 'Search',
-                        hintStyle:
-                            TextStyle(fontSize: 11, color: Colors.black54),
+                        hintStyle: TextStyle(
+                          fontSize: 11,
+                          height: 1.0,
+                          color: Colors.black54,
+                        ),
                         border: InputBorder.none,
                         isDense: true,
                         filled: false,
-                        // Reserve space for trailing search icon so hint/text center in full bar.
-                        contentPadding: EdgeInsets.fromLTRB(4, 6, 30, 6),
+                        // Horizontal: equal L/R so text centers; vertical: tuned so hint sits
+                        // visually centered (line-height + InputDecorator metrics skew hint high).
+                        contentPadding: EdgeInsets.fromLTRB(28, 10, 28, 10),
                       ),
                     ),
                   ),
@@ -694,10 +705,10 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                   decoration: BoxDecoration(
-                    color: selected ? const Color(0xFFFFF3E8) : Colors.white,
+                    color: selected ? const Color(0xFFFF9B17) : Colors.white,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: selected ? const Color(0xFFFF8A00) : Colors.black12,
+                      color: selected ? const Color(0xFFFF9B17) : Colors.black12,
                     ),
                   ),
                   child: Column(
@@ -712,7 +723,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 10,
-                          color: selected ? const Color(0xFFFF7A00) : Colors.black54,
+                          color: selected ? Colors.black : Colors.black54,
                           fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                         ),
                       ),

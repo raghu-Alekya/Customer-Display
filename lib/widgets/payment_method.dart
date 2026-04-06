@@ -7,6 +7,10 @@ import 'package:keyos_app/widgets/upi_method.dart';
 import 'card_method.dart';
 import 'cash_method.dart';
 
+/// PNGs in `assets/` — rename these constants to match your filenames.
+const String _paymentTileAssetCard = 'assets/card.png';
+const String _paymentTileAssetQr = 'assets/QRcode.png';
+const String _paymentTileAssetCash = 'assets/cash.png';
 
 class PaymentMethods extends StatefulWidget {
   final String orderType;
@@ -212,7 +216,8 @@ class _PaymentMethodsState extends State<PaymentMethods> {
                       ),
                       const SizedBox(height: 14),
                       _methodTile(
-                        icon: Icons.account_balance_wallet_outlined,
+                        imageAsset: _paymentTileAssetCard,
+                        fallbackIcon: Icons.account_balance_wallet_outlined,
                         title: 'Card',
                         subtitle: 'Tap / insert / swipe',
                         selected: _selectedMethod == 'card',
@@ -220,7 +225,8 @@ class _PaymentMethodsState extends State<PaymentMethods> {
                       ),
                       const SizedBox(height: 10),
                       _methodTile(
-                        icon: Icons.qr_code_2_outlined,
+                        imageAsset: _paymentTileAssetQr,
+                        fallbackIcon: Icons.qr_code_2_outlined,
                         title: 'Scan QR',
                         subtitle: 'Scan with your phone',
                         selected: _selectedMethod == 'upi',
@@ -228,7 +234,8 @@ class _PaymentMethodsState extends State<PaymentMethods> {
                       ),
                       const SizedBox(height: 10),
                       _methodTile(
-                        icon: Icons.payments_outlined,
+                        imageAsset: _paymentTileAssetCash,
+                        fallbackIcon: Icons.payments_outlined,
                         title: 'Cash',
                         subtitle: 'Pay at counter',
                         selected: _selectedMethod == 'cash',
@@ -333,12 +340,15 @@ class _PaymentMethodsState extends State<PaymentMethods> {
   }
 
   Widget _methodTile({
-    required IconData icon,
+    required String imageAsset,
+    required IconData fallbackIcon,
     required String title,
     required String subtitle,
     required bool selected,
     required VoidCallback onTap,
   }) {
+    final iconColor =
+        selected ? const Color(0xFFEA7B00) : const Color(0xFF515A68);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
@@ -363,10 +373,18 @@ class _PaymentMethodsState extends State<PaymentMethods> {
                 selected ? const Color(0xFFFFE2BF) : const Color(0xFFF5F6F8),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(
-                icon,
-                color: selected ? const Color(0xFFEA7B00) : const Color(0xFF515A68),
-                size: 22,
+              alignment: Alignment.center,
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Image.asset(
+                  imageAsset,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Icon(
+                    fallbackIcon,
+                    color: iconColor,
+                    size: 22,
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 12),
