@@ -61,7 +61,30 @@ class NestedGridWidget extends StatelessWidget {
 
 
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
-  static bool _productMetaInitialized = false;
+
+  static int? _nestedProductMetaIdFromCacheMap(dynamic raw) {
+    if (raw is! Map) return null;
+    final m = Map<String, dynamic>.from(raw);
+    final dynamic idRaw =
+        m["fast_key_product_id"] ?? m["product_id"] ?? m["id"];
+    if (idRaw is int) return idRaw;
+    return int.tryParse(idRaw?.toString() ?? "");
+  }
+
+  static Future<void> _ingestNestedProductMetaFromMerged() async {
+    try {
+      final allCached = await TopBar.mergedCachedProductsForSearch();
+      for (final raw in allCached) {
+        final pid = _nestedProductMetaIdFromCacheMap(raw);
+        if (pid == null) continue;
+        _productMetaCache[pid] = Map<String, dynamic>.from(raw as Map);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("⚠️ merged product cache failed → $e");
+      }
+    }
+  }
 
   /// One product-add flow at a time across the grid (fast taps otherwise queue heavy async work).
   static bool _productTapInFlight = false;
@@ -90,30 +113,8 @@ class NestedGridWidget extends StatelessWidget {
     required this.isPaginating,
   });
   Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
-    // Same merged list as TopBar search / FastKey screen (not only products_* Isar keys).
-    if (!_productMetaInitialized) {
-      try {
-        final allCached = await TopBar.mergedCachedProductsForSearch();
-        int? resolveId(dynamic raw) {
-          if (raw is! Map) return null;
-          final m = Map<String, dynamic>.from(raw);
-          final dynamic idRaw =
-              m["fast_key_product_id"] ?? m["product_id"] ?? m["id"];
-          if (idRaw is int) return idRaw;
-          return int.tryParse(idRaw?.toString() ?? "");
-        }
-
-        for (final raw in allCached) {
-          final pid = resolveId(raw);
-          if (pid == null) continue;
-          _productMetaCache[pid] = Map<String, dynamic>.from(raw as Map);
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print("⚠️ merged product cache failed → $e");
-        }
-      }
-      _productMetaInitialized = true;
+    if (!_productMetaCache.containsKey(productId)) {
+      await _ingestNestedProductMetaFromMerged();
     }
     return _productMetaCache[productId];
   }

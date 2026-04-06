@@ -315,6 +315,16 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
     if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
 
+    var progressDialogShown = false;
+    void dismissSubmitProgress() {
+      if (!progressDialogShown || !mounted) return;
+      progressDialogShown = false;
+      final nav = Navigator.of(context, rootNavigator: true);
+      if (nav.canPop()) {
+        nav.pop();
+      }
+    }
+
     try {
       int? shiftId = await UserDbHelper().getUserShiftId();
       String? previousScreen = _originScreen;
@@ -340,6 +350,17 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
 
       _shiftBloc.manageShift(request);
 
+      if (mounted) {
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+        progressDialogShown = true;
+      }
+
       bool dialogShown = false;
 
       _shiftSubscription = _shiftBloc.shiftStream.listen((response) async {
@@ -347,6 +368,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
 
         if (response.status == Status.COMPLETED) {
           dialogShown = true;
+          dismissSubmitProgress();
           setState(() => _isSubmitting = false);
 
           // ---------------- OPEN / UPDATE ----------------
@@ -433,6 +455,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
         }
 
         if (response.status == Status.ERROR) {
+          dismissSubmitProgress();
           setState(() => _isSubmitting = false);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -443,6 +466,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
         }
       });
     } catch (e) {
+      dismissSubmitProgress();
       setState(() => _isSubmitting = false);
       if (kDebugMode) print("Submit error: $e");
     }

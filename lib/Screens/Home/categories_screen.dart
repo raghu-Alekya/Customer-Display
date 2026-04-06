@@ -1187,6 +1187,7 @@ class _IndigoProductRepositoryWithCache {
     final products = await _remote.fetchProducts(categoryId);
     final jsonStr = json.encode(products.map((p) => p.toJson()).toList());
     await _writeToIsar(_indigoProductKey(categoryId), jsonStr);
+    TopBar.notifyMergedProductCacheMayHaveChanged();
     if (kDebugMode)
       print(
           " [Indigo] Cached ${products.length} products (category: $categoryId)");

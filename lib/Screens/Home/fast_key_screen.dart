@@ -90,7 +90,31 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   bool _isPaginating = false;
   int? userId;
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
-  static bool _productMetaInitialized = false;
+
+  static int? _productMetaIdFromCacheMap(dynamic raw) {
+    if (raw is! Map) return null;
+    final m = Map<String, dynamic>.from(raw);
+    final dynamic idRaw =
+        m["fast_key_product_id"] ?? m["product_id"] ?? m["id"];
+    if (idRaw is int) return idRaw;
+    return int.tryParse(idRaw?.toString() ?? "");
+  }
+
+  /// Merges Indigo/Hive/Isar product caches into [_productMetaCache] for EBT/tags.
+  static Future<void> _ingestProductMetaFromMerged() async {
+    try {
+      final allCached = await TopBar.mergedCachedProductsForSearch();
+      for (final raw in allCached) {
+        final pid = _productMetaIdFromCacheMap(raw);
+        if (pid == null) continue;
+        _productMetaCache[pid] = Map<String, dynamic>.from(raw as Map);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("⚠️ Product meta ingest failed → $e");
+      }
+    }
+  }
 
   late FastKeyProductBloc _fastKeyProductBloc;
   List<Map<String, dynamic>> fastKeyProductItems = [];
@@ -143,6 +167,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     // });
     _initializeData(); // Build #1.0.200: Code Updated for issue: Empty fastkey folders show at first logon to multiple fastkeys loaded on created by the user
     fastKeyTabIdNotifier.addListener(_onTabChanged);
+    TopBar.mergedProductCacheRevision
+        .addListener(_onMergedProductCacheRevision);
   }
 
   Future<void> _initializeData() async {
@@ -223,6 +249,30 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       await _loadFastKeyTabItems();
       await _resolveFastKeyMeta();
     }
+  }
+
+  /// Align Fast Keys with TopBar’s merged Isar/Hive read so EBT resolves on first paint.
+  Future<void> _awaitMergedProductCacheReadyForFastKeys() async {
+    try {
+      await TopBar.waitForFirstMergedProductCacheReload()
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {}
+  }
+
+  bool _pendingMergedMetaRefresh = false;
+
+  void _onMergedProductCacheRevision() {
+    if (_pendingMergedMetaRefresh) return;
+    _pendingMergedMetaRefresh = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _pendingMergedMetaRefresh = false;
+      if (!mounted || _fastKeyTabId == null || fastKeyProductItems.isEmpty) {
+        return;
+      }
+      await _ingestProductMetaFromMerged();
+      if (!mounted) return;
+      await _resolveFastKeyMeta();
+    });
   }
 
   Future<void> getUserIdFromDB() async {
@@ -567,6 +617,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       });
       return;
     }
+    await _awaitMergedProductCacheReadyForFastKeys();
     if (FastKeyDBHelper.isFastkeyLoaded) {
       ///stops loading every time
       final items = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
@@ -625,10 +676,20 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   Future<List<Map<String, dynamic>>> _prepareFastKeyItemsForInitialUi(
       List<Map<String, dynamic>> items) async {
+    await _ingestProductMetaFromMerged();
     final List<Map<String, dynamic>> prepared = [];
 
     for (final raw in items) {
       final item = Map<String, dynamic>.from(raw);
+      final tagsCol = item[AppDBConst.fastKeyItemTags];
+      if (tagsCol is String && tagsCol.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(tagsCol);
+          if (decoded is List) {
+            item["fast_key_item_tags"] = decoded;
+          }
+        } catch (_) {}
+      }
       final int? productId =
           int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
 
@@ -731,35 +792,9 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   }
 
   Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
-    // One-time load of merged product list (TopBar search). Do NOT short-circuit
-    // on non-empty map — that broke lookups for other productIds after the first hit.
-    if (!_productMetaInitialized) {
-      try {
-        final allCached = await TopBar.mergedCachedProductsForSearch();
-
-        int? _resolveId(dynamic raw) {
-          if (raw is! Map) return null;
-          final m = Map<String, dynamic>.from(raw);
-          final dynamic idRaw =
-              m["fast_key_product_id"] ?? m["product_id"] ?? m["id"];
-          if (idRaw is int) return idRaw;
-          return int.tryParse(idRaw?.toString() ?? "");
-        }
-
-        for (final raw in allCached) {
-          final pid = _resolveId(raw);
-          if (pid == null) continue;
-          final map = Map<String, dynamic>.from(raw as Map);
-          _productMetaCache[pid] = map;
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print("⚠️ Isar cache lookup failed → $e");
-        }
-      }
-      _productMetaInitialized = true;
+    if (!_productMetaCache.containsKey(productId)) {
+      await _ingestProductMetaFromMerged();
     }
-
     return _productMetaCache[productId];
   }
 
@@ -2649,6 +2684,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   Future<void> _resolveFastKeyMeta() async {
     debugPrint("🧠 START _resolveFastKeyMeta");
 
+    await _ingestProductMetaFromMerged();
+
     for (int i = 0; i < fastKeyProductItems.length; i++) {
       // 🔑 Convert QueryRow → mutable Map
       final item = Map<String, dynamic>.from(fastKeyProductItems[i]);
@@ -2721,6 +2758,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   @override
   void dispose() {
+    TopBar.mergedProductCacheRevision
+        .removeListener(_onMergedProductCacheRevision);
     WidgetsBinding.instance.removeObserver(this);
     _fastKeyBloc.dispose();
     orderBloc.dispose(); // Build 1.0.171

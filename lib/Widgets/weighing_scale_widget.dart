@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 
 class WeightProvider extends ChangeNotifier {
   double _weightKg        = 0.0;
-  String _weightText      = '0.000 lb';
+  String _weightText      = '0.00 lb';
   String _nativeUnit      = 'kg';   // ← unit the scale actually reported
   bool   _isStable        = false;  // ← mirrors USB manager's 'stable' flag
   bool   _isConnected     = false;
@@ -60,7 +60,7 @@ class WeightProvider extends ChangeNotifier {
     _isConnected = connected;
     if (!connected) {
       _weightKg        = 0.0;
-      _weightText      = '0.000 lb';
+      _weightText      = '0.00 lb';
       _nativeUnit      = 'kg';
       _isStable        = false;
       _paused          = false;
@@ -72,7 +72,7 @@ class WeightProvider extends ChangeNotifier {
   void clearWeight() {
     _suppressUpdates = true;
     _weightKg        = 0.0;
-    _weightText      = '0.000 lb';
+    _weightText      = '0.00 lb';
     _isStable        = false;
     notifyListeners();
 
@@ -96,7 +96,7 @@ class WeightProvider extends ChangeNotifier {
   }
 
   static String _buildDisplayText(double kg) =>
-      '${(kg * 2.20462).toStringAsFixed(3)} lb';
+      '${(kg * 2.20462).toStringAsFixed(2)} lb';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -336,7 +336,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                         child: _EditableWeightBox(
                           label:      'Weight (${widget.unit}s) :',
                           controller: _weightController,
-                          hintText:   '0.000',
+                          hintText:   '0.00',
                           isLive:     isLive,
                           isStable:   isStable,
                           onClear: () {

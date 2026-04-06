@@ -125,6 +125,8 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String fastKeyItemVariantId = 'fast_key_item_variant_id';
   static const String fastKeyItemIsVariant = 'fast_key_item_is_variant';
   static const String fastKeyItemHasVariant = 'fast_key_item_has_variant';
+  /// JSON array of Woo tags from Fast Keys API (EBT, age restriction, etc.)
+  static const String fastKeyItemTags = 'fast_key_item_tags';
 
   /// Printer Table Added
   static const String printerTable = 'printer_table';
@@ -223,7 +225,14 @@ class DBHelper {
         final SharedPreferences prefs = await SharedPreferences.getInstance();
         await prefs.clear(); // This removes all stored preferences
       }
-      return await databaseFactory.openDatabase(path, options: OpenDatabaseOptions(version: 1, onCreate: _createTables));
+      return await databaseFactory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 2,
+          onCreate: _createTables,
+          onUpgrade: _upgradeTables,
+        ),
+      );
     }
 
     final dbPath = await getDatabasesPath();
@@ -242,7 +251,26 @@ class DBHelper {
       await prefs.clear(); // This removes all stored preferences
     }
 
-    return await openDatabase(path, version: 1, onCreate: _createTables);
+    return await openDatabase(
+      path,
+      version: 2,
+      onCreate: _createTables,
+      onUpgrade: _upgradeTables,
+    );
+  }
+
+  Future<void> _upgradeTables(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      try {
+        await db.execute(
+          'ALTER TABLE ${AppDBConst.fastKeyItemsTable} ADD COLUMN ${AppDBConst.fastKeyItemTags} TEXT',
+        );
+      } catch (e) {
+        if (kDebugMode) {
+          print('#### DB onUpgrade v2 fast_key_item_tags: $e');
+        }
+      }
+    }
   }
 
   // Create all tables in the database
@@ -370,6 +398,7 @@ CREATE TABLE ${AppDBConst.orderTable} (
       ${AppDBConst.fastKeyItemIsVariant} INTEGER,
       ${AppDBConst.fastKeyItemHasVariant} INTEGER,
       ${AppDBConst.fastKeyItemVariantId} TEXT NOT NULL,
+      ${AppDBConst.fastKeyItemTags} TEXT,
       FOREIGN KEY(${AppDBConst.fastKeyIdForeignKey}) REFERENCES ${AppDBConst.fastKeyTable}(${AppDBConst.fastKeyId}) ON DELETE CASCADE
     )
     ''');

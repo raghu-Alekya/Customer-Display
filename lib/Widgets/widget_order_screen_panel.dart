@@ -3146,6 +3146,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                   netPayable: netPayable.toDouble(),
                                   orderId:
                                   orderHelper.activeOrderId,
+                                  offlineOrderId:
+                                  orderHelper.activeOrderId,
                                   cashbackFee: cashbackFee,
                                   ebtAmount: ebtAmount,
                                   discountAmount: discountAmount,

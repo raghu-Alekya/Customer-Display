@@ -10,6 +10,11 @@ import '../../Database/fast_key_db_helper.dart';
 import '../../Database/db_helper.dart';
 import '../../Utilities/global_utility.dart';
 
+String _encodeFastKeyTagsJson(List<Tags>? tags) {
+  if (tags == null || tags.isEmpty) return '[]';
+  return jsonEncode(tags.map((t) => t.toJson()).toList());
+}
+
 class FastKeyBloc { // Build #1.0.15
   final FastKeyRepository _fastKeyRepository;
 
@@ -152,6 +157,8 @@ class FastKeyBloc { // Build #1.0.15
             minAge: int.tryParse(tagg?.slug ?? "") ?? 0,
             slNumber: product.slNumber,
             hasVariant: product.hasVariant ?? false,
+            sku: product.sku,
+            tagsJson: _encodeFastKeyTagsJson(product.tags),
           );
         }
       }

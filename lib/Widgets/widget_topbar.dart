@@ -256,6 +256,40 @@ class TopBar extends StatefulWidget {
     _TopBarState.clearUserDataCache();
   }
 
+  /// Bumped when merged product data (Isar/Hive) may have changed — Fast Keys
+  /// listens to refresh EBT badges without a fixed delay.
+  static final ValueNotifier<int> mergedProductCacheRevision =
+      ValueNotifier<int>(0);
+
+  static Completer<void>? _firstMergedReloadCompleter;
+  static bool _mergedReloadCompletedOnce = false;
+
+  /// Waits until TopBar’s first merged-cache load finishes (or no-op if already done).
+  static Future<void> waitForFirstMergedProductCacheReload() async {
+    if (_mergedReloadCompletedOnce) return;
+    _firstMergedReloadCompleter ??= Completer<void>();
+    return _firstMergedReloadCompleter!.future;
+  }
+
+  static void resetMergedProductCacheSignals() {
+    _mergedReloadCompletedOnce = false;
+    _firstMergedReloadCompleter = null;
+  }
+
+  static void _onTopBarMergedReloadCycleFinished() {
+    _mergedReloadCompletedOnce = true;
+    _firstMergedReloadCompleter ??= Completer<void>();
+    if (!_firstMergedReloadCompleter!.isCompleted) {
+      _firstMergedReloadCompleter!.complete();
+    }
+    mergedProductCacheRevision.value++;
+  }
+
+  /// Call when Indigo/category caches (or other writers) update merged product data.
+  static void notifyMergedProductCacheMayHaveChanged() {
+    mergedProductCacheRevision.value++;
+  }
+
   /// Same merged Isar/storage product list used by the TopBar search overlay
   /// (Indigo caches, `all_products_list`, and `products_*` keys).
   static Future<List<dynamic>> mergedCachedProductsForSearch() async {
@@ -309,6 +343,7 @@ class _TopBarState extends State<TopBar> {
     _cachedUserData = null;
     _isUserDataLoaded = false;
     _initialUserFuture = null;
+    TopBar.resetMergedProductCacheSignals();
     if (kDebugMode) print("🧹 TopBar user data cache cleared");
   }
 
@@ -417,8 +452,9 @@ class _TopBarState extends State<TopBar> {
               else if (unit == 'g')
                 kg = w / 1000;
               else if (unit == 'oz') kg = w * 0.0283495;
-              final double lb = unit == 'lb' ? w : kg * 2.20462;
-              final displayText = '${lb.toStringAsFixed(3)} lb';
+              // Always derive lb from stored kg so top bar matches popup/dialog.
+              final double lb = kg * 2.20462;
+              final displayText = '${lb.toStringAsFixed(2)} lb';
               _weightProvider?.updateWeight(kg, displayText: displayText);
               break;
 
@@ -528,6 +564,7 @@ class _TopBarState extends State<TopBar> {
     } catch (e) {
       if (kDebugMode) print("❌ _loadCachedProducts error: $e");
       if (mounted) setState(() => _cacheLoaded = true);
+      TopBar._onTopBarMergedReloadCycleFinished();
     }
   }
 
@@ -613,8 +650,10 @@ class _TopBarState extends State<TopBar> {
               "✅ _cachedProducts refreshed: ${_cachedProducts.length} total products");
         }
       }
+      TopBar._onTopBarMergedReloadCycleFinished();
     } catch (e) {
       if (kDebugMode) print("❌ _reloadAllProductsFromIsar error: $e");
+      TopBar._onTopBarMergedReloadCycleFinished();
     }
   }
 

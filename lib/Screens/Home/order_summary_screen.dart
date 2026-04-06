@@ -48,6 +48,7 @@ import '../../Widgets/offline_order_sync_service.dart';
 import '../../Widgets/scanner_guard.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_payment_dialog.dart';
+import '../../Widgets/widget_topbar.dart';
 import '../../services/CustomerDisplayService.dart';
 import '../../services/customer_services.dart';
 import '../Auth/login_screen.dart';
@@ -100,6 +101,276 @@ class LastPaymentInfo {
       sunmiOrderId: json["sunmiOrderId"],
       sunmiDeviceId: json["sunmiDeviceId"],
     );
+  }
+}
+
+/// SQLite / Hive often store flags as 0/1; summary UI used strict `== true`.
+bool _orderSummaryLineEbtEligible(Map<String, dynamic> item) {
+  bool truthy(dynamic v) {
+    if (v == true || v == 1) return true;
+    if (v is String) {
+      final s = v.toLowerCase().trim();
+      return s == '1' || s == 'true' || s == 'yes';
+    }
+    return false;
+  }
+
+  return truthy(item['is_ebt_eligible']) || truthy(item['ebt_eligible']);
+}
+
+int _orderSummaryLineVariationId(Map<String, dynamic> item) {
+  final raw = item['variation_id'] ??
+      item['variationId'] ??
+      item['item_variation_id'] ??
+      item['item_variation'] ??
+      0;
+  final v = raw is num ? raw.toInt() : int.tryParse(raw.toString()) ?? 0;
+  return v < 0 ? 0 : v;
+}
+
+String _orderSummaryLineVariationName(Map<String, dynamic> item) {
+  final n = item['variation_name'] ??
+      item['item_variation_custom_name'] ??
+      item['attribute_variant'];
+  return n?.toString().trim() ?? '';
+}
+
+String _orderSummaryNormalizeSku(dynamic raw) {
+  return (raw ?? '').toString().trim().toLowerCase().replaceAll(
+        RegExp(r'[^a-z0-9]'),
+        '',
+      );
+}
+
+bool _cachedProductMapIndicatesEbt(Map<String, dynamic> p) {
+  if (_orderSummaryLineEbtEligible(p)) return true;
+  final meta = p['meta_data'];
+  if (meta is List) {
+    for (final x in meta) {
+      if (x is! Map) continue;
+      final key = (x['key'] ?? '').toString().toLowerCase();
+      if (key != 'is_ebt_eligible' &&
+          key != '_is_ebt_eligible' &&
+          key != '_ebt_eligible') {
+        continue;
+      }
+      final v = x['value'];
+      if (v == true || v == 1) return true;
+      if (v is String) {
+        final s = v.toLowerCase().trim();
+        if (s == '1' || s == 'true' || s == 'yes') return true;
+      }
+    }
+  }
+  final tags = p['tags'];
+  if (tags is List) {
+    for (final t in tags) {
+      if (t is! Map) continue;
+      final name = (t['name'] ?? '').toString().toLowerCase();
+      final slug = (t['slug'] ?? '').toString().toLowerCase();
+      if (name.contains('ebt') || slug.contains('ebt')) return true;
+    }
+  }
+  return false;
+}
+
+/// When SQLite/Hive mismatch left lines without badges, use TopBar merged product list (same as POS search).
+Future<void> _mergeOrderSummaryLineItemsFromProductCache(
+  List<Map<String, dynamic>> lineItems,
+) async {
+  try {
+    final all = await TopBar.mergedCachedProductsForSearch();
+    final byId = <int, Map<String, dynamic>>{};
+    for (final raw in all) {
+      if (raw is! Map) continue;
+      final m = Map<String, dynamic>.from(raw);
+      final idRaw = m['fast_key_product_id'] ?? m['product_id'] ?? m['id'];
+      final id = idRaw is int ? idRaw : int.tryParse(idRaw?.toString() ?? '');
+      if (id != null && id > 0) {
+        byId[id] = m;
+      }
+    }
+
+    for (final line in lineItems) {
+      final lt = (line['item_type'] ?? '').toString().toLowerCase();
+      final nm = (line[AppDBConst.itemName] ?? line['item_name'] ?? '')
+          .toString()
+          .toLowerCase();
+      if (lt.contains('discount') ||
+          lt.contains('coupon') ||
+          lt.contains('payout') ||
+          lt.contains('cashback') ||
+          lt.contains('loyalty') ||
+          nm.contains('merchant discount')) {
+        continue;
+      }
+
+      final pidRaw = line['product_id'] ??
+          line[AppDBConst.itemProductId] ??
+          line['item_product_id'];
+      final int? pid =
+          pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
+      if (pid == null || pid <= 0) continue;
+
+      final p = byId[pid];
+      if (p == null) continue;
+
+      if (!_orderSummaryLineEbtEligible(line) && _cachedProductMapIndicatesEbt(p)) {
+        line['is_ebt_eligible'] = 1;
+        line['ebt_eligible'] = 1;
+      }
+
+      // Only back-fill variant badges from cache for real child variations.
+      // Do not use parent_id != null — API/maps often send parent_id: 0, which
+      // incorrectly marked every simple product as a variant.
+      if (_orderSummaryLineVariationId(line) <= 0 &&
+          _orderSummaryLineVariationName(line).isEmpty) {
+        final typeStr = (p['type'] ?? '').toString().toLowerCase();
+        final parentRaw = p['parent_id'];
+        final parentId = parentRaw is int
+            ? parentRaw
+            : int.tryParse(parentRaw?.toString() ?? '') ?? 0;
+        final isChildVariation = (typeStr == 'variation' ||
+                typeStr == 'variant') &&
+            parentId > 0;
+        if (!isChildVariation) continue;
+
+        final vId = int.tryParse(
+              (p['id'] ?? p['variation_id'] ?? 0).toString(),
+            ) ??
+            0;
+        if (vId <= 0) continue;
+
+        line['variation_id'] = vId;
+        line['variationId'] = vId;
+        line['item_variation_id'] = vId;
+        line['item_variation'] = vId;
+        final vName = (p['name'] ?? '').toString().trim();
+        if (vName.isNotEmpty) {
+          line['variation_name'] = vName;
+          line['item_variation_custom_name'] = vName;
+          line['attribute_variant'] = vName;
+        }
+        line['is_variant'] = 1;
+        final lType = (line['item_type'] ?? '').toString().toLowerCase();
+        if (lType.isEmpty || lType == 'product') {
+          line['item_type'] = 'variant';
+        }
+      }
+    }
+  } catch (_) {}
+}
+
+/// Pending orders often load line items from SQLite without EBT/variation flags
+/// while the same cart still exists in Hive `products`. Merge so badges match the order panel.
+void _mergeOrderSummaryLineItemsFromHive(
+  List<Map<String, dynamic>> lineItems,
+  Map<String, dynamic>? hiveOrder,
+) {
+  if (hiveOrder == null) return;
+  final rawProducts = hiveOrder['products'];
+  if (rawProducts is! List || rawProducts.isEmpty) return;
+
+  for (final line in lineItems) {
+    final name =
+        (line[AppDBConst.itemName] ?? line['item_name'] ?? '').toString().trim();
+    final pidRaw = line['product_id'] ??
+        line[AppDBConst.itemProductId] ??
+        line['item_product_id'];
+    final int? pid = pidRaw is int
+        ? pidRaw
+        : int.tryParse(pidRaw?.toString() ?? '');
+
+    Map<String, dynamic>? matched;
+    for (final p in rawProducts) {
+      if (p is! Map) continue;
+      final m = Map<String, dynamic>.from(p);
+      final pPidRaw = m['product_id'] ?? m['id'];
+      final pPid = pPidRaw is int
+          ? pPidRaw
+          : int.tryParse(pPidRaw?.toString() ?? '');
+      if (pid != null && pPid != null && pPid == pid) {
+        matched = m;
+        break;
+      }
+    }
+    if (matched == null && name.isNotEmpty) {
+      for (final p in rawProducts) {
+        if (p is! Map) continue;
+        final m = Map<String, dynamic>.from(p);
+        if ((m['name'] ?? '').toString().trim() == name) {
+          matched = m;
+          break;
+        }
+      }
+    }
+    if (matched == null) {
+      final lineSku = _orderSummaryNormalizeSku(
+        line[AppDBConst.itemSKU] ?? line['sku'],
+      );
+      if (lineSku.isNotEmpty) {
+        for (final p in rawProducts) {
+          if (p is! Map) continue;
+          final m = Map<String, dynamic>.from(p);
+          if (_orderSummaryNormalizeSku(m['sku']) == lineSku) {
+            matched = m;
+            break;
+          }
+        }
+      }
+    }
+    if (matched == null) continue;
+
+    if (!_orderSummaryLineEbtEligible(line)) {
+      final dynamic ebt = matched['is_ebt_eligible'];
+      if (ebt == true ||
+          ebt == 1 ||
+          (ebt is String &&
+              (ebt == '1' || ebt.toLowerCase() == 'true'))) {
+        line['is_ebt_eligible'] = 1;
+        line['ebt_eligible'] = 1;
+      } else if (_cachedProductMapIndicatesEbt(matched)) {
+        line['is_ebt_eligible'] = 1;
+        line['ebt_eligible'] = 1;
+      }
+    }
+
+    final dynamic vidRaw = matched['variation_id'] ??
+        matched['variationId'] ??
+        matched['item_variation'];
+    int vNum = 0;
+    if (vidRaw is num) {
+      vNum = vidRaw.toInt();
+    } else {
+      vNum = int.tryParse(vidRaw?.toString() ?? '') ?? 0;
+    }
+    if (vNum < 0) vNum = 0;
+
+    final vName = (matched['variation_name'] ?? '').toString().trim();
+    final pType = (matched['type'] ?? '').toString().toLowerCase();
+
+    final bool showVariantBadge = pType == 'variant' || vNum > 0;
+
+    if (showVariantBadge) {
+      if (vNum > 0) {
+        line['variation_id'] = vNum;
+        line['variationId'] = vNum;
+        line['item_variation_id'] = vNum;
+        line['item_variation'] = vNum;
+      }
+      if (vName.isNotEmpty) {
+        line['variation_name'] = vName;
+        line['item_variation_custom_name'] = vName;
+        line['attribute_variant'] = vName;
+      }
+      line['is_variant'] = 1;
+      final lt = (line['item_type'] ?? '').toString().toLowerCase();
+      if (lt.isEmpty || lt == 'product') {
+        if (pType == 'variant') {
+          line['item_type'] = 'variant';
+        }
+      }
+    }
   }
 }
 
@@ -2125,12 +2396,53 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
+  /// Fills EBT / variant fields on summary lines from offline `products` when SQLite rows omit them (pending orders).
+  Future<void> _enrichOrderItemsFromHiveProducts() async {
+    final box = StorageProvider.offlineOrders;
+    final wantIds = <int>{
+      if (widget.offlineOrderId != null) widget.offlineOrderId!,
+      if (orderId != null && orderId != 0) orderId!,
+    };
+
+    Map<String, dynamic>? hiveOrder;
+
+    for (final id in wantIds) {
+      final raw = await box.get(id.toString());
+      if (raw is Map) {
+        hiveOrder = Map<String, dynamic>.from(raw);
+        break;
+      }
+    }
+
+    if (hiveOrder == null && wantIds.isNotEmpty) {
+      try {
+        final all = await box.toMap();
+        for (final entry in all.values) {
+          if (entry is! Map) continue;
+          final m = Map<String, dynamic>.from(entry);
+          final oid = m['order_id'] ?? m['id'] ?? m[AppDBConst.orderServerId];
+          final int? o =
+              oid is int ? oid : int.tryParse(oid?.toString() ?? '');
+          if (o != null && wantIds.contains(o)) {
+            hiveOrder = m;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+
+    _mergeOrderSummaryLineItemsFromHive(orderItems, hiveOrder);
+    await _mergeOrderSummaryLineItemsFromProductCache(orderItems);
+  }
+
   @override
   void initState() {
     super.initState();
     ScannerGuard.isCouponPopupOpen = true;
 
-    orderItems = widget.orderItems;
+    orderItems = widget.orderItems
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
     grossTotal = widget.grossTotal;
     discount =
     (widget.orderDiscount != 0) ? -(widget.orderDiscount.abs()) : 0.0;
@@ -2201,6 +2513,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         _currentPaymentRemainingBalance = null;
         _lastPaymentDetails = null;
       }
+
+      await _enrichOrderItemsFromHiveProducts();
 
       if (mounted) setState(() {});
 
@@ -5388,25 +5702,22 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final bool isCashback = itemType.contains("cashback");
     final bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
 
-    // Parse variation_id robustly - string "0" must not be treated as variant
-    final varIdRaw = orderItem['variation_id'] ?? orderItem['variationId'] ?? 0;
-    final int varId = varIdRaw is num
-        ? varIdRaw.toInt()
-        : int.tryParse(varIdRaw.toString()) ?? 0;
+    // Parse variation_id: Woo/Hive use variation_id; SQLite uses item_variation_id.
+    final int varId = _orderSummaryLineVariationId(orderItem);
     final bool hasVariationId = varId > 0;
-
-    final bool hasVariationName =
-        (orderItem['variation_name']?.toString().trim() ?? '').isNotEmpty;
 
     // Only show variant icon for actual product line items (not payout/coupon/custom/cashback)
     final bool isProductItem = !isPayoutOrCoupon;
+    final bool isVariantFlag = orderItem['is_variant'] == true ||
+        orderItem['is_variant'] == 1;
+    // item_variation_custom_name is populated from API even for simple lines
+    // (fallback is the full line-item name), so never treat name alone as variant.
     final bool isVariant = isProductItem &&
-        ((orderItem['is_variant'] == true) ||
+        (isVariantFlag ||
             (itemType == 'variant' || itemType == 'variation') ||
-            hasVariationName ||
             hasVariationId);
 
-    final bool isEbtEligible = orderItem['is_ebt_eligible'] == true;
+    final bool isEbtEligible = _orderSummaryLineEbtEligible(orderItem);
 
     final String itemName = orderItem['item_name']?.toString() ?? '';
     final double itemPrice = (orderItem['item_price'] ?? 0).toDouble();
@@ -5993,7 +6304,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     _printPaymentHistorySummary();
 
     final themeHelper = Provider.of<ThemeNotifier>(context);
-    bool hasEbtItem = orderItems.any((item) => item["is_ebt_eligible"] == true);
+    bool hasEbtItem =
+        orderItems.any((item) => _orderSummaryLineEbtEligible(item));
     final bool hasOnlyCashbackOrPayoutItems = orderItems.isNotEmpty &&
         orderItems.every((item) {
           final type = (item['item_type'] ?? item['type'] ?? '')
