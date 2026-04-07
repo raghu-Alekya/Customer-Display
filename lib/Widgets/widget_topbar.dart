@@ -20,6 +20,7 @@ import '../Database/isar_cache_entry.dart';
 import '../Database/isar_service.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Database/user_db_helper.dart';
+import '../Helper/native_usb_scan_bridge.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/url_helper.dart';
 import '../Helper/api_response.dart';
@@ -461,6 +462,7 @@ class _TopBarState extends State<TopBar> {
             case 'scan':
               final raw = data['raw'] as String? ?? '';
               _scaleLog('📷 Scan: $raw');
+              NativeUsbScanBridge.dispatchFromRaw(raw);
               break;
 
             case 'raw':

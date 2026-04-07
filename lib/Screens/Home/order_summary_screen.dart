@@ -20,7 +20,6 @@ import 'package:thermal_printer/esc_pos_utils_platform/esc_pos_utils_platform.da
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../Blocs/Orders/order_bloc.dart';
@@ -137,9 +136,9 @@ String _orderSummaryLineVariationName(Map<String, dynamic> item) {
 
 String _orderSummaryNormalizeSku(dynamic raw) {
   return (raw ?? '').toString().trim().toLowerCase().replaceAll(
-        RegExp(r'[^a-z0-9]'),
-        '',
-      );
+    RegExp(r'[^a-z0-9]'),
+    '',
+  );
 }
 
 bool _cachedProductMapIndicatesEbt(Map<String, dynamic> p) {
@@ -176,8 +175,8 @@ bool _cachedProductMapIndicatesEbt(Map<String, dynamic> p) {
 
 /// When SQLite/Hive mismatch left lines without badges, use TopBar merged product list (same as POS search).
 Future<void> _mergeOrderSummaryLineItemsFromProductCache(
-  List<Map<String, dynamic>> lineItems,
-) async {
+    List<Map<String, dynamic>> lineItems,
+    ) async {
   try {
     final all = await TopBar.mergedCachedProductsForSearch();
     final byId = <int, Map<String, dynamic>>{};
@@ -209,7 +208,7 @@ Future<void> _mergeOrderSummaryLineItemsFromProductCache(
           line[AppDBConst.itemProductId] ??
           line['item_product_id'];
       final int? pid =
-          pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
+      pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
       if (pid == null || pid <= 0) continue;
 
       final p = byId[pid];
@@ -231,13 +230,13 @@ Future<void> _mergeOrderSummaryLineItemsFromProductCache(
             ? parentRaw
             : int.tryParse(parentRaw?.toString() ?? '') ?? 0;
         final isChildVariation = (typeStr == 'variation' ||
-                typeStr == 'variant') &&
+            typeStr == 'variant') &&
             parentId > 0;
         if (!isChildVariation) continue;
 
         final vId = int.tryParse(
-              (p['id'] ?? p['variation_id'] ?? 0).toString(),
-            ) ??
+          (p['id'] ?? p['variation_id'] ?? 0).toString(),
+        ) ??
             0;
         if (vId <= 0) continue;
 
@@ -264,16 +263,16 @@ Future<void> _mergeOrderSummaryLineItemsFromProductCache(
 /// Pending orders often load line items from SQLite without EBT/variation flags
 /// while the same cart still exists in Hive `products`. Merge so badges match the order panel.
 void _mergeOrderSummaryLineItemsFromHive(
-  List<Map<String, dynamic>> lineItems,
-  Map<String, dynamic>? hiveOrder,
-) {
+    List<Map<String, dynamic>> lineItems,
+    Map<String, dynamic>? hiveOrder,
+    ) {
   if (hiveOrder == null) return;
   final rawProducts = hiveOrder['products'];
   if (rawProducts is! List || rawProducts.isEmpty) return;
 
   for (final line in lineItems) {
     final name =
-        (line[AppDBConst.itemName] ?? line['item_name'] ?? '').toString().trim();
+    (line[AppDBConst.itemName] ?? line['item_name'] ?? '').toString().trim();
     final pidRaw = line['product_id'] ??
         line[AppDBConst.itemProductId] ??
         line['item_product_id'];
@@ -2422,7 +2421,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           final m = Map<String, dynamic>.from(entry);
           final oid = m['order_id'] ?? m['id'] ?? m[AppDBConst.orderServerId];
           final int? o =
-              oid is int ? oid : int.tryParse(oid?.toString() ?? '');
+          oid is int ? oid : int.tryParse(oid?.toString() ?? '');
           if (o != null && wantIds.contains(o)) {
             hiveOrder = m;
             break;
@@ -3897,6 +3896,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           if (paymentResponse.status == Status.COMPLETED &&
               paymentResponse.data != null &&
               paymentResponse.data!.message == "Payment Created Successfully") {
+            if (!skipPopup) _hidePaymentProgressDialog();
+
             final paymentData = paymentResponse.data!;
             paidAmount = amount;
             paymentId = paymentData.paymentId.toString();
@@ -3947,7 +3948,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 isPartialPayment ? balanceAmount : null;
               });
 
-            // ─── Show success popup only for full payment ───
+            // ─── Full: success receipt dialog | Partial: "next payment" dialog ───
+            // Progress overlay was already closed above for both paths (!skipPopup).
             if (isFullPayment && !_successPopupShown) {
               _successPopupShown = true;
 
@@ -3965,6 +3967,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 showChange: changeAmount > 0,
                 couponResponse: couponResponse,
               );
+            } else if (isPartialPayment && amount > 0) {
+              await _showPartialPaymentDialog(context, amount);
             }
 
             amountController.clear();
@@ -4322,8 +4326,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const CupertinoActivityIndicator(
-                      radius: 22,
+                    SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          isDark
+                              ? Colors.white70
+                              : const Color(0xFF1BA672),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 20),
                     Text(
@@ -6305,7 +6318,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final themeHelper = Provider.of<ThemeNotifier>(context);
     bool hasEbtItem =
-        orderItems.any((item) => _orderSummaryLineEbtEligible(item));
+    orderItems.any((item) => _orderSummaryLineEbtEligible(item));
     final bool hasOnlyCashbackOrPayoutItems = orderItems.isNotEmpty &&
         orderItems.every((item) {
           final type = (item['item_type'] ?? item['type'] ?? '')

@@ -122,7 +122,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   List<int?> reorderedIndices = [];
   int? selectedItemIndex;
   bool?
-      enableIcons; // Build #1.0.204: Added this to track grid item delete/cancel icon visibility
+  enableIcons; // Build #1.0.204: Added this to track grid item delete/cancel icon visibility
   File? _pickedImage;
   final ImagePicker _picker = ImagePicker();
   final OrderHelper orderHelper = OrderHelper();
@@ -141,11 +141,11 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   bool isTabsLoading = true; //Build #1.0.68
   bool isItemsLoading = true;
   bool _isDeleting =
-      false; // Build #1.0.104 : Track delete button loading state
+  false; // Build #1.0.104 : Track delete button loading state
   bool isAddingItemLoading = false; // Loader for adding items to order
   final ScrollController _scrollController = ScrollController();
   int _refreshCounter =
-      0; //Build #1.0.170: Added: Counter to trigger RightOrderPanel refresh only when needed
+  0; //Build #1.0.170: Added: Counter to trigger RightOrderPanel refresh only when needed
 
   @override
   void initState() {
@@ -222,7 +222,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   }
 
   void _listenProductItemSearch() {
-    if (_productSearchController.text.isEmpty) {
+    final t = _productSearchController.text.trim();
+    if (t.isEmpty || t.length < 3) {
       _searchTextGridKey.currentState?.resetList();
     }
     _autoSuggest.listentextchange(_productSearchController.text ?? "");
@@ -237,7 +238,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       _fastKeyTabId = fastKeyTabIdNotifier.value;
       fastKeyProductItems.clear();
       isItemsLoading =
-          true; //Build #1.0.92: Fixed Issue: Loader is not working at fast key grid for selected tab
+      true; //Build #1.0.92: Fixed Issue: Loader is not working at fast key grid for selected tab
     });
     if (_fastKeyTabId != null) {
       //Build #1.0.84
@@ -374,7 +375,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   Future<void> _loadFastKeysTabs() async {
     final fastKeyTabsData =
-        await fastKeyDBHelper.getFastKeyTabsByUserId(userId ?? 1);
+    await fastKeyDBHelper.getFastKeyTabsByUserId(userId ?? 1);
     if (kDebugMode) {
       print("##### _loadFastKeysTabs: $fastKeyTabsData");
     }
@@ -387,10 +388,10 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             fastkeyTitle: product[AppDBConst.fastKeyTabTitle],
             fastkeyImage: product[AppDBConst.fastKeyTabImage],
             fastkeyIndex:
-                product[AppDBConst.fastKeyTabIndex]?.toString() ?? '0',
+            product[AppDBConst.fastKeyTabIndex]?.toString() ?? '0',
             itemCount: int.tryParse(
-                    product[AppDBConst.fastKeyTabItemCount]?.toString() ??
-                        '0') ??
+                product[AppDBConst.fastKeyTabItemCount]?.toString() ??
+                    '0') ??
                 0,
           );
         }).toList();
@@ -419,8 +420,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     // Listen for API response
     final response = await _fastKeyBloc.createFastKeyStream.firstWhere(
-        (response) =>
-            response.status == Status.COMPLETED ||
+            (response) =>
+        response.status == Status.COMPLETED ||
             response.status == Status.ERROR);
     if (response.status == Status.COMPLETED && response.data != null) {
       if (kDebugMode) {
@@ -462,7 +463,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content:
-                    Text("Unauthorised. Session is expired on this device."),
+                Text("Unauthorised. Session is expired on this device."),
                 backgroundColor: Colors.red,
                 duration: Duration(seconds: 2),
               ),
@@ -478,7 +479,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content:
-                Text(response.message ?? TextConstants.failedToCreateFastKey),
+            Text(response.message ?? TextConstants.failedToCreateFastKey),
             // Build #1.0.189: Updated from api response - Proper error not showing while getting error in create fast key
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
@@ -501,7 +502,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       if (_selectedCategoryIndex != null) {
         if (_selectedCategoryIndex! >= fastKeyTabs.length) {
           _selectedCategoryIndex =
-              fastKeyTabs.isNotEmpty ? fastKeyTabs.length - 1 : null;
+          fastKeyTabs.isNotEmpty ? fastKeyTabs.length - 1 : null;
           _fastKeyTabId = _selectedCategoryIndex != null
               ? fastKeyTabs[_selectedCategoryIndex!].fastkeyServerId
               : null;
@@ -519,8 +520,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     await _fastKeyBloc.deleteFastKeyStream
         .firstWhere((response) =>
-            response.status == Status.COMPLETED ||
-            response.status == Status.ERROR)
+    response.status == Status.COMPLETED ||
+        response.status == Status.ERROR)
         .then((response) async {
       if (response.status == Status.ERROR) {
         if (response.message!.contains('Unauthorised')) {
@@ -538,7 +539,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content:
-                      Text("Unauthorised. Session is expired on this device."),
+                  Text("Unauthorised. Session is expired on this device."),
                   backgroundColor: Colors.red,
                   duration: Duration(seconds: 2),
                 ),
@@ -637,7 +638,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
 
     var tabs =
-        await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
+    await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
     if (tabs.isEmpty) {
       setState(() {
         fastKeyProductItems = [];
@@ -691,12 +692,12 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         } catch (_) {}
       }
       final int? productId =
-          int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
+      int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
 
       await _enrichFastKeyItemFromSkuHive(item);
 
       final cached =
-          productId != null ? await _getCachedProductFromIsar(productId) : null;
+      productId != null ? await _getCachedProductFromIsar(productId) : null;
 
       // Same resolution as _resolveFastKeyMeta so grid badges match tap behavior.
       item["has_variants"] = await _fastKeyHasVariants(item);
@@ -741,8 +742,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         item['variations'] = p['variations'];
       }
       if ((item['fast_key_item_tags'] == null ||
-              (item['fast_key_item_tags'] is List &&
-                  (item['fast_key_item_tags'] as List).isEmpty)) &&
+          (item['fast_key_item_tags'] is List &&
+              (item['fast_key_item_tags'] as List).isEmpty)) &&
           p['tags'] != null) {
         item['fast_key_item_tags'] = p['tags'];
       }
@@ -800,7 +801,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   Future<bool> _fastKeyHasVariants(Map<String, dynamic> item) async {
     final int? productId =
-        int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
+    int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
 
     if (productId == null) return false;
 
@@ -857,7 +858,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     setState(() => isItemsLoading = true);
     try {
       final tabs =
-          await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
+      await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
       if (tabs.isNotEmpty) {
         final fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
         if (kDebugMode) {
@@ -900,7 +901,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       return;
     }
     var tabs =
-        await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
+    await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
     if (tabs.isEmpty) {
       if (kDebugMode) {
         print("### FastKeyScreen: _addFastKeyTabItem aborted, tab not found");
@@ -916,66 +917,66 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     StreamSubscription? subscription;
     subscription =
         _fastKeyProductBloc.addProductsStream.listen((response) async {
-      if (!mounted) {
-        subscription?.cancel();
-        return;
-      }
-      print("response ---- ${response.status}");
-      if (response.status == Status.COMPLETED) {
-        if (kDebugMode) {
-          print("#### FastKeyScreen: addProducts Status COMPLETED");
-        }
-        setState(() => isAddingItemLoading =
-            false); // Build #1.0.204: Added missed loader on "Add"  button of search product dialouge after tap on add
-        // Reload items using existing method
-        if (!isBulkAdding) {
-          _refreshFastKeyTabItems();
-        }
-        subscription?.cancel();
-      } else if (response.status == Status.ERROR) {
-        if (response.message!.contains('Unauthorised')) {
-          if (kDebugMode) {
-            print("Fast key 4 ---- Unauthorised : ${response.message!}");
+          if (!mounted) {
+            subscription?.cancel();
+            return;
           }
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              Navigator.pushReplacement(context,
-                  MaterialPageRoute(builder: (context) => LoginScreen()));
-
+          print("response ---- ${response.status}");
+          if (response.status == Status.COMPLETED) {
+            if (kDebugMode) {
+              print("#### FastKeyScreen: addProducts Status COMPLETED");
+            }
+            setState(() => isAddingItemLoading =
+            false); // Build #1.0.204: Added missed loader on "Add"  button of search product dialouge after tap on add
+            // Reload items using existing method
+            if (!isBulkAdding) {
+              _refreshFastKeyTabItems();
+            }
+            subscription?.cancel();
+          } else if (response.status == Status.ERROR) {
+            if (response.message!.contains('Unauthorised')) {
               if (kDebugMode) {
-                print("message --- ${response.message}");
+                print("Fast key 4 ---- Unauthorised : ${response.message!}");
+              }
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  Navigator.pushReplacement(context,
+                      MaterialPageRoute(builder: (context) => LoginScreen()));
+
+                  if (kDebugMode) {
+                    print("message --- ${response.message}");
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content:
+                      Text("Unauthorised. Session is expired on this device."),
+                      backgroundColor: Colors.red,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
+              });
+            } else {
+              if (kDebugMode) {
+                print("Failed to add item to fastkey: ${response.message}");
               }
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content:
-                      Text("Unauthorised. Session is expired on this device."),
+                SnackBar(
+                  content: Text(TextConstants.failedToAddItemToFastKey),
+                  // Build #1.0.144
                   backgroundColor: Colors.red,
-                  duration: Duration(seconds: 2),
+                  duration: const Duration(seconds: 2),
                 ),
               );
             }
-          });
-        } else {
-          if (kDebugMode) {
-            print("Failed to add item to fastkey: ${response.message}");
+            subscription?.cancel();
+          } else if (response.status == Status.LOADING) {
+            if (kDebugMode) {
+              print("### FastKeyScreen: Adding item to FastKey, loading...");
+            }
+            setState(() => isItemsLoading = true);
           }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(TextConstants.failedToAddItemToFastKey),
-              // Build #1.0.144
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-        subscription?.cancel();
-      } else if (response.status == Status.LOADING) {
-        if (kDebugMode) {
-          print("### FastKeyScreen: Adding item to FastKey, loading...");
-        }
-        setState(() => isItemsLoading = true);
-      }
-    });
+        });
 
     /// addProducts API CALL
     await _fastKeyProductBloc
@@ -988,7 +989,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     // Build #1.0.89: delete FastKey product API integrated
     var tabs =
-        await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
+    await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
     if (tabs.isEmpty) return;
 
     var fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
@@ -1000,68 +1001,68 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     StreamSubscription? subscription;
     subscription =
         _fastKeyProductBloc.deleteProductStream.listen((response) async {
-      if (!mounted) {
-        subscription?.cancel();
-        return;
-      }
-      if (response.status == Status.COMPLETED) {
-        if (kDebugMode) {
-          print(
-              "### FastKeyScreen: Product deleted successfully from FastKey: ${response.data!.fastkeyId}");
-        }
-        await _refreshFastKeyTabItems(); // refresh UI
-        if (Misc.showDebugSnackBar) {
-          // Build #1.0.254
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                  response.data?.message ?? "Product deleted from Fast Key"),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-        subscription?.cancel();
-      } else if (response.status == Status.ERROR) {
-        if (response.message!.contains('Unauthorised')) {
-          if (kDebugMode) {
-            print("Fast key 5---- Unauthorised : ${response.message!}");
+          if (!mounted) {
+            subscription?.cancel();
+            return;
           }
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              Navigator.pushReplacement(context,
-                  MaterialPageRoute(builder: (context) => LoginScreen()));
-
-              if (kDebugMode) {
-                print("message --- ${response.message}");
-              }
+          if (response.status == Status.COMPLETED) {
+            if (kDebugMode) {
+              print(
+                  "### FastKeyScreen: Product deleted successfully from FastKey: ${response.data!.fastkeyId}");
+            }
+            await _refreshFastKeyTabItems(); // refresh UI
+            if (Misc.showDebugSnackBar) {
+              // Build #1.0.254
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content:
-                      Text("Unauthorised. Session is expired on this device."),
-                  backgroundColor: Colors.red,
-                  duration: Duration(seconds: 2),
+                SnackBar(
+                  content: Text(
+                      response.data?.message ?? "Product deleted from Fast Key"),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 2),
                 ),
               );
             }
-          });
-        } else {
-          if (kDebugMode) {
-            print(
-                "### FastKeyScreen: Failed to delete product: ${response.message}");
+            subscription?.cancel();
+          } else if (response.status == Status.ERROR) {
+            if (response.message!.contains('Unauthorised')) {
+              if (kDebugMode) {
+                print("Fast key 5---- Unauthorised : ${response.message!}");
+              }
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  Navigator.pushReplacement(context,
+                      MaterialPageRoute(builder: (context) => LoginScreen()));
+
+                  if (kDebugMode) {
+                    print("message --- ${response.message}");
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content:
+                      Text("Unauthorised. Session is expired on this device."),
+                      backgroundColor: Colors.red,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
+              });
+            } else {
+              if (kDebugMode) {
+                print(
+                    "### FastKeyScreen: Failed to delete product: ${response.message}");
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(TextConstants.failedToDeleteProductFromFastKey),
+                  // Build #1.0.144
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
+            subscription?.cancel();
           }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(TextConstants.failedToDeleteProductFromFastKey),
-              // Build #1.0.144
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-        subscription?.cancel();
-      }
-    });
+        });
 
     /// delete FastKey product API call
     // await _fastKeyProductBloc.deleteProduct(fastKeyServerId, fastKeyTabItemId);
@@ -1071,7 +1072,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   Future<void> _pickImage() async {
     final XFile? imageFile =
-        await _picker.pickImage(source: ImageSource.gallery);
+    await _picker.pickImage(source: ImageSource.gallery);
     if (imageFile != null) {
       setState(() {
         _pickedImage = File(imageFile.path);
@@ -1132,7 +1133,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       // 🧠 Determine order type
       final box = StorageProvider.offlineOrders;
       final isOfflineOrder =
-          box.containsKey(orderHelper.activeOrderId.toString());
+      box.containsKey(orderHelper.activeOrderId.toString());
       final activeOrderId =
           orderHelper.activeOrderId ?? (await box.get('lastOrderId')) ?? 1000;
 
@@ -1175,7 +1176,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               try {
                 final decoded = jsonDecode(cachedData);
                 rawVariations =
-                    decoded is Map ? decoded["variations"] ?? [] : decoded;
+                decoded is Map ? decoded["variations"] ?? [] : decoded;
               } catch (_) {}
             }
           }
@@ -1191,8 +1192,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               }
               final name = variantData?["name"] ?? "Variant $id";
               final price = (variantData?["price"] ??
-                      variantData?["regular_price"] ??
-                      productPrice)
+                  variantData?["regular_price"] ??
+                  productPrice)
                   .toString();
               final image = (variantData?["image"] is Map)
                   ? variantData["image"]["src"]
@@ -1502,6 +1503,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
 
     Timer? _dialogSearchDebounce;
+    bool _dialogSearchPending = false;
 
     // ── NEW: the filtered subset shown in the right-side ListView ───────────
     List<dynamic> _filteredList = [];
@@ -1587,24 +1589,6 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
-            void _scheduleSearchRefresh() {
-              _dialogSearchDebounce?.cancel();
-              _dialogSearchDebounce =
-                  Timer(const Duration(milliseconds: 350), () async {
-                try {
-                  _allCached = await TopBar.mergedCachedProductsForSearch();
-                } catch (e) {
-                  debugPrint(
-                      'FastKey _showAddItemDialog: cache refresh error → $e');
-                }
-                if (!dialogContext.mounted) return;
-                final q = searchController.text;
-                setStateDialog(() {
-                  _filteredList = _buildFiltered(q);
-                });
-              });
-            }
-
             return AlertDialog(
               // ── UNCHANGED ─────────────────────────────────────────────────
               backgroundColor: themeHelper.themeMode == ThemeMode.dark
@@ -1634,11 +1618,32 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                             hintText: TextConstants.typeSearchText,
                           ),
                           onChanged: (value) {
-                            // Same debounce + merged cache refresh as TopBar search.
-                            setStateDialog(() {
-                              _filteredList = _buildFiltered(value);
-                            });
-                            _scheduleSearchRefresh();
+                            _dialogSearchDebounce?.cancel();
+                            final q = value.trim();
+                            if (q.isEmpty || q.length < 3) {
+                              setStateDialog(() {
+                                _dialogSearchPending = false;
+                                _filteredList = [];
+                              });
+                              return;
+                            }
+                            setStateDialog(() => _dialogSearchPending = true);
+                            _dialogSearchDebounce =
+                                Timer(const Duration(seconds: 2), () async {
+                                  try {
+                                    _allCached =
+                                    await TopBar.mergedCachedProductsForSearch();
+                                  } catch (e) {
+                                    debugPrint(
+                                        'FastKey _showAddItemDialog: cache refresh error → $e');
+                                  }
+                                  if (!dialogContext.mounted) return;
+                                  setStateDialog(() {
+                                    _dialogSearchPending = false;
+                                    _filteredList =
+                                        _buildFiltered(searchController.text);
+                                  });
+                                });
                           },
                         ),
                       ),
@@ -1649,13 +1654,35 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
                       Expanded(
                         child: Builder(builder: (_) {
-                          // Empty search box → same "no products" state as
-                          // original StreamBuilder before first keystroke.
-                          if (searchController.text.isEmpty) {
+                          final searchText = searchController.text.trim();
+                          if (searchText.isEmpty) {
                             return SizedBox(
                               height: size.height * 0.5,
                               child: const Center(
                                 child: Text('No products found'),
+                              ),
+                            );
+                          }
+                          if (searchText.length < 3) {
+                            return SizedBox(
+                              height: size.height * 0.5,
+                              child: Center(
+                                child: Text(TextConstants.searchMinCharactersHint),
+                              ),
+                            );
+                          }
+                          if (_dialogSearchPending) {
+                            return SizedBox(
+                              height: size.height * 0.5,
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const CircularProgressIndicator(),
+                                    const SizedBox(height: 12),
+                                    Text(TextConstants.searchPausedSearchingHint),
+                                  ],
+                                ),
                               ),
                             );
                           }
@@ -1692,7 +1719,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                       : 'No Name';
                                   final String price = _resolvePrice(p);
                                   final String pid =
-                                      (_resolveProductId(p) ?? '').toString();
+                                  (_resolveProductId(p) ?? '').toString();
                                   final String imageUrl = _resolveImage(p);
 
                                   // Detect EBT + variants using same rules as grid/order flow
@@ -1726,28 +1753,28 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                     // ── UNCHANGED ──────────────────────────
                                     selected: isSelected,
                                     selectedTileColor:
-                                        Colors.grey.withOpacity(0.3),
+                                    Colors.grey.withOpacity(0.3),
 
                                     leading: imageUrl.isNotEmpty
                                         ? Image.network(
-                                            imageUrl,
-                                            width: 50,
-                                            height: 50,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) =>
-                                                const Icon(Icons.image),
-                                          )
+                                      imageUrl,
+                                      width: 50,
+                                      height: 50,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                      const Icon(Icons.image),
+                                    )
                                         : const Icon(Icons.image),
 
                                     title: Text(name),
                                     subtitle: Column(
                                       crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
                                           '${TextConstants.currencySymbol}'
-                                          '${double.tryParse(price)?.toStringAsFixed(2) ?? "0.00"}',
+                                              '${double.tryParse(price)?.toStringAsFixed(2) ?? "0.00"}',
                                         ),
                                         const SizedBox(height: 4),
                                         Row(
@@ -1766,13 +1793,13 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                             if (isEbtEligible)
                                               Container(
                                                 padding:
-                                                    const EdgeInsets.symmetric(
-                                                        horizontal: 4,
-                                                        vertical: 1),
+                                                const EdgeInsets.symmetric(
+                                                    horizontal: 4,
+                                                    vertical: 1),
                                                 decoration: BoxDecoration(
                                                   color: Colors.green.shade600,
                                                   borderRadius:
-                                                      BorderRadius.circular(4),
+                                                  BorderRadius.circular(4),
                                                 ),
                                                 child: const Text(
                                                   'EBT',
@@ -1793,7 +1820,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                       setStateDialog(() {
                                         if (isSelected) {
                                           selectedProducts.removeWhere(
-                                            (s) => s['id'].toString() == pid,
+                                                (s) => s['id'].toString() == pid,
                                           );
                                         } else {
                                           selectedProducts.add({
@@ -1802,7 +1829,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                             'price': price,
                                             'id': int.tryParse(pid) ?? 0,
                                             'sku':
-                                                p['sku']?.toString() ?? 'N/A',
+                                            p['sku']?.toString() ?? 'N/A',
                                           });
                                         }
                                       });
@@ -1833,51 +1860,51 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                 TextButton(
                   onPressed: selectedProducts.isNotEmpty
                       ? () {
-                          final List<Map<String, dynamic>> selectedCopy =
-                              List<Map<String, dynamic>>.from(selectedProducts);
+                    final List<Map<String, dynamic>> selectedCopy =
+                    List<Map<String, dynamic>>.from(selectedProducts);
 
-                          Navigator.of(dialogContext).pop();
+                    Navigator.of(dialogContext).pop();
 
-                          Future.delayed(const Duration(milliseconds: 100),
-                              () async {
-                            isBulkAdding = true;
+                    Future.delayed(const Duration(milliseconds: 100),
+                            () async {
+                          isBulkAdding = true;
 
-                            final existingItems = await fastKeyDBHelper
-                                .getFastKeyItems(_fastKeyTabId!);
-                            final existingIds = existingItems
-                                .map((e) =>
-                                    e[AppDBConst.fastKeyProductId].toString())
-                                .toSet();
+                          final existingItems = await fastKeyDBHelper
+                              .getFastKeyItems(_fastKeyTabId!);
+                          final existingIds = existingItems
+                              .map((e) =>
+                              e[AppDBConst.fastKeyProductId].toString())
+                              .toSet();
 
-                            for (var p in selectedCopy) {
-                              final pid = p['id'].toString();
-                              if (existingIds.contains(pid)) continue;
-                              selectedProduct = p;
-                              await _addFastKeyTabItem(
-                                p['title'],
-                                p['image'],
-                                p['price'],
-                              );
+                          for (var p in selectedCopy) {
+                            final pid = p['id'].toString();
+                            if (existingIds.contains(pid)) continue;
+                            selectedProduct = p;
+                            await _addFastKeyTabItem(
+                              p['title'],
+                              p['image'],
+                              p['price'],
+                            );
+                          }
+
+                          isBulkAdding = false;
+                          await _refreshFastKeyTabItems();
+
+                          // 🔥 Ensure Isar cache for newly added items
+                          for (final item in fastKeyProductItems) {
+                            final pid = int.tryParse(
+                                item[AppDBConst.fastKeyProductId]
+                                    ?.toString() ??
+                                    '');
+                            if (pid != null) {
+                              await _getCachedProductFromIsar(pid);
                             }
+                          }
 
-                            isBulkAdding = false;
-                            await _refreshFastKeyTabItems();
-
-                            // 🔥 Ensure Isar cache for newly added items
-                            for (final item in fastKeyProductItems) {
-                              final pid = int.tryParse(
-                                  item[AppDBConst.fastKeyProductId]
-                                          ?.toString() ??
-                                      '');
-                              if (pid != null) {
-                                await _getCachedProductFromIsar(pid);
-                              }
-                            }
-
-                            await _resolveFastKeyMeta();
-                            if (mounted) setState(() {});
-                          });
-                        }
+                          await _resolveFastKeyMeta();
+                          if (mounted) setState(() {});
+                        });
+                  }
                       : null,
                   child: const Text('Add Selected'),
                 ),
@@ -1894,7 +1921,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     TextEditingController nameController = TextEditingController(
         text: isEditing ? fastKeyTabs[index!].fastkeyTitle : '');
     String imagePath =
-        isEditing ? fastKeyTabs[index!].fastkeyImage : 'assets/default.png';
+    isEditing ? fastKeyTabs[index!].fastkeyImage : 'assets/default.png';
     bool showError = false;
     final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);
     bool isLoading = false;
@@ -1912,7 +1939,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                 borderRadius: BorderRadius.circular(12.0),
               ),
               contentPadding:
-                  EdgeInsets.only(left: 24, right: 24, top: 20, bottom: 0),
+              EdgeInsets.only(left: 24, right: 24, top: 20, bottom: 0),
               // titlePadding: EdgeInsets.only(left: 24, right: 24, top: 24, bottom: 16),
               actionsPadding: EdgeInsets.only(right: 24, top: 10),
               // insetPadding: EdgeInsets.symmetric(horizontal: 24, vertical: 40),
@@ -1971,9 +1998,9 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                       boxShadow: [
                                         BoxShadow(
                                           color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
+                                              ThemeMode.dark
                                               ? ThemeNotifier
-                                                  .orderPanelTabBackground
+                                              .orderPanelTabBackground
                                               : Color(0xFFFFF7F7),
                                           blurRadius: 3,
                                           spreadRadius: 3,
@@ -2005,8 +2032,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                         setStateDialog(() => isLoading = true);
 
                                         var image =
-                                            await _showSelectImageDialog(
-                                                context: context);
+                                        await _showSelectImageDialog(
+                                            context: context);
 
                                         if (kDebugMode) {
                                           print(
@@ -2020,18 +2047,18 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                       },
                                       child: isLoading
                                           ? SizedBox(
-                                              height: 25,
-                                              width: 25,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2.5,
-                                                color: Colors.red,
-                                              ),
-                                            )
+                                        height: 25,
+                                        width: 25,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          color: Colors.red,
+                                        ),
+                                      )
                                           : Icon(
-                                              Icons.edit,
-                                              size: 25,
-                                              color: Colors.red[400],
-                                            ),
+                                        Icons.edit,
+                                        size: 25,
+                                        color: Colors.red[400],
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -2096,7 +2123,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                     : Colors.grey[400],
                                 fontWeight: FontWeight.bold),
                             errorText: (showError &&
-                                    nameController.text.trim().isEmpty)
+                                nameController.text.trim().isEmpty)
                                 ? TextConstants.categoryNameReqText
                                 : null,
                             errorStyle: const TextStyle(
@@ -2187,15 +2214,15 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                       1, //backend uses non zero indexes to be passed so increase index to 1 onwards
                                   imageUrl: imagePath,
                                   fastKeyServerId:
-                                      fastKeyTabs[index].fastkeyServerId,
+                                  fastKeyTabs[index].fastkeyServerId,
                                   userId: userId ?? 0);
 
                               // Listen for API response
                               final response = await _fastKeyBloc
                                   .updateFastKeyStream
                                   .firstWhere(
-                                (response) =>
-                                    response.status == Status.COMPLETED ||
+                                    (response) =>
+                                response.status == Status.COMPLETED ||
                                     response.status == Status.ERROR,
                               );
 
@@ -2289,18 +2316,18 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                           ),
                           child: isLoading
                               ? const Center(
-                                  child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                ))
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                              ))
                               : Text(
-                                  isEditing
-                                      ? TextConstants.saveText
-                                      : TextConstants.addText,
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 16),
-                                ),
+                            isEditing
+                                ? TextConstants.saveText
+                                : TextConstants.addText,
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 16),
+                          ),
                         ),
                       ),
                     ],
@@ -2310,7 +2337,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                   TextButton(
                     onPressed: () => _showDeleteConfirmationDialog(
                         tabIndex:
-                            index), // Build #1.0.104: updated delete dialog
+                        index), // Build #1.0.104: updated delete dialog
                     child: const Text(TextConstants.deleteText,
                         style: TextStyle(color: Colors.red)),
                   ),
@@ -2347,7 +2374,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           builder: (context, setStateDialog) {
             return AlertDialog(
               backgroundColor:
-                  isDark ? ThemeNotifier.secondaryBackground : Colors.white,
+              isDark ? ThemeNotifier.secondaryBackground : Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -2416,7 +2443,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                         child: GridView.builder(
                           itemCount: getCurrentList().length,
                           gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
+                          SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 6,
                             crossAxisSpacing: 8,
                             mainAxisSpacing: 8,
@@ -2469,14 +2496,14 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             decoration: BoxDecoration(
               gradient: isSelected
                   ? const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0xFFFF8A80),
-                        Color(0xFFFF6E6E),
-                        Color(0xFFFE6464),
-                      ],
-                    )
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFFFF8A80),
+                  Color(0xFFFF6E6E),
+                  Color(0xFFFE6464),
+                ],
+              )
                   : null,
               color: isSelected
                   ? null
@@ -2484,12 +2511,12 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               borderRadius: BorderRadius.circular(10),
               boxShadow: isSelected
                   ? [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
-                        offset: Offset(0, 4),
-                        blurRadius: 8,
-                      ),
-                    ]
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  offset: Offset(0, 4),
+                  blurRadius: 8,
+                ),
+              ]
                   : [],
             ),
             child: Text(
@@ -2569,18 +2596,18 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     } else {
       return Platform.isWindows
           ? Image.asset(
-              'assets/default.png',
-              height: 75,
-              width: 75,
-            )
+        'assets/default.png',
+        height: 75,
+        width: 75,
+      )
           : Image.file(
-              File(imagePath),
-              height: 80,
-              width: 80,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) =>
-                  _safeSvgPicture('assets/svg/password_placeholder.svg'),
-            );
+        File(imagePath),
+        height: 80,
+        width: 80,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            _safeSvgPicture('assets/svg/password_placeholder.svg'),
+      );
     }
   }
 
@@ -2619,7 +2646,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             await _deleteFastKeyTab(fastKeyTabServerId: tab.fastkeyServerId);
           } else if (itemIndex != null) {
             final fastKeyTabItemServerId =
-                fastKeyProductItems[itemIndex][AppDBConst.fastKeyProductId];
+            fastKeyProductItems[itemIndex][AppDBConst.fastKeyProductId];
             await _deleteFastKeyTabItem(int.parse(fastKeyTabItemServerId));
             setState(() {
               enableIcons = false; // Build #1.0.204: Hide icons after deletion
@@ -2692,7 +2719,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       fastKeyProductItems[i] = item;
 
       final productId =
-          int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
+      int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
 
       if (productId == null) {
         debugPrint("⛔ Skipping item without productId");
@@ -2764,6 +2791,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     _fastKeyBloc.dispose();
     orderBloc.dispose(); // Build 1.0.171
     _fastKeyProductBloc.dispose();
+    _autoSuggest.dispose();
     _productSearchController.dispose();
     fastKeyTabIdNotifier.dispose();
     super.dispose();
@@ -2853,51 +2881,51 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               builder: (context, fastKeyTabId, child) {
                 return fastKeyTabId != null
                     ? NestedGridWidget(
-                        productBloc: productBloc,
-                        orderHelper: orderHelper,
-                        isPaginating: _isPaginating,
-                        isHorizontal: true,
-                        isLoading: isTabsLoading || isItemsLoading,
-                        showAddButton: showAddButton,
-                        items: fastKeyProductItems,
-                        selectedItemIndex: selectedItemIndex,
-                        reorderedIndices: reorderedIndices,
-                        onAddButtonPressed: () => _showAddItemDialog(),
-                        onItemTapped: (index, {bool? variantAdded}) =>
-                            _onItemSelected(
-                                index, showAddButton, variantAdded ?? false),
-                        onReorder: (oldIndex, newIndex) {
-                          if (oldIndex == 0 || newIndex == 0) return;
-                          final adjustedOldIndex = oldIndex - 1;
-                          final adjustedNewIndex = newIndex - 1;
-                          if (adjustedOldIndex < 0 ||
-                              adjustedNewIndex < 0 ||
-                              adjustedOldIndex >= fastKeyProductItems.length ||
-                              adjustedNewIndex >= fastKeyProductItems.length)
-                            return;
-                          setState(() {
-                            fastKeyProductItems =
-                                List<Map<String, dynamic>>.from(
-                                    fastKeyProductItems);
-                            final item =
-                                fastKeyProductItems.removeAt(adjustedOldIndex);
-                            fastKeyProductItems.insert(adjustedNewIndex, item);
-                            reorderedIndices =
-                                List.filled(fastKeyProductItems.length, null);
-                            reorderedIndices[adjustedNewIndex] =
-                                adjustedNewIndex;
-                            selectedItemIndex = adjustedNewIndex;
-                          });
-                          fastKeyDBHelper.updateFastKeyItemOrder(
-                              _fastKeyTabId!, fastKeyProductItems);
-                        },
-                        onDeleteItem: (index) =>
-                            _showDeleteConfirmationDialog(itemIndex: index),
-                        onCancelReorder: _onCancelReorder,
-                        showBackButton: false,
-                        enableIcons: enableIcons,
-                        onLongPress: _onLongPress,
-                      )
+                  productBloc: productBloc,
+                  orderHelper: orderHelper,
+                  isPaginating: _isPaginating,
+                  isHorizontal: true,
+                  isLoading: isTabsLoading || isItemsLoading,
+                  showAddButton: showAddButton,
+                  items: fastKeyProductItems,
+                  selectedItemIndex: selectedItemIndex,
+                  reorderedIndices: reorderedIndices,
+                  onAddButtonPressed: () => _showAddItemDialog(),
+                  onItemTapped: (index, {bool? variantAdded}) =>
+                      _onItemSelected(
+                          index, showAddButton, variantAdded ?? false),
+                  onReorder: (oldIndex, newIndex) {
+                    if (oldIndex == 0 || newIndex == 0) return;
+                    final adjustedOldIndex = oldIndex - 1;
+                    final adjustedNewIndex = newIndex - 1;
+                    if (adjustedOldIndex < 0 ||
+                        adjustedNewIndex < 0 ||
+                        adjustedOldIndex >= fastKeyProductItems.length ||
+                        adjustedNewIndex >= fastKeyProductItems.length)
+                      return;
+                    setState(() {
+                      fastKeyProductItems =
+                      List<Map<String, dynamic>>.from(
+                          fastKeyProductItems);
+                      final item =
+                      fastKeyProductItems.removeAt(adjustedOldIndex);
+                      fastKeyProductItems.insert(adjustedNewIndex, item);
+                      reorderedIndices =
+                          List.filled(fastKeyProductItems.length, null);
+                      reorderedIndices[adjustedNewIndex] =
+                          adjustedNewIndex;
+                      selectedItemIndex = adjustedNewIndex;
+                    });
+                    fastKeyDBHelper.updateFastKeyItemOrder(
+                        _fastKeyTabId!, fastKeyProductItems);
+                  },
+                  onDeleteItem: (index) =>
+                      _showDeleteConfirmationDialog(itemIndex: index),
+                  onCancelReorder: _onCancelReorder,
+                  showBackButton: false,
+                  enableIcons: enableIcons,
+                  onLongPress: _onLongPress,
+                )
                     : Container();
               },
             ),
@@ -2998,7 +3026,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content:
-                        Text(TextConstants.errorAddingItem), // Build #1.0.144
+                    Text(TextConstants.errorAddingItem), // Build #1.0.144
                     backgroundColor: Colors.red,
                     duration: const Duration(seconds: 2),
                   ),
@@ -3033,7 +3061,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                     quantities: quantities,
                     refreshOrderList: _refreshOrderList,
                     refreshKey:
-                        _refreshCounter, //Build #1.0.170: Pass counter as refreshKey
+                    _refreshCounter, //Build #1.0.170: Pass counter as refreshKey
                   ),
                 Expanded(
                   child: Column(
@@ -3161,74 +3189,74 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                         builder: (context, fastKeyTabId, child) {
                           return fastKeyTabId != null //Build #1.0.68: updated
                               ? NestedGridWidget(
-                                  productBloc: productBloc,
-                                  orderHelper: orderHelper,
-                                  isPaginating: _isPaginating,
-                                  isHorizontal: true,
-                                  isLoading: isTabsLoading || isItemsLoading,
-                                  showAddButton: showAddButton,
-                                  items: fastKeyProductItems,
-                                  selectedItemIndex: selectedItemIndex,
-                                  reorderedIndices: reorderedIndices,
-                                  onAddButtonPressed: () =>
-                                      _showAddItemDialog(),
-                                  onItemTapped: (index, {bool? variantAdded}) {
-                                    _onItemSelected(index, showAddButton,
-                                        variantAdded ?? false);
-                                  },
-                                  onReorder: (oldIndex, newIndex) {
-                                    if (oldIndex == 0 || newIndex == 0) return;
-                                    final adjustedOldIndex = oldIndex - 1;
-                                    final adjustedNewIndex = newIndex - 1;
-                                    if (adjustedOldIndex < 0 ||
-                                        adjustedNewIndex < 0 ||
-                                        adjustedOldIndex >=
-                                            fastKeyProductItems.length ||
-                                        adjustedNewIndex >=
-                                            fastKeyProductItems.length) {
-                                      return;
-                                    }
-                                    setState(() {
-                                      fastKeyProductItems =
-                                          List<Map<String, dynamic>>.from(
-                                              fastKeyProductItems);
-                                      final item = fastKeyProductItems
-                                          .removeAt(adjustedOldIndex);
-                                      fastKeyProductItems.insert(
-                                          adjustedNewIndex, item);
-                                      reorderedIndices = List.filled(
-                                          fastKeyProductItems.length, null);
-                                      reorderedIndices[adjustedNewIndex] =
-                                          adjustedNewIndex;
-                                      selectedItemIndex = adjustedNewIndex;
-                                    });
-                                    // Update database with new order
-                                    fastKeyDBHelper.updateFastKeyItemOrder(
-                                        _fastKeyTabId!, fastKeyProductItems);
-                                  },
-                                  onDeleteItem: (index) {
-                                    // final itemId = fastKeyProductItems[index][AppDBConst.fastKeyProductId]; //Build #1.0.89
-                                    // if (kDebugMode) {
-                                    //   print('FastkeyScreen - Delete Fastkey item at index: $index, itemId: $itemId');
-                                    // }
-                                    // _deleteFastKeyTabItem(int.parse(itemId));
-                                    _showDeleteConfirmationDialog(
-                                        itemIndex:
-                                            index); // Build #1.0.104: updated delete dialog
-                                  },
-                                  // onCancelReorder: () {
-                                  //   setState(() {
-                                  //     reorderedIndices = List.filled(fastKeyProductItems.length, null);
-                                  //   });
-                                  // },
-                                  onCancelReorder:
-                                      _onCancelReorder, // Build #1.0.204: Updated method
-                                  showBackButton: false,
-                                  enableIcons:
-                                      enableIcons, // Build #1.0.204: Passing enableIcons
-                                  onLongPress:
-                                      _onLongPress, // Passing onLongPress callback
-                                )
+                            productBloc: productBloc,
+                            orderHelper: orderHelper,
+                            isPaginating: _isPaginating,
+                            isHorizontal: true,
+                            isLoading: isTabsLoading || isItemsLoading,
+                            showAddButton: showAddButton,
+                            items: fastKeyProductItems,
+                            selectedItemIndex: selectedItemIndex,
+                            reorderedIndices: reorderedIndices,
+                            onAddButtonPressed: () =>
+                                _showAddItemDialog(),
+                            onItemTapped: (index, {bool? variantAdded}) {
+                              _onItemSelected(index, showAddButton,
+                                  variantAdded ?? false);
+                            },
+                            onReorder: (oldIndex, newIndex) {
+                              if (oldIndex == 0 || newIndex == 0) return;
+                              final adjustedOldIndex = oldIndex - 1;
+                              final adjustedNewIndex = newIndex - 1;
+                              if (adjustedOldIndex < 0 ||
+                                  adjustedNewIndex < 0 ||
+                                  adjustedOldIndex >=
+                                      fastKeyProductItems.length ||
+                                  adjustedNewIndex >=
+                                      fastKeyProductItems.length) {
+                                return;
+                              }
+                              setState(() {
+                                fastKeyProductItems =
+                                List<Map<String, dynamic>>.from(
+                                    fastKeyProductItems);
+                                final item = fastKeyProductItems
+                                    .removeAt(adjustedOldIndex);
+                                fastKeyProductItems.insert(
+                                    adjustedNewIndex, item);
+                                reorderedIndices = List.filled(
+                                    fastKeyProductItems.length, null);
+                                reorderedIndices[adjustedNewIndex] =
+                                    adjustedNewIndex;
+                                selectedItemIndex = adjustedNewIndex;
+                              });
+                              // Update database with new order
+                              fastKeyDBHelper.updateFastKeyItemOrder(
+                                  _fastKeyTabId!, fastKeyProductItems);
+                            },
+                            onDeleteItem: (index) {
+                              // final itemId = fastKeyProductItems[index][AppDBConst.fastKeyProductId]; //Build #1.0.89
+                              // if (kDebugMode) {
+                              //   print('FastkeyScreen - Delete Fastkey item at index: $index, itemId: $itemId');
+                              // }
+                              // _deleteFastKeyTabItem(int.parse(itemId));
+                              _showDeleteConfirmationDialog(
+                                  itemIndex:
+                                  index); // Build #1.0.104: updated delete dialog
+                            },
+                            // onCancelReorder: () {
+                            //   setState(() {
+                            //     reorderedIndices = List.filled(fastKeyProductItems.length, null);
+                            //   });
+                            // },
+                            onCancelReorder:
+                            _onCancelReorder, // Build #1.0.204: Updated method
+                            showBackButton: false,
+                            enableIcons:
+                            enableIcons, // Build #1.0.204: Passing enableIcons
+                            onLongPress:
+                            _onLongPress, // Passing onLongPress callback
+                          )
                               : Container();
                           // : const Center(child: Text("Please select a category"));
                         },
@@ -3244,7 +3272,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                     quantities: quantities,
                     refreshOrderList: _refreshOrderList,
                     refreshKey:
-                        _refreshCounter, //Build #1.0.170: Pass counter as refreshKey
+                    _refreshCounter, //Build #1.0.170: Pass counter as refreshKey
                   ),
                 if (sidebarPosition == SidebarPosition.right)
                   custom_widgets.NavigationBar(

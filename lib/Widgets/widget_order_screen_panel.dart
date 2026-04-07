@@ -1549,6 +1549,15 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     print("Net Local Total     → $netTotal");
     print("Final Payable       → $netPayable");
 
+    final bool isPendingOrder =
+        (_order?[AppDBConst.orderStatus] ?? '').toString() ==
+            TextConstants.pending;
+    final double balanceDueFromTotals =
+    (netPayable - tenderAmount).clamp(0.0, double.infinity);
+    final double panelDisplayBalance = balanceDueFromTotals > 0
+        ? balanceDueFromTotals
+        : (balanceAmount > 0 ? balanceAmount : balanceDueFromTotals);
+
     return Stack(
       children: [
         Column(
@@ -2788,28 +2797,72 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                     SizedBox(
                                       height: 2,
                                     ),
-                                    // Builder(
-                                    //   builder: (context) {
-                                    //     return Row(
-                                    //       mainAxisAlignment:
-                                    //       MainAxisAlignment.spaceBetween,
-                                    //       crossAxisAlignment: CrossAxisAlignment.center,
-                                    //       children: [
-                                    //         Text(TextConstants.amountTendered,
-                                    //             style: TextStyle(
-                                    //                 fontWeight: FontWeight.bold)),
-                                    //         Text(
-                                    //             "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
-                                    //             style: TextStyle(
-                                    //                 fontWeight: FontWeight.bold,
-                                    //                 color: themeHelper.themeMode ==
-                                    //                     ThemeMode.dark
-                                    //                     ? ThemeNotifier.textDark
-                                    //                     : ThemeNotifier.textLight)),
-                                    //       ],
-                                    //     );
-                                    //   },
-                                    // ),
+                                    // if (isPendingOrder) ...[
+                                    //   SizedBox(height: 8),
+                                    //   Row(
+                                    //     mainAxisAlignment:
+                                    //         MainAxisAlignment.spaceBetween,
+                                    //     crossAxisAlignment:
+                                    //         CrossAxisAlignment.center,
+                                    //     children: [
+                                    //       Text(
+                                    //         TextConstants.balanceAmount,
+                                    //         style: const TextStyle(
+                                    //           fontWeight: FontWeight.bold,
+                                    //           fontSize: 14,
+                                    //         ),
+                                    //       ),
+                                    //       Text(
+                                    //         "${TextConstants.currencySymbol}"
+                                    //         "${panelDisplayBalance.toStringAsFixed(2)}",
+                                    //         style: TextStyle(
+                                    //           fontWeight: FontWeight.bold,
+                                    //           fontSize: 14,
+                                    //           color: themeHelper.themeMode ==
+                                    //                   ThemeMode.dark
+                                    //               ? ThemeNotifier.textDark
+                                    //               : ThemeNotifier.textLight,
+                                    //         ),
+                                    //       ),
+                                    //     ],
+                                    //   ),
+                                    //   // if (tenderAmount > 0.005)
+                                    //   //   Padding(
+                                    //   //     padding:
+                                    //   //         const EdgeInsets.only(top: 6),
+                                    //   //     child: Row(
+                                    //   //       mainAxisAlignment:
+                                    //   //           MainAxisAlignment.spaceBetween,
+                                    //   //       children: [
+                                    //   //         Text(
+                                    //   //           TextConstants.amountTendered,
+                                    //   //           style: TextStyle(
+                                    //   //             fontSize: 12,
+                                    //   //             fontWeight: FontWeight.w600,
+                                    //   //             color: themeHelper
+                                    //   //                         .themeMode ==
+                                    //   //                     ThemeMode.dark
+                                    //   //                 ? Colors.white60
+                                    //   //                 : Colors.grey[700],
+                                    //   //           ),
+                                    //   //         ),
+                                    //   //         Text(
+                                    //   //           "${TextConstants.currencySymbol}"
+                                    //   //           "${tenderAmount.toStringAsFixed(2)}",
+                                    //   //           style: TextStyle(
+                                    //   //             fontSize: 12,
+                                    //   //             fontWeight: FontWeight.w600,
+                                    //   //             color: themeHelper
+                                    //   //                         .themeMode ==
+                                    //   //                     ThemeMode.dark
+                                    //   //                 ? ThemeNotifier.textDark
+                                    //   //                 : ThemeNotifier.textLight,
+                                    //   //           ),
+                                    //   //         ),
+                                    //   //       ],
+                                    //   //     ),
+                                    //   //   ),
+                                    // ],
 
                                     SizedBox(
                                       height: 2,
@@ -2913,19 +2966,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                     fontSize: 12, fontWeight: FontWeight.bold)),
                             Row(
                               children: [
-                                // Builder(
-                                //   builder: (context) {
-                                //     final displayAmount = (netPayable - tenderAmount).clamp(0.0, double.infinity);
-                                //     return Text(
-                                //         _showFullSummary
-                                //             ? '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}'
-                                //             : '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}',
-                                //         style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold));
-                                //   },
-                                // ),
-                                // 1️⃣ Show changeAmount only if it's less than or equal to balanceAmount
                                 Text(
-                                  '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${(balanceAmount < changeAmount ? balanceAmount : changeAmount).toStringAsFixed(2)}',
+                                  '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${panelDisplayBalance.toStringAsFixed(2)}',
                                   style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold),

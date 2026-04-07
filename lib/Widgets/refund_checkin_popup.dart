@@ -264,7 +264,7 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
                                               ),
                                             ),
                                             Text(
-                                              "Without order reference",
+                                              "With order reference",
                                               style: TextStyle(
                                                 fontSize: 13,
                                                 fontWeight: FontWeight.w700,

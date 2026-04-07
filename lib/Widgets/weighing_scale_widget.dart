@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 class WeightProvider extends ChangeNotifier {
   double _weightKg        = 0.0;
   String _weightText      = '0.00 lb';
-  String _nativeUnit      = 'kg';   // ← unit the scale actually reported
+  String _nativeUnit      = 'lb';   // UI always shows pounds (chip / labels)
   bool   _isStable        = false;  // ← mirrors USB manager's 'stable' flag
   bool   _isConnected     = false;
   bool   _suppressUpdates = false;
@@ -31,7 +31,7 @@ class WeightProvider extends ChangeNotifier {
     String?         displayText,
   }) {
     if (_suppressUpdates) return;
-    _nativeUnit = unit;
+    _nativeUnit = 'lb';
     _isStable   = stable;
     _weightKg   = _toKg(weight, unit);          // normalise → kg for storage
     _weightText = displayText ?? _buildDisplayText(_weightKg);
@@ -42,7 +42,7 @@ class WeightProvider extends ChangeNotifier {
   void updateWeight(double kg, {String? displayText}) {
     if (_suppressUpdates) return;
     _weightKg   = kg;
-    _nativeUnit = 'kg';
+    _nativeUnit = 'lb';
     _isStable   = true;
     _weightText = displayText ?? _buildDisplayText(kg);
     notifyListeners();
@@ -52,6 +52,7 @@ class WeightProvider extends ChangeNotifier {
     if (_suppressUpdates) return;
     _paused     = false;
     _weightKg   = kg;
+    _nativeUnit = 'lb';
     _weightText = displayText ?? _buildDisplayText(kg);
     notifyListeners();
   }
@@ -61,7 +62,7 @@ class WeightProvider extends ChangeNotifier {
     if (!connected) {
       _weightKg        = 0.0;
       _weightText      = '0.00 lb';
-      _nativeUnit      = 'kg';
+      _nativeUnit      = 'lb';
       _isStable        = false;
       _paused          = false;
       _suppressUpdates = false;
@@ -141,8 +142,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
       final provider = context.read<WeightProvider>();
       final kg = provider.weightKg;
       if (kg > 0) {
-        final displayVal = _kgToDisplayUnit(kg);
-        _setControllerSilently(_formatWeight(displayVal));
+        _setControllerSilently(_formatWeight(_weightLbFromKg(kg)));
       }
     });
   }
@@ -156,24 +156,34 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
 
   // ── Unit conversion ───────────────────────────────────────────────────────
 
-  /// Provider always stores kg → convert to dialog's display unit.
-  double _kgToDisplayUnit(double kg) {
+  /// Provider stores kg internally; UI always shows pounds.
+  double _weightLbFromKg(double kg) => kg * 2.20462;
+
+  /// Pounds → product pricing unit (for unitPrice × weight).
+  double _lbToPricingUnit(double lb) {
     switch (widget.unit.toLowerCase()) {
-      case 'lb': return kg * 2.20462;
-      case 'g':  return kg * 1000.0;
-      case 'oz': return kg * 35.274;
+      case 'lb':
+      case 'lbs':
+        return lb;
       case 'kg':
-      default:   return kg;
+        return lb / 2.20462;
+      case 'g':
+        return lb / 2.20462 * 1000.0;
+      case 'oz':
+        return lb / 2.20462 * 35.274;
+      default:
+        return lb / 2.20462;
     }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  double _effectiveWeight(WeightProvider provider) {
+  /// Live or manual weight in **pounds** (what the user sees/edits).
+  double _effectiveWeightLb(WeightProvider provider) {
     if (_isManualEntry) return _manualWeight;
     final kg = provider.weightKg;
     if (kg <= 0) return 0.0;
-    return _kgToDisplayUnit(kg);
+    return _weightLbFromKg(kg);
   }
 
   /// Price = weight × unitPrice, truncated to 2 decimals (no rounding).
@@ -182,15 +192,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
     return (raw * 100).truncateToDouble() / 100;
   }
 
-  /// Truncate to 3 decimal places without rounding.
-  String _formatWeight(double value) {
-    final raw      = value.toStringAsFixed(10);
-    final dotIndex = raw.indexOf('.');
-    if (dotIndex == -1) return raw;
-    final dec      = raw.substring(dotIndex + 1);
-    final truncDec = dec.length > 3 ? dec.substring(0, 3) : dec;
-    return '${raw.substring(0, dotIndex)}.$truncDec';
-  }
+  String _formatWeight(double value) => value.toStringAsFixed(2);
 
   /// Truncate to 2 decimal places without rounding.
   String _formatPrice(double value) {
@@ -217,7 +219,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
     final parsed = double.tryParse(text);
     setState(() {
       if (parsed != null && parsed > 0) {
-        _manualWeight  = parsed;
+        _manualWeight  = parsed; // pounds
         _isManualEntry = true;
       } else {
         _manualWeight  = 0.0;
@@ -232,8 +234,9 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
   Widget build(BuildContext context) {
     return Consumer<WeightProvider>(
       builder: (context, weightProvider, _) {
-        final weight = _effectiveWeight(weightProvider);
-        final price  = _calculatedPrice(weight);
+        final weightLb = _effectiveWeightLb(weightProvider);
+        final weight   = _lbToPricingUnit(weightLb);
+        final price    = _calculatedPrice(weight);
 
         // Stability indicator — reflects USB manager's 'stable' flag directly
         final bool isLive   = !_isManualEntry;
@@ -241,9 +244,10 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
 
         // ── Sync text field with live scale when not in manual mode ──────
         if (!_isManualEntry) {
-          final kg         = weightProvider.weightKg;
-          final displayVal = kg > 0 ? _kgToDisplayUnit(kg) : 0.0;
-          final liveText   = displayVal > 0 ? _formatWeight(displayVal) : '';
+          final kg       = weightProvider.weightKg;
+          final displayVal = kg > 0 ? _weightLbFromKg(kg) : 0.0;
+          final liveText =
+              displayVal > 0 ? _formatWeight(displayVal) : '';
 
           if (_weightController.text != liveText) {
             _setControllerSilently(liveText);
@@ -303,7 +307,6 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                     isConnected: weightProvider.isConnected,
                     isLive:      isLive,
                     isStable:    isStable,
-                    nativeUnit:  weightProvider.nativeUnit,
                   ),
 
                   const SizedBox(height: 20),
@@ -320,7 +323,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: _InfoLabel(
-                          label: 'Unit Price(${widget.unit}) :',
+                          label: 'Unit Price :',
                           value: '\$${widget.unitPrice.toStringAsFixed(2)}',
                         ),
                       ),
@@ -334,7 +337,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                     children: [
                       Expanded(
                         child: _EditableWeightBox(
-                          label:      'Weight (${widget.unit}s) :',
+                          label:      'Weight (lbs) :',
                           controller: _weightController,
                           hintText:   '0.00',
                           isLive:     isLive,
@@ -367,7 +370,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                     child: SizedBox(
                       width: 180, height: 48,
                       child: ElevatedButton(
-                        onPressed: weight > 0
+                        onPressed: weightLb > 0
                             ? () {
                           final capturedWeight = weight;
                           final capturedPrice  = price;
@@ -422,13 +425,11 @@ class _ScaleStatusChip extends StatelessWidget {
   final bool   isConnected;
   final bool   isLive;
   final bool   isStable;
-  final String nativeUnit;
 
   const _ScaleStatusChip({
     required this.isConnected,
     required this.isLive,
     required this.isStable,
-    required this.nativeUnit,
   });
 
   @override
@@ -448,7 +449,7 @@ class _ScaleStatusChip extends StatelessWidget {
     } else if (isStable) {
       bgColor  = const Color(0xFFE8F5E9);
       dotColor = const Color(0xFF4CAF50);
-      label    = 'Scale stable · reading in $nativeUnit';
+      label    = 'Scale stable · reading in lb';
     } else {
       bgColor  = const Color(0xFFFFF8E1);
       dotColor = const Color(0xFFFFC107);

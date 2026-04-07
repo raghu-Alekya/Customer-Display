@@ -112,6 +112,11 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String searchAddItemText     = "Search and Add Item";
   static const String searchItemText        = "Search Item";
   static const String typeSearchText        = "Type to search...";
+  /// Shown when product search needs more input before queries run.
+  static const String searchMinCharactersHint =
+      "Enter at least 3 characters to search";
+  /// Shown while debounced product search is loading results.
+  static const String searchPausedSearchingHint = "Searching…";
   static const String backText              = "Back";
   static const String addItemText           = "Add Item";
   static const String addProductText        = "Add Product";
