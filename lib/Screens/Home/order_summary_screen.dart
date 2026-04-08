@@ -683,7 +683,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         p.paymentMethod.toLowerCase() ==
             TextConstants.ebtText.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
-        ebtTotal = (originalEbt - payByEbt).clamp(0.0, double.infinity);
 
         payByOther = payments
             .where((p) =>
@@ -693,7 +692,17 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 TextConstants.card.toLowerCase() &&
             p.paymentMethod.toLowerCase() !=
                 TextConstants.ebtText.toLowerCase())
-            .fold(0.0, (sum, p) => sum);
+            .fold(0.0, (sum, p) => sum + p.amount);
+
+        // Match API-path logic: non-EBT overflow should reduce remaining EBT.
+        final double nonEbtOrderValue =
+        (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
+        final double nonEbtPaid = payByCash + payByOther;
+        final double overflowToEbt =
+        nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
+        final double remainingEbt =
+        (originalEbt - payByEbt).clamp(0.0, double.infinity);
+        ebtTotal = (remainingEbt - overflowToEbt).clamp(0.0, double.infinity);
 
         isPaymentStarted = totalPaid > 0;
       });
@@ -2478,7 +2487,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         final rawExisting = await box.get(key);
         final existing =
         Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
-        if (existing["originalEbt"] != widget.ebtAmount) {
+        if (widget.ebtAmount > 0 && existing["originalEbt"] != widget.ebtAmount) {
           existing["originalEbt"] = widget.ebtAmount;
           existing["remainingEbt"] = widget.ebtAmount;
           await box.put(key, existing);

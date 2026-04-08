@@ -834,7 +834,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                                     Expanded(
                                                       flex: 2,
                                                       child: Text(
-                                                        "₹${item['unit_price'].toStringAsFixed(2)} ×${item['qty']}",
+                                                        "\$${item['unit_price'].toStringAsFixed(2)} ×${item['qty']}",
                                                         style: TextStyle(
                                                           fontSize: 12,
                                                           color: isDark ? Colors.black : Colors.black,
@@ -846,7 +846,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                                     Expanded(
                                                       flex: 1,
                                                       child: Text(
-                                                        "₹${item['tax'].toStringAsFixed(2)}",
+                                                        "\$${item['tax'].toStringAsFixed(2)}",
                                                         style: TextStyle(
                                                           fontSize: 12,
                                                           color: isDark ? Colors.black : Colors.black,
@@ -858,7 +858,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                                     Expanded(
                                                       flex: 1,
                                                       child: Text(
-                                                        "₹${item['amount'].toStringAsFixed(2)}",
+                                                        "\$${item['amount'].toStringAsFixed(2)}",
                                                         textAlign: TextAlign.right,
                                                         style: TextStyle(
                                                           fontSize: 12,
@@ -1055,13 +1055,13 @@ class _RefundScreenState extends State<RefundScreen> {
                                                   children: [
 
                                                     /// ===== ORIGINAL ORDER =====
-                                                    _buildRow("Gross Total", "₹${grossTotal.toStringAsFixed(2)}"),
-                                                    _buildRow("Tax", "₹${taxTotal.toStringAsFixed(2)}"),
+                                                    _buildRow("Gross Total", "\$${grossTotal.toStringAsFixed(2)}"),
+                                                    _buildRow("Tax", "\$${taxTotal.toStringAsFixed(2)}"),
 
                                                     if (couponTotal > 0)
                                                       _buildRow(
                                                         "Coupons",
-                                                        "- ₹${couponTotal.toStringAsFixed(2)}",
+                                                        "- \$${couponTotal.toStringAsFixed(2)}",
                                                         valueColor: Colors.green,
                                                       ),
 
@@ -1099,12 +1099,12 @@ class _RefundScreenState extends State<RefundScreen> {
                                                             : Colors.black,
                                                       ),
                                                     ),
-                                                    _buildRow("Net Total", "₹${netTotal.toStringAsFixed(2)}"),
+                                                    _buildRow("Net Total", "\$${netTotal.toStringAsFixed(2)}"),
 
                                                     if (merchantDiscount > 0)
                                                       _buildRow(
                                                         "Merchant Discount",
-                                                        "- ₹${merchantDiscount.toStringAsFixed(2)}",
+                                                        "- \$${merchantDiscount.toStringAsFixed(2)}",
                                                         valueColor: Colors.blue,
                                                       ),
 
@@ -1145,7 +1145,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                                     _buildRow(
                                                       "Total Net Payable",
-                                                      "₹${totalNetPayable.toStringAsFixed(2)}",
+                                                      "\$${totalNetPayable.toStringAsFixed(2)}",
                                                       isBold: true,
                                                     ),
 
@@ -1188,7 +1188,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                                       _buildRow(
                                                         "Refund Amount",
-                                                        "₹${(editedRefundAmount ?? totalRefund).toStringAsFixed(2)}",
+                                                        "\$${(editedRefundAmount ?? totalRefund).toStringAsFixed(2)}",
                                                         isBold: true,
                                                       ),
                                                     ],

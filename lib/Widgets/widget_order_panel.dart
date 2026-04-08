@@ -1630,11 +1630,17 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           (product.variations ?? []).isNotEmpty ||
               hasVariantTag ||
               hasVariantMetaFlag;
+      final bool hasProduceTag = (product.tags ?? []).any((t) {
+        final name = (t.name ?? "").toString().toLowerCase().trim();
+        final slug = (t.slug ?? "").toString().toLowerCase().trim();
+        return name.contains("produce") || slug.contains("produce");
+      });
 
       // 🔥 ONLY AUTO-INCREMENT NON-VARIANT PRODUCTS
       if (exists &&
           (product.variations ?? []).isEmpty &&
-          !shouldOpenVariantFlow) {
+          !shouldOpenVariantFlow &&
+          !hasProduceTag) {
         print("🔁 NON-VARIANT → Auto increment");
 
         await orderHelper.addItemToOrder(
@@ -1766,12 +1772,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
 
       //PRODUCE (WEIGHED ITEMS) HANDLING
-      final bool hasProduceTag = (product?.tags ?? []).any((t) {
-        final name = (t.name ?? "").toString().toLowerCase().trim();
-        final slug = (t.slug ?? "").toString().toLowerCase().trim();
-        return name.contains("produce") || slug.contains("produce");
-      });
-
       if (hasProduceTag) {
         if (_isWeightDialogOpen) {
           print("🚫 Weight dialog already open, ignoring duplicate scan");

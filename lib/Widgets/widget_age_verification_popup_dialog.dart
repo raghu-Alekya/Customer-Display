@@ -116,6 +116,13 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
     }
   }
 
+  double get _dialogHeight {
+    if (_scanStatusMessage.isNotEmpty) {
+      return MediaQuery.of(context).size.height * 0.90;
+    }
+    return MediaQuery.of(context).size.height * 0.80;
+  }
+
   void _accumulateScannerInput(String input) {
     // Add input to the buffer
     _scannerBuffer += input;
@@ -920,7 +927,8 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
   Widget _buildAndroidMainUI(ThemeNotifier themeHelper) {
     return SingleChildScrollView(
       child: Container(
-        height: MediaQuery.of(context).size.height * 0.90,
+        height: _dialogHeight,
+
         width: MediaQuery.of(context).size.width * 0.325,
         padding: const EdgeInsets.all(15),
         child: Column(
@@ -1119,7 +1127,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
 
   Widget _buildWindowsMainUI(ThemeNotifier themeHelper) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.90,
+      height: _dialogHeight,
       width: MediaQuery.of(context).size.width * 0.325,
       padding: const EdgeInsets.all(15),
       child: Column(
