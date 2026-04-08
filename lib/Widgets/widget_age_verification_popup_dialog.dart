@@ -920,7 +920,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
   Widget _buildAndroidMainUI(ThemeNotifier themeHelper) {
     return SingleChildScrollView(
       child: Container(
-        height: MediaQuery.of(context).size.height * 0.80,
+        height: MediaQuery.of(context).size.height * 0.90,
         width: MediaQuery.of(context).size.width * 0.325,
         padding: const EdgeInsets.all(15),
         child: Column(
@@ -1119,7 +1119,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
 
   Widget _buildWindowsMainUI(ThemeNotifier themeHelper) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.9,
+      height: MediaQuery.of(context).size.height * 0.90,
       width: MediaQuery.of(context).size.width * 0.325,
       padding: const EdgeInsets.all(15),
       child: Column(

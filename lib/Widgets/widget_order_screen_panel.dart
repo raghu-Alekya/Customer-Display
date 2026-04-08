@@ -1557,6 +1557,10 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     final double panelDisplayBalance = balanceDueFromTotals > 0
         ? balanceDueFromTotals
         : (balanceAmount > 0 ? balanceAmount : balanceDueFromTotals);
+    final bool showBalanceForPartialPayment =
+        isPendingOrder && !showRefundBlock && panelDisplayBalance > 0;
+    final double displayedBalanceAmount =
+    showBalanceForPartialPayment ? panelDisplayBalance : 0.0;
 
     return Stack(
       children: [
@@ -2967,12 +2971,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                             Row(
                               children: [
                                 Text(
-                                  '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${panelDisplayBalance.toStringAsFixed(2)}',
+                                  '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${displayedBalanceAmount.toStringAsFixed(2)}',
                                   style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold),
                                 ),
-
                                 const SizedBox(width: 8),
                                 Icon(_showFullSummary
                                     ? Icons.keyboard_arrow_down

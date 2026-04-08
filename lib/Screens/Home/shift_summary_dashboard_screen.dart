@@ -64,17 +64,33 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
     shiftBloc = ShiftBloc(ShiftRepository());
     vendorPaymentBloc = VendorPaymentBloc(VendorPaymentRepository()); //Build #1.0.74
     if (widget.shiftId != null) {
-      // Manually listen to the stream and trigger the fetch
-      _shiftSubscription = shiftBloc.shiftByIdStream.listen((response) {
-        if (mounted) {
-          setState(() {
-            apiResponse = response;
-          });
-        }
-      });
-      shiftBloc.getShiftById(widget.shiftId!);
+      _subscribeAndFetchShift(widget.shiftId!);
       _loadVendorData(); // Load vendor data from AssetDBHelper
       if (kDebugMode) print("ShiftSummaryDashboardScreen: Initialized with shiftId ${widget.shiftId}");
+    }
+  }
+
+  void _subscribeAndFetchShift(int shiftId) {
+    _shiftSubscription?.cancel();
+    _shiftSubscription = shiftBloc.shiftByIdStream.listen((response) {
+      if (mounted) {
+        setState(() {
+          apiResponse = response;
+        });
+      }
+    });
+    shiftBloc.getShiftById(shiftId);
+  }
+
+  @override
+  void didUpdateWidget(covariant ShiftSummaryDashboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.shiftId != widget.shiftId && widget.shiftId != null) {
+      // Clear stale summary first, then fetch fresh data for new shift id.
+      setState(() {
+        apiResponse = null;
+      });
+      _subscribeAndFetchShift(widget.shiftId!);
     }
   }
 

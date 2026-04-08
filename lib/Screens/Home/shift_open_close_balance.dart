@@ -138,6 +138,8 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
   void _checkPreviousScreen() {
     final previousScreen = ModalRoute.of(context)?.settings.arguments as String?;
     _originScreen = previousScreen;
+    // Always start with a clean form to avoid reusing stale denomination inputs.
+    _resetState();
     if (previousScreen == TextConstants.navLogout) {
       setState(() {
         screenTitle = TextConstants.shiftClose;

@@ -551,12 +551,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
       final payments =
       await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
+      final box = StorageProvider.offlineOrders;
+      final key = orderId.toString();
+      final rawStored = await box.get(key);
+      final stored = Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
+      final double originalEbt =
+          (stored["originalEbt"] as num?)?.toDouble() ?? ebtTotal;
 
       if (payments.isEmpty) {
+        final double remainingEbt =
+            (stored["remainingEbt"] as num?)?.toDouble() ?? originalEbt;
         setState(() {
           balanceAmount = computedNetPayable;
           _currentPaymentRemainingBalance = null;
           _lastPaymentDetails = null;
+          payByEbt = 0.0;
+          ebtTotal = remainingEbt;
         });
         return;
       }
@@ -673,6 +683,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         p.paymentMethod.toLowerCase() ==
             TextConstants.ebtText.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
+        ebtTotal = (originalEbt - payByEbt).clamp(0.0, double.infinity);
 
         payByOther = payments
             .where((p) =>
@@ -686,6 +697,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
         isPaymentStarted = totalPaid > 0;
       });
+
+      stored["originalEbt"] = originalEbt;
+      stored["remainingEbt"] = ebtTotal;
+      await box.put(key, stored);
     } catch (e, stackTrace) {
       if (kDebugMode) {
         print(" Error calculating balance from payment history: $e");
@@ -3127,14 +3142,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     // ================================
-    //  RESTORE ORIGINAL EBT
+    //  RESTORE REMAINING EBT (fallback: original)
     // ================================
     try {
       if (await box.containsKey(key)) {
         final rawStored = await box.get(key);
         final stored =
         Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
-        if (stored["originalEbt"] != null) {
+        if (stored["remainingEbt"] != null) {
+          ebtTotal = (stored["remainingEbt"] as num).toDouble();
+        } else if (stored["originalEbt"] != null) {
           ebtTotal = (stored["originalEbt"] as num).toDouble();
         }
       }
@@ -4259,15 +4276,33 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       return;
                                     }
 
-                                    // 4️⃣ Select EBT payment method with the resolved amount
+                                    // 4️⃣ Select EBT only (manual amount entry by user)
                                     _selectPaymentMethod(
                                       TextConstants.ebtText,
-                                      autoFillAmount: true,
-                                      maxAllowedAmount: amountToUse,
                                     );
 
-                                    // 5️⃣ Trigger the payment process
-                                    _handlePay();
+                                    // If user already entered amount, submit like Cash flow.
+                                    if (enteredAmount > 0) {
+                                      final normalizedAmount = amountToUse;
+                                      setState(() {
+                                        _rawAmount = (normalizedAmount * 100).round();
+                                        amountController.text =
+                                        '${TextConstants.currencySymbol}${normalizedAmount.toStringAsFixed(2)}';
+                                        _isAmountEntered = true;
+                                        _amountErrorText = null;
+                                      });
+                                      _handlePay();
+                                      return;
+                                    }
+
+                                    // Otherwise keep EBT amount user-driven.
+                                    setState(() {
+                                      _rawAmount = 0;
+                                      amountController.text =
+                                      '${TextConstants.currencySymbol}0.00';
+                                      _isAmountEntered = false;
+                                      _amountErrorText = null;
+                                    });
                                   },
                                 ),
                               ],
