@@ -264,150 +264,152 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
             width: 480,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(28, 24, 28, 28),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-
-                  // ── Title ────────────────────────────────────────────────
-                  Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      const Text(
-                        'Auto Weight & Price',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize:   22,
-                          fontWeight: FontWeight.w700,
-                          color:      Color(0xFF1A1A1A),
-                        ),
-                      ),
-                      Positioned(
-                        right: 0,
-                        child: GestureDetector(
-                          onTap: () => Navigator.of(context).pop(),
-                          child: Container(
-                            width: 32, height: 32,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFFF5C5C),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.close,
-                                color: Colors.white, size: 18),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // ── Scale status chip ─────────────────────────────────────
-                  _ScaleStatusChip(
-                    isConnected: weightProvider.isConnected,
-                    isLive:      isLive,
-                    isStable:    isStable,
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // ── Row 1: Product name + Unit price ──────────────────────
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _InfoLabel(
-                          label: 'Product Name :',
-                          value: widget.productName,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _InfoLabel(
-                          label: 'Unit Price :',
-                          value: '\$${widget.unitPrice.toStringAsFixed(2)}',
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // ── Row 2: Weight field + Calculated price ─────────────────
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _EditableWeightBox(
-                          label:      'Weight (lbs) :',
-                          controller: _weightController,
-                          hintText:   '0.00',
-                          isLive:     isLive,
-                          isStable:   isStable,
-                          onClear: () {
-                            setState(() {
-                              _isManualEntry = false;
-                              _manualWeight  = 0.0;
-                            });
-                            _setControllerSilently('');
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _FieldBox(
-                          label:    'Calculated Price (\$) :',
-                          value:    weight == 0.0 ? '' : _formatPrice(price),
-                          hintText: '0.00',
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 28),
-
-                  // ── Confirm button ─────────────────────────────────────────
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: SizedBox(
-                      width: 180, height: 48,
-                      child: ElevatedButton(
-                        onPressed: weightLb > 0
-                            ? () {
-                          final capturedWeight = weight;
-                          final capturedPrice  = price;
-
-                          weightProvider.clearWeight();
-
-                          Navigator.of(context).pop({
-                            'weight':     capturedWeight,
-                            'finalPrice': capturedPrice,
-                          });
-
-                          widget.onConfirm
-                              ?.call(capturedWeight, capturedPrice);
-                        }
-                            : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFF6B6B),
-                          disabledBackgroundColor:
-                          const Color(0xFFFF6B6B).withOpacity(0.5),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: const Text(
-                          'Confirm & Add',
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                
+                    // ── Title ────────────────────────────────────────────────
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        const Text(
+                          'Auto Weight & Price',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize:   16,
-                            fontWeight: FontWeight.w600,
-                            color:      Colors.white,
+                            fontSize:   22,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                        ),
+                        Positioned(
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: () => Navigator.of(context).pop(),
+                            child: Container(
+                              width: 32, height: 32,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFFF5C5C),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.close,
+                                  color: Colors.white, size: 18),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                
+                    const SizedBox(height: 16),
+                
+                    // ── Scale status chip ─────────────────────────────────────
+                    _ScaleStatusChip(
+                      isConnected: weightProvider.isConnected,
+                      isLive:      isLive,
+                      isStable:    isStable,
+                    ),
+                
+                    const SizedBox(height: 20),
+                
+                    // ── Row 1: Product name + Unit price ──────────────────────
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _InfoLabel(
+                            label: 'Product Name :',
+                            value: widget.productName,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _InfoLabel(
+                            label: 'Unit Price :',
+                            value: '\$${widget.unitPrice.toStringAsFixed(2)}',
+                          ),
+                        ),
+                      ],
+                    ),
+                
+                    const SizedBox(height: 20),
+                
+                    // ── Row 2: Weight field + Calculated price ─────────────────
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _EditableWeightBox(
+                            label:      'Weight (lbs) :',
+                            controller: _weightController,
+                            hintText:   '0.00',
+                            isLive:     isLive,
+                            isStable:   isStable,
+                            onClear: () {
+                              setState(() {
+                                _isManualEntry = false;
+                                _manualWeight  = 0.0;
+                              });
+                              _setControllerSilently('');
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _FieldBox(
+                            label:    'Calculated Price (\$) :',
+                            value:    weight == 0.0 ? '' : _formatPrice(price),
+                            hintText: '0.00',
+                          ),
+                        ),
+                      ],
+                    ),
+                
+                    const SizedBox(height: 28),
+                
+                    // ── Confirm button ─────────────────────────────────────────
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: SizedBox(
+                        width: 180, height: 48,
+                        child: ElevatedButton(
+                          onPressed: weightLb > 0
+                              ? () {
+                            final capturedWeight = weight;
+                            final capturedPrice  = price;
+                
+                            weightProvider.clearWeight();
+                
+                            Navigator.of(context).pop({
+                              'weight':     capturedWeight,
+                              'finalPrice': capturedPrice,
+                            });
+                
+                            widget.onConfirm
+                                ?.call(capturedWeight, capturedPrice);
+                          }
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF6B6B),
+                            disabledBackgroundColor:
+                            const Color(0xFFFF6B6B).withOpacity(0.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: const Text(
+                            'Confirm & Add',
+                            style: TextStyle(
+                              fontSize:   16,
+                              fontWeight: FontWeight.w600,
+                              color:      Colors.white,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-
-                ],
+                
+                  ],
+                ),
               ),
             ),
           ),

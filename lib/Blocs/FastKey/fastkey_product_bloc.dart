@@ -84,6 +84,7 @@ class FastKeyProductBloc {  // Build #1.0.15
             where: '${AppDBConst.fastKeyIdForeignKey} = ? AND ${AppDBConst.fastKeyProductId} = ?',
             whereArgs: [serverTabId, product.productId],
           );
+          final int minAge = int.tryParse(tagg?.slug ?? '') ?? 0;
           if (isDuplicate.isEmpty) {
             await fastKeyDBHelper.addFastKeyItem(
               serverTabId,
@@ -92,7 +93,7 @@ class FastKeyProductBloc {  // Build #1.0.15
               product.price,
               product.productId,
               slNumber: product.slNumber,
-              minAge: int.parse(tagg?.slug ?? "0"),//updated in build #1.0.90
+              minAge: minAge,//updated in build #1.0.90
               sku: product.sku,
               tagsJson: _encodeFastKeyTagsJsonProductBloc(product.tags),
             );
@@ -157,13 +158,14 @@ class FastKeyProductBloc {  // Build #1.0.15
           if (kDebugMode) {
             print("FastkeyBloc: fetchProductsByFastKeyId New Product added, hasAgeRestriction $hasAgeRestriction for product ${product.name} ${product.productId}, minAge: ${tagg?.slug ?? "0"}");
           }
+          final int minAge = int.tryParse(tagg?.slug ?? '') ?? 0;
           fastKeyDBHelper.addFastKeyItem( // Build #1.0.19: Updated parameters
             fastKeyId,
             product.name,
             product.image,
             product.price, // Now stored as string
             product.productId,
-            minAge: int.parse(tagg?.slug ?? "0"),
+            minAge: minAge,
             slNumber: product.slNumber,
             hasVariant: product.hasVariant, // Build #1.0.157: save hasVariant into DB
             sku: product.sku,
@@ -182,16 +184,17 @@ class FastKeyProductBloc {  // Build #1.0.15
           if (kDebugMode) {
             print("FastkeyBloc: fetchProductsByFastKeyId product already present and updating, hasAgeRestriction $hasAgeRestriction, minAge: ${tagg?.slug ?? "0"}");
           }
+          final int minAge = int.tryParse(tagg?.slug ?? '') ?? 0;
           final updatedTab = { ///Naveen : please update the db with product id and category, sl_number
             AppDBConst.fastKeyItemName: product.name,
             AppDBConst.fastKeyItemPrice: product.price,
             AppDBConst.fastKeySlNumber: product.slNumber,
             AppDBConst.fastKeyItemImage: product.image,
             AppDBConst.fastKeyProductId: product.productId,  // Build #1.0.19: Updated parameters
-            AppDBConst.fastKeyItemMinAge: int.parse(tagg?.slug ?? "0"),
+            AppDBConst.fastKeyItemMinAge: minAge,
             AppDBConst.fastKeyItemHasVariant: product.hasVariant ?? false ? 1 : 0, // Build #1.0.157: save hasVariant into DB
             AppDBConst.fastKeyItemTags:
-                _encodeFastKeyTagsJsonProductBloc(product.tags),
+            _encodeFastKeyTagsJsonProductBloc(product.tags),
           };
           await fastKeyDBHelper.updateFastKeyProductItemByProductId(
             fastKeyId,

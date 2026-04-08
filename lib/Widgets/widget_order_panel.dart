@@ -163,6 +163,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   bool _isWeightDialogOpen = false;
   String? _lastScannedBarcode;
   DateTime? _lastScanTime;
+  int _fetchOrderItemsRequestId = 0;
 
   Map<String, dynamic>? resolvedProductMap;
   VoidCallback? _orderPanelRefreshListener;
@@ -191,6 +192,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     if (value == null) return 0.0;
     if (value is num) return value.toDouble();
     return double.tryParse(value.toString()) ?? 0.0;
+  }
+
+  int? _normalizeOrderId(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
   }
 
   String normalizeSku(String sku) {
@@ -370,9 +378,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final List<Map<String, dynamic>> visibleOrders = [];
 
     for (final order in orderHelper.orders) {
-      final int? orderId = order[AppDBConst.orderServerId] as int? ??
-          order['order_id'] as int? ??
-          int.tryParse(order['id']?.toString() ?? '');
+      final int? orderId = _normalizeOrderId(
+        order[AppDBConst.orderServerId] ?? order['order_id'] ?? order['id'],
+      );
       if (orderId == null) continue;
 
       final payments = await LocalPaymentDBHelper.instance
@@ -400,16 +408,25 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     setState(() {
       tabs = visibleOrders.asMap().entries.map((entry) {
         final o = entry.value;
-        final id = o[AppDBConst.orderServerId] ??
-            o['order_id'] ??
-            o[AppDBConst.orderId] ??
-            o['id'];
+        final normalizedId = _normalizeOrderId(
+          o[AppDBConst.orderServerId] ??
+              o['order_id'] ??
+              o[AppDBConst.orderId] ??
+              o['id'],
+        );
+        if (normalizedId == null) {
+          return <String, Object>{
+            "title": "",
+            "subtitle": "Tab ${entry.key + 1}",
+            "orderId": 0,
+          };
+        }
         return {
-          "title": "$id",
+          "title": "$normalizedId",
           "subtitle": "Tab ${entry.key + 1}",
-          "orderId": id as Object,
+          "orderId": normalizedId,
         };
-      }).toList();
+      }).where((t) => (t["orderId"] as int) > 0).toList();
 
       if (kDebugMode) {
         print("##### DEBUG: Loaded ${tabs.length} tabs: $tabs");
@@ -436,7 +453,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // --------------------------------------------------
 // 3️⃣ HARD ACTIVE ORDER SAFETY (REQUIRED)
 // --------------------------------------------------
-    final visibleOrderIds = tabs.map((t) => t['orderId'] as int).toList();
+    final visibleOrderIds =
+        tabs.map((t) => _normalizeOrderId(t['orderId'])).whereType<int>().toList();
 
     final int? activeId = orderHelper.activeOrderId;
 
@@ -547,12 +565,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
-    // 🔥 CRITICAL FIX: Clear orderItems IMMEDIATELY to prevent stale data flash
-    if (mounted) {
-      setState(() {
-        orderItems = [];
-      });
-    }
+    final int requestId = ++_fetchOrderItemsRequestId;
 
     final activeId = orderHelper.activeOrderId;
     // #region agent log
@@ -595,6 +608,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         // 1️⃣ Prefer offline storage (products added via addItemToOrder)
         final offlineItems = await orderHelper
             .getOrderItemsFromOffline(orderHelper.activeOrderId!);
+        if (requestId != _fetchOrderItemsRequestId) return;
         // #region agent log
         unawaited(_agentDebugLog(
           hypothesisId: "H3",
@@ -616,6 +630,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           }
           if (mounted) {
             setState(() {
+              if (requestId != _fetchOrderItemsRequestId) return;
               orderItems = List<Map<String, dynamic>>.from(offlineItems);
               _listVersion++;
             });
@@ -625,6 +640,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
         // 2️⃣ Fallback to SQLite (synced/API orders)
         var orders = await orderHelper.getOrderById(orderHelper.activeOrderId!);
+        if (requestId != _fetchOrderItemsRequestId) return;
         if (orders.isEmpty) {
           if (kDebugMode) {
             print(
@@ -649,6 +665,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         }
         List<Map<String, dynamic>> items =
             await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
+        if (requestId != _fetchOrderItemsRequestId) return;
         if (kDebugMode) {
           print(
               "##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
@@ -656,6 +673,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
         if (mounted) {
           setState(() {
+            if (requestId != _fetchOrderItemsRequestId) return;
             orderItems =
                 List<Map<String, dynamic>>.from(items); // Create mutable copy
             _listVersion++; // Build 1.0.214: Increment version when items change
@@ -739,7 +757,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           mounted &&
           _tabController!.index < tabs.length) {
         int selectedIndex = _tabController!.index;
-        int selectedOrderId = tabs[selectedIndex]["orderId"] as int;
+        final int? selectedOrderId =
+            _normalizeOrderId(tabs[selectedIndex]["orderId"]);
+        if (selectedOrderId == null) return;
         if (mounted) {
           setState(() {
             orderItems = [];
@@ -767,7 +787,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         //  Active order not found → fallback to first tab
         defaultIndex = 0;
 
-        final fallbackOrderId = tabs[0]["orderId"] as int;
+        final fallbackOrderId = _normalizeOrderId(tabs[0]["orderId"]) ?? 0;
+        if (fallbackOrderId == 0) return;
         await orderHelper.setActiveOrder(fallbackOrderId);
         await orderHelper.saveLastActiveOrderId(fallbackOrderId);
       }
@@ -775,8 +796,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
     if (mounted) {
       _tabController!.index = defaultIndex;
+      final activeTabOrderId =
+          _normalizeOrderId(tabs[defaultIndex]["orderId"]) ?? 0;
+      if (activeTabOrderId == 0) return;
       CustomerDisplayHelper.updateCustomerDisplay(
-        tabs[defaultIndex]["orderId"] as int,
+        activeTabOrderId,
       );
     }
   }
@@ -2078,11 +2102,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                   children: _tabController == null
                                       ? []
                                       : List.generate(tabs.length, (index) {
-                                          final int selectedIndex =
-                                              _tabController?.index ?? 0;
-                                          final isSelected = tabs[index]
-                                                  ["orderId"] ==
-                                              orderHelper.activeOrderId;
+                                          final tabOrderId =
+                                              _normalizeOrderId(
+                                                  tabs[index]["orderId"]);
+                                          final isSelected = tabOrderId != null &&
+                                              tabOrderId ==
+                                                  orderHelper.activeOrderId;
 
                                           return Padding(
                                             padding: const EdgeInsets.symmetric(
@@ -2120,8 +2145,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                 child: Row(
                                                   children: [
                                                     Text(
-                                                      tabs[index]["title"]
-                                                          as String,
+                                                      (tabs[index]["title"] ?? "")
+                                                          .toString(),
                                                       style: TextStyle(
                                                         color: isSelected
                                                             ? const Color(

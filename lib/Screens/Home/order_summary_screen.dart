@@ -4628,31 +4628,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Navigator.of(context).pop();
             },
             child: Container(
-              height: 40,
-              width: ResponsiveLayout.getWidth(90),
-              padding: EdgeInsets.all(ResponsiveLayout.getPadding(5)),
+              // height: 40,
+              margin: EdgeInsets.only(left: 15.0, top: 10.0),
+              width: MediaQuery.of(context).size.width * 0.075,
+              height: MediaQuery.of(context).size.height * 0.05,
               decoration: BoxDecoration(
-                color: themeHelper.themeMode == ThemeMode.dark
-                    ? ThemeNotifier.secondaryBackground
-                    : Color(0xFF46566F),
-                borderRadius:
-                BorderRadius.circular(ResponsiveLayout.getRadius(8)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 2,
-                    spreadRadius: 1,
-                  ),
-                ],
+                color: Color(0xFF3B4259),
+                borderRadius: BorderRadius.circular(6.0),
+                border: Border.all(color: Color(0xFF3B4259)),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  const SizedBox(width: 10),
                   Container(
                     alignment: Alignment.center,
                     child: Icon(
                       Icons.arrow_back,
-                      size: 18,
+                      size: 20,
+                      weight: 10,
                       color: Colors.white,
                     ),
                   ),
@@ -5747,17 +5741,29 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final String discountType =
         orderItem['discount_type']?.toString().toLowerCase() ?? '';
 
-    double autoDiscount =
-        (orderItem['auto_discount'] as num?)?.toDouble() ?? 0.0;
+    double _num(dynamic value) {
+      if (value is num) return value.toDouble();
+      return double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
 
-    double comboDiscount =
-        (orderItem['combo_discount_total'] as num?)?.toDouble() ?? 0.0;
+    // Pending/offline orders may use *_total or camelCase keys.
+    double autoDiscount = _num(orderItem['auto_discount']) +
+        _num(orderItem['auto_discount_total']) +
+        _num(orderItem['autoDiscount']) +
+        _num(orderItem['autoDiscountTotal']) +
+        _num(orderItem['display_auto_discount']);
 
-    double mixMatchDiscount =
-        (orderItem['mixmatch_discount_total'] as num?)?.toDouble() ?? 0.0;
+    double comboDiscount = _num(orderItem['combo_discount_total']) +
+        _num(orderItem['comboDiscountTotal']) +
+        _num(orderItem['combo_discount']);
 
-    double multipackDiscount =
-        (orderItem['multipack_discount_total'] as num?)?.toDouble() ?? 0.0;
+    double mixMatchDiscount = _num(orderItem['mixmatch_discount_total']) +
+        _num(orderItem['mixMatchDiscountTotal']) +
+        _num(orderItem['mixmatch_discount']);
+
+    double multipackDiscount = _num(orderItem['multipack_discount_total']) +
+        _num(orderItem['multipackDiscountTotal']) +
+        _num(orderItem['multipack_discount']);
 
     /// 🔥 FIX: backend sometimes moves discount into auto_discount
     if (discountType == 'mixmatch' &&

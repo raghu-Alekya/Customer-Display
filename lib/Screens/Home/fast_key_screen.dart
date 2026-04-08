@@ -496,27 +496,51 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
     _fastKeyBloc.deleteFastKey(fastKeyTabServerId, userId ?? 1);
 
+    int? nextActiveTabId;
     setState(() {
-      fastKeyTabs
-          .removeWhere((tab) => tab.fastkeyServerId == fastKeyTabServerId);
-      if (_selectedCategoryIndex != null) {
-        if (_selectedCategoryIndex! >= fastKeyTabs.length) {
-          _selectedCategoryIndex =
-          fastKeyTabs.isNotEmpty ? fastKeyTabs.length - 1 : null;
-          _fastKeyTabId = _selectedCategoryIndex != null
-              ? fastKeyTabs[_selectedCategoryIndex!].fastkeyServerId
-              : null;
-          fastKeyTabIdNotifier.value = _fastKeyTabId;
+      final int deletedIndex = fastKeyTabs.indexWhere(
+              (tab) => tab.fastkeyServerId == fastKeyTabServerId);
+      final int? prevSelectedIndex = _selectedCategoryIndex;
+
+      if (deletedIndex != -1) {
+        fastKeyTabs.removeAt(deletedIndex);
+      }
+
+      if (fastKeyTabs.isEmpty) {
+        _selectedCategoryIndex = null;
+        _fastKeyTabId = null;
+        fastKeyProductItems.clear();
+      } else if (prevSelectedIndex != null && prevSelectedIndex == deletedIndex) {
+        // Deleted currently selected tab: keep focus at same index (which is now next tab).
+        final int newIndex = deletedIndex.clamp(0, fastKeyTabs.length - 1);
+        _selectedCategoryIndex = newIndex;
+        _fastKeyTabId = fastKeyTabs[newIndex].fastkeyServerId;
+        nextActiveTabId = _fastKeyTabId;
+        fastKeyProductItems.clear();
+        isItemsLoading = true;
+      } else {
+        // Deleted a different tab: keep current tab content and fix shifted index.
+        if (prevSelectedIndex != null && deletedIndex != -1 && deletedIndex < prevSelectedIndex) {
+          _selectedCategoryIndex = prevSelectedIndex - 1;
+        }
+        if (_selectedCategoryIndex != null &&
+            _selectedCategoryIndex! >= 0 &&
+            _selectedCategoryIndex! < fastKeyTabs.length) {
+          _fastKeyTabId = fastKeyTabs[_selectedCategoryIndex!].fastkeyServerId;
         }
       }
+
       _editingCategoryIndex = null; //Build 1.1.36: Clear edit mode
-      fastKeyProductItems
-          .clear(); //Build #1.0.279: Fixed Issue - Deleted Fast Key Products Are Shifting to Next Fast Key
       if (kDebugMode) {
         print(
             "### FastKeyScreen: Updated UI after tab deletion, new tab count: ${fastKeyTabs.length}");
       }
     });
+
+    if (nextActiveTabId != null) {
+      fastKeyTabIdNotifier.value = nextActiveTabId;
+      await fastKeyDBHelper.saveActiveFastKeyTab(nextActiveTabId);
+    }
 
     await _fastKeyBloc.deleteFastKeyStream
         .firstWhere((response) =>

@@ -805,7 +805,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
   Widget _buildDobField(ThemeNotifier themeHelper) {
     return Container(
       height: 50,
-      width: 320,
+      width: 340,
       decoration: BoxDecoration(
         color: themeHelper.themeMode == ThemeMode.dark
             ? ThemeNotifier.paymentEntryContainerColor
@@ -920,7 +920,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
   Widget _buildAndroidMainUI(ThemeNotifier themeHelper) {
     return SingleChildScrollView(
       child: Container(
-        height: MediaQuery.of(context).size.height * 0.90,
+        height: MediaQuery.of(context).size.height * 0.80,
         width: MediaQuery.of(context).size.width * 0.325,
         padding: const EdgeInsets.all(15),
         child: Column(
@@ -1035,7 +1035,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
 
             // DOB input field (visible)
             _buildDobField(themeHelper),
@@ -1048,7 +1048,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
                   style: const TextStyle(color: Colors.red, fontSize: 14),
                 ),
               ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
 
             // Custom NumPad with scanner input handling
             SizedBox(
@@ -1074,33 +1074,42 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
               ),
             ),
 
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _onManualVerify,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4C5F7D),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 30),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _onManualVerify,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF4C5F7D),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text('Manually Verified'),
                     ),
-                    child: const Text('Manually Verified'),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _isVerifyEnabled ? _onVerifyAge : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                      _isVerifyEnabled ? Colors.red : Colors.grey[400],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _isVerifyEnabled ? _onVerifyAge : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                        _isVerifyEnabled ? Colors.red : Colors.grey[400],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text('Verify Age'),
                     ),
-                    child: const Text('Verify Age'),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
@@ -1240,33 +1249,42 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
               ),
             ),
           ),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _onManualVerify,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF4C5F7D),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 30),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _onManualVerify,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF4C5F7D),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text('Manually Verified'),
                   ),
-                  child: const Text('Manually Verified'),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _isVerifyEnabled ? _onVerifyAge : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                    _isVerifyEnabled ? Colors.red : Colors.grey[400],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _isVerifyEnabled ? _onVerifyAge : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                      _isVerifyEnabled ? Colors.red : Colors.grey[400],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text('Verify Age'),
                   ),
-                  child: const Text('Verify Age'),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -1275,7 +1293,7 @@ class _AgeVerificationPopupState extends State<AgeVerificationPopup> {
 
   Widget _buildScannerUI(ThemeNotifier themeHelper) {
     return Container(
-      height: 575,
+      height: 565,
       width: MediaQuery.of(context).size.width * 0.325,
       padding: const EdgeInsets.all(15),
       child: Column(
