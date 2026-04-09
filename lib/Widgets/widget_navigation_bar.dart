@@ -1,3 +1,5 @@
+//widget Navigations bar. dart
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -43,6 +45,7 @@ class NavigationBar extends StatelessWidget {
   final bool isVertical;
   final bool isShiftScreen; // ✅ ADD THIS
   final Future<bool> Function(int index)? onWillNavigate;
+
   /// When non-null, tapping these indices only calls onSidebarItemSelected (no Navigator push).
   /// Used by POSHomeScreen to switch tabs without replacing route.
   final Set<int>? callbackOnlyIndices;
@@ -73,11 +76,13 @@ class NavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme =
-    Theme.of(context); // Build #1.0.6 - Added theme for navigation bar
+    final theme = Theme.of(
+      context,
+    ); // Build #1.0.6 - Added theme for navigation bar
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final logoutBloc = LogoutBloc(
-        LogoutRepository()); // Build #1.0.163: Initialize LogoutBloc with repository
+      LogoutRepository(),
+    ); // Build #1.0.163: Initialize LogoutBloc with repository
     return Container(
       width: isVertical ? MediaQuery.of(context).size.width * 0.07 : null,
       height: isVertical ? null : MediaQuery.of(context).size.height * 0.125,
@@ -100,7 +105,10 @@ class NavigationBar extends StatelessWidget {
               final shiftId = snapshot.data;
               return isVertical
                   ? _buildVerticalLayout(
-                  context, shiftId, logoutBloc) // Build #1.0.163
+                context,
+                shiftId,
+                logoutBloc,
+              ) // Build #1.0.163
                   : _buildHorizontalLayout(context, shiftId, logoutBloc);
             },
           ),
@@ -114,7 +122,8 @@ class NavigationBar extends StatelessWidget {
     if (kDebugMode) {
       print("### Getting shiftId from database");
     }
-    int? shiftId = await UserDbHelper()
+    int? shiftId =
+    await UserDbHelper()
         .getUserShiftId(); // Build #1.0.161: added debug prints
     if (kDebugMode) {
       print("### Retrieved shiftId: $shiftId");
@@ -123,7 +132,10 @@ class NavigationBar extends StatelessWidget {
   }
 
   Widget _buildVerticalLayout(
-      BuildContext context, String? shiftId, LogoutBloc logoutBloc) {
+      BuildContext context,
+      String? shiftId,
+      LogoutBloc logoutBloc,
+      ) {
     int lastSelectedIndex = 0;
     final BuildContext scaffoldContext = context;
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -143,14 +155,15 @@ class NavigationBar extends StatelessWidget {
         // Dynamic items (scrollable if needed)
         List<Widget> dynamicItems = [
           SidebarButton(
-            svgAsset: selectedSidebarIndex == 0
+            svgAsset:
+            selectedSidebarIndex == 0
                 ? SvgUtils.fastKeySelectedIcon
                 : SvgUtils
                 .fastKeyIcon, // Build #1.0.148: Fixed Issue: Menu Bar Icons not matching with latest Figma Design , now using from assets/svg/navigation/
             label: TextConstants.fastKeyText,
             isSelected: selectedSidebarIndex == 0,
-            onTap: isShiftInvalid ||
-                isShiftScreen ||
+            onTap:
+            isShiftScreen ||
                 selectedSidebarIndex ==
                     0 // Build #1.0.240 : Disabled Multiple tap on same SidebarButton
                 ? () {}
@@ -170,13 +183,19 @@ class NavigationBar extends StatelessWidget {
               Navigator.of(context).pushAndRemoveUntil(
                 // Build #1.0.254 : Fixed - Push and replace is showing jump animation for nav bar
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
+                  pageBuilder:
+                      (context, animation, secondaryAnimation) =>
                       POSHomeScreen(lastSelectedIndex: 0),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
+                  transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                      ) {
                     return child; // No transition animation
                   },
-                  transitionDuration: Duration.zero, // Instant transition
+                  transitionDuration:
+                  Duration.zero, // Instant transition
                 ),
                     (route) => false,
               );
@@ -191,21 +210,23 @@ class NavigationBar extends StatelessWidget {
               // );
             },
             isVertical: isVertical,
-            isDisabled: isShiftInvalid || isShiftScreen,
+            isDisabled: isShiftScreen,
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.categoriesIcon,
             label: TextConstants.categoriesText,
             isSelected: selectedSidebarIndex == 1,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 1
+            onTap:
+            isShiftScreen || selectedSidebarIndex == 1
                 ? () {}
                 : () async {
               if (!await _canNavigate(1)) return;
               if (kDebugMode) {
                 print("##### Categories button tapped");
               }
-              lastSelectedIndex = 1; //Build #1.0.7: Store last selection
+              lastSelectedIndex =
+              1; //Build #1.0.7: Store last selection
               onSidebarItemSelected(1);
               if (callbackOnlyIndices?.contains(1) == true) return;
 
@@ -215,13 +236,19 @@ class NavigationBar extends StatelessWidget {
               /// POSHomeScreen (Categories tab)
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
+                  pageBuilder:
+                      (context, animation, secondaryAnimation) =>
                       POSHomeScreen(lastSelectedIndex: 1),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
+                  transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                      ) {
                     return child; // No transition animation
                   },
-                  transitionDuration: Duration.zero, // Instant transition
+                  transitionDuration:
+                  Duration.zero, // Instant transition
                 ),
                     (route) => false,
               );
@@ -235,14 +262,15 @@ class NavigationBar extends StatelessWidget {
               // );
             },
             isVertical: isVertical,
-            isDisabled: isShiftInvalid || isShiftScreen,
+            isDisabled: isShiftScreen,
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.addIcon,
             label: TextConstants.addText,
             isSelected: selectedSidebarIndex == 2,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 2
+            onTap:
+            isShiftScreen || selectedSidebarIndex == 2
                 ? () {}
                 : () async {
               if (!await _canNavigate(2)) return;
@@ -258,13 +286,19 @@ class NavigationBar extends StatelessWidget {
               /// POSHomeScreen (Add tab)
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
+                  pageBuilder:
+                      (context, animation, secondaryAnimation) =>
                       POSHomeScreen(lastSelectedIndex: 2),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
+                  transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                      ) {
                     return child; // No transition animation
                   },
-                  transitionDuration: Duration.zero, // Instant transition
+                  transitionDuration:
+                  Duration.zero, // Instant transition
                 ),
                     (route) => false,
               );
@@ -276,14 +310,15 @@ class NavigationBar extends StatelessWidget {
               //  );
             },
             isVertical: isVertical,
-            isDisabled: isShiftInvalid || isShiftScreen,
+            isDisabled: isShiftScreen,
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.ordersIcon,
             label: TextConstants.ordersText,
             isSelected: selectedSidebarIndex == 3,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 3
+            onTap:
+            isShiftScreen || selectedSidebarIndex == 3
                 ? () {}
                 : () async {
               if (!await _canNavigate(3)) return;
@@ -304,14 +339,21 @@ class NavigationBar extends StatelessWidget {
               /// OrdersScreen
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
+                  pageBuilder:
+                      (context, animation, secondaryAnimation) =>
                       TotalOrdersScreen(
-                          lastSelectedIndex: lastSelectedIndex),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
+                        lastSelectedIndex: lastSelectedIndex,
+                      ),
+                  transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                      ) {
                     return child; // No transition animation
                   },
-                  transitionDuration: Duration.zero, // Instant transition
+                  transitionDuration:
+                  Duration.zero, // Instant transition
                 ),
                     (route) => false,
               );
@@ -328,14 +370,15 @@ class NavigationBar extends StatelessWidget {
               // );
             },
             isVertical: isVertical,
-            isDisabled: isShiftInvalid || isShiftScreen,
+            isDisabled: isShiftScreen,
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.appsIcon,
             label: TextConstants.appsText,
             isSelected: selectedSidebarIndex == 4,
-            onTap: selectedSidebarIndex == 4
+            onTap:
+            selectedSidebarIndex == 4
                 ? () {}
                 : () async {
               if (!await _canNavigate(4)) return;
@@ -348,14 +391,21 @@ class NavigationBar extends StatelessWidget {
               /// AppsDashboardScreen
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
+                  pageBuilder:
+                      (context, animation, secondaryAnimation) =>
                       AppsDashboardScreen(
-                          lastSelectedIndex: lastSelectedIndex),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
+                        lastSelectedIndex: lastSelectedIndex,
+                      ),
+                  transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                      ) {
                     return child; // No transition animation
                   },
-                  transitionDuration: Duration.zero, // Instant transition
+                  transitionDuration:
+                  Duration.zero, // Instant transition
                 ),
                     (route) => false,
               );
@@ -371,6 +421,7 @@ class NavigationBar extends StatelessWidget {
               // );
             },
             isVertical: isVertical,
+            isDisabled: isShiftScreen,
           ),
           const SizedBox(height: 10),
 
@@ -378,8 +429,9 @@ class NavigationBar extends StatelessWidget {
             imageAsset: 'assets/refund.png',
             label: "Refund",
             isSelected: selectedSidebarIndex == 5,
-            isDisabled: isShiftInvalid || isShiftScreen, // ✅ FIXED
-            onTap: (isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5)
+            isDisabled: isShiftScreen, // ✅ FIXED
+            onTap:
+            (isShiftScreen || selectedSidebarIndex == 5)
                 ? () {}
                 : () async {
               if (!await _canNavigate(5)) return;
@@ -393,8 +445,10 @@ class NavigationBar extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => BlocProvider(
-                    create: (context) => CompletedOrdersBloc(
+                  builder:
+                      (_) => BlocProvider(
+                    create:
+                        (context) => CompletedOrdersBloc(
                       context.read<CompletedOrdersRepository>(),
                     )..add(
                       FetchCompletedOrders(
@@ -423,9 +477,8 @@ class NavigationBar extends StatelessWidget {
               svgAsset: SvgUtils.settingsIcon,
               label: TextConstants.settingsHeaderText,
               isSelected: selectedSidebarIndex == 6,
-              onTap: isShiftInvalid ||
-                  isShiftScreen ||
-                  selectedSidebarIndex == 6
+              onTap:
+              isShiftScreen || selectedSidebarIndex == 6
                   ? () {}
                   : () async {
                 if (!await _canNavigate(6)) return;
@@ -443,8 +496,12 @@ class NavigationBar extends StatelessWidget {
                     pageBuilder:
                         (context, animation, secondaryAnimation) =>
                         SettingsScreen(),
-                    transitionsBuilder:
-                        (context, animation, secondaryAnimation, child) {
+                    transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                        ) {
                       return child; // No transition animation
                     },
                     transitionDuration:
@@ -465,15 +522,15 @@ class NavigationBar extends StatelessWidget {
                 // });
               },
               isVertical: isVertical,
-              isDisabled: isShiftInvalid || isShiftScreen,
+              isDisabled: isShiftScreen,
             ),
             const SizedBox(height: 10),
             SidebarButton(
               svgAsset: SvgUtils.logoutIcon,
               label: TextConstants.logoutText,
               isSelected: selectedSidebarIndex == 7,
-              onTap: isShiftInvalid ||
-                  isShiftScreen // Build #1.0.247: Enabled Multiple click for Logout
+              onTap:
+              isShiftScreen // Build #1.0.247: Enabled Multiple click for Logout
                   ? () {}
                   : () async {
                 if (!await _canNavigate(7)) return;
@@ -482,10 +539,15 @@ class NavigationBar extends StatelessWidget {
                 if (kDebugMode) {
                   print("nav logout called");
                 }
-                _showLogoutDialog(context, logoutBloc, themeHelper, previousIndex);
+                _showLogoutDialog(
+                  context,
+                  logoutBloc,
+                  themeHelper,
+                  previousIndex,
+                );
               },
               isVertical: isVertical,
-              isDisabled: isShiftInvalid || isShiftScreen,
+              isDisabled: isShiftScreen,
             ),
             const SizedBox(height: 10),
           ],
@@ -511,7 +573,10 @@ class NavigationBar extends StatelessWidget {
   }
 
   Widget _buildHorizontalLayout(
-      BuildContext context, String? shiftId, LogoutBloc logoutBloc) {
+      BuildContext context,
+      String? shiftId,
+      LogoutBloc logoutBloc,
+      ) {
     int lastSelectedIndex = 0;
     final themeHelper = Provider.of<ThemeNotifier>(context);
     // Build #1.0.161: Fixed Issue - navigation bar icons are not disabled before create shift
@@ -530,14 +595,15 @@ class NavigationBar extends StatelessWidget {
         // Dynamic items (scrollable horizontally if needed)
         List<Widget> dynamicItems = [
           SidebarButton(
-            svgAsset: selectedSidebarIndex == 0
+            svgAsset:
+            selectedSidebarIndex == 0
                 ? SvgUtils.fastKeySelectedIcon
                 : SvgUtils
                 .fastKeyIcon, // Build #1.0.148: Fixed Issue: Menu Bar Icons not matching with latest Figma Design , now using from assets/svg/navigation/
             label: TextConstants.fastKeyText,
             isSelected: selectedSidebarIndex == 0,
-            onTap: isShiftInvalid ||
-                isShiftScreen ||
+            onTap:
+            isShiftScreen ||
                 selectedSidebarIndex ==
                     0 // Build #1.0.240 : Disabled Multiple tap on same SidebarButton
                 ? () {}
@@ -557,13 +623,19 @@ class NavigationBar extends StatelessWidget {
               Navigator.of(context).pushAndRemoveUntil(
                 // Build #1.0.254 : Fixed - Push and replace is showing jump animation for nav bar
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
+                  pageBuilder:
+                      (context, animation, secondaryAnimation) =>
                       POSHomeScreen(lastSelectedIndex: 0),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
+                  transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                      ) {
                     return child; // No transition animation
                   },
-                  transitionDuration: Duration.zero, // Instant transition
+                  transitionDuration:
+                  Duration.zero, // Instant transition
                 ),
                     (route) => false,
               );
@@ -577,14 +649,15 @@ class NavigationBar extends StatelessWidget {
               // );
             },
             isVertical: false, //Build #1.0.54: updated
-            isDisabled: isShiftInvalid || isShiftScreen,
+            isDisabled: isShiftScreen,
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.categoriesIcon,
             label: TextConstants.categoriesText,
             isSelected: selectedSidebarIndex == 1,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 1
+            onTap:
+            isShiftScreen || selectedSidebarIndex == 1
                 ? () {}
                 : () async {
               if (!await _canNavigate(1)) return;
@@ -598,14 +671,21 @@ class NavigationBar extends StatelessWidget {
               /// CategoriesScreen
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
+                  pageBuilder:
+                      (context, animation, secondaryAnimation) =>
                       CategoriesScreen(
-                          lastSelectedIndex: lastSelectedIndex),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
+                        lastSelectedIndex: lastSelectedIndex,
+                      ),
+                  transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                      ) {
                     return child; // No transition animation
                   },
-                  transitionDuration: Duration.zero, // Instant transition
+                  transitionDuration:
+                  Duration.zero, // Instant transition
                 ),
                     (route) => false,
               );
@@ -621,14 +701,15 @@ class NavigationBar extends StatelessWidget {
               // );
             },
             isVertical: false,
-            isDisabled: isShiftInvalid || isShiftScreen,
+            isDisabled: isShiftScreen,
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.addIcon,
             label: TextConstants.addText,
             isSelected: selectedSidebarIndex == 2,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 2
+            onTap:
+            isShiftScreen || selectedSidebarIndex == 2
                 ? () {}
                 : () async {
               if (!await _canNavigate(2)) return;
@@ -644,13 +725,19 @@ class NavigationBar extends StatelessWidget {
               /// POSHomeScreen (Add tab)
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
+                  pageBuilder:
+                      (context, animation, secondaryAnimation) =>
                       POSHomeScreen(lastSelectedIndex: 2),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
+                  transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                      ) {
                     return child; // No transition animation
                   },
-                  transitionDuration: Duration.zero, // Instant transition
+                  transitionDuration:
+                  Duration.zero, // Instant transition
                 ),
                     (route) => false,
               );
@@ -664,14 +751,15 @@ class NavigationBar extends StatelessWidget {
               // );
             },
             isVertical: false,
-            isDisabled: isShiftInvalid || isShiftScreen,
+            isDisabled: isShiftScreen,
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.ordersIcon,
             label: TextConstants.ordersText,
             isSelected: selectedSidebarIndex == 3,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 3
+            onTap:
+            isShiftScreen || selectedSidebarIndex == 3
                 ? () {}
                 : () async {
               if (!await _canNavigate(3)) return;
@@ -692,14 +780,21 @@ class NavigationBar extends StatelessWidget {
               /// OrdersScreen
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
+                  pageBuilder:
+                      (context, animation, secondaryAnimation) =>
                       TotalOrdersScreen(
-                          lastSelectedIndex: lastSelectedIndex),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
+                        lastSelectedIndex: lastSelectedIndex,
+                      ),
+                  transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                      ) {
                     return child; // No transition animation
                   },
-                  transitionDuration: Duration.zero, // Instant transition
+                  transitionDuration:
+                  Duration.zero, // Instant transition
                 ),
                     (route) => false,
               );
@@ -713,14 +808,15 @@ class NavigationBar extends StatelessWidget {
               // );
             },
             isVertical: false,
-            isDisabled: isShiftInvalid || isShiftScreen,
+            isDisabled: isShiftScreen,
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.appsIcon,
             label: TextConstants.appsText,
             isSelected: selectedSidebarIndex == 4,
-            onTap: selectedSidebarIndex == 4
+            onTap:
+            selectedSidebarIndex == 4
                 ? () {}
                 : () async {
               if (!await _canNavigate(4)) return;
@@ -733,14 +829,21 @@ class NavigationBar extends StatelessWidget {
               ///
               Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
+                  pageBuilder:
+                      (context, animation, secondaryAnimation) =>
                       AppsDashboardScreen(
-                          lastSelectedIndex: lastSelectedIndex),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
+                        lastSelectedIndex: lastSelectedIndex,
+                      ),
+                  transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                      ) {
                     return child; // No transition animation
                   },
-                  transitionDuration: Duration.zero, // Instant transition
+                  transitionDuration:
+                  Duration.zero, // Instant transition
                 ),
                     (route) => false,
               );
@@ -754,6 +857,7 @@ class NavigationBar extends StatelessWidget {
               // );
             },
             isVertical: false,
+            isDisabled: isShiftScreen,
           ),
           // Additional dynamic items can be added here.
         ];
@@ -765,7 +869,8 @@ class NavigationBar extends StatelessWidget {
             svgAsset: SvgUtils.settingsIcon,
             label: TextConstants.settingsHeaderText,
             isSelected: selectedSidebarIndex == 5,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5
+            onTap:
+            isShiftScreen || selectedSidebarIndex == 5
                 ? () {}
                 : () async {
               if (!await _canNavigate(5)) return;
@@ -780,13 +885,19 @@ class NavigationBar extends StatelessWidget {
               Navigator.push(
                 context,
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
+                  pageBuilder:
+                      (context, animation, secondaryAnimation) =>
                       SettingsScreen(),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
+                  transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                      ) {
                     return child; // No transition animation
                   },
-                  transitionDuration: Duration.zero, // Instant transition
+                  transitionDuration:
+                  Duration.zero, // Instant transition
                 ),
               ).then((_) {
                 // Restore the sidebar selection when coming back
@@ -801,14 +912,15 @@ class NavigationBar extends StatelessWidget {
               // });
             },
             isVertical: false,
-            isDisabled: isShiftInvalid || isShiftScreen,
+            isDisabled: isShiftScreen,
           ),
           const SizedBox(width: 10),
           SidebarButton(
             svgAsset: SvgUtils.logoutIcon,
             label: TextConstants.logoutText,
             isSelected: selectedSidebarIndex == 6,
-            onTap: isShiftInvalid || isShiftScreen
+            onTap:
+            isShiftScreen
                 ? () {}
                 : () async {
               if (!await _canNavigate(6)) return;
@@ -817,10 +929,15 @@ class NavigationBar extends StatelessWidget {
               if (kDebugMode) {
                 print("nav logout called");
               }
-              _showLogoutDialog(context, logoutBloc, themeHelper,previousIndex);
+              _showLogoutDialog(
+                context,
+                logoutBloc,
+                themeHelper,
+                previousIndex,
+              );
             },
             isVertical: false,
-            isDisabled: isShiftInvalid || isShiftScreen,
+            isDisabled: isShiftScreen,
           ),
           const SizedBox(width: 10),
         ];
@@ -838,16 +955,18 @@ class NavigationBar extends StatelessWidget {
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(
-              16, 0, 16, 0), // Adjust padding as needed
+            16,
+            0,
+            16,
+            0,
+          ), // Adjust padding as needed
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               // Dynamic part takes the available space.
               Expanded(child: dynamicRow),
               // Fixed items remain at the end.
-              Row(
-                children: fixedItems,
-              ),
+              Row(children: fixedItems),
             ],
           ),
         );
@@ -940,10 +1059,7 @@ class NavigationBar extends StatelessWidget {
                         },
                         child: const Text(
                           "OK",
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.white,
-                          ),
+                          style: TextStyle(fontSize: 16, color: Colors.white),
                         ),
                       ),
                     ),
@@ -965,16 +1081,18 @@ class NavigationBar extends StatelessWidget {
       navigator.push(
         MaterialPageRoute(
           builder: (context) => ShiftOpenCloseBalanceScreen(),
-          settings: const RouteSettings(
-            arguments: TextConstants.navLogout,
-          ),
+          settings: const RouteSettings(arguments: TextConstants.navLogout),
         ),
       );
     }
   }
 
   void _showLogoutDialog(
-      BuildContext context, LogoutBloc logoutBloc, ThemeNotifier themeHelper, int previousIndex) {
+      BuildContext context,
+      LogoutBloc logoutBloc,
+      ThemeNotifier themeHelper,
+      int previousIndex,
+      ) {
     ScannerGuard.isCouponPopupOpen = true;
     showDialog(
       context: context,
@@ -1000,7 +1118,8 @@ class NavigationBar extends StatelessWidget {
                     color: Colors.transparent,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: isDarkMode
+                      color:
+                      isDarkMode
                           ? const Color(0xFF434242) // dark mode border
                           : Colors.white, // light mode border
                       width: 3,
@@ -1025,8 +1144,10 @@ class NavigationBar extends StatelessWidget {
                       ),
                     ],
                   ),
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 24,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment:
@@ -1039,7 +1160,8 @@ class NavigationBar extends StatelessWidget {
                         height: 80,
                         width: 80,
                         fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) =>
+                        errorBuilder:
+                            (context, error, stackTrace) =>
                         const SizedBox.shrink(),
                       ),
                       const SizedBox(height: 16),
@@ -1101,14 +1223,19 @@ class NavigationBar extends StatelessWidget {
                             child: Text(
                               TextConstants.swipeToCloseShift,
                               style: const TextStyle(
-                                  color: Colors.white, fontSize: 13),
+                                color: Colors.white,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                           onSwipe: () {
                             // Capture navigator before any async work - context may be invalid after pop
                             final navigator = Navigator.of(context);
                             _handleSwipeToCloseShift(
-                                context, navigator, isDarkMode);
+                              context,
+                              navigator,
+                              isDarkMode,
+                            );
                           },
                         ),
                       ),
@@ -1122,13 +1249,15 @@ class NavigationBar extends StatelessWidget {
                             width: 160, // 🔹 set your desired width here
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: isDarkMode
+                                backgroundColor:
+                                isDarkMode
                                     ? const Color(0xFF4C5F7D)
                                     : const Color(0xFFF6F6F6),
                                 fixedSize: const Size(double.infinity, 45),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(
-                                      6), // ✅ reduced border radius
+                                    6,
+                                  ), // ✅ reduced border radius
                                 ),
                               ),
                               onPressed: () {
@@ -1139,7 +1268,8 @@ class NavigationBar extends StatelessWidget {
                               child: Text(
                                 TextConstants.cancelText,
                                 style: TextStyle(
-                                  color: isDarkMode
+                                  color:
+                                  isDarkMode
                                       ? ThemeNotifier.textDark
                                       : const Color(0xFF4C5F7D),
                                   fontSize: 16,
@@ -1153,24 +1283,30 @@ class NavigationBar extends StatelessWidget {
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFFFE6464),
-                                fixedSize: const Size(double.infinity,
-                                    45), // keeps fixed height = 45
+                                fixedSize: const Size(
+                                  double.infinity,
+                                  45,
+                                ), // keeps fixed height = 45
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(
-                                      6), // ✅ reduced border radius
+                                    6,
+                                  ), // ✅ reduced border radius
                                 ),
                               ),
                               onPressed: () async {
                                 if (kDebugMode)
                                   print(
-                                      "Logout confirmed, initiating logout process");
+                                    "Logout confirmed, initiating logout process",
+                                  );
 
                                 // Show loader
                                 showDialog(
                                   context: context,
                                   barrierDismissible: false,
-                                  builder: (_) => const Center(
-                                      child: CircularProgressIndicator()),
+                                  builder:
+                                      (_) => const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
                                 );
 
                                 await logoutBloc.performLogout();
@@ -1199,16 +1335,19 @@ class NavigationBar extends StatelessWidget {
                                 Navigator.pushReplacement(
                                   context,
                                   MaterialPageRoute(
-                                      builder: (_) => LoginScreen()),
+                                    builder: (_) => LoginScreen(),
+                                  ),
                                 );
                               },
                               child: Text(
                                 TextConstants.logoutText,
                                 style: const TextStyle(
-                                    color: Colors.white, fontSize: 16),
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                ),
                               ),
                             ),
-                          )
+                          ),
                         ],
                       ),
                     ],
@@ -1251,7 +1390,8 @@ class SidebarButton extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 0.0, horizontal: 0.0),
       child: GestureDetector(
         onTap: onTap,
-        child: isVertical
+        child:
+        isVertical
             ? _buildVerticalLayout(context)
             : _buildHorizontalLayout(),
       ),
@@ -1263,8 +1403,12 @@ class SidebarButton extends StatelessWidget {
       children: [
         Container(
           width: MediaQuery.of(context).size.width * 0.05,
-          padding:
-          const EdgeInsets.only(top: 10.0, bottom: 10, left: 2, right: 2),
+          padding: const EdgeInsets.only(
+            top: 10.0,
+            bottom: 10,
+            left: 2,
+            right: 2,
+          ),
           decoration: BoxDecoration(
             shape: BoxShape.rectangle,
             color: isSelected ? Color(0xFFFE6464) : Color(0xFF3B4259),
@@ -1293,7 +1437,8 @@ class SidebarButton extends StatelessWidget {
                 Image.asset(
                   imageAsset!,
                   height: 15,
-                  color: isSelected
+                  color:
+                  isSelected
                       ? Colors.white
                       : isDisabled
                       ? Colors.grey.shade800
@@ -1302,7 +1447,8 @@ class SidebarButton extends StatelessWidget {
               else
                 Icon(
                   icon,
-                  color: isSelected
+                  color:
+                  isSelected
                       ? Colors.white
                       : isDisabled
                       ? Colors.grey.shade800
@@ -1315,7 +1461,8 @@ class SidebarButton extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  color: isSelected
+                  color:
+                  isSelected
                       ? Colors.white
                       : isDisabled
                       ? Colors.grey.shade800
@@ -1327,7 +1474,7 @@ class SidebarButton extends StatelessWidget {
               ),
             ],
           ),
-        )
+        ),
       ],
     );
   }
@@ -1357,7 +1504,8 @@ class SidebarButton extends StatelessWidget {
           )
               : Icon(
             icon,
-            color: isSelected
+            color:
+            isSelected
                 ? Colors.white
                 : isDisabled
                 ? Colors.grey.shade800
@@ -1368,7 +1516,8 @@ class SidebarButton extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: isSelected
+              color:
+              isSelected
                   ? Colors.white
                   : isDisabled
                   ? Colors.grey.shade800

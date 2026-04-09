@@ -482,6 +482,26 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   double payByEbt = 0.0; // ADD THIS
   TextEditingController ebtAmountController = TextEditingController();
 
+  PaymentMode _paymentModeFromMethod(dynamic method) {
+    final String m = (method ?? '').toString().trim().toLowerCase();
+    if (m == TextConstants.ebtText.toLowerCase()) return PaymentMode.ebt;
+    if (m == TextConstants.card.toLowerCase()) return PaymentMode.card;
+    if (m == TextConstants.wallet.toLowerCase()) return PaymentMode.wallet;
+    return PaymentMode.cash;
+  }
+
+  PaymentMode _currentDialogPaymentMode() {
+    // Prefer the latest persisted payment method from the payment result path.
+    final String? lastPaymentMethod = _lastPayment?.method;
+    if (lastPaymentMethod != null && lastPaymentMethod.trim().isNotEmpty) {
+      return _paymentModeFromMethod(lastPaymentMethod);
+    }
+
+    // Fallback to last in-memory progression details, then current selection.
+    final dynamic lastMethod = _lastPaymentDetails?['method'];
+    return _paymentModeFromMethod(lastMethod ?? selectedPaymentMethod);
+  }
+
   static const bool offline_PAYMENT_SUCCESS = true; // ← toggle this
 
   bool _dialogGuard = false;
@@ -3933,6 +3953,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
             // Update balances
             tenderAmount += amount;
+            final String paidMethod = selectedPaymentMethod!.toLowerCase().trim();
+            if (paidMethod == TextConstants.cash.toLowerCase()) {
+              payByCash += amount;
+            } else if (paidMethod == TextConstants.card.toLowerCase()) {
+              payByCard += amount;
+            } else if (paidMethod == TextConstants.ebtText.toLowerCase()) {
+              payByEbt += amount;
+              ebtTotal = (ebtTotal - amount).clamp(0.0, double.infinity);
+            } else {
+              payByOther += amount;
+            }
             if (isFullPayment) {
               balanceAmount = 0.0;
               changeAmount = amount - remainingBalance;
@@ -3972,6 +4003,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 isLoading = false;
                 _currentPaymentRemainingBalance =
                 isPartialPayment ? balanceAmount : null;
+                _lastPaymentDetails = {
+                  'amount': amount,
+                  'method': selectedPaymentMethod!,
+                  'remainingBalance': balanceAmount,
+                  'previousBalance': remainingBalance,
+                  'datetime': DateTime.now().toIso8601String(),
+                };
               });
 
             // ─── Full: success receipt dialog | Partial: "next payment" dialog ───
@@ -6073,7 +6111,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
     } else if (label == TextConstants.payByCash) {
       amount =
-      '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'; //Build #1.0.99: updated from api
+      '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}';
     } else if (label == TextConstants.payByOther) {
       amount =
       '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
@@ -7635,10 +7673,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     );
                                     return;
                                   }
-                                  final confirmed =
                                   await _syncAndShowCouponPopup();
+                                  // Issue Coupon should not mark coupon as applied
+                                  // to the current order.
                                   setState(() {
-                                    isCouponActive = confirmed;
+                                    isCouponActive = false;
                                   });
                                 },
                               ),
@@ -9242,7 +9281,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       barrierDismissible: false,
       builder: (dialogCtx) => PaymentDialog(
         status: PaymentStatus.partial,
-        mode: PaymentMode.cash,
+        mode: _currentDialogPaymentMode(),
         amount: amount,
         remainingBalance: remainingToShow,
         isVoidDisabled: isVoidDisabled,
@@ -9738,7 +9777,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       useRootNavigator: false,
       builder: (dialogCtx) => PaymentDialog(
         status: PaymentStatus.successful,
-        mode: PaymentMode.cash,
+        mode: _currentDialogPaymentMode(),
         amount: amount,
         changeAmount: showChange ? changeAmount : null,
         couponResponse: couponResponse,
@@ -10705,6 +10744,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     ]);
 
     bytes += ticket.row([
+      PosColumn(text: "Pay by EBT", width: 8),
+      PosColumn(
+        text: formatCurrency(payByEbt),
+        width: 4,
+        styles: PosStyles(align: PosAlign.right),
+      ),
+    ]);
+
+    bytes += ticket.row([
       PosColumn(text: TextConstants.payByOther, width: 8),
       PosColumn(
         text: formatCurrency(payByOther),
@@ -10883,7 +10931,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       barrierDismissible: false,
       builder: (context) => PaymentDialog(
         status: PaymentStatus.receipt,
-        mode: PaymentMode.cash,
+        mode: _currentDialogPaymentMode(),
         amount: amount,
         onPrint: () {
           if (kDebugMode) {

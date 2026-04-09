@@ -1145,7 +1145,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                                     _buildRow(
                                                       "Total Net Payable",
-                                                      "\$${totalNetPayable.toStringAsFixed(2)}",
+                                                      "${totalNetPayable < 0 ? "-" : ""}\$${totalNetPayable.abs().toStringAsFixed(2)}",
                                                       isBold: true,
                                                     ),
 

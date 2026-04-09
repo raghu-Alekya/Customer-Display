@@ -39,6 +39,7 @@ import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
 import '../Screens/Home/Settings/printer_setup_screen.dart';
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
+import '../Screens/Home/isar_payments/local_payments_model.dart';
 import '../Utilities/printer_settings.dart';
 import '../Utilities/result_utility.dart';
 
@@ -245,6 +246,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         }
         // Match EBT
         else if (method == "ebt" ||
+            method.contains("ebt") ||
             method == TextConstants.ebtText.toLowerCase() ||
             method ==
                 TextConstants.EBTAmount.toLowerCase().replaceAll('.', '')) {
@@ -258,8 +260,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     }
 
     setState(() {
-      payByCash = cashPaid + otherPaid;
-      payByOther = 0.0;
+      payByCash = cashPaid;
+      payByOther = otherPaid;
       ebtAmount = ebtPaid;
 
       // Tender amount includes all payments
@@ -388,9 +390,28 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       final payments =
       await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
 
+      double cashPaid = 0.0;
+      double otherPaid = 0.0;
+      double ebtPaid = 0.0;
+
       if (payments.isNotEmpty) {
         print("========== Local Payment Records ==========");
         for (var p in payments) {
+          final method = p.paymentMethod.toLowerCase().trim();
+          if (method == "cash" ||
+              method == TextConstants.cash.toLowerCase() ||
+              method == TextConstants.payByCash.toLowerCase()) {
+            cashPaid += p.amount;
+          } else if (method == "ebt" ||
+              method.contains("ebt") ||
+              method == TextConstants.ebtText.toLowerCase() ||
+              method ==
+                  TextConstants.EBTAmount.toLowerCase().replaceAll('.', '')) {
+            ebtPaid += p.amount;
+          } else {
+            otherPaid += p.amount;
+          }
+
           final amountStr = p.amount >= 0
               ? "Cash: \$${p.amount.toStringAsFixed(2)}"
               : "void: \$${p.amount.toStringAsFixed(2)}";
@@ -434,8 +455,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         //  Set final values once
         setState(() {
           tenderAmount = totalPaid.clamp(0.0, double.infinity);
-          payByCash = tenderAmount; // Build #1.0.267: Attribute to Cash
-          payByOther = 0.0;
+          payByCash = cashPaid;
+          payByOther = otherPaid;
+          ebtAmount = ebtPaid;
           balanceAmount = computedBalance;
           changeAmount = computedChange;
         });
@@ -552,7 +574,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         }
       }
       // Load balance from local payments for pending/offline orders
-      if (widget.activeOrderId != null && mounted && tenderAmount == 0) {
+      // Load balance from local payments for pending/offline orders
+      // Load balance from local payments for pending/offline orders.
+      // Always refresh from LocalPayment summary to avoid stale tender/balance
+      // after void + re-pay flows.
+      if (widget.activeOrderId != null && mounted) {
         try {
           final summary = await LocalPaymentDBHelper.instance
               .getPaymentSummaryForOrder(widget.activeOrderId!);
@@ -1731,9 +1757,25 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                         final variationName =
                             orderItem["attribute_variant"] ?? "";
 
-                        /// Hide coupons
-                        if (itemTypeRaw
-                            .contains(TextConstants.couponText.toLowerCase())) {
+                        final bool isCouponRow = itemTypeRaw
+                                .contains(TextConstants.couponText.toLowerCase()) ||
+                            itemNameRaw
+                                .contains(TextConstants.couponText.toLowerCase());
+                        final bool isGeneratedCouponOnly =
+                            (_order["generated_coupon_only"] == true) ||
+                                (_order["generated_coupon_only"]
+                                        ?.toString()
+                                        .toLowerCase() ==
+                                    "true");
+                        final bool isCouponAppliedOnOrder =
+                            (_order["coupon_applied"] == true) ||
+                                (_order["coupon_applied"]?.toString().toLowerCase() ==
+                                    "true");
+
+                        /// Hide coupon rows for generated-only coupons and for non-applied coupons.
+                        /// Show coupon rows only when coupon is truly applied to this order.
+                        if (isCouponRow &&
+                            (!isCouponAppliedOnOrder || isGeneratedCouponOnly)) {
                           return Container(
                             key: ValueKey("coupon_$index"),
                             height: 0,
@@ -1777,7 +1819,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                         final isPayout =
                         itemType.contains(TextConstants.payoutText);
                         final isCoupon =
-                        itemType.contains(TextConstants.couponText);
+                        itemType.contains(TextConstants.couponText) ||
+                            itemName.contains(TextConstants.couponText.toLowerCase());
                         // ✅ STRONG cashback detection
                         final isCashback = itemType.contains('cashback') ||
                             itemName.contains('cashback');
@@ -1788,6 +1831,20 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
                         final isCouponOrPayout =
                             isPayout || isCoupon || isCashback;
+
+                        // Coupon rows can have zero line amount in order items.
+                        // Fall back to order-level coupon fields when applied.
+                        final double couponFallbackAmount = () {
+                          final dynamic raw = _order["coupon_amount"] ??
+                              _order["couponValue"] ??
+                              _order["coupon_total"] ??
+                              _order["coupon_value"] ??
+                              _order["discount"] ??
+                              _order["order_discount"];
+                          if (raw is num) return raw.toDouble().abs();
+                          return double.tryParse(raw?.toString() ?? "0")?.abs() ??
+                              0.0;
+                        }();
 
                         /// Get the original name
                         final originalName =
@@ -2279,14 +2336,27 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                             CrossAxisAlignment.end,
                                             children: [
                                               if (isPayout || isCoupon)
-                                                Text(
-                                                  "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.abs().toStringAsFixed(2)}",
-                                                  style: TextStyle(
-                                                    fontSize: 14,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.red,
-                                                  ),
-                                                )
+                                                Builder(builder: (_) {
+                                                  final double lineAmount =
+                                                      (orderItem[AppDBConst
+                                                                  .itemSumPrice]
+                                                              as num?)
+                                                          ?.toDouble()
+                                                          .abs() ??
+                                                          0.0;
+                                                  final double displayAmount =
+                                                      isCoupon && lineAmount <= 0
+                                                          ? couponFallbackAmount
+                                                          : lineAmount;
+                                                  return Text(
+                                                    "-${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}",
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Colors.red,
+                                                    ),
+                                                  );
+                                                })
                                               else
                                                 Builder(
                                                   builder: (context) {
@@ -6244,10 +6314,58 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       ]);
     }
 
+    // Build payment split fresh for invoice print.
+    // This avoids stale UI state showing EBT as 0.
+    double printPayByCash = payByCash;
+    double printPayByEbt = ebtAmount;
+    double printPayByOther = payByOther;
+    try {
+      if (widget.activeOrderId != null) {
+        final localPayments = await LocalPaymentDBHelper.instance
+            .getPaymentsByOrderId(widget.activeOrderId!);
+        if (localPayments.isNotEmpty) {
+          double cashPaid = 0.0;
+          double ebtPaid = 0.0;
+          double otherPaid = 0.0;
+          for (final p in localPayments) {
+            if (p.amount <= 0 || p.status == PaymentDbStatus.voided) continue;
+            final method = p.paymentMethod.toLowerCase().trim();
+            if (method == "cash" ||
+                method == TextConstants.cash.toLowerCase() ||
+                method == TextConstants.payByCash.toLowerCase()) {
+              cashPaid += p.amount;
+            } else if (method == "ebt" ||
+                method.contains("ebt") ||
+                method == TextConstants.ebtText.toLowerCase() ||
+                method ==
+                    TextConstants.EBTAmount.toLowerCase().replaceAll('.', '')) {
+              ebtPaid += p.amount;
+            } else {
+              otherPaid += p.amount;
+            }
+          }
+          printPayByCash = cashPaid;
+          printPayByEbt = ebtPaid;
+          printPayByOther = otherPaid;
+        }
+      }
+    } catch (_) {
+      // keep UI values if local lookup fails
+    }
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByCash, width: 8),
       PosColumn(
-        text: formatCurrency(payByCash),
+        text: formatCurrency(printPayByCash),
+        width: 4,
+        styles: PosStyles(align: PosAlign.right),
+      ),
+    ]);
+
+    bytes += ticket.row([
+      PosColumn(text: "Pay by EBT", width: 8),
+      PosColumn(
+        text: formatCurrency(printPayByEbt),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -6256,7 +6374,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByOther, width: 8),
       PosColumn(
-        text: formatCurrency(payByOther),
+        text: formatCurrency(printPayByOther),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),

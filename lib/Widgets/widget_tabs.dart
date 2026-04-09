@@ -112,6 +112,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
     return _customItemNameController.text.trim().isEmpty;
   }
 
+  /// Generate SKU only when name is set and SKU is still empty (e.g. not scanner-prefilled).
+  bool _isGenerateSkuEnabled() {
+    return !_isItemNameEmpty() && _skuController.text.trim().isEmpty;
+  }
+
   String normalizeSku(String s) {
     return OrderHelper.normalizeSku(s);
   }
@@ -1445,13 +1450,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
               Padding(
                 padding: const EdgeInsets.all(6.0),
                 child: ElevatedButton(
-                  onPressed: _isItemNameEmpty() ? null : _generateSku,
-                  // Disable functionality if item name is empty,
+                  onPressed: _isGenerateSkuEnabled() ? _generateSku : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _isItemNameEmpty()
-                        ? Colors.grey
-                        : Colors
-                        .redAccent, // Change color based on button state
+                    backgroundColor: _isGenerateSkuEnabled()
+                        ? Colors.redAccent
+                        : Colors.grey,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     shape: RoundedRectangleBorder(
@@ -1690,6 +1693,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
   // Generate SKU function
   void _generateSku() {
+    if (_skuController.text.trim().isNotEmpty) return;
     // Simple SKU generation logic - prefix + timestamp
     String timestamp =
     DateTime.now().millisecondsSinceEpoch.toString().substring(0, 12);
