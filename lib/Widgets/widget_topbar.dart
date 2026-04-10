@@ -291,6 +291,67 @@ class TopBar extends StatefulWidget {
     _TopBarState.clearUserDataCache();
   }
 
+  /// Backward-compatible helper used by order summary merge flow.
+  /// Returns a de-duplicated list of cached products from Isar + Hive fallback.
+  static Future<List<Map<String, dynamic>>> mergedCachedProductsForSearch() async {
+    final uniqueById = <int, Map<String, dynamic>>{};
+    final uniqueBySku = <String, Map<String, dynamic>>{};
+    final ordered = <Map<String, dynamic>>[];
+
+    void upsert(dynamic raw) {
+      if (raw is! Map) return;
+      final product = Map<String, dynamic>.from(raw);
+      final idRaw = product['fast_key_product_id'] ?? product['product_id'] ?? product['id'];
+      final id = idRaw is int ? idRaw : int.tryParse(idRaw?.toString() ?? '');
+      final sku = (product['sku'] ?? '').toString().trim().toLowerCase();
+
+      Map<String, dynamic>? existing;
+      if (id != null && id > 0) {
+        existing = uniqueById[id];
+      } else if (sku.isNotEmpty) {
+        existing = uniqueBySku[sku];
+      }
+
+      if (existing != null) {
+        existing.addAll(product);
+        return;
+      }
+
+      ordered.add(product);
+      if (id != null && id > 0) uniqueById[id] = product;
+      if (sku.isNotEmpty) uniqueBySku[sku] = product;
+    }
+
+    try {
+      final fromIsar = await CategoryRepository().getAllCachedProducts();
+      for (final p in fromIsar) {
+        upsert(p);
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint("TopBar merged cache (Isar) failed: $e");
+    }
+
+    try {
+      final allProducts = await StorageProvider.productCache.get("all_products_list");
+      if (allProducts is List) {
+        for (final p in allProducts) {
+          if (p is Map && p['products'] is List) {
+            final nested = p['products'] as List;
+            for (final n in nested) {
+              upsert(n);
+            }
+          } else {
+            upsert(p);
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint("TopBar merged cache (Hive) failed: $e");
+    }
+
+    return ordered;
+  }
+
   @override
   State<TopBar> createState() => _TopBarState();
 }

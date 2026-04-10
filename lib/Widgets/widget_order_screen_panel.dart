@@ -39,6 +39,7 @@ import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
 import '../Screens/Home/Settings/printer_setup_screen.dart';
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
+import '../Screens/Home/isar_payments/local_payments_model.dart';
 import '../Utilities/printer_settings.dart';
 import '../Utilities/result_utility.dart';
 
@@ -163,7 +164,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     }
 
     if (orderServerId != null) {
-      paymentBloc.getPaymentsByOrderId(orderServerId!);
+      // paymentBloc.getPaymentsByOrderId(orderServerId!);
 
       _paymentListSubscription?.cancel();
       _paymentListSubscription =
@@ -245,6 +246,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         }
         // Match EBT
         else if (method == "ebt" ||
+            method.contains("ebt") ||
             method == TextConstants.ebtText.toLowerCase() ||
             method ==
                 TextConstants.EBTAmount.toLowerCase().replaceAll('.', '')) {
@@ -258,8 +260,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     }
 
     setState(() {
-      payByCash = cashPaid + otherPaid;
-      payByOther = 0.0;
+      payByCash = cashPaid;
+      payByOther = otherPaid;
       ebtAmount = ebtPaid;
 
       // Tender amount includes all payments
@@ -388,9 +390,28 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       final payments =
       await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
 
+      double cashPaid = 0.0;
+      double otherPaid = 0.0;
+      double ebtPaid = 0.0;
+
       if (payments.isNotEmpty) {
         print("========== Local Payment Records ==========");
         for (var p in payments) {
+          final method = p.paymentMethod.toLowerCase().trim();
+          if (method == "cash" ||
+              method == TextConstants.cash.toLowerCase() ||
+              method == TextConstants.payByCash.toLowerCase()) {
+            cashPaid += p.amount;
+          } else if (method == "ebt" ||
+              method.contains("ebt") ||
+              method == TextConstants.ebtText.toLowerCase() ||
+              method ==
+                  TextConstants.EBTAmount.toLowerCase().replaceAll('.', '')) {
+            ebtPaid += p.amount;
+          } else {
+            otherPaid += p.amount;
+          }
+
           final amountStr = p.amount >= 0
               ? "Cash: \$${p.amount.toStringAsFixed(2)}"
               : "void: \$${p.amount.toStringAsFixed(2)}";
@@ -420,23 +441,23 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         }
 
         // Compute changeAmount
-        double computedChange;
-        if (computedBalance <= 0) {
-          computedChange = (totalPaid - (_order["payable"] ?? 0.0))
-              .clamp(0.0, double.infinity);
+        // Compute changeAmount strictly from overpayment
+        double computedChange = (totalPaid - netPay).clamp(0.0, double.infinity);
+
+// If there is change, balance must be zero
+        if (computedChange > 0) {
           computedBalance = 0.0;
-        } else {
-          computedChange = 0.0;
         }
 
         //  Override to ensure changeAmount reflects netPay if needed
-        computedChange = netPay < balanceAmount ? netPay : balanceAmount;
+        // computedChange = netPay < balanceAmount ? netPay : balanceAmount;
 
         //  Set final values once
         setState(() {
           tenderAmount = totalPaid.clamp(0.0, double.infinity);
-          payByCash = tenderAmount; // Build #1.0.267: Attribute to Cash
-          payByOther = 0.0;
+          payByCash = cashPaid;
+          payByOther = otherPaid;
+          ebtAmount = ebtPaid;
           balanceAmount = computedBalance;
           changeAmount = computedChange;
         });
@@ -464,7 +485,17 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
   Future<void> fetchOrdersData() async {
     // Build #1.0.104: created this function for initial load and back button refresh
     if (!mounted) return; // Build #1.0.240 : Added
-    setState(() => _isLoading = true); // show loader
+    // Reset payment-related fields to avoid leaking values from the previously opened order.
+    // This fixes cases where discount-only orders were showing discount as "Change".
+    setState(() {
+      _isLoading = true; // show loader
+      tenderAmount = 0.0;
+      changeAmount = 0.0;
+      balanceAmount = 0.0;
+      payByCash = 0.0;
+      payByOther = 0.0;
+      ebtAmount = 0.0;
+    });
     if (kDebugMode) {
       print(
           "##### fetchOrdersData called for activeOrderId: ${widget.activeOrderId}");
@@ -543,7 +574,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         }
       }
       // Load balance from local payments for pending/offline orders
-      if (widget.activeOrderId != null && mounted && tenderAmount == 0) {
+      // Load balance from local payments for pending/offline orders
+      // Load balance from local payments for pending/offline orders.
+      // Always refresh from LocalPayment summary to avoid stale tender/balance
+      // after void + re-pay flows.
+      if (widget.activeOrderId != null && mounted) {
         try {
           final summary = await LocalPaymentDBHelper.instance
               .getPaymentSummaryForOrder(widget.activeOrderId!);
@@ -733,15 +768,18 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
-    if (widget.activeOrderId == null) {
-      orderItems.clear();
+    final int? requestOrderId = widget.activeOrderId;
+    if (requestOrderId == null) {
+      if (mounted) setState(() => orderItems.clear());
       return;
     }
 
     // 1️⃣ Try SQLite items
     try {
       List<Map<String, dynamic>> items =
-      await orderHelper.getOrderItems(widget.activeOrderId!);
+      await orderHelper.getOrderItems(requestOrderId);
+
+      if (!mounted || widget.activeOrderId != requestOrderId) return;
 
       if (items.isNotEmpty) {
         print("🟦 SQLite Order Items Loaded: $items");
@@ -792,12 +830,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         return;
       }
     } catch (_) {}
+    if (!mounted || widget.activeOrderId != requestOrderId) return;
+
     final deletedBox = StorageProvider.deletedOrders;
 
-    final deleted = await deletedBox.get(widget.activeOrderId.toString());
+    final deleted = await deletedBox.get(requestOrderId.toString());
+
+    if (!mounted || widget.activeOrderId != requestOrderId) return;
 
     if (deleted != null) {
-      print("🔥 Loading DELETED ORDER ITEMS for ID = ${widget.activeOrderId}");
+      print("🔥 Loading DELETED ORDER ITEMS for ID = $requestOrderId");
       _order[AppDBConst.orderStatus] = "cancelled";
 
       final List productList = deleted["products"] ?? [];
@@ -851,7 +893,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     }
 
     // 3️⃣ Nothing found
-    orderItems.clear();
+    if (mounted && widget.activeOrderId == requestOrderId) {
+      setState(() => orderItems.clear());
+    }
   }
 
   @override
@@ -1249,8 +1293,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
           order['merchantDiscount'] ??
           order['merchant_discount'] ??
           0.0;
-      final double orderLevelMerchantDiscount =
-      (rawMerchantDiscount is num)
+      final double orderLevelMerchantDiscount = (rawMerchantDiscount is num)
           ? rawMerchantDiscount.toDouble()
           : (double.tryParse(rawMerchantDiscount.toString()) ?? 0.0);
       if (orderLevelMerchantDiscount != 0) {
@@ -1259,6 +1302,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     }
 
     double grossTotal = 0.0;
+    double itemLevelDiscountTotal = 0.0;
 
     for (var item in orderItems) {
       // Extract item name and type (fallback-safe)
@@ -1276,8 +1320,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       // ✅ FIRST: Extract merchant discount
       if (name.contains("merchant discount") ||
           type.contains("merchant discount")) {
-        merchantDiscount +=
-        itemSumPrice > 0 ? -itemSumPrice : itemSumPrice;
+        merchantDiscount += itemSumPrice > 0 ? -itemSumPrice : itemSumPrice;
         continue; // skip further processing
       }
 
@@ -1338,6 +1381,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       // Add to merchant discount (as negative value) only if not already accounted for by a global line item
       // We skip items named "Merchant Discount" already, so we can sum these safely here.
       // merchantDiscount -= itemSavings;
+      itemLevelDiscountTotal += itemSavings;
 
       grossTotal += unitPrice;
     }
@@ -1531,6 +1575,19 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     print("Net Local Total     → $netTotal");
     print("Final Payable       → $netPayable");
 
+    final bool isPendingOrder =
+        (_order?[AppDBConst.orderStatus] ?? '').toString() ==
+            TextConstants.pending;
+    final double balanceDueFromTotals =
+    (netPayable - tenderAmount).clamp(0.0, double.infinity);
+    final double panelDisplayBalance = balanceDueFromTotals > 0
+        ? balanceDueFromTotals
+        : (balanceAmount > 0 ? balanceAmount : balanceDueFromTotals);
+    final bool showBalanceForPartialPayment =
+        isPendingOrder && !showRefundBlock && panelDisplayBalance > 0;
+    final double displayedBalanceAmount =
+    showBalanceForPartialPayment ? panelDisplayBalance : 0.0;
+
     return Stack(
       children: [
         Column(
@@ -1681,17 +1738,67 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                             .toLowerCase() ??
                             '';
 
-                        final bool isEbtEligible =
-                            orderItem['ebt_eligible'] == 1 ||
-                                orderItem['is_ebt_eligible'] == 1 ||
-                                orderItem['ebt_eligible'] == true; // ✅ FIXED
+                        final bool isEbtEligible = orderItem['ebt_eligible'] ==
+                            1 ||
+                            orderItem['is_ebt_eligible'] == 1 ||
+                            orderItem['ebt_eligible'] == true ||
+                            orderItem['is_ebt_eligible'] == true ||
+                            orderItem['ebt_eligible']?.toString() == '1' ||
+                            orderItem['is_ebt_eligible']?.toString() == '1' ||
+                            orderItem['ebt_eligible']
+                                ?.toString()
+                                .toLowerCase() ==
+                                'true' ||
+                            orderItem['is_ebt_eligible']
+                                ?.toString()
+                                .toLowerCase() ==
+                                'true';
                         final variationId = orderItem["variant_name"] ?? 0;
                         final variationName =
                             orderItem["attribute_variant"] ?? "";
 
-                        /// Hide coupons
-                        if (itemTypeRaw
-                            .contains(TextConstants.couponText.toLowerCase())) {
+                        // final bool isCouponRow = itemTypeRaw
+                        //         .contains(TextConstants.couponText.toLowerCase()) ||
+                        //     itemNameRaw
+                        //         .contains(TextConstants.couponText.toLowerCase());
+                        // final bool isGeneratedCouponOnly =
+                        //     (_order["generated_coupon_only"] == true) ||
+                        //         (_order["generated_coupon_only"]
+                        //                 ?.toString()
+                        //                 .toLowerCase() ==
+                        //             "true");
+                        // final bool isCouponAppliedOnOrder =
+                        //     (_order["coupon_applied"] == true) ||
+                        //         (_order["coupon_applied"]?.toString().toLowerCase() ==
+                        //             "true");
+                        //
+                        // /// Hide coupon rows for generated-only coupons and for non-applied coupons.
+                        // /// Show coupon rows only when coupon is truly applied to this order.
+                        // if (isCouponRow &&
+                        //     (!isCouponAppliedOnOrder || isGeneratedCouponOnly)) {
+                        //   return Container(
+                        //     key: ValueKey("coupon_$index"),
+                        //     height: 0,
+                        //   );
+                        // }
+
+                        final bool isCouponRow = itemTypeRaw
+                            .contains(TextConstants.couponText.toLowerCase()) ||
+                            itemNameRaw
+                                .contains(TextConstants.couponText.toLowerCase());
+                        final bool isGeneratedCouponOnly =
+                            (_order["generated_coupon_only"] == true) ||
+                                (_order["generated_coupon_only"]
+                                    ?.toString()
+                                    .toLowerCase() ==
+                                    "true");
+                        final bool isCouponAppliedOnOrder =
+                            (_order["coupon_applied"] == true) ||
+                                (_order["coupon_applied"]?.toString().toLowerCase() ==
+                                    "true");
+
+                        if (isCouponRow &&
+                            (!isCouponAppliedOnOrder || isGeneratedCouponOnly)) {
                           return Container(
                             key: ValueKey("coupon_$index"),
                             height: 0,
@@ -1735,7 +1842,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                         final isPayout =
                         itemType.contains(TextConstants.payoutText);
                         final isCoupon =
-                        itemType.contains(TextConstants.couponText);
+                            itemType.contains(TextConstants.couponText) ||
+                                itemName.contains(TextConstants.couponText.toLowerCase());
                         // ✅ STRONG cashback detection
                         final isCashback = itemType.contains('cashback') ||
                             itemName.contains('cashback');
@@ -1746,6 +1854,20 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
                         final isCouponOrPayout =
                             isPayout || isCoupon || isCashback;
+
+                        // Coupon rows can have zero line amount in order items.
+                        // Fall back to order-level coupon fields when applied.
+                        final double couponFallbackAmount = () {
+                          final dynamic raw = _order["coupon_amount"] ??
+                              _order["couponValue"] ??
+                              _order["coupon_total"] ??
+                              _order["coupon_value"] ??
+                              _order["discount"] ??
+                              _order["order_discount"];
+                          if (raw is num) return raw.toDouble().abs();
+                          return double.tryParse(raw?.toString() ?? "0")?.abs() ??
+                              0.0;
+                        }();
 
                         /// Get the original name
                         final originalName =
@@ -1958,19 +2080,25 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                         style: TextStyle(
                                                           fontFamily: 'inter',
                                                           fontSize: 12,
-                                                          fontWeight: FontWeight.w700,
+                                                          fontWeight:
+                                                          FontWeight.w700,
                                                           color: isRefunded
                                                               ? Colors.grey
-                                                              : (themeHelper.themeMode == ThemeMode.dark
-                                                              ? ThemeNotifier.textDark
-                                                              : ThemeNotifier.textLight),
+                                                              : (themeHelper
+                                                              .themeMode ==
+                                                              ThemeMode
+                                                                  .dark
+                                                              ? ThemeNotifier
+                                                              .textDark
+                                                              : ThemeNotifier
+                                                              .textLight),
                                                           decoration: isRefunded
-                                                              ? TextDecoration.lineThrough
-                                                              : TextDecoration.none,
+                                                              ? TextDecoration
+                                                              .lineThrough
+                                                              : TextDecoration
+                                                              .none,
                                                         ),
                                                       ),
-
-
                                                       TextSpan(
                                                         text: combo == ''
                                                             ? ''
@@ -1989,12 +2117,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                     "Multipack Discount: -${TextConstants.currencySymbol}${multipackDiscount.toStringAsFixed(2)}",
                                                     style: TextStyle(
                                                       fontSize: 10,
-                                                      fontWeight: FontWeight.w600,
+                                                      fontWeight:
+                                                      FontWeight.w600,
                                                       color: Colors.blue,
                                                     ),
                                                   ),
                                                 ],
-
 
                                                 if (autoDiscount > 0) ...[
                                                   const SizedBox(height: 2),
@@ -2002,7 +2130,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                     "auto Discount : -${TextConstants.currencySymbol}${autoDiscount.toStringAsFixed(2)}",
                                                     style: TextStyle(
                                                       fontSize: 10,
-                                                      fontWeight: FontWeight.w600,
+                                                      fontWeight:
+                                                      FontWeight.w600,
                                                       color: Colors.red,
                                                     ),
                                                   ),
@@ -2020,24 +2149,35 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                 //   ),
                                                 // ],
 
-                                                if (comboDiscount > 0) ...[   // ← just check value > 0
+                                                if (comboDiscount > 0) ...[
+                                                  // ← just check value > 0
                                                   const SizedBox(height: 2),
                                                   Text(
                                                     "Combo Discount: -${TextConstants.currencySymbol}${comboDiscount.toStringAsFixed(2)}",
-                                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.orange),
+                                                    style: TextStyle(
+                                                        fontSize: 10,
+                                                        fontWeight:
+                                                        FontWeight.w600,
+                                                        color: Colors.orange),
                                                   ),
                                                 ],
-                                                if (variationId > 0 && variationName.isNotEmpty) ...[
+                                                if (variationId > 0 &&
+                                                    variationName
+                                                        .isNotEmpty) ...[
                                                   const SizedBox(height: 2),
                                                   Row(
                                                     children: [
                                                       Text(
                                                         "($variationName)",
-                                                        overflow: TextOverflow.ellipsis,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
                                                         style: TextStyle(
                                                           fontSize: 10,
-                                                          color: themeHelper.themeMode == ThemeMode.dark
-                                                              ? ThemeNotifier.textDark
+                                                          color: themeHelper
+                                                              .themeMode ==
+                                                              ThemeMode.dark
+                                                              ? ThemeNotifier
+                                                              .textDark
                                                               : Colors.grey,
                                                         ),
                                                       ),
@@ -2055,10 +2195,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                             if (isEbtEligible) ...[
                                               const SizedBox(height: 3),
                                               Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                padding:
+                                                const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2),
                                                 decoration: BoxDecoration(
                                                   color: Colors.green,
-                                                  borderRadius: BorderRadius.circular(4),
+                                                  borderRadius:
+                                                  BorderRadius.circular(4),
                                                 ),
                                                 child: const Text(
                                                   "EBT",
@@ -2113,28 +2257,48 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                             if (!isPayoutOrCouponOrCustomItem) ...[
                                               Builder(
                                                 builder: (context) {
-                                                  double qty =
-                                                      (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1;
+                                                  double qty = (orderItem[
+                                                  AppDBConst
+                                                      .itemCount]
+                                                  as num?)
+                                                      ?.toDouble() ??
+                                                      1;
 
                                                   double unitPrice =
                                                   // (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////---
-                                                  (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ??
-                                                      (orderItem[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
-                                                      (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////
-                                                      0.0;   ////
+                                                  (orderItem[AppDBConst
+                                                      .itemPrice]
+                                                  as num?)
+                                                      ?.toDouble() ??
+                                                      (orderItem[AppDBConst
+                                                          .itemRegularPrice]
+                                                      as num?)
+                                                          ?.toDouble() ??
+                                                      (orderItem[AppDBConst
+                                                          .itemUnitPrice]
+                                                      as num?)
+                                                          ?.toDouble() ?? ////
+                                                      0.0; ////
 
                                                   // If still zero → derive price from sum price
                                                   if (unitPrice == 0.0) {
                                                     final double sumPrice =
-                                                        (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
+                                                        (orderItem[AppDBConst
+                                                            .itemSumPrice]
+                                                        as num?)
+                                                            ?.toDouble() ??
+                                                            0.0;
 
-                                                    if (sumPrice > 0 && qty > 0) {
-                                                      unitPrice = sumPrice / qty;
+                                                    if (sumPrice > 0 &&
+                                                        qty > 0) {
+                                                      unitPrice =
+                                                          sumPrice / qty;
                                                     }
                                                   }
 
                                                   // 🔹 NEW: calculate total amount
-                                                  final double totalAmount = unitPrice * qty;
+                                                  final double totalAmount =
+                                                      unitPrice * qty;
 
                                                   return Text(
                                                     // 🔹 OLD: only unit price × qty
@@ -2145,8 +2309,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                     // "= ${TextConstants.currencySymbol} ${totalAmount.toStringAsFixed(2)}",
 
                                                     style: TextStyle(
-                                                      color: themeHelper.themeMode == ThemeMode.dark
-                                                          ? ThemeNotifier.textDark
+                                                      color: themeHelper
+                                                          .themeMode ==
+                                                          ThemeMode.dark
+                                                          ? ThemeNotifier
+                                                          .textDark
                                                           : Colors.black54,
                                                       fontSize: 10,
                                                     ),
@@ -2154,8 +2321,6 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                 },
                                               ),
                                             ],
-
-
                                           ],
                                         ),
                                       ),
@@ -2194,14 +2359,27 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                             CrossAxisAlignment.end,
                                             children: [
                                               if (isPayout || isCoupon)
-                                                Text(
-                                                  "-${TextConstants.currencySymbol}${(orderItem[AppDBConst.itemSumPrice] as num?)!.abs().toStringAsFixed(2)}",
-                                                  style: TextStyle(
-                                                    fontSize: 14,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.red,
-                                                  ),
-                                                )
+                                                Builder(builder: (_) {
+                                                  final double lineAmount =
+                                                      (orderItem[AppDBConst
+                                                          .itemSumPrice]
+                                                      as num?)
+                                                          ?.toDouble()
+                                                          .abs() ??
+                                                          0.0;
+                                                  final double displayAmount =
+                                                  isCoupon && lineAmount <= 0
+                                                      ? couponFallbackAmount
+                                                      : lineAmount;
+                                                  return Text(
+                                                    "-${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}",
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Colors.red,
+                                                    ),
+                                                  );
+                                                })
                                               else
                                                 Builder(
                                                   builder: (context) {
@@ -2462,17 +2640,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                             //   height: 12,
                                             //   width: 12,
                                             // ),
-                                            Text(TextConstants.discountText,
-                                                style: TextStyle(
-                                                    color: Colors.green,
-                                                    fontSize: 14)),
+                                            Text(TextConstants.discountText, style: TextStyle(color: Colors.green, fontSize: 14)),
                                           ],
                                         ),
                                         Text(
-                                            "-${TextConstants.currencySymbol}${orderDiscount.abs().toStringAsFixed(2)}",
-                                            style: TextStyle(
-                                                color: Colors.green,
-                                                fontSize: 14)),
+                                          "-${TextConstants.currencySymbol}${orderDiscount.abs().toStringAsFixed(2)}",
+                                          style: TextStyle(color: Colors.green, fontSize: 14),
+                                        ),
                                       ],
                                     ),
 
@@ -2580,19 +2754,25 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                     ),
                                     if (uiMerchantDiscount != 0)
                                       Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                         children: [
                                           Row(
                                             children: [
                                               Text(
-                                                TextConstants.merchantDiscount,
-                                                style: TextStyle(color: Colors.blue, fontSize: 14),
+                                                TextConstants
+                                                    .merchantDiscount,
+                                                style: TextStyle(
+                                                    color: Colors.blue,
+                                                    fontSize: 14),
                                               ),
                                             ],
                                           ),
                                           Text(
                                             "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}",
-                                            style: TextStyle(color: Colors.blue, fontSize: 14),
+                                            style: TextStyle(
+                                                color: Colors.blue,
+                                                fontSize: 14),
                                           ),
                                         ],
                                       ),
@@ -2709,28 +2889,72 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                     SizedBox(
                                       height: 2,
                                     ),
-                                    // Builder(
-                                    //   builder: (context) {
-                                    //     return Row(
-                                    //       mainAxisAlignment:
-                                    //       MainAxisAlignment.spaceBetween,
-                                    //       crossAxisAlignment: CrossAxisAlignment.center,
-                                    //       children: [
-                                    //         Text(TextConstants.amountTendered,
-                                    //             style: TextStyle(
-                                    //                 fontWeight: FontWeight.bold)),
-                                    //         Text(
-                                    //             "${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}",
-                                    //             style: TextStyle(
-                                    //                 fontWeight: FontWeight.bold,
-                                    //                 color: themeHelper.themeMode ==
-                                    //                     ThemeMode.dark
-                                    //                     ? ThemeNotifier.textDark
-                                    //                     : ThemeNotifier.textLight)),
-                                    //       ],
-                                    //     );
-                                    //   },
-                                    // ),
+                                    // if (isPendingOrder) ...[
+                                    //   SizedBox(height: 8),
+                                    //   Row(
+                                    //     mainAxisAlignment:
+                                    //         MainAxisAlignment.spaceBetween,
+                                    //     crossAxisAlignment:
+                                    //         CrossAxisAlignment.center,
+                                    //     children: [
+                                    //       Text(
+                                    //         TextConstants.balanceAmount,
+                                    //         style: const TextStyle(
+                                    //           fontWeight: FontWeight.bold,
+                                    //           fontSize: 14,
+                                    //         ),
+                                    //       ),
+                                    //       Text(
+                                    //         "${TextConstants.currencySymbol}"
+                                    //         "${panelDisplayBalance.toStringAsFixed(2)}",
+                                    //         style: TextStyle(
+                                    //           fontWeight: FontWeight.bold,
+                                    //           fontSize: 14,
+                                    //           color: themeHelper.themeMode ==
+                                    //                   ThemeMode.dark
+                                    //               ? ThemeNotifier.textDark
+                                    //               : ThemeNotifier.textLight,
+                                    //         ),
+                                    //       ),
+                                    //     ],
+                                    //   ),
+                                    //   // if (tenderAmount > 0.005)
+                                    //   //   Padding(
+                                    //   //     padding:
+                                    //   //         const EdgeInsets.only(top: 6),
+                                    //   //     child: Row(
+                                    //   //       mainAxisAlignment:
+                                    //   //           MainAxisAlignment.spaceBetween,
+                                    //   //       children: [
+                                    //   //         Text(
+                                    //   //           TextConstants.amountTendered,
+                                    //   //           style: TextStyle(
+                                    //   //             fontSize: 12,
+                                    //   //             fontWeight: FontWeight.w600,
+                                    //   //             color: themeHelper
+                                    //   //                         .themeMode ==
+                                    //   //                     ThemeMode.dark
+                                    //   //                 ? Colors.white60
+                                    //   //                 : Colors.grey[700],
+                                    //   //           ),
+                                    //   //         ),
+                                    //   //         Text(
+                                    //   //           "${TextConstants.currencySymbol}"
+                                    //   //           "${tenderAmount.toStringAsFixed(2)}",
+                                    //   //           style: TextStyle(
+                                    //   //             fontSize: 12,
+                                    //   //             fontWeight: FontWeight.w600,
+                                    //   //             color: themeHelper
+                                    //   //                         .themeMode ==
+                                    //   //                     ThemeMode.dark
+                                    //   //                 ? ThemeNotifier.textDark
+                                    //   //                 : ThemeNotifier.textLight,
+                                    //   //           ),
+                                    //   //         ),
+                                    //   //       ],
+                                    //   //     ),
+                                    //   //   ),
+                                    // ],
 
                                     SizedBox(
                                       height: 2,
@@ -2834,24 +3058,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                     fontSize: 12, fontWeight: FontWeight.bold)),
                             Row(
                               children: [
-                                // Builder(
-                                //   builder: (context) {
-                                //     final displayAmount = (netPayable - tenderAmount).clamp(0.0, double.infinity);
-                                //     return Text(
-                                //         _showFullSummary
-                                //             ? '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}'
-                                //             : '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${displayAmount.toStringAsFixed(2)}',
-                                //         style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold));
-                                //   },
-                                // ),
-                                // 1️⃣ Show changeAmount only if it's less than or equal to balanceAmount
                                 Text(
-                                  '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${(balanceAmount < changeAmount ? balanceAmount : changeAmount).toStringAsFixed(2)}',
+                                  '${TextConstants.balanceAmount} : ${TextConstants.currencySymbol}${displayedBalanceAmount.toStringAsFixed(2)}',
                                   style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold),
                                 ),
-
                                 const SizedBox(width: 8),
                                 Icon(_showFullSummary
                                     ? Icons.keyboard_arrow_down
@@ -3066,6 +3278,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                   orderTax: orderTax,
                                   netPayable: netPayable.toDouble(),
                                   orderId:
+                                  orderHelper.activeOrderId,
+                                  offlineOrderId:
                                   orderHelper.activeOrderId,
                                   cashbackFee: cashbackFee,
                                   ebtAmount: ebtAmount,
@@ -5895,9 +6109,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
       // Same discount extraction as order_summary_screen.dart receipt loop.
       String discountType =
-          (item['discount_type'] ?? item['discountType'] ?? '')
-              .toString()
-              .toLowerCase();
+      (item['discount_type'] ?? item['discountType'] ?? '')
+          .toString()
+          .toLowerCase();
 
       final double autoRaw = _printItemDouble(item, [
         'auto_discount',
@@ -5915,18 +6129,17 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         'mixmatch_discount_total',
       ]);
 
-      double autoDiscount = (discountType.isEmpty || discountType == 'auto')
-          ? autoRaw
-          : 0.0;
+      double autoDiscount =
+      (discountType.isEmpty || discountType == 'auto') ? autoRaw : 0.0;
 
       double multipackDiscount = (discountType == 'multipack')
           ? (autoRaw > 0 ? autoRaw : multipackRaw)
           : 0.0;
 
       double comboDiscount =
-          (discountType == 'combo' || discountType == 'mixmatch')
-              ? (autoRaw > 0 ? autoRaw : (comboRaw > 0 ? comboRaw : mixRaw))
-              : 0.0;
+      (discountType == 'combo' || discountType == 'mixmatch')
+          ? (autoRaw > 0 ? autoRaw : (comboRaw > 0 ? comboRaw : mixRaw))
+          : 0.0;
 
       // Panel/SQLite: empty discount_type — match summary (auto only), else use columns.
       if (discountType.isEmpty &&
@@ -6119,10 +6332,58 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       ]);
     }
 
+    // Build payment split fresh for invoice print.
+    // This avoids stale UI state showing EBT as 0.
+    double printPayByCash = payByCash;
+    double printPayByEbt = ebtAmount;
+    double printPayByOther = payByOther;
+    try {
+      if (widget.activeOrderId != null) {
+        final localPayments = await LocalPaymentDBHelper.instance
+            .getPaymentsByOrderId(widget.activeOrderId!);
+        if (localPayments.isNotEmpty) {
+          double cashPaid = 0.0;
+          double ebtPaid = 0.0;
+          double otherPaid = 0.0;
+          for (final p in localPayments) {
+            if (p.amount <= 0 || p.status == PaymentDbStatus.voided) continue;
+            final method = p.paymentMethod.toLowerCase().trim();
+            if (method == "cash" ||
+                method == TextConstants.cash.toLowerCase() ||
+                method == TextConstants.payByCash.toLowerCase()) {
+              cashPaid += p.amount;
+            } else if (method == "ebt" ||
+                method.contains("ebt") ||
+                method == TextConstants.ebtText.toLowerCase() ||
+                method ==
+                    TextConstants.EBTAmount.toLowerCase().replaceAll('.', '')) {
+              ebtPaid += p.amount;
+            } else {
+              otherPaid += p.amount;
+            }
+          }
+          printPayByCash = cashPaid;
+          printPayByEbt = ebtPaid;
+          printPayByOther = otherPaid;
+        }
+      }
+    } catch (_) {
+      // keep UI values if local lookup fails
+    }
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByCash, width: 8),
       PosColumn(
-        text: formatCurrency(payByCash),
+        text: formatCurrency(printPayByCash),
+        width: 4,
+        styles: PosStyles(align: PosAlign.right),
+      ),
+    ]);
+
+    bytes += ticket.row([
+      PosColumn(text: "Pay by EBT", width: 8),
+      PosColumn(
+        text: formatCurrency(printPayByEbt),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -6131,7 +6392,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByOther, width: 8),
       PosColumn(
-        text: formatCurrency(payByOther),
+        text: formatCurrency(printPayByOther),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -6146,9 +6407,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       ),
     ]);
 
-    // Build #1.0.268: Calculate change as tenderAmount - printNetPayable
+    // Build #1.0.268: Calculate change using trusted inputs.
+    // Guard against stale tender values by clamping tender first.
+    final double effectiveTender =
+    tenderAmount.clamp(0.0, double.infinity);
     double printChange =
-    (tenderAmount - printNetPayable).clamp(0.0, double.infinity);
+    (effectiveTender - printNetPayable).clamp(0.0, double.infinity);
+    // If the balance is still present, there should be no "change".
+    if (balanceAmount > 0) {
+      printChange = 0.0;
+    }
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.change, width: 8),
