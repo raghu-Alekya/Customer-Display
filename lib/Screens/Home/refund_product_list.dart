@@ -1,3 +1,4 @@
+
 import 'dart:convert';
 
 import 'package:dotted_line/dotted_line.dart';
@@ -44,6 +45,7 @@ class _RefundScreenState extends State<RefundScreen> {
 // Add this at the top of your State class
   List<Map<String, dynamic>> selectedItems = [];
   late CompletedOrder selectedOrder;
+  bool isAllSelected = false;
   bool _showFullSummary = true;
   double? editedRefundAmount;
   // double merchantDiscount = 0;
@@ -145,33 +147,6 @@ class _RefundScreenState extends State<RefundScreen> {
         editedRefundAmount != null ||
         isConfirmEnabled ||
         isReasonEnabled;
-  }
-
-  bool _lineItemSelectableForRefund(LineItem item) {
-    final String itemName = item.name.toLowerCase();
-    if (itemName.contains("discount")) return false;
-    final normalized = itemName.trim();
-    if (normalized == "payout" || normalized == "cashback") return false;
-    return true;
-  }
-
-  int _selectableRefundCount(List<LineItem> visibleItems) {
-    int count = 0;
-    for (final item in visibleItems) {
-      if (_lineItemSelectableForRefund(item)) count++;
-    }
-    return count;
-  }
-
-  int _selectedSelectableCount(List<LineItem> visibleItems) {
-    int count = 0;
-    for (final item in visibleItems) {
-      if (!_lineItemSelectableForRefund(item)) continue;
-      if (selectedItems.any((selected) => selected['order_item_id'] == item.id)) {
-        count++;
-      }
-    }
-    return count;
   }
 
   Future<bool> _confirmDiscardChangesIfNeeded() async {
@@ -290,10 +265,6 @@ class _RefundScreenState extends State<RefundScreen> {
     final visibleItems = selectedOrder.items
         .where((item) => !item.name.toLowerCase().contains("discount"))
         .toList();
-    final int selectableRefundCount = _selectableRefundCount(visibleItems);
-    final int selectedSelectableCount = _selectedSelectableCount(visibleItems);
-    final bool headerAllSelected = selectableRefundCount > 0 &&
-        selectedSelectableCount == selectableRefundCount;
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final layout = PinakaPreferences.layoutSelectionNotifier.value;
 
@@ -447,16 +418,20 @@ class _RefundScreenState extends State<RefundScreen> {
                                               GestureDetector(
                                                 onTap: () {
                                                   setState(() {
-                                                    final bool allSelected = selectableRefundCount > 0 &&
-                                                        selectedSelectableCount == selectableRefundCount;
-                                                    if (allSelected) {
-                                                      // Unselect all
-                                                      selectedItems.clear();
-                                                    } else {
+                                                    isAllSelected = !isAllSelected;
+
+                                                    if (isAllSelected) {
                                                       selectedItems.clear();
 
                                                       for (var item in visibleItems) {
-                                                        if (!_lineItemSelectableForRefund(item)) {
+
+                                                        final String itemName = item.name.toLowerCase();
+
+                                                        final bool isDiscount = itemName.contains("discount");
+                                                        final bool isPayoutOrCashback =
+                                                            itemName.trim() == "payout" || itemName.trim() == "cashback";
+                                                        // 🚫 Skip these items
+                                                        if (isDiscount || isPayoutOrCashback) {
                                                           continue;
                                                         }
 
@@ -472,20 +447,24 @@ class _RefundScreenState extends State<RefundScreen> {
                                                         });
                                                       }
                                                     }
+                                                    else {
+                                                      // Unselect all
+                                                      selectedItems.clear();
+                                                    }
                                                   });
                                                 },
                                                 child: Container(
                                                   width: 17,
                                                   height: 17,
                                                   decoration: BoxDecoration(
-                                                    color: headerAllSelected ? Colors.red : Colors.transparent,
+                                                    color: isAllSelected ? Colors.red : Colors.transparent,
                                                     borderRadius: BorderRadius.circular(4), // border radius added
                                                     border: Border.all(
                                                       color: const Color(0xFFFBFBFC),
                                                       width: 1,
                                                     ),
                                                   ),
-                                                  child: headerAllSelected
+                                                  child: isAllSelected
                                                       ? const Icon(
                                                     Icons.check,
                                                     size: 12,
@@ -834,7 +813,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                                     Expanded(
                                                       flex: 2,
                                                       child: Text(
-                                                        "\$${item['unit_price'].toStringAsFixed(2)} ×${item['qty']}",
+                                                        "₹${item['unit_price'].toStringAsFixed(2)} ×${item['qty']}",
                                                         style: TextStyle(
                                                           fontSize: 12,
                                                           color: isDark ? Colors.black : Colors.black,
@@ -846,7 +825,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                                     Expanded(
                                                       flex: 1,
                                                       child: Text(
-                                                        "\$${item['tax'].toStringAsFixed(2)}",
+                                                        "₹${item['tax'].toStringAsFixed(2)}",
                                                         style: TextStyle(
                                                           fontSize: 12,
                                                           color: isDark ? Colors.black : Colors.black,
@@ -858,7 +837,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                                     Expanded(
                                                       flex: 1,
                                                       child: Text(
-                                                        "\$${item['amount'].toStringAsFixed(2)}",
+                                                        "₹${item['amount'].toStringAsFixed(2)}",
                                                         textAlign: TextAlign.right,
                                                         style: TextStyle(
                                                           fontSize: 12,
@@ -1055,13 +1034,13 @@ class _RefundScreenState extends State<RefundScreen> {
                                                   children: [
 
                                                     /// ===== ORIGINAL ORDER =====
-                                                    _buildRow("Gross Total", "\$${grossTotal.toStringAsFixed(2)}"),
-                                                    _buildRow("Tax", "\$${taxTotal.toStringAsFixed(2)}"),
+                                                    _buildRow("Gross Total", "₹${grossTotal.toStringAsFixed(2)}"),
+                                                    _buildRow("Tax", "₹${taxTotal.toStringAsFixed(2)}"),
 
                                                     if (couponTotal > 0)
                                                       _buildRow(
                                                         "Coupons",
-                                                        "- \$${couponTotal.toStringAsFixed(2)}",
+                                                        "- ₹${couponTotal.toStringAsFixed(2)}",
                                                         valueColor: Colors.green,
                                                       ),
 
@@ -1099,12 +1078,12 @@ class _RefundScreenState extends State<RefundScreen> {
                                                             : Colors.black,
                                                       ),
                                                     ),
-                                                    _buildRow("Net Total", "\$${netTotal.toStringAsFixed(2)}"),
+                                                    _buildRow("Net Total", "₹${netTotal.toStringAsFixed(2)}"),
 
                                                     if (merchantDiscount > 0)
                                                       _buildRow(
                                                         "Merchant Discount",
-                                                        "- \$${merchantDiscount.toStringAsFixed(2)}",
+                                                        "- ₹${merchantDiscount.toStringAsFixed(2)}",
                                                         valueColor: Colors.blue,
                                                       ),
 
@@ -1145,7 +1124,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                                     _buildRow(
                                                       "Total Net Payable",
-                                                      "${totalNetPayable < 0 ? "-" : ""}\$${totalNetPayable.abs().toStringAsFixed(2)}",
+                                                      "₹${totalNetPayable.toStringAsFixed(2)}",
                                                       isBold: true,
                                                     ),
 
@@ -1188,7 +1167,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                                       _buildRow(
                                                         "Refund Amount",
-                                                        "\$${(editedRefundAmount ?? totalRefund).toStringAsFixed(2)}",
+                                                        "₹${(editedRefundAmount ?? totalRefund).toStringAsFixed(2)}",
                                                         isBold: true,
                                                       ),
                                                     ],
@@ -1409,7 +1388,7 @@ class _RefundScreenState extends State<RefundScreen> {
                       });
                     } else {
                       selectedItems.removeWhere(
-                              (item) => item['order_item_id'] == orderItemId);
+                              (item) => item['name'] == itemName);
                     }
                   });
                 },

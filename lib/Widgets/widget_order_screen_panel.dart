@@ -1757,23 +1757,46 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                         final variationName =
                             orderItem["attribute_variant"] ?? "";
 
+                        // final bool isCouponRow = itemTypeRaw
+                        //         .contains(TextConstants.couponText.toLowerCase()) ||
+                        //     itemNameRaw
+                        //         .contains(TextConstants.couponText.toLowerCase());
+                        // final bool isGeneratedCouponOnly =
+                        //     (_order["generated_coupon_only"] == true) ||
+                        //         (_order["generated_coupon_only"]
+                        //                 ?.toString()
+                        //                 .toLowerCase() ==
+                        //             "true");
+                        // final bool isCouponAppliedOnOrder =
+                        //     (_order["coupon_applied"] == true) ||
+                        //         (_order["coupon_applied"]?.toString().toLowerCase() ==
+                        //             "true");
+                        //
+                        // /// Hide coupon rows for generated-only coupons and for non-applied coupons.
+                        // /// Show coupon rows only when coupon is truly applied to this order.
+                        // if (isCouponRow &&
+                        //     (!isCouponAppliedOnOrder || isGeneratedCouponOnly)) {
+                        //   return Container(
+                        //     key: ValueKey("coupon_$index"),
+                        //     height: 0,
+                        //   );
+                        // }
+
                         final bool isCouponRow = itemTypeRaw
-                                .contains(TextConstants.couponText.toLowerCase()) ||
+                            .contains(TextConstants.couponText.toLowerCase()) ||
                             itemNameRaw
                                 .contains(TextConstants.couponText.toLowerCase());
                         final bool isGeneratedCouponOnly =
                             (_order["generated_coupon_only"] == true) ||
                                 (_order["generated_coupon_only"]
-                                        ?.toString()
-                                        .toLowerCase() ==
+                                    ?.toString()
+                                    .toLowerCase() ==
                                     "true");
                         final bool isCouponAppliedOnOrder =
                             (_order["coupon_applied"] == true) ||
                                 (_order["coupon_applied"]?.toString().toLowerCase() ==
                                     "true");
 
-                        /// Hide coupon rows for generated-only coupons and for non-applied coupons.
-                        /// Show coupon rows only when coupon is truly applied to this order.
                         if (isCouponRow &&
                             (!isCouponAppliedOnOrder || isGeneratedCouponOnly)) {
                           return Container(
@@ -2617,18 +2640,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                             //   height: 12,
                                             //   width: 12,
                                             // ),
-                                            Text(TextConstants.discountText,
-                                                style: TextStyle(
-                                                    color: Colors.green,
-                                                    fontSize: 14)),
+                                            Text(TextConstants.discountText, style: TextStyle(color: Colors.green, fontSize: 14)),
                                           ],
                                         ),
                                         Text(
-                                          // After:
-                                            "-${TextConstants.currencySymbol}${orderDiscount.abs().toStringAsFixed(2)}",
-                                            style: TextStyle(
-                                                color: Colors.green,
-                                                fontSize: 14)),
+                                          "-${TextConstants.currencySymbol}${orderDiscount.abs().toStringAsFixed(2)}",
+                                          style: TextStyle(color: Colors.green, fontSize: 14),
+                                        ),
                                       ],
                                     ),
 

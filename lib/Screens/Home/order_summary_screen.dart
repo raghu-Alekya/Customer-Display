@@ -477,6 +477,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
   bool _isShowingPaymentDialog = false;
   bool _isVoiding = false;
+  bool _isOrderSyncInProgress = false;
+  String? _activeSyncOrderKey;
+  DateTime? _lastOrderSyncAt;
+  String? _lastSyncedOrderKey;
 
   double ebtTotal = 0.0;
   double payByEbt = 0.0; // ADD THIS
@@ -4617,6 +4621,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           ////**88 */ Back button
+
           InkWell(
             borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
             onTap: () async {
@@ -4639,15 +4644,37 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               print("coupon_applied: ${latestOrder["coupon_applied"]}");
               print("couponExists: $couponExists");
 
-              // Get payments
-              final payments = await LocalPaymentDBHelper.instance
-                  .getPaymentsByOrderId(orderId ?? 0);
+              // Get payments (defensive fallback across possible local/server IDs)
+              // so back-flow still detects a void even when one ID path is empty.
+              final Set<int> candidateIds = {
+                if (orderId != null && orderId! > 0) orderId!,
+                if (widget.orderId != null && widget.orderId! > 0) widget.orderId!,
+                if (widget.offlineOrderId != null && widget.offlineOrderId! > 0)
+                  widget.offlineOrderId!,
+              };
+
+              final List<LocalPayment> payments = [];
+              final Set<int> seenPaymentIds = {};
+              for (final id in candidateIds) {
+                final rows =
+                await LocalPaymentDBHelper.instance.getPaymentsByOrderId(id);
+                for (final p in rows) {
+                  if (seenPaymentIds.add(p.id)) {
+                    payments.add(p);
+                  }
+                }
+              }
 
               final bool hasAnyPaymentBeenMade = payments.isNotEmpty;
 
               double netAmount = payments.fold(0.0, (sum, p) => sum + p.amount);
 
               final bool hasNetPayment = netAmount.abs() > 0.01;
+
+              // After a full void, net can be ~0 but unsynced void lines must still sync;
+              // user should still get the exit confirmation.
+              final bool hasUnsyncedPayments =
+              payments.any((p) => !p.isSynced);
 
               final bool hasDiscount = discount > 0;
 
@@ -4659,13 +4686,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   : balanceAmount;
 
               // Always update customer display
-              await CustomerDisplayHelper.updateCustomerDisplay(
-                orderId!,
-                summaryEnabled: false,
-              );
+              if (orderId != null) {
+                await CustomerDisplayHelper.updateCustomerDisplay(
+                  orderId!,
+                  summaryEnabled: false,
+                );
+              }
 
-              // ✅ CASE 1: Payment already started (partial payment)
-              if (hasNetPayment) {
+              // ✅ CASE 1: Payment already started (partial payment) or pending sync (e.g. void)
+              if (hasNetPayment || hasUnsyncedPayments) {
                 if (kDebugMode) {
                   print("Back button → showing exit confirmation");
                   print(
@@ -9158,6 +9187,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // );
     }
 
+    // Push void + updated balances to Woo while Hive still holds wooOrderId
+    if (mounted) {
+      Future.microtask(() async {
+        try {
+          await _syncCurrentOfflineOrder();
+        } catch (e) {
+          print("❌ Post-void sync failed: $e");
+        }
+      });
+    }
+
     // Always close the confirmation dialog at the end
     // if (Navigator.canPop(context)) {
     //   Navigator.of(context).pop();
@@ -9571,18 +9611,35 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Future<void> _syncCurrentOfflineOrder() async {
+    final String orderKey = widget.orderId?.toString() ??
+        widget.offlineOrderId?.toString() ??
+        orderId?.toString() ??
+        "";
+
+    if (orderKey.isEmpty) {
+      print("❌ No order key found for sync");
+      return;
+    }
+
+    // Guard against duplicate calls from multiple UI flows (void cancel, exit, receipt actions)
+    if (_isOrderSyncInProgress && _activeSyncOrderKey == orderKey) {
+      print("⏭ Sync skipped: already running for order $orderKey");
+      return;
+    }
+
+    final now = DateTime.now();
+    if (_lastSyncedOrderKey == orderKey &&
+        _lastOrderSyncAt != null &&
+        now.difference(_lastOrderSyncAt!).inMilliseconds < 1500) {
+      print("⏭ Sync skipped: duplicate trigger for order $orderKey");
+      return;
+    }
+
+    _isOrderSyncInProgress = true;
+    _activeSyncOrderKey = orderKey;
+
     try {
       final box = StorageProvider.offlineOrders;
-
-      final String orderKey = widget.orderId?.toString() ??
-          widget.offlineOrderId?.toString() ??
-          orderId?.toString() ??
-          "";
-
-      if (orderKey.isEmpty) {
-        print("❌ No order key found for sync");
-        return;
-      }
 
       final raw = await box.get(orderKey);
       if (raw is! Map) return;
@@ -9621,10 +9678,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         await LocalPaymentDBHelper.instance.markAsSynced(p.id, wooOrderId);
       }
 
-      //  DELETE IMMEDIATELY if Woo says COMPLETED
-      if (wooStatus == 'completed' ||
-          wooStatus == 'Pending' ||
-          wooStatus == 'processing') {
+      // Match offline_order_sync_service: only remove Hive once Woo is completed.
+      // Deleting on "processing" wiped wooOrderId and the next sync created a new Woo order.
+      if (wooStatus == 'completed') {
         await box.delete(orderKey);
         await box.delete(wooOrderId.toString());
 
@@ -9656,6 +9712,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
     } catch (e) {
       print("❌ Single order sync error: $e");
+    } finally {
+      _lastSyncedOrderKey = orderKey;
+      _lastOrderSyncAt = DateTime.now();
+      _isOrderSyncInProgress = false;
+      _activeSyncOrderKey = null;
     }
   }
 
@@ -10113,20 +10174,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   }
                   print(
                       "✅ Background: Marked ${pendingPayments.length} payments completed");
-
-                  try {
-                    await _syncCurrentOfflineOrder();
-                    print("✅ Background: Sync done after void cancel");
-                  } catch (e) {
-                    print("❌ Background sync failed: $e");
-                  }
-                  return;
+                  break;
                 }
                 retries--;
                 if (retries > 0) {
                   await Future.delayed(const Duration(milliseconds: 200));
                 }
               }
+            }
+            try {
+              await _syncCurrentOfflineOrder();
+              print("✅ Background: Sync done after void cancel");
+            } catch (e) {
+              print("❌ Background sync failed: $e");
             }
           });
         },
@@ -10160,7 +10220,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           if (mounted) setState(() {});
         },
       ),
-    );
+    ).then((_) {
+      if (mounted) _isVoiding = false;
+    });
   }
 
   // void showVoidExitConfirmation(BuildContext context, bool isPartial) {
@@ -10302,12 +10364,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 // ============================================================
 
   void _showExitPaymentConfirmation(BuildContext context) {
-    if (_isVoiding) {
-      print("Exit confirmation skipped → void just completed");
-      _isVoiding = false;
-      return;
-    }
-
     showDialog(
       context: context,
       barrierDismissible: false,

@@ -164,7 +164,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   String? _lastScannedBarcode;
   DateTime? _lastScanTime;
   int _fetchOrderItemsRequestId = 0;
-  int _fetchOrderItemsRequestSeq = 0;
 
   Map<String, dynamic>? resolvedProductMap;
   VoidCallback? _orderPanelRefreshListener;
@@ -200,19 +199,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     if (value is int) return value;
     if (value is num) return value.toInt();
     return int.tryParse(value.toString());
-  }
-
-  String _readOrderStatus(Map<String, dynamic> order) {
-    final dynamic raw =
-        order[AppDBConst.orderStatus] ?? order['order_status'] ?? order['status'];
-    return (raw?.toString() ?? '').toLowerCase().trim();
-  }
-
-  bool _isAllowedInOrderPanel(Map<String, dynamic> order) {
-    // Order panel should show active POS carts (local + processing),
-    // but must hide synced API pending/completed orders.
-    final status = _readOrderStatus(order);
-    return status == 'processing' || status == 'pending_offline';
   }
 
   String normalizeSku(String sku) {
@@ -382,15 +368,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       print("##### DEBUG: _getOrderTabs - Loading order tabs");
     }
 
-    // Hard reset visible panel state before async reload to avoid stale right-panel flashes.
-    if (mounted) {
-      setState(() {
-        tabs = [];
-        orderItems = [];
-        _listVersion++;
-      });
-    }
-
     await orderHelper.loadData();
 
     if (!mounted) return;
@@ -405,18 +382,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         order[AppDBConst.orderServerId] ?? order['order_id'] ?? order['id'],
       );
       if (orderId == null) continue;
-
-      final bool isAllowedStatus = _isAllowedInOrderPanel(order);
-      if (!isAllowedStatus) {
-        if (kDebugMode) {
-          print(
-            "🧾 Order $orderId skipped in panel by status: ${_readOrderStatus(order)}",
-          );
-          print(
-              "🚫 [ORDER_PANEL_STATUS_FILTER] blocked_in_tabs orderId=$orderId status=${_readOrderStatus(order)}");
-        }
-        continue;
-      }
 
       final payments = await LocalPaymentDBHelper.instance
           .getPaymentsByOrderId(orderId, userId: orderHelper.activeUserId);
@@ -600,22 +565,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
-    final int requestSeq = ++_fetchOrderItemsRequestSeq;
-    final int? requestedActiveId = orderHelper.activeOrderId;
-    bool isStaleRequest() {
-      return !mounted ||
-          requestSeq != _fetchOrderItemsRequestSeq ||
-          requestedActiveId != orderHelper.activeOrderId;
-    }
+    final int requestId = ++_fetchOrderItemsRequestId;
 
-    // 🔥 CRITICAL FIX: Clear orderItems IMMEDIATELY to prevent stale data flash
-    if (mounted) {
-      setState(() {
-        orderItems = [];
-      });
-    }
-
-    final activeId = requestedActiveId;
+    final activeId = orderHelper.activeOrderId;
     // #region agent log
     unawaited(_agentDebugLog(
       hypothesisId: "H3",
@@ -635,37 +587,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         print("⛔ fetchOrderItems blocked — active order hidden");
       }
 
-      if (!isStaleRequest()) {
+      if (mounted) {
         setState(() {
           orderItems.clear();
-          _listVersion++;
-        });
-      }
-      return;
-    }
-
-    final Map<String, dynamic>? activeOrderMap = orderHelper.orders.cast<Map<String, dynamic>?>().firstWhere(
-          (o) {
-        if (o == null) return false;
-        final int? id = _normalizeOrderId(
-          o[AppDBConst.orderServerId] ?? o['order_id'] ?? o['id'],
-        );
-        return id == activeId;
-      },
-      orElse: () => null,
-    );
-    if (activeOrderMap == null || !_isAllowedInOrderPanel(activeOrderMap)) {
-      if (kDebugMode) {
-        print(
-            "⛔ fetchOrderItems blocked — active order $activeId status is not processing");
-        final blockedStatus =
-        activeOrderMap == null ? "missing" : _readOrderStatus(activeOrderMap);
-        print(
-            "🚫 [ORDER_PANEL_STATUS_FILTER] blocked_in_items orderId=$activeId status=$blockedStatus");
-      }
-      if (!isStaleRequest()) {
-        setState(() {
-          orderItems = [];
           _listVersion++;
         });
       }
@@ -675,21 +599,23 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     if (kDebugMode) {
       print("##### DEBUG: fetchOrderItems 112233");
     }
-    if (activeId != null) {
+    if (orderHelper.activeOrderId != null) {
       if (kDebugMode) {
         print(
-            "##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: $activeId");
+            "##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
       }
       try {
         // 1️⃣ Prefer offline storage (products added via addItemToOrder)
-        final offlineItems = await orderHelper.getOrderItemsFromOffline(activeId);
+        final offlineItems = await orderHelper
+            .getOrderItemsFromOffline(orderHelper.activeOrderId!);
+        if (requestId != _fetchOrderItemsRequestId) return;
         // #region agent log
         unawaited(_agentDebugLog(
           hypothesisId: "H3",
           location: "widget_order_panel.dart:fetchOrderItems:offlineRead",
           message: "offline items read",
           data: {
-            "activeOrderId": activeId,
+            "activeOrderId": orderHelper.activeOrderId,
             "offlineItemCount": offlineItems.length,
             "firstItemKeys": offlineItems.isNotEmpty
                 ? offlineItems.first.keys.take(8).toList()
@@ -697,14 +623,14 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           },
         ));
         // #endregion
-        if (isStaleRequest()) return;
         if (offlineItems.isNotEmpty) {
           if (kDebugMode) {
             print(
                 "##### DEBUG: fetchOrderItems - Loaded ${offlineItems.length} items from offline storage");
           }
-          if (!isStaleRequest()) {
+          if (mounted) {
             setState(() {
+              if (requestId != _fetchOrderItemsRequestId) return;
               orderItems = List<Map<String, dynamic>>.from(offlineItems);
               _listVersion++;
             });
@@ -713,14 +639,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         }
 
         // 2️⃣ Fallback to SQLite (synced/API orders)
-        var orders = await orderHelper.getOrderById(activeId);
-        if (isStaleRequest()) return;
+        var orders = await orderHelper.getOrderById(orderHelper.activeOrderId!);
+        if (requestId != _fetchOrderItemsRequestId) return;
         if (orders.isEmpty) {
           if (kDebugMode) {
             print(
-                "##### DEBUG: fetchOrderItems - No order found for activeOrderId: $activeId, clearing items");
+                "##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
           }
-          if (isStaleRequest()) return;
           setState(() {
             orderItems = []; // Clear items if no order exists
             orderHelper.activeOrderId = null; // Reset activeOrderId
@@ -740,13 +665,15 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         }
         List<Map<String, dynamic>> items =
         await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
+        if (requestId != _fetchOrderItemsRequestId) return;
         if (kDebugMode) {
           print(
               "##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
         }
 
-        if (!isStaleRequest()) {
+        if (mounted) {
           setState(() {
+            if (requestId != _fetchOrderItemsRequestId) return;
             orderItems =
             List<Map<String, dynamic>>.from(items); // Create mutable copy
             _listVersion++; // Build 1.0.214: Increment version when items change
@@ -756,7 +683,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         if (kDebugMode) {
           print("##### ERROR: fetchOrderItems failed - $e, Stack: $s");
         }
-        if (!isStaleRequest()) {
+        if (mounted) {
           setState(() {
             orderItems = []; // Clear items on error
           });
@@ -775,6 +702,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
     }
   }
+
   dynamic _convertToJsonSafe(dynamic value) {
     if (value == null) return null;
 
@@ -3748,25 +3676,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final ScrollController scrollController = ScrollController();
 
-    final int? currentActiveId = orderHelper.activeOrderId;
-    final bool hasVisibleActiveTab =
-        currentActiveId != null &&
-            tabs.any((t) => t['orderId'] == currentActiveId);
-    final Map<String, dynamic>? activeOrderMap = orderHelper.orders
-        .cast<Map<String, dynamic>?>()
-        .firstWhere((o) {
-      if (o == null || currentActiveId == null) return false;
-      final int? id = _normalizeOrderId(
-        o[AppDBConst.orderServerId] ?? o['order_id'] ?? o['id'],
-      );
-      return id == currentActiveId;
-    }, orElse: () => null);
-    final bool canRenderActiveOrder = hasVisibleActiveTab &&
-        activeOrderMap != null &&
-        _isAllowedInOrderPanel(activeOrderMap);
-
-    // 🚨🚨🚨 CRITICAL FIX: EARLY RETURN WHEN ACTIVE ORDER IS NOT RENDERABLE 🚨🚨🚨
-    if (!canRenderActiveOrder) {
+    // 🚨🚨🚨 CRITICAL FIX: EARLY RETURN WHEN NO ACTIVE ORDER 🚨🚨🚨
+    if (orderHelper.activeOrderId == null) {
       return Stack(
         children: [
           Column(
@@ -5932,7 +5843,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                           : ThemeNotifier.textLight),
                                 ),
                                 Text(
-                                    "${grossTotal < 0 ? "-" : ""}${TextConstants.currencySymbol}${grossTotal.abs().toStringAsFixed(2)}", //Build #1.0.68
+                                    "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", //Build #1.0.68
                                     style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 15,
