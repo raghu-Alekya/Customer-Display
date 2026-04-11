@@ -1,0 +1,103 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.example.flutter_sunmi_customer_display"
+4    android:versionCode="1"
+5    android:versionName="1.0.462" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="21"
+9        android:targetSdkVersion="35" />
+10    <!--
+11         The INTERNET permission is required for development. Specifically,
+12         the Flutter tool needs it to communicate with the running application
+13         to allow setting breakpoints, to provide hot reload, etc.
+14    -->
+15    <uses-permission android:name="android.permission.INTERNET" />
+15-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:2:5-67
+15-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:2:22-64
+16
+17    <uses-feature android:name="android.hardware.usb.host" />
+17-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:3:5-62
+17-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:3:19-59
+18
+19    <uses-permission android:name="android.permission.USB_PERMISSION" />
+19-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:4:5-73
+19-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:4:22-70
+20    <!--
+21 Required to query activities that can process text, see:
+22         https://developer.android.com/training/package-visibility and
+23         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
+24
+25         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin.
+26    -->
+27    <queries>
+27-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:60:5-65:15
+28        <intent>
+28-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:61:9-64:18
+29            <action android:name="android.intent.action.PROCESS_TEXT" />
+29-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:62:13-72
+29-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:62:21-70
+30
+31            <data android:mimeType="text/plain" />
+31-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:63:13-50
+31-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:63:19-48
+32        </intent>
+33    </queries>
+34
+35    <application
+36        android:name="android.app.Application"
+37        android:debuggable="true"
+38        android:extractNativeLibs="true"
+39        android:icon="@mipmap/logo"
+40        android:label="Pinaka POS" >
+41        <activity
+42            android:name="com.example.flutter_sunmi_customer_display.MainActivity"
+43            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+44            android:exported="true"
+45            android:hardwareAccelerated="true"
+46            android:launchMode="singleTop"
+47            android:taskAffinity=""
+48            android:theme="@style/LaunchTheme"
+49            android:windowSoftInputMode="adjustResize" >
+50
+51            <!--
+52                 Specifies an Android theme to apply to this Activity as soon as
+53                 the Android process has started. This theme is visible to the user
+54                 while the Flutter UI initializes. After that, this theme continues
+55                 to determine the Window background behind the Flutter UI.
+56            -->
+57            <meta-data
+58                android:name="io.flutter.embedding.android.NormalTheme"
+59                android:resource="@style/NormalTheme" />
+60
+61            <intent-filter>
+62                <action android:name="android.intent.action.MAIN" />
+63
+64                <category android:name="android.intent.category.LAUNCHER" />
+65            </intent-filter>
+66            <intent-filter>
+67                <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED" />
+68                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+69            </intent-filter>
+70        </activity>
+71        <!--
+72             Don't delete the meta-data below.
+73             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java
+74        -->
+75        <meta-data
+76            android:name="flutterEmbedding"
+77            android:value="2" />
+78
+79        <receiver
+80            android:name="com.codingdevs.thermal_printer.usb.UsbReceiver"
+81            android:exported="false" >
+82            <intent-filter>
+83                <action android:name="android.hardware.usb.action.ACTION_USB_PERMISSION" />
+84                <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED" />
+85                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+86                <action android:name="com.flutter_pos_printer.USB_PERMISSION" />
+87            </intent-filter>
+88        </receiver>
+89    </application>
+90
+91</manifest>

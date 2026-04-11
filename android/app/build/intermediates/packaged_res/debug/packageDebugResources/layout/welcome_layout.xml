@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#3D506E">
+
+    <LinearLayout
+        android:id="@+id/welcome_root"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal">
+
+        <!-- Left half: slideshow -->
+        <LinearLayout
+            android:id="@+id/welcome_info"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <ImageView
+                android:id="@+id/welcome_logo"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:src="@drawable/pinaka_logo"
+                android:contentDescription="Logo"
+                android:adjustViewBounds="true"
+                android:layout_marginBottom="20dp" />
+
+            <TextView
+                android:id="@+id/welcome_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Welcome To Pinaka"
+                android:textSize="40sp"
+                android:textStyle="bold"
+                android:textColor="#FFFFFF"
+                android:gravity="center"
+                android:fontFamily="serif"
+                android:lineSpacingExtra="2dp"
+                android:letterSpacing="0.02"
+                android:breakStrategy="simple" />
+
+        </LinearLayout>
+
+        <!-- Right half: welcome text/logo -->
+        <FrameLayout
+            android:id="@+id/slideshow_container"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:padding="16dp">
+            <ImageView
+                android:id="@+id/slideshow_image"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"/>
+        </FrameLayout>
+
+    </LinearLayout>
+
+    <!-- Footer -->
+    <TextView
+        android:id="@+id/footer_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Powered by Pinaka"
+        android:textSize="20sp"
+        android:textColor="#FFFFFF"
+        android:gravity="center"
+        android:layout_gravity="bottom|center_horizontal"
+        android:padding="8dp"
+        android:visibility="gone" />
+</FrameLayout>

@@ -1,0 +1,78 @@
+[
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/xml_device_filter.xml.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/xml/device_filter.xml"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/drawable_card_bg.xml.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/drawable/card_bg.xml"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/drawable_custom.png.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/drawable/custom.png"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/xml_network_security_config.xml.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/xml/network_security_config.xml"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/drawable_dotted_line.xml.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/drawable/dotted_line.xml"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/mipmap-mdpi_logo.png.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/mipmap-mdpi/logo.png"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/mipmap-hdpi_logo.png.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/mipmap-hdpi/logo.png"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/drawable-v21_launch_background.xml.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/drawable-v21/launch_background.xml"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/mipmap-xxhdpi_logo.png.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/mipmap-xxhdpi/logo.png"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/mipmap-xxxhdpi_logo.png.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/mipmap-xxxhdpi/logo.png"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/drawable_empty_cart.png.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/drawable/empty_cart.png"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/drawable_ic_coupon.png.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/drawable/ic_coupon.png"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/layout_welcome_layout.xml.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/layout/welcome_layout.xml"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/drawable_ic_payout.png.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/drawable/ic_payout.png"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/layout_customer_display_layout.xml.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/layout/customer_display_layout.xml"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/drawable_item_card_background.xml.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/drawable/item_card_background.xml"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/layout_thank_you_layout.xml.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/layout/thank_you_layout.xml"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/mipmap-xhdpi_logo.png.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/mipmap-xhdpi/logo.png"
+    },
+    {
+        "merged": "com.example.flutter_sunmi_customer_display.app-debug-4:/drawable_pinaka_logo.png.flat",
+        "source": "com.example.flutter_sunmi_customer_display.app-main-6:/drawable/pinaka_logo.png"
+    }
+]

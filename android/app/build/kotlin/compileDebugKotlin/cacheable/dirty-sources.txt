@@ -1,0 +1,1 @@
+C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\kotlin\com\example\flutter_sunmi_customer_display\MainActivity.kt

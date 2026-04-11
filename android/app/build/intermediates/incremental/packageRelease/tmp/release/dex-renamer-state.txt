@@ -1,0 +1,4 @@
+#Sat Apr 11 09:42:41 IST 2026
+base.0=C\:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\build\\intermediates\\dex\\release\\minifyReleaseWithR8\\classes.dex
+path.0=classes.dex
+renamed.0=classes.dex
