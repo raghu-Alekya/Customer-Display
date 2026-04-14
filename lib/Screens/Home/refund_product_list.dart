@@ -755,7 +755,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                   // Locate the Stack inside the Summary Panel (around line 348)
                                   Container(
                                     width: double.infinity,
-                                    height: 280,
+                                    height: 360,
                                     clipBehavior: Clip.antiAlias,
                                     decoration: BoxDecoration(
                                       color: isDark
@@ -1608,6 +1608,12 @@ class _RefundScreenState extends State<RefundScreen> {
             );
 
             if (refundAmount != null) {
+              await showDialog<void>(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => PaymentSuccessDialog(amount: refundAmount),
+              );
+
               setState(() {
                 editedRefundAmount = refundAmount;
                 isConfirmEnabled = true;

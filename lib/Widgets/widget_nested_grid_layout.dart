@@ -59,6 +59,9 @@ class NestedGridWidget extends StatelessWidget {
 
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
   static bool _productMetaInitialized = false;
+  // Avoid repeated variant API refresh calls for the same product
+  // when users switch categories and tap the same item again.
+  static final Set<int> _variantRefreshAttempted = <int>{};
 
   const NestedGridWidget({
     super.key,
@@ -852,7 +855,9 @@ class NestedGridWidget extends StatelessWidget {
                                     offlineVariations
                                         .every((v) => v["price"].toString() == productPrice.toString());
 
-                                if (allSameAsParent) {
+                                if (allSameAsParent &&
+                                    !_variantRefreshAttempted.contains(productId)) {
+                                  _variantRefreshAttempted.add(productId);
                                   print("🔁 Cached variants incomplete → Refetching from API...");
                                   await ProductRepository().fetchProductVariations(productId);
 
@@ -862,6 +867,9 @@ class NestedGridWidget extends StatelessWidget {
                                         .map((v) => Map<String, dynamic>.from(v as Map))
                                         .toList();
                                   }
+                                } else if (allSameAsParent && kDebugMode) {
+                                  print(
+                                      "⏭️ Skipping repeated variant refetch for productId=$productId");
                                 }
                               } catch (e, st) {
                                 if (kDebugMode) {

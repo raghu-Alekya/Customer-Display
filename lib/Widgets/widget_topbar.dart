@@ -34,6 +34,7 @@ import '../Utilities/responsive_layout.dart';
 import '../Utilities/svg_images_utility.dart';
 import 'ManualPriceDialog.dart';
 import 'OrderPopupHelper.dart';
+import 'package:pinaka_pos/Repositories/Category/category_repository.dart';
 
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 

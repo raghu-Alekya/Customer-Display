@@ -218,20 +218,9 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
                           bgColor: const Color(0xFF3D4F7C),
                           textColor: Colors.white,
                           onTap: () async {
-
                             final enteredAmount = double.tryParse(amount) ?? 0.0;
-
-                            final result = await showDialog<double>(
-                              context: context,
-                              barrierDismissible: false,
-                              builder: (_) => PaymentSuccessDialog(
-                                amount: enteredAmount,
-                              ),
-                            );
-
-                            if (result != null) {
-                              Navigator.pop(context, result); // return value to RefundScreen
-                            }
+                            // Close cash refund dialog first; confirmation is shown by caller.
+                            Navigator.pop(context, enteredAmount);
                           },
                         ),
                       ],

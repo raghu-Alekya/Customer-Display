@@ -5,6 +5,13 @@ import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
+ConnectivityResult _primaryConnectivity(List<ConnectivityResult> results) {
+  if (results.isEmpty) return ConnectivityResult.none;
+  final active = results.where((r) => r != ConnectivityResult.none);
+  if (active.isEmpty) return ConnectivityResult.none;
+  return active.first;
+}
+
 class NetworkConnectivity {
   NetworkConnectivity._();
   static final _instance = NetworkConnectivity._();
@@ -14,43 +21,39 @@ class NetworkConnectivity {
   Stream get myStream => _controller.stream;
   // 1.
   Future<bool> initialise() async {
-    ConnectivityResult result = await _networkConnectivity.checkConnectivity();
-    bool isOnline = await checkStatus(result);
-    _networkConnectivity.onConnectivityChanged.listen((result) async {
+    final results = await _networkConnectivity.checkConnectivity();
+    bool isOnline = await checkStatus(results);
+    _networkConnectivity.onConnectivityChanged.listen((results) async {
       if (kDebugMode) {
-        print(result);
+        print(results);
       }
-      isOnline = await checkStatus(result);
+      isOnline = await checkStatus(results);
     });
     return isOnline;
   }
 // 2.
-  Future<bool> checkStatus(ConnectivityResult result) async {
+  Future<bool> checkStatus(List<ConnectivityResult> connectivityResults) async {
     bool isOnline = false;
     try {
-      final result = await InternetAddress.lookup('example.com');
-      isOnline = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+      final addresses = await InternetAddress.lookup('example.com');
+      isOnline =
+          addresses.isNotEmpty && addresses[0].rawAddress.isNotEmpty;
     } on SocketException catch (_) {
       isOnline = false;
     }
-    _controller.sink.add({result: isOnline});
+    final key = _primaryConnectivity(connectivityResults);
+    _controller.sink.add({key: isOnline});
     return isOnline;
   }
   // 3.
   Future<bool> isConnectivityOnline() async {
-    ConnectivityResult result = await Connectivity().checkConnectivity();
-    switch(result){
-      case ConnectivityResult.wifi:
-      case ConnectivityResult.ethernet:
-      case ConnectivityResult.mobile:
-        return true;
-      case ConnectivityResult.vpn:
-      case ConnectivityResult.other:
-      case ConnectivityResult.bluetooth:
-      case ConnectivityResult.none:
-      default:
-        return false;
-    }
+    final results = await Connectivity().checkConnectivity();
+    return results.any(
+          (r) =>
+      r == ConnectivityResult.wifi ||
+          r == ConnectivityResult.ethernet ||
+          r == ConnectivityResult.mobile,
+    );
   }
   void disposeStream() => _controller.close();
 }

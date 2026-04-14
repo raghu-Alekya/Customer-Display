@@ -41,6 +41,7 @@ class OrderModel {
   final String? dateCompleted;
   final String paymentMethod;
   final String createdVia;
+  final String? orderType;
   final String number;
   final String currencySymbol;
 
@@ -83,6 +84,7 @@ class OrderModel {
     this.dateCompleted,
     required this.paymentMethod,
     required this.createdVia,
+    this.orderType,
     required this.number,
     required this.currencySymbol,
     this.multipackDiscountTotal,
@@ -115,6 +117,24 @@ class OrderModel {
       }
     }
 
+    String? resolveOrderType() {
+      final direct = json['order_type']?.toString().trim();
+      if (direct != null && direct.isNotEmpty) return direct;
+
+      final alt = json['orderType']?.toString().trim();
+      if (alt != null && alt.isNotEmpty) return alt;
+
+      final type = json['type']?.toString().trim();
+      if (type != null && type.isNotEmpty) return type;
+
+      final metaOrderType = getOrderMetaValue('order_type')?.trim();
+      if (metaOrderType != null && metaOrderType.isNotEmpty) {
+        return metaOrderType;
+      }
+
+      return null;
+    }
+
     final orderDiscountStr = getOrderMetaValue('_discount_amount');
     final orderLevelAutoDiscountAmount = double.tryParse(orderDiscountStr ?? '0') ?? 0.0;
     final refundTotal =
@@ -129,7 +149,7 @@ class OrderModel {
     return OrderModel(
       id: json['id'] ?? 0,
       parentId: json['parent_id'] ?? 0,
-      status: json['status'] ?? '',
+      status: (json['status'] ?? json['state'] ?? '').toString(),
       currency: json['currency'] ?? 'INR',
       version: json['version'] ?? '',
       pricesIncludeTax: json['prices_include_tax'] ?? false,
@@ -169,6 +189,7 @@ class OrderModel {
       dateCompleted: json['date_completed'],
       paymentMethod: json['payment_method'] ?? '',
       createdVia: json['created_via'] ?? '',
+      orderType: resolveOrderType(),
       number: json['number'] ?? '',
       currencySymbol: json['currency_symbol'] ?? TextConstants.currencySymbol,
       multipackDiscountTotal: json['multipack_discount_total'] as String?,
