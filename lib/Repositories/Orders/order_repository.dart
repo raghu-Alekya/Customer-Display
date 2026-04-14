@@ -732,7 +732,7 @@ class OrderRepository {
         "coupon_lines": [],
       };
 
-      printFullJson("SYNC Woo Payload", payload);
+      printFullJson("SYNC Woo Payloaddddd", payload);
 
       final response = await _helper.post(url, payload, true);
 
@@ -1257,10 +1257,29 @@ class OrderRepository {
         {"key": "_pos_client_order_id", "value": clientOrderId},
       ];
 
+      Map<String, dynamic> normalizedCouponResponse = couponResponse;
       if (couponResponse.isNotEmpty) {
+        final normalizedCoupons = ((couponResponse["coupons"] as List?) ?? [])
+            .map((c) {
+          if (c is! Map) return c;
+          final couponMap = Map<String, dynamic>.from(c);
+          if (couponMap["generate_type"] == null) {
+            final keys = couponMap.keys.toSet();
+            final bool codeOnlyRedeem =
+                keys.length == 1 && keys.contains("code");
+            couponMap["generate_type"] = codeOnlyRedeem ? true : false;
+          }
+          return couponMap;
+        }).toList();
+
+        normalizedCouponResponse = {
+          ...couponResponse,
+          "coupons": normalizedCoupons,
+        };
+
         metaData.add({
           "key": "_pos_generated_coupon",
-          "value": couponResponse,
+          "value": normalizedCouponResponse,
         });
 
         debugPrint("✅ Generated coupon stored in meta only");
@@ -1282,25 +1301,29 @@ class OrderRepository {
       final List<Map<String, dynamic>> couponLines = [];
 
       debugPrint("🎟 Checking coupon_response from offline order...");
+      final coupons = normalizedCouponResponse["coupons"] as List? ?? [];
+      final bool hasCouponResponseCodes = coupons.any(
+            (c) => (c is Map) && ((c["code"]?.toString().trim().isNotEmpty) == true),
+      );
 
-      if (generatedCouponOnly) {
+      if (generatedCouponOnly && !hasCouponResponseCodes) {
         debugPrint("ℹ️ Generated coupon only → skipping coupon_lines");
-      } else if (couponResponse.isNotEmpty) {
-        final coupons = couponResponse["coupons"] as List? ?? [];
-
+      } else if (coupons.isNotEmpty) {
         for (final c in coupons) {
-          final String code = c["code"]?.toString() ?? "";
+          if (c is! Map) continue;
+          final String code = c["code"]?.toString().trim() ?? "";
 
           if (code.isNotEmpty) {
-            couponLines.add({
-              "code": code,
-            });
-
+            couponLines.add({"code": code});
             debugPrint("✅ Passing coupon to Woo → $code");
           }
         }
       }
 
+      debugPrint(
+        "🧾 coupon_response for sync → ${jsonEncode(normalizedCouponResponse)}",
+        wrapWidth: 1024,
+      );
       debugPrint("🎯 Final coupon_lines → ${jsonEncode(couponLines)}");
 
       // ---------------------------------------------------------
@@ -1318,7 +1341,7 @@ class OrderRepository {
         "tax_lines": [],
       };
 
-      printFullJson("SYNC Woo Payload", payload);
+      printFullJson("SYNC Woo Payloadttttt", payload);
 
       final response = isUpdate
           ? await _helper.put(url, payload, true)
@@ -1336,6 +1359,12 @@ class OrderRepository {
         "🟦 [SYNC] Woo Response → ${jsonEncode(decoded)}",
         wrapWidth: 1024,
       );
+      if (decoded is Map<String, dynamic>) {
+        debugPrint(
+          "🟦 [SYNC] Woo Response coupon_lines → ${jsonEncode(decoded['coupon_lines'] ?? [])}",
+          wrapWidth: 1024,
+        );
+      }
       double cashbackFee = 0.0;
       final wooFees = decoded["fee_lines"] as List? ?? [];
       for (final fee in wooFees) {

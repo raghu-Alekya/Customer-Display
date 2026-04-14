@@ -575,9 +575,10 @@ class OrderBloc { // Build #1.0.25 - added by naveen
 
       // Convert List<OrderList> to List<get_orders.OrderModel>
       final orderModels = response.ordersData; //Build #1.0.134
-      OrderHelper orderHelper = OrderHelper();
-      await orderHelper.syncOrdersFromApi(orderModels);
+      // Emit UI first; syncOrdersFromApi can be slow (Isar per order) and must not block the list.
       fetchTotalOrdersSink.add(APIResponse.completed(response));
+      final OrderHelper orderHelper = OrderHelper();
+      unawaited(orderHelper.syncOrdersFromApi(orderModels));
     } catch (e, s) {
       if (e.toString().contains('Unauthorised')) {
         fetchTotalOrdersSink.add(APIResponse.error("Unauthorised. Session is expired."));

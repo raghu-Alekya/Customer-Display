@@ -598,6 +598,34 @@ class OrderHelper {
     }
   }
 
+  /// Same id resolution as order panel tabs (`widget_order_panel` _getOrderTabs).
+  int? _normalizeOrderIdForShiftCheck(Map<String, dynamic> order) {
+    final dynamic raw =
+        order[AppDBConst.orderServerId] ?? order['order_id'] ?? order['id'];
+    if (raw == null) return null;
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw.toString());
+  }
+
+  bool _hasShiftBlockingItems(Map<String, dynamic> order) {
+    final List products = order['products'] as List? ?? [];
+    final List customItems = order['custom_items'] as List? ?? [];
+    final List payouts = order['payouts'] as List? ?? [];
+    final List cashbacks = order['cashbacks'] as List? ?? [];
+
+    if ([products, customItems, payouts, cashbacks].any((l) => l.isNotEmpty)) {
+      return true;
+    }
+
+    final request = order['request'];
+    if (request is Map) {
+      final lineItems = request['line_items'];
+      if (lineItems is List && lineItems.isNotEmpty) return true;
+    }
+    return false;
+  }
+
   // Build #1.0.281: Check if there are any active orders that should block closing shift
   Future<bool> hasActiveOrders() async {
     await loadData(); // Load offline orders
@@ -605,6 +633,52 @@ class OrderHelper {
     if (orders.isEmpty) {
       if (kDebugMode) print("#### No orders found for user $activeUserId");
       return false;
+    }
+
+    // If a draft active order session exists (current activeOrderId) with no cart items,
+    // block close shift so user can explicitly clear/close that cart first.
+    if (activeOrderId != null && activeOrderId! > 0) {
+      Map<String, dynamic>? activeOrder;
+      for (final o in orders) {
+        final id = _normalizeOrderIdForShiftCheck(o);
+        if (id == activeOrderId) {
+          activeOrder = o;
+          break;
+        }
+      }
+      if (activeOrder != null && !_hasShiftBlockingItems(activeOrder)) {
+        if (kDebugMode) {
+          print(
+            "#### BLOCKED - Active order $activeOrderId exists with empty cart; close shift not allowed",
+          );
+        }
+        return true;
+      }
+    }
+
+    // Build #1.0.286: Block shift while any order would still appear on the order panel.
+    // Tabs hide only after LocalPaymentDB has at least one payment for that order id.
+    for (final order in orders) {
+      final int? panelOrderId = _normalizeOrderIdForShiftCheck(order);
+      if (panelOrderId == null || panelOrderId == 0) continue;
+      if (!_hasShiftBlockingItems(order)) {
+        if (kDebugMode) {
+          print(
+            "#### SKIP - Order $panelOrderId has no cart items, ignoring for shift close",
+          );
+        }
+        continue;
+      }
+      final panelPayments = await LocalPaymentDBHelper.instance
+          .getPaymentsByOrderId(panelOrderId, userId: activeUserId);
+      if (panelPayments.isEmpty) {
+        if (kDebugMode) {
+          print(
+              "#### BLOCKED - Order $panelOrderId still on order panel (no payments); shift close not allowed",
+          );
+        }
+        return true;
+      }
     }
 
     for (var order in orders) {
@@ -623,16 +697,6 @@ class OrderHelper {
       final bool hasItems = [products, customItems, payouts, cashbacks]
           .any((list) => list.isNotEmpty);
 
-      // If this is the currently active order, block shift close even when cart is empty.
-      // This prevents closing shift while an active draft order session still exists.
-      if (!hasItems && activeOrderId != null && orderId == activeOrderId) {
-        if (kDebugMode) {
-          print(
-              "#### BLOCKED - Active order $orderId exists with empty cart; close shift not allowed");
-        }
-        return true;
-      }
-
       if (!hasItems) {
         if (kDebugMode)
           print("#### Order skipped — no items (orderId=$orderId)");
@@ -650,6 +714,8 @@ class OrderHelper {
           .getPaymentStatusSummary(orderId, userId: activeUserId);
 
       final bool fullyPaid = summary['fullyPaid'] as bool? ?? false;
+      final bool hasPayments = (summary['hasPayments'] as bool? ?? false) ||
+          ((summary['paymentCount'] as num?)?.toInt() ?? 0) > 0;
       final double remaining = (summary['remainingBalance'] ?? 0).toDouble();
       final double total = (summary['orderTotal'] ?? 0).toDouble();
 
@@ -658,8 +724,15 @@ class OrderHelper {
             "#### Order $orderId → fullyPaid: $fullyPaid, remaining: $remaining, total: $total");
       }
 
-      // Block if completely unpaid
-      if (!fullyPaid && remaining == total) {
+      // If any payment exists and no remaining balance, allow close shift.
+      // Some rows can carry total=0 while still having completed payments.
+      if (hasPayments && remaining <= 0) {
+        print("#### Order $orderId has payments and zero balance → allowed to close shift");
+        continue;
+      }
+
+      // Block only when genuinely unpaid (no payments recorded).
+      if (!hasPayments && !fullyPaid && remaining == total) {
         print("#### BLOCKED - Order $orderId has items but no payment at all");
         return true;
       }
@@ -1911,6 +1984,15 @@ class OrderHelper {
       await prefs.remove('activeOrderId');
     }
 
+    // Prevent restoreActiveOrderId() from reviving a deleted or last-deleted cart
+    if (prefs.getInt('lastActiveOrderId') == orderId || orderIds.isEmpty) {
+      await prefs.remove('lastActiveOrderId');
+    }
+    if (orderIds.isEmpty) {
+      activeOrderId = null;
+      await prefs.remove('activeOrderId');
+    }
+
     // Reload the updated order list
     await loadData();
 
@@ -1952,16 +2034,52 @@ class OrderHelper {
     }
   }
 
+  /// True if this order still exists in offline (Hive) for the current user, or in SQLite.
+  Future<bool> localOrderExistsForActiveUser(int orderId) async {
+    final offlineBox = StorageProvider.offlineOrders;
+    final dynamic raw = await offlineBox.get(orderId.toString());
+    if (raw != null && raw is Map) {
+      final order = Map<String, dynamic>.from(raw);
+      final currentUserId = await getUserIdFromDB();
+      final dynamic orderUserId = order['user_id'] ?? order[AppDBConst.userId];
+      if (orderUserId?.toString() == currentUserId.toString()) {
+        return true;
+      }
+    }
+    final rows = await getOrderById(orderId);
+    return rows.isNotEmpty;
+  }
+
+  /// Clears in-memory and persisted cart selection (fixes ghost cart after delete/restart).
+  Future<void> clearPersistedCartSelection() async {
+    activeOrderId = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('activeOrderId');
+    await prefs.remove('lastActiveOrderId');
+    if (kDebugMode) {
+      print("##### Cleared persisted cart selection (active + lastActive)");
+    }
+  }
+
   // Build #1.0.161: Restore active order when returning
   Future<void> restoreActiveOrderId() async {
     final prefs = await SharedPreferences.getInstance();
     final lastOrderId = prefs.getInt('lastActiveOrderId');
 
-    if (lastOrderId != null && lastOrderId != -1) {
-      await setActiveOrder(lastOrderId);
+    if (lastOrderId == null || lastOrderId == -1) return;
+
+    if (!await localOrderExistsForActiveUser(lastOrderId)) {
+      await clearPersistedCartSelection();
       if (kDebugMode) {
-        print("##### Restored active order ID: $lastOrderId");
+        print(
+            "##### Skipped restore: lastActiveOrderId $lastOrderId has no local order — cleared prefs");
       }
+      return;
+    }
+
+    await setActiveOrder(lastOrderId);
+    if (kDebugMode) {
+      print("##### Restored active order ID: $lastOrderId");
     }
   }
 

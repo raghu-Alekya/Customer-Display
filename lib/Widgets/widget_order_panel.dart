@@ -201,6 +201,16 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     return int.tryParse(value.toString());
   }
 
+  /// True when [activeId] matches a tab (handles int/String mismatches).
+  bool _tabsContainActiveOrder(int? activeId) {
+    if (activeId == null) return false;
+    for (final t in tabs) {
+      final id = _normalizeOrderId(t['orderId']);
+      if (id != null && id == activeId) return true;
+    }
+    return false;
+  }
+
   String normalizeSku(String sku) {
     return sku.trim().toLowerCase().replaceAll(" ", "");
   }
@@ -582,11 +592,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     ));
     // #endregion
 
-    if (activeId == null || !tabs.any((t) => t['orderId'] == activeId)) {
+    if (activeId == null) {
       if (kDebugMode) {
-        print("⛔ fetchOrderItems blocked — active order hidden");
+        print("⛔ fetchOrderItems — no active order, clearing list");
       }
-
       if (mounted) {
         setState(() {
           orderItems.clear();
@@ -594,6 +603,16 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         });
       }
       return;
+    }
+
+    // Tabs can lag behind activeOrderId (e.g. while _getOrderTabs runs, or offline-only).
+    // Never clear the cart just because the tab bar has not caught up yet.
+    if (!_tabsContainActiveOrder(activeId)) {
+      if (kDebugMode) {
+        print(
+            "⚠️ fetchOrderItems — active order not in tab bar; still loading by id: $activeId",
+        );
+      }
     }
 
     if (kDebugMode) {
@@ -605,9 +624,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             "##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
       }
       try {
-        // 1️⃣ Prefer offline storage (products added via addItemToOrder)
-        final offlineItems = await orderHelper
-            .getOrderItemsFromOffline(orderHelper.activeOrderId!);
+        final int oid = orderHelper.activeOrderId!;
+        // 1️⃣ Prefer offline storage; 2️⃣ SQLite — run both reads in parallel when offline may be empty.
+        final Future<List<Map<String, dynamic>>> offlineFuture =
+            orderHelper.getOrderItemsFromOffline(oid);
+        final Future<List<Map<String, dynamic>>> ordersFuture =
+            orderHelper.getOrderById(oid);
+        final offlineItems = await offlineFuture;
         if (requestId != _fetchOrderItemsRequestId) return;
         // #region agent log
         unawaited(_agentDebugLog(
@@ -639,18 +662,19 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         }
 
         // 2️⃣ Fallback to SQLite (synced/API orders)
-        var orders = await orderHelper.getOrderById(orderHelper.activeOrderId!);
+        var orders = await ordersFuture;
         if (requestId != _fetchOrderItemsRequestId) return;
         if (orders.isEmpty) {
           if (kDebugMode) {
             print(
                 "##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
           }
-          setState(() {
-            orderItems = []; // Clear items if no order exists
-            orderHelper.activeOrderId = null; // Reset activeOrderId
-          });
-          //   await orderHelper.saveLastActiveOrderId(null); // Clear saved activeOrderId
+          await orderHelper.clearPersistedCartSelection();
+          if (mounted) {
+            setState(() {
+              orderItems = []; // Clear items if no order exists
+            });
+          }
           await _getOrderTabs(); // Refresh tabs to reflect no active order
           return;
         }
@@ -778,7 +802,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
     if (orderHelper.activeOrderId != null) {
       final idx = tabs.indexWhere(
-            (t) => t["orderId"] == orderHelper.activeOrderId,
+            (t) =>
+                _normalizeOrderId(t["orderId"]) ==
+                orderHelper.activeOrderId,
       );
 
       if (idx != -1) {
@@ -6423,6 +6449,17 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                           setState(() => _isPayBtnLoading = true);
 
                           try {
+                            final int? frozenCheckoutOrderId =
+                                orderHelper.activeOrderId;
+                            if (frozenCheckoutOrderId == null) {
+                              if (mounted) {
+                                setState(() => _isPayBtnLoading = false);
+                              }
+                              _showError(
+                                  'Unable to open payment: no active order.');
+                              return;
+                            }
+
                             final List<Map<String, dynamic>>
                             workingItems = orderItems
                                 .map((e) =>
@@ -6436,7 +6473,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             // =======================================================
                             final box = StorageProvider.offlineOrders;
                             final hiveKey =
-                            orderHelper.activeOrderId.toString();
+                                frozenCheckoutOrderId.toString();
 
                             double totalEbtAfterDiscount = 0.0;
 
@@ -6638,7 +6675,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             // 🔹 SAVE TO HIVE
                             // =======================================================
                             final localKey =
-                            orderHelper.activeOrderId.toString();
+                            frozenCheckoutOrderId.toString();
                             final existingLocal = await box.get(localKey);
                             final Map<String, dynamic> updated =
                             existingLocal != null
@@ -6646,8 +6683,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                 existingLocal)
                                 : <String, dynamic>{
                               'order_id':
-                              orderHelper.activeOrderId,
-                              'id': orderHelper.activeOrderId,
+                              frozenCheckoutOrderId,
+                              'id': frozenCheckoutOrderId,
                               'products':
                               <Map<String, dynamic>>[],
                             };
@@ -6720,7 +6757,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             debugPrint(jsonEncode(verify));
                             await CustomerDisplayHelper
                                 .updateCustomerDisplay(
-                                orderHelper.activeOrderId!,
+                                frozenCheckoutOrderId,
                                 summaryEnabled: true);
 
                             // =======================================================
@@ -6740,10 +6777,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                   netPayable: (grossAfterDiscount +
                                       totalTaxAfterDiscount),
                                   orderId: serverOrderId ??
-                                      orderHelper.activeOrderId,
+                                      frozenCheckoutOrderId,
                                   isOfflineSynced: serverOrderId != null,
                                   offlineOrderId:
-                                  orderHelper.activeOrderId,
+                                  frozenCheckoutOrderId,
                                   cashbackFee: cashbackFee,
                                   ebtAmount: totalEbtAfterDiscount,
                                   discountAmount: discountAmount,

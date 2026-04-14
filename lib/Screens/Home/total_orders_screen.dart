@@ -32,6 +32,32 @@ import 'package:quickalert/quickalert.dart';
 
 import '../Auth/login_screen.dart';
 
+/// Last successful Total Orders list for the same filters/page (instant paint on return).
+class _TotalOrdersListCache {
+  static String? _key;
+  static List<model.OrderModel> _pageOrders = [];
+  static int _totalCount = 0;
+
+  static void update(
+    String key,
+    List<model.OrderModel> pageOrders,
+    int totalCount,
+  ) {
+    _key = key;
+    _pageOrders = List<model.OrderModel>.from(pageOrders);
+    _totalCount = totalCount;
+  }
+
+  static bool restoreIfMatch(
+    String key,
+    void Function(List<model.OrderModel> orders, int totalCount) apply,
+  ) {
+    if (_key != key) return false;
+    apply(List<model.OrderModel>.from(_pageOrders), _totalCount);
+    return true;
+  }
+}
+
 class TotalOrdersScreen extends StatefulWidget {
   // Build #1.0.226: updated class name
   final int? lastSelectedIndex;
@@ -107,6 +133,71 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     }
     return null;
   }
+
+  /// Avoids [Iterable.firstWhere] when no match (e.g. filter lists still loading).
+  OrderStatus _resolveStatusFilterEntry() {
+    for (final e in _filterStatuses) {
+      if (e.name == _selectedStatusFilter) return e;
+    }
+    if (_filterStatuses.isNotEmpty) return _filterStatuses.first;
+    return OrderStatus(slug: "", name: "All");
+  }
+
+  Employees _resolveUserFilterEntry() {
+    for (final e in _filterUsers) {
+      if (e.displayName == _selectedUserFilter) return e;
+    }
+    if (_filterUsers.isNotEmpty) return _filterUsers.first;
+    return Employees(iD: "", displayName: "All");
+  }
+
+  OrderType _resolveOrderTypeFilterEntry() {
+    for (final e in _filterOrderType) {
+      if (e.name == _selectedOrderTypeFilter) return e;
+    }
+    if (_filterOrderType.isNotEmpty) return _filterOrderType.first;
+    return OrderType(slug: "", name: "All");
+  }
+
+  String _orderTypeLabelForOrder(model.OrderModel order) {
+    final apiType = order.orderType?.trim() ?? '';
+    final via = order.createdVia.toString().trim();
+    final type = apiType.isNotEmpty ? apiType : via;
+    for (final e in _filterOrderType) {
+      if (e.slug == type) return e.name;
+    }
+    final normalized = type.toLowerCase();
+    if (normalized == 'rest-api') return 'Shop Order';
+    if (normalized.isEmpty) return '-';
+    return type;
+  }
+
+  /// Same line items as the Total Orders API row — used to paint the right panel immediately.
+  List<model.LineItem>? _previewLineItemsForSelectedOrder() {
+    final id = OrderHelper().selectedOrderId;
+    if (id == null || id < 0) return null;
+    for (final o in _pageOrders) {
+      if (o.id == id) return o.lineItems;
+    }
+    for (final o in _orders) {
+      if (o.id == id) return o.lineItems;
+    }
+    return null;
+  }
+
+  /// Same order object as the list row — hydrates panel status, discounts, and tags before SQLite sync.
+  model.OrderModel? _previewOrderForSelectedOrder() {
+    final id = OrderHelper().selectedOrderId;
+    if (id == null || id < 0) return null;
+    for (final o in _pageOrders) {
+      if (o.id == id) return o;
+    }
+    for (final o in _orders) {
+      if (o.id == id) return o;
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -146,6 +237,30 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final cacheKey = _ordersFetchCacheKey();
+      _TotalOrdersListCache.restoreIfMatch(cacheKey, (list, total) {
+        if (!mounted) return;
+        setState(() {
+          _pageOrders = list;
+          _currentChunk = 1;
+          _visibleOrders = _pageOrders.take(_chunkSize).toList();
+          _orders = _visibleOrders;
+          _totalOrdersCount = total;
+          isLoading = false;
+        });
+        if (_orders.isEmpty) {
+          OrderHelper().selectedOrderId = null;
+        } else {
+          final currentSelected = OrderHelper().selectedOrderId;
+          final orderToSelect = (currentSelected == null ||
+                  !_orders.any((o) => o.id == currentSelected))
+              ? _orders.first.id
+              : currentSelected;
+          OrderHelper().selectedOrderId = orderToSelect;
+          _onOrderRowSelected(orderToSelect!);
+        }
+      });
+
       _fetchOrders();
 
       if (OrderHelper().selectedOrderId == null) {
@@ -183,8 +298,26 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     var filterOrderType = await AssetDBHelper.instance.getOrderTypeList();
     _filterOrderType.addAll(filterOrderType);
   }
+
+  /// Stable key for [_TotalOrdersListCache] (must match params sent to [OrderBloc.fetchTotalOrdersCount]).
+  String _ordersFetchCacheKey() {
+    final selectedStatus = _resolveStatusFilterEntry().slug ?? "";
+    final selectedUserId = _resolveUserFilterEntry().iD ?? "";
+    final selectedOrderType = _resolveOrderTypeFilterEntry().slug ?? "";
+    final format = DateFormat('yyyy-MM-dd');
+    String startDateFormatted = "";
+    String endDateFormatted = "";
+    if (_startDate != null && _endDate != null) {
+      startDateFormatted = format.format(_startDate!);
+      endDateFormatted = format.format(_endDate!);
+    }
+    return '${_currentPage}_${_rowsPerPage}_${selectedStatus}_${selectedUserId}_${selectedOrderType}_${startDateFormatted}_$endDateFormatted';
+  }
+
   void _fetchOrders() {
     debugPrint("OrdersScreen: Initiating fetch orders");
+
+    final String fetchCacheKey = _ordersFetchCacheKey();
 
     _fetchOrdersSubscription?.cancel();
     _loadingDelayTimer?.cancel();
@@ -203,6 +336,12 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
             _loadingDelayTimer = null;
 
             final orders = response.data?.ordersData ?? [];
+
+            _TotalOrdersListCache.update(
+              fetchCacheKey,
+              orders,
+              response.data?.orderTotalCount ?? 0,
+            );
 
             setState(() {
               _pageOrders = orders;
@@ -257,29 +396,26 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
             _fetchInProgress = true;
             _loadingDelayTimer?.cancel();
 
-            _loadingDelayTimer = Timer(
-              const Duration(milliseconds: 300),
-                  () {
-                if (mounted && _fetchInProgress) {
-                  setState(() => isLoading = true);
-                }
-              },
-            );
+            // Avoid full-screen loader when we already have rows (silent refresh).
+            if (_pageOrders.isEmpty) {
+              _loadingDelayTimer = Timer(
+                const Duration(milliseconds: 300),
+                () {
+                  if (mounted && _fetchInProgress) {
+                    setState(() => isLoading = true);
+                  }
+                },
+              );
+            }
           }
         });
 
     // 🔥 Call Bloc (NOT repository directly)
-    final selectedStatus = _filterStatuses
-        .firstWhere((e) => e.name == _selectedStatusFilter)
-        .slug ?? "";
+    final selectedStatus = _resolveStatusFilterEntry().slug ?? "";
 
-    final selectedUserId = _filterUsers
-        .firstWhere((e) => e.displayName == _selectedUserFilter)
-        .iD ?? "";
+    final selectedUserId = _resolveUserFilterEntry().iD ?? "";
 
-    final selectedOrderType = _filterOrderType
-        .firstWhere((e) => e.name == _selectedOrderTypeFilter)
-        .slug ?? "";
+    final selectedOrderType = _resolveOrderTypeFilterEntry().slug ?? "";
 
     DateFormat format = DateFormat('yyyy-MM-dd');
     String startDateFormatted = "";
@@ -860,6 +996,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                     quantities: quantities,
                     activeOrderId: OrderHelper().activeOrderId ??
                         OrderHelper().selectedOrderId,
+                    previewLineItemsFromApi: _previewLineItemsForSelectedOrder(),
+                    previewOrderFromApi: _previewOrderForSelectedOrder(),
 
                     /// <- ADDED NULL CHECK // BUILD 1.0.213: FIXED RE-OPENED ISSUE [SCRUM-356]: Order items not displaying in Bottom Mode
                     refreshOrderList:
@@ -1134,13 +1272,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                               children: [
                                                 _buildDataCell(order.id.toString()),
                                                 _buildDataCell(
-                                                  _filterOrderType
-                                                      .firstWhere(
-                                                        (e) =>
-                                                    e.slug ==
-                                                        order.createdVia.toString(),
-                                                  )
-                                                      .name,
+                                                  _orderTypeLabelForOrder(order),
                                                 ),
                                                 _buildDataCell(
                                                   date != null
@@ -1203,6 +1335,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                     quantities: quantities,
                     activeOrderId: OrderHelper().activeOrderId ??
                         OrderHelper().selectedOrderId,
+                    previewLineItemsFromApi: _previewLineItemsForSelectedOrder(),
+                    previewOrderFromApi: _previewOrderForSelectedOrder(),
 
                     /// <- ADDED NULL CHECK // BUILD 1.0.213: FIXED RE-OPENED ISSUE [SCRUM-356]: Order items not displaying in Bottom Mode
                     refreshOrderList:
@@ -1252,7 +1386,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     // Explicitly declare selectedOrder as a nullable OrderModel
     model.OrderModel? selectedOrder;
 
-    if (orderId == -1) {
+    if (orderId == -1 && _orders.isNotEmpty) {
       orderId = _orders.first
           .id; //Build #1.0.165: to fix issue in windows, not able to save lastActiveOrderID
       OrderHelper().selectedOrderId = orderId;

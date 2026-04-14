@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:core';
 import 'package:dotted_line/dotted_line.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide MetaData;
 import 'package:flutter/services.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:pinaka_pos/Helper/Extentions/extensions.dart';
@@ -43,6 +43,148 @@ import '../Screens/Home/isar_payments/local_payments_model.dart';
 import '../Utilities/printer_settings.dart';
 import '../Utilities/result_utility.dart';
 
+/// Same EBT rules as [OrderPanelDBHelper] / Fast Keys: product tag `ebt-eligible` OR line/variation
+/// meta keys `is_ebt_eligible`, `_is_ebt_eligible`, `_ebt_eligible` (list API often omits tags).
+bool lineItemEbtEligibleForPanelPreview(LineItem li) {
+  if (li.isEbtEligible) return true;
+
+  bool metaListSaysEbt(List<MetaData> list) {
+    for (final meta in list) {
+      final key = meta.key.toLowerCase();
+      if (key != 'is_ebt_eligible' &&
+          key != '_is_ebt_eligible' &&
+          key != '_ebt_eligible') {
+        continue;
+      }
+      final v = meta.value;
+      if (v == true || v == 1) return true;
+      if (v is num && v == 1) return true;
+      final s = v?.toString().toLowerCase().trim() ?? '';
+      if (s == '1' || s == 'true' || s == 'yes') return true;
+    }
+    return false;
+  }
+
+  if (metaListSaysEbt(li.metaData)) return true;
+  final vMeta = li.productVariationData?.metaData;
+  if (vMeta != null && vMeta.isNotEmpty && metaListSaysEbt(vMeta)) {
+    return true;
+  }
+  return false;
+}
+
+/// Build order-panel rows from Total Orders list API [LineItem]s (instant display before DB sync).
+List<Map<String, dynamic>> panelMapsFromApiLineItems(List<LineItem> lines) {
+  final out = <Map<String, dynamic>>[];
+  for (final li in lines) {
+    try {
+      final qty = li.quantity;
+      final total = double.tryParse(li.total) ?? (li.price * qty);
+      final unit = qty > 0 ? total / qty : li.price;
+      final nameLower = li.name.toLowerCase();
+      final isDiscountItem = nameLower.contains('discount');
+      final variationId = li.variationId;
+      final variationName = li.productVariationData?.sku ?? '';
+      final int ebtFlag = lineItemEbtEligibleForPanelPreview(li) ? 1 : 0;
+      String discountType = '';
+      if (li.multipackApplied) {
+        discountType = 'multipack';
+      } else if (li.comboDiscountApplied) {
+        discountType = 'mixmatch';
+      } else if (li.autoDiscountApplied) {
+        discountType = 'auto';
+      }
+      out.add({
+        AppDBConst.itemName: li.name,
+        AppDBConst.itemCount: qty,
+        AppDBConst.itemPrice: unit,
+        AppDBConst.itemSumPrice: total,
+        // Same shape as SQLite rows: panel ListView uses item_unit_price / item_sales_price /
+        // item_regular_price with ?.toDouble() — if those are missing or String, you get NoSuchMethodError.
+        AppDBConst.itemUnitPrice: unit,
+        AppDBConst.itemSalesPrice: 0.0,
+        AppDBConst.itemRegularPrice: 0.0,
+        'product_id': li.productId,
+        'item_type': 'product',
+        AppDBConst.itemImage: li.image.src,
+        AppDBConst.itemVariationId: variationId,
+        AppDBConst.itemVariationCustomName: variationName,
+        'attribute_variant': variationId > 0 ? variationName : '',
+        'variant_name': variationId,
+        'variation_id': variationId,
+        'ebt_eligible': ebtFlag,
+        AppDBConst.isEbtEligible: ebtFlag,
+        'is_discount_item': isDiscountItem,
+        AppDBConst.isRefundItem: li.isRefundItem,
+        'discount_type': discountType,
+        AppDBConst.multipackDiscount: li.multipackDiscountAmount,
+        AppDBConst.autoDiscountTotal: li.autoDiscountAmount,
+        AppDBConst.comboDiscountTotal: li.comboDiscountAmount,
+        AppDBConst.displayAutoDiscount: li.displayAutoDiscountAmount,
+        'mixmatch_discount_total': li.comboDiscountAmount,
+      });
+    } catch (e, st) {
+      if (kDebugMode) {
+        print('panelMapsFromApiLineItems skip line: $e\n$st');
+      }
+    }
+  }
+  return out;
+}
+
+/// Maps Total Orders API [OrderModel] into the same shape as SQLite `_order` so status,
+/// coupon lines, tax/totals, and coupon visibility match the list immediately (before DB sync).
+Map<String, dynamic> orderPanelOrderMapFromOrderModel(OrderModel o) {
+  final couponLines = o.couponLines
+      .map((c) => <String, dynamic>{
+            'discount': c.discount,
+            'code': c.code,
+          })
+      .toList();
+  final metaList = o.metaData
+      .map((m) => <String, dynamic>{'key': m.key, 'value': m.value})
+      .toList();
+
+  double? metaDouble(String key) {
+    for (final m in o.metaData) {
+      if (m.key == key) {
+        return double.tryParse(m.value?.toString() ?? '') ??
+            (m.value is num ? (m.value as num).toDouble() : null);
+      }
+    }
+    return null;
+  }
+
+  final double discTotal = double.tryParse(o.discountTotal) ?? 0.0;
+  final double taxTotal = double.tryParse(o.totalTax) ?? 0.0;
+  final double orderTotal = double.tryParse(o.total) ?? 0.0;
+  final double merchantMeta =
+      metaDouble('merchant_discount') ?? metaDouble('_merchant_discount') ?? 0.0;
+
+  final bool couponsApplied = couponLines.isNotEmpty || discTotal > 0;
+
+  return <String, dynamic>{
+    AppDBConst.orderServerId: o.id,
+    AppDBConst.orderStatus:
+        o.status.isNotEmpty ? o.status : TextConstants.processing,
+    AppDBConst.orderDate: o.dateCreated,
+    AppDBConst.orderDiscount: discTotal,
+    AppDBConst.merchantDiscount: merchantMeta,
+    'merchantDiscount': merchantMeta,
+    AppDBConst.orderTax: taxTotal,
+    AppDBConst.orderTotal: orderTotal,
+    'coupon_lines': couponLines,
+    'meta_data': metaList,
+    'coupon_applied': couponsApplied,
+    'wooTax': taxTotal,
+    'wooTotal': orderTotal,
+    'net_payment': o.netPayment,
+    AppDBConst.orderCashbackFee: o.cashbackFee,
+    'cashbackFee': o.cashbackFee,
+    'cashback_fee': o.cashbackFee,
+  };
+}
+
 class OrderScreenPanel extends StatefulWidget {
   final String formattedDate;
   final String formattedTime;
@@ -50,6 +192,10 @@ class OrderScreenPanel extends StatefulWidget {
   final VoidCallback? refreshOrderList;
   int? activeOrderId; // Build #1.0.251 : updated
   final bool fetchOrders; //Build #1.0.234:  Mark as final
+  /// When set (e.g. from Total Orders list response), panel shows these rows immediately.
+  final List<LineItem>? previewLineItemsFromApi;
+  /// Same order as [previewLineItemsFromApi]: hydrates status, discounts, and meta before SQLite loads.
+  final OrderModel? previewOrderFromApi;
 
   OrderScreenPanel({
     required this.formattedDate,
@@ -58,6 +204,8 @@ class OrderScreenPanel extends StatefulWidget {
     this.refreshOrderList,
     this.activeOrderId,
     this.fetchOrders = false,
+    this.previewLineItemsFromApi,
+    this.previewOrderFromApi,
     Key? key,
   }) : super(key: key);
 
@@ -125,6 +273,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
   double tax = 0.0; // AddED tax variable
   final _printerSettings = PrinterSettings();
   List<int> bytes = [];
+
+  /// Cancels stale [fetchOrderItems] completions when the user switches orders quickly.
+  int _fetchOrderItemsSeq = 0;
 
   void _toggleSummary() {
     setState(() {
@@ -487,14 +638,28 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     if (!mounted) return; // Build #1.0.240 : Added
     // Reset payment-related fields to avoid leaking values from the previously opened order.
     // This fixes cases where discount-only orders were showing discount as "Change".
+    final preview = widget.previewLineItemsFromApi;
+    final bool hasApiPreview =
+        preview != null && preview.isNotEmpty;
     setState(() {
-      _isLoading = true; // show loader
       tenderAmount = 0.0;
       changeAmount = 0.0;
       balanceAmount = 0.0;
       payByCash = 0.0;
       payByOther = 0.0;
       ebtAmount = 0.0;
+      if (hasApiPreview) {
+        orderItems = panelMapsFromApiLineItems(preview);
+        _isLoading = false;
+        final po = widget.previewOrderFromApi;
+        if (po != null && po.id == widget.activeOrderId) {
+          _order = orderPanelOrderMapFromOrderModel(po);
+          _wooOrder = po;
+          orderServerId = po.id;
+        }
+      } else {
+        _isLoading = true;
+      }
     });
     if (kDebugMode) {
       print(
@@ -631,7 +796,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     }
   }
 
-  var _order;
+  /// Never null: list rows and payment helpers use `_order[...]` immediately after API
+  /// preview fills `orderItems`, before `fetchOrder()` completes — `[]` on null was NoSuchMethodError.
+  var _order = <String, dynamic>{AppDBConst.orderStatus: ''};
   // Build #1.0.118: Update fetchOrder to use widget.activeOrderId
   Future<void> fetchOrder() async {
     if (widget.activeOrderId == null) {
@@ -750,9 +917,20 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         return;
       }
 
-      //  No order found at all
-      _order = {AppDBConst.orderStatus: ''};
-      orderServerId = null;
+      // No local row yet: keep list API snapshot so status/discounts stay visible until sync.
+      final snap = widget.previewOrderFromApi;
+      if (snap != null && snap.id == widget.activeOrderId) {
+        _order = orderPanelOrderMapFromOrderModel(snap);
+        _wooOrder = snap;
+        orderServerId = snap.id;
+        if (kDebugMode) {
+          print(
+              '🟦 Order panel: preview OrderModel kept (no SQLite row for id ${widget.activeOrderId})');
+        }
+      } else {
+        _order = {AppDBConst.orderStatus: ''};
+        orderServerId = null;
+      }
     }
 
     // Fetch payments only for online orders
@@ -768,9 +946,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
+    final int requestId = ++_fetchOrderItemsSeq;
     final int? requestOrderId = widget.activeOrderId;
     if (requestOrderId == null) {
-      if (mounted) setState(() => orderItems.clear());
+      if (mounted && requestId == _fetchOrderItemsSeq) {
+        setState(() => orderItems.clear());
+      }
       return;
     }
 
@@ -779,7 +960,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       List<Map<String, dynamic>> items =
       await orderHelper.getOrderItems(requestOrderId);
 
-      if (!mounted || widget.activeOrderId != requestOrderId) return;
+      if (!mounted ||
+          widget.activeOrderId != requestOrderId ||
+          requestId != _fetchOrderItemsSeq) {
+        return;
+      }
 
       if (items.isNotEmpty) {
         print("🟦 SQLite Order Items Loaded: $items");
@@ -826,21 +1011,32 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
           });
         }
 
+        if (requestId != _fetchOrderItemsSeq) return;
         setState(() => orderItems = processedItems);
         return;
       }
     } catch (_) {}
-    if (!mounted || widget.activeOrderId != requestOrderId) return;
+    if (!mounted ||
+        widget.activeOrderId != requestOrderId ||
+        requestId != _fetchOrderItemsSeq) {
+      return;
+    }
 
     final deletedBox = StorageProvider.deletedOrders;
 
     final deleted = await deletedBox.get(requestOrderId.toString());
 
-    if (!mounted || widget.activeOrderId != requestOrderId) return;
+    if (!mounted ||
+        widget.activeOrderId != requestOrderId ||
+        requestId != _fetchOrderItemsSeq) {
+      return;
+    }
 
     if (deleted != null) {
       print("🔥 Loading DELETED ORDER ITEMS for ID = $requestOrderId");
-      _order[AppDBConst.orderStatus] = "cancelled";
+      if (_order is Map) {
+        (_order as Map)[AppDBConst.orderStatus] = "cancelled";
+      }
 
       final List productList = deleted["products"] ?? [];
       final List cashbackList = deleted["cashbacks"] ?? [];
@@ -888,12 +1084,15 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
       print("🔥 Final Loaded Deleted OrderItems = $orderItems");
 
+      if (requestId != _fetchOrderItemsSeq) return;
       setState(() {});
       return;
     }
 
     // 3️⃣ Nothing found
-    if (mounted && widget.activeOrderId == requestOrderId) {
+    if (mounted &&
+        widget.activeOrderId == requestOrderId &&
+        requestId == _fetchOrderItemsSeq) {
       setState(() => orderItems.clear());
     }
   }
@@ -902,8 +1101,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _scaffoldMessenger = ScaffoldMessenger.of(context);
-    debugPrint("????? OrdersScreenPanel: didChangeDependencies");
-    fetchOrderItems();
+    // Do not call fetchOrderItems() here: initState/didUpdateWidget already run
+    // fetchOrdersData() which awaits fetchOrderItems(). A duplicate call races
+    // when switching orders and can leave stale rows or throw.
   }
 
   @override
@@ -3174,6 +3374,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                             orderItems.isNotEmpty
                             ? () async {
                           if (orderHelper.activeOrderId != null) {
+                            final int frozenSummaryOrderId =
+                                orderHelper.activeOrderId!;
                             setState(() => _isPayBtnLoading = true);
                             _initialFetchDone =
                             false; // Build #1.0.143: Track initial fetch of fetchOrdersData
@@ -3231,9 +3433,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                 StorageProvider.offlineOrders;
 
 // Prefer server order id if exists, else offline id
-                            final hiveKey = orderHelper
-                                .activeOrderId
-                                .toString();
+                            final hiveKey =
+                                frozenSummaryOrderId.toString();
 
                             final boxData = await box.get(hiveKey);
                             final double discountAmount = ((boxData
@@ -3278,9 +3479,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                   orderTax: orderTax,
                                   netPayable: netPayable.toDouble(),
                                   orderId:
-                                  orderHelper.activeOrderId,
+                                  frozenSummaryOrderId,
                                   offlineOrderId:
-                                  orderHelper.activeOrderId,
+                                  frozenSummaryOrderId,
                                   cashbackFee: cashbackFee,
                                   ebtAmount: ebtAmount,
                                   discountAmount: discountAmount,
