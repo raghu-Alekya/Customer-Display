@@ -14,7 +14,7 @@
   },
   {
     "level_": 0,
-    "message_": "JSON \u0027C:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\.cxx\\RelWithDebInfo\\266n4s4u\\x86_64\\android_gradle_build.json\u0027 was up-to-date",
+    "message_": "JSON \u0027C:\\Projects\\Customer-Display_Custom_Item\\android\\app\\.cxx\\RelWithDebInfo\\266n4s4u\\x86_64\\android_gradle_build.json\u0027 was up-to-date",
     "file_": "C:\\flutter\\src\\flutter\\packages\\flutter_tools\\gradle\\src\\main\\groovy\\CMakeLists.txt",
     "tag_": "release|x86_64",
     "diagnosticCode_": 0,

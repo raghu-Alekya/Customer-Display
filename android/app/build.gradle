@@ -4,6 +4,10 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+// Force relocation of the build directory to the project root's build folder
+// This works around cases where the Flutter Gradle plugin fails to redirect it automatically.
+project.buildDir = "${rootProject.projectDir}/../build/${project.name}"
+
 android {
     namespace "com.example.flutter_sunmi_customer_display"
     compileSdk 36

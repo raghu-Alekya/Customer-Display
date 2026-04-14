@@ -8,9 +8,9 @@
     "triple": "aarch64-linux-android",
     "llvmTriple": "aarch64-none-linux-android"
   },
-  "cxxBuildFolder": "C:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\.cxx\\RelWithDebInfo\\266n4s4u\\arm64-v8a",
-  "soFolder": "C:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\266n4s4u\\obj\\arm64-v8a",
-  "soRepublishFolder": "C:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\build\\intermediates\\cmake\\release\\obj\\arm64-v8a",
+  "cxxBuildFolder": "C:\\Projects\\Customer-Display_Custom_Item\\android\\app\\.cxx\\RelWithDebInfo\\266n4s4u\\arm64-v8a",
+  "soFolder": "C:\\Projects\\Customer-Display_Custom_Item\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\266n4s4u\\obj\\arm64-v8a",
+  "soRepublishFolder": "C:\\Projects\\Customer-Display_Custom_Item\\android\\app\\build\\intermediates\\cmake\\release\\obj\\arm64-v8a",
   "abiPlatformVersion": 23,
   "cmake": {
     "effectiveConfiguration": {
@@ -37,12 +37,12 @@
     "implicitBuildTargetSet": [],
     "cmakeSettingsConfiguration": "android-gradle-plugin-predetermined-name",
     "module": {
-      "cxxFolder": "C:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\.cxx",
-      "intermediatesBaseFolder": "C:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\build\\intermediates",
-      "intermediatesFolder": "C:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\build\\intermediates\\cxx",
+      "cxxFolder": "C:\\Projects\\Customer-Display_Custom_Item\\android\\app\\.cxx",
+      "intermediatesBaseFolder": "C:\\Projects\\Customer-Display_Custom_Item\\android\\app\\build\\intermediates",
+      "intermediatesFolder": "C:\\Projects\\Customer-Display_Custom_Item\\android\\app\\build\\intermediates\\cxx",
       "gradleModulePathName": ":app",
-      "moduleRootFolder": "C:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app",
-      "moduleBuildFile": "C:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\build.gradle",
+      "moduleRootFolder": "C:\\Projects\\Customer-Display_Custom_Item\\android\\app",
+      "moduleBuildFile": "C:\\Projects\\Customer-Display_Custom_Item\\android\\app\\build.gradle",
       "makeFile": "C:\\flutter\\src\\flutter\\packages\\flutter_tools\\gradle\\src\\main\\groovy\\CMakeLists.txt",
       "buildSystem": "CMAKE",
       "ndkFolder": "C:\\Users\\sg\\AppData\\Local\\Android\\sdk\\ndk\\27.0.12077973",
@@ -153,7 +153,7 @@
         "SYSTEM": {}
       },
       "project": {
-        "rootBuildGradleFolder": "C:\\Projects\\Customer-Display_Custom_Item_V1\\android",
+        "rootBuildGradleFolder": "C:\\Projects\\Customer-Display_Custom_Item\\android",
         "sdkFolder": "C:\\Users\\sg\\AppData\\Local\\Android\\sdk",
         "isBuildOnlyTargetAbiEnabled": true,
         "isCmakeBuildCohabitationEnabled": false,
@@ -172,7 +172,7 @@
   "buildSettings": {
     "environmentVariables": []
   },
-  "prefabFolder": "C:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\.cxx\\RelWithDebInfo\\266n4s4u\\prefab\\arm64-v8a",
+  "prefabFolder": "C:\\Projects\\Customer-Display_Custom_Item\\android\\app\\.cxx\\RelWithDebInfo\\266n4s4u\\prefab\\arm64-v8a",
   "isActiveAbi": true,
   "fullConfigurationHash": "266n4s4u736q5w6o3t386t5d5e3z3u6g6a5ic2g18u1u4n5d1s6m6iu6u2z59",
   "fullConfigurationHashKey": "# Values used to calculate the hash in this folder name.\n# Should not depend on the absolute path of the project itself.\n#   - AGP: 8.9.1.\n#   - $NDK is the path to NDK 27.0.12077973.\n#   - $PROJECT is the path to the parent folder of the root Gradle build file.\n#   - $ABI is the ABI to be built with. The specific value doesn\u0027t contribute to the value of the hash.\n#   - $HASH is the hash value computed from this text.\n#   - $CMAKE is the path to CMake 3.22.1.\n#   - $NINJA is the path to Ninja.\n-HC:/flutter/src/flutter/packages/flutter_tools/gradle/src/main/groovy\n-DCMAKE_SYSTEM_NAME\u003dAndroid\n-DCMAKE_EXPORT_COMPILE_COMMANDS\u003dON\n-DCMAKE_SYSTEM_VERSION\u003d23\n-DANDROID_PLATFORM\u003dandroid-23\n-DANDROID_ABI\u003d$ABI\n-DCMAKE_ANDROID_ARCH_ABI\u003d$ABI\n-DANDROID_NDK\u003d$NDK\n-DCMAKE_ANDROID_NDK\u003d$NDK\n-DCMAKE_TOOLCHAIN_FILE\u003d$NDK/build/cmake/android.toolchain.cmake\n-DCMAKE_MAKE_PROGRAM\u003d$NINJA\n-DCMAKE_LIBRARY_OUTPUT_DIRECTORY\u003d$PROJECT/app/build/intermediates/cxx/RelWithDebInfo/$HASH/obj/$ABI\n-DCMAKE_RUNTIME_OUTPUT_DIRECTORY\u003d$PROJECT/app/build/intermediates/cxx/RelWithDebInfo/$HASH/obj/$ABI\n-DCMAKE_BUILD_TYPE\u003dRelWithDebInfo\n-B$PROJECT/app/.cxx/RelWithDebInfo/$HASH/$ABI\n-GNinja\n-Wno-dev\n--no-warn-unused-cli",
@@ -188,13 +188,13 @@
     "-DCMAKE_ANDROID_NDK\u003dC:\\Users\\sg\\AppData\\Local\\Android\\sdk\\ndk\\27.0.12077973",
     "-DCMAKE_TOOLCHAIN_FILE\u003dC:\\Users\\sg\\AppData\\Local\\Android\\sdk\\ndk\\27.0.12077973\\build\\cmake\\android.toolchain.cmake",
     "-DCMAKE_MAKE_PROGRAM\u003dC:\\Users\\sg\\AppData\\Local\\Android\\sdk\\cmake\\3.22.1\\bin\\ninja.exe",
-    "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY\u003dC:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\266n4s4u\\obj\\arm64-v8a",
-    "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY\u003dC:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\266n4s4u\\obj\\arm64-v8a",
+    "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY\u003dC:\\Projects\\Customer-Display_Custom_Item\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\266n4s4u\\obj\\arm64-v8a",
+    "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY\u003dC:\\Projects\\Customer-Display_Custom_Item\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\266n4s4u\\obj\\arm64-v8a",
     "-DCMAKE_BUILD_TYPE\u003dRelWithDebInfo",
-    "-BC:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\.cxx\\RelWithDebInfo\\266n4s4u\\arm64-v8a",
+    "-BC:\\Projects\\Customer-Display_Custom_Item\\android\\app\\.cxx\\RelWithDebInfo\\266n4s4u\\arm64-v8a",
     "-GNinja",
     "-Wno-dev",
     "--no-warn-unused-cli"
   ],
-  "intermediatesParentFolder": "C:\\Projects\\Customer-Display_Custom_Item_V1\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\266n4s4u"
+  "intermediatesParentFolder": "C:\\Projects\\Customer-Display_Custom_Item\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\266n4s4u"
 }

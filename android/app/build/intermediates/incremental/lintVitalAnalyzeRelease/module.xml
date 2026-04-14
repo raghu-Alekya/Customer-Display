@@ -1,6 +1,6 @@
 <lint-module
     format="1"
-    dir="C:\Projects\Customer-Display_Custom_Item_V1\android\app"
+    dir="C:\Projects\Customer-Display_Custom_Item\android\app"
     name=":app"
     type="APP"
     maven="android:app:unspecified"

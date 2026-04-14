@@ -1,4 +1,4 @@
-# The proguard configuration file for the following section is C:\Projects\Customer-Display_Custom_Item_V1\android\app\build\intermediates\aapt_proguard_file\release\processReleaseResources\aapt_rules.txt
+# The proguard configuration file for the following section is C:\Projects\Customer-Display_Custom_Item\android\app\build\intermediates\aapt_proguard_file\release\processReleaseResources\aapt_rules.txt
 -keep class android.app.Application { <init>(); }
 -keep class androidx.core.app.CoreComponentFactory { <init>(); }
 -keep class androidx.profileinstaller.ProfileInstallReceiver { <init>(); }
@@ -72,8 +72,8 @@
 -keep class androidx.recyclerview.widget.RecyclerView { <init>(android.content.Context, android.util.AttributeSet); }
 
 
-# End of content from C:\Projects\Customer-Display_Custom_Item_V1\android\app\build\intermediates\aapt_proguard_file\release\processReleaseResources\aapt_rules.txt
-# The proguard configuration file for the following section is C:\Projects\Customer-Display_Custom_Item_V1\android\app\build\intermediates\default_proguard_files\global\proguard-android-optimize.txt-8.9.1
+# End of content from C:\Projects\Customer-Display_Custom_Item\android\app\build\intermediates\aapt_proguard_file\release\processReleaseResources\aapt_rules.txt
+# The proguard configuration file for the following section is C:\Projects\Customer-Display_Custom_Item\android\app\build\intermediates\default_proguard_files\global\proguard-android-optimize.txt-8.9.1
 # This is a configuration file for ProGuard.
 # http://proguard.sourceforge.net/index.html#manual/usage.html
 #
@@ -164,7 +164,7 @@
 # These classes are duplicated between android.jar and core-lambda-stubs.jar.
 -dontnote java.lang.invoke.**
 
-# End of content from C:\Projects\Customer-Display_Custom_Item_V1\android\app\build\intermediates\default_proguard_files\global\proguard-android-optimize.txt-8.9.1
+# End of content from C:\Projects\Customer-Display_Custom_Item\android\app\build\intermediates\default_proguard_files\global\proguard-android-optimize.txt-8.9.1
 # The proguard configuration file for the following section is C:\flutter\src\flutter\packages\flutter_tools\gradle\flutter_proguard_rules.pro
 # Build the ephemeral app in a module project.
 # Prevents: Warning: library class <plugin-package> depends on program class io.flutter.plugin.**

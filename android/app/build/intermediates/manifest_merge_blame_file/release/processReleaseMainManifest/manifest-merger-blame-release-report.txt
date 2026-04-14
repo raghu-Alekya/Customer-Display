@@ -9,16 +9,16 @@
 9        android:targetSdkVersion="36" />
 10
 11    <uses-permission android:name="android.permission.INTERNET" />
-11-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:2:5-67
-11-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:2:22-64
+11-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:2:5-67
+11-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:2:22-64
 12
 13    <uses-feature android:name="android.hardware.usb.host" />
-13-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:3:5-62
-13-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:3:19-59
+13-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:3:5-62
+13-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:3:19-59
 14
 15    <uses-permission android:name="android.permission.USB_PERMISSION" />
-15-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:4:5-73
-15-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:4:22-70
+15-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:4:5-73
+15-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:4:22-70
 16    <!--
 17         Required to query activities that can process text, see:
 18         https://developer.android.com/training/package-visibility and
@@ -27,16 +27,16 @@
 21         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin.
 22    -->
 23    <queries>
-23-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:60:5-65:15
+23-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:60:5-65:15
 24        <intent>
-24-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:61:9-64:18
+24-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:61:9-64:18
 25            <action android:name="android.intent.action.PROCESS_TEXT" />
-25-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:62:13-72
-25-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:62:21-70
+25-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:62:13-72
+25-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:62:21-70
 26
 27            <data android:mimeType="text/plain" />
-27-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:63:13-50
-27-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:63:19-48
+27-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:63:13-50
+27-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:63:19-48
 28        </intent>
 29
 30        <package android:name="woyou.aidlservice.jiuiv5" />
@@ -116,32 +116,32 @@
 70
 71    <application
 72        android:name="android.app.Application"
-72-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:7:9-42
+72-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:7:9-42
 73        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
 73-->[androidx.core:core:1.18.0] C:\Users\sg\.gradle\caches\8.11.1\transforms\cb08f7ab2786e024521d0ae8092ab86f\transformed\core-1.18.0\AndroidManifest.xml:28:18-86
 74        android:extractNativeLibs="false"
 75        android:icon="@mipmap/logo"
-75-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:8:9-36
+75-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:8:9-36
 76        android:label="Pinaka POS" >
-76-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:6:9-35
+76-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:6:9-35
 77        <activity
-77-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:9:9-36:20
+77-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:9:9-36:20
 78            android:name="com.example.flutter_sunmi_customer_display.MainActivity"
-78-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:10:13-41
+78-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:10:13-41
 79            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-79-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:15:13-163
+79-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:15:13-163
 80            android:exported="true"
-80-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:11:13-36
+80-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:11:13-36
 81            android:hardwareAccelerated="true"
-81-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:16:13-47
+81-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:16:13-47
 82            android:launchMode="singleTop"
-82-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:12:13-43
+82-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:12:13-43
 83            android:taskAffinity=""
-83-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:13:13-36
+83-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:13:13-36
 84            android:theme="@style/LaunchTheme"
-84-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:14:13-47
+84-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:14:13-47
 85            android:windowSoftInputMode="adjustResize" >
-85-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:17:13-55
+85-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:17:13-55
 86
 87            <!--
 88                 Specifies an Android theme to apply to this Activity as soon as
@@ -150,30 +150,30 @@
 91                 to determine the Window background behind the Flutter UI.
 92            -->
 93            <meta-data
-93-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:22:13-25:19
+93-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:22:13-25:19
 94                android:name="io.flutter.embedding.android.NormalTheme"
-94-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:23:17-72
+94-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:23:17-72
 95                android:resource="@style/NormalTheme" />
-95-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:24:17-54
+95-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:24:17-54
 96
 97            <intent-filter>
-97-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:26:13-29:29
+97-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:26:13-29:29
 98                <action android:name="android.intent.action.MAIN" />
-98-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:27:17-68
-98-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:27:25-66
+98-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:27:17-68
+98-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:27:25-66
 99
 100                <category android:name="android.intent.category.LAUNCHER" />
-100-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:28:17-76
-100-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:28:27-74
+100-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:28:17-76
+100-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:28:27-74
 101            </intent-filter>
 102            <intent-filter>
-102-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:31:13-35:29
+102-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:31:13-35:29
 103                <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED" />
-103-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:32:17-90
-103-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:32:25-87
+103-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:32:17-90
+103-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:32:25-87
 104                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
-104-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:33:17-90
-104-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:33:25-87
+104-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:33:17-90
+104-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:33:25-87
 105            </intent-filter>
 106        </activity>
 107        <!--
@@ -181,32 +181,32 @@
 109             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java
 110        -->
 111        <meta-data
-111-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:39:9-41:33
+111-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:39:9-41:33
 112            android:name="flutterEmbedding"
-112-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:40:13-44
+112-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:40:13-44
 113            android:value="2" />
-113-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:41:13-30
+113-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:41:13-30
 114
 115        <receiver
-115-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:43:9-53:20
+115-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:43:9-53:20
 116            android:name="com.codingdevs.thermal_printer.usb.UsbReceiver"
-116-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:44:13-74
+116-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:44:13-74
 117            android:exported="false" >
-117-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:45:13-37
+117-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:45:13-37
 118            <intent-filter>
-118-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:47:13-52:29
+118-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:47:13-52:29
 119                <action android:name="android.hardware.usb.action.ACTION_USB_PERMISSION" />
-119-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:48:17-92
-119-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:48:25-89
+119-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:48:17-92
+119-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:48:25-89
 120                <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED" />
-120-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:32:17-90
-120-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:32:25-87
+120-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:32:17-90
+120-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:32:25-87
 121                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
-121-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:33:17-90
-121-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:33:25-87
+121-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:33:17-90
+121-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:33:25-87
 122                <action android:name="com.flutter_pos_printer.USB_PERMISSION" />
-122-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:51:17-81
-122-->C:\Projects\Customer-Display_Custom_Item_V1\android\app\src\main\AndroidManifest.xml:51:25-78
+122-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:51:17-81
+122-->C:\Projects\Customer-Display_Custom_Item\android\app\src\main\AndroidManifest.xml:51:25-78
 123            </intent-filter>
 124        </receiver>
 125

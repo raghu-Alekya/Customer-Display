@@ -85,7 +85,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     ProductRepository(),
   ); // Build #1.0.44 : Added for barcode scanning
   StreamSubscription?
-  _productBySkuSubscription; // Build #1.0.44 : Added for product stream
+      _productBySkuSubscription; // Build #1.0.44 : Added for product stream
   final OrderRepository _orderRepository = OrderRepository();
   OrderModel? _wooOrder;
 
@@ -275,8 +275,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         double.infinity,
       );
 
-      double effectiveTotal =
-          (_order["payable"] as num?)?.toDouble() ??
+      double effectiveTotal = (_order["payable"] as num?)?.toDouble() ??
           (_order["net_payable"] as num?)?.toDouble() ??
           uiNetPayable ??
           0.0;
@@ -285,10 +284,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         0.0,
         double.infinity,
       );
-      changeAmount =
-          (tenderAmount > effectiveTotal)
-              ? (tenderAmount - effectiveTotal)
-              : 0.0;
+      changeAmount = (tenderAmount > effectiveTotal)
+          ? (tenderAmount - effectiveTotal)
+          : 0.0;
     });
   }
 
@@ -424,10 +422,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
             otherPaid += p.amount;
           }
 
-          final amountStr =
-              p.amount >= 0
-                  ? "Cash: \$${p.amount.toStringAsFixed(2)}"
-                  : "void: \$${p.amount.toStringAsFixed(2)}";
+          final amountStr = p.amount >= 0
+              ? "Cash: \$${p.amount.toStringAsFixed(2)}"
+              : "void: \$${p.amount.toStringAsFixed(2)}";
           print(
             "→ ID: ${p.id} | Order ID: ${p.orderId} | $amountStr | Synced: ${p.isSynced} | Status: ${p.status.name}",
           );
@@ -441,8 +438,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         final remaining = summary?['remainingBalance']?.toDouble();
 
         // Compute netPay
-        final netPay =
-            (_order["payable"] as num?)?.toDouble() ??
+        final netPay = (_order["payable"] as num?)?.toDouble() ??
             (_order["net_payable"] as num?)?.toDouble() ??
             uiNetPayable ??
             0.0;
@@ -524,8 +520,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       await fetchOrder();
       // Enrich _order from offline storage (SQLite may not have cashback, discounts)
       if (widget.activeOrderId != null && _order != null && _order is Map) {
-        final existingFee =
-            (_order["cashbackFee"] as num?)?.toDouble() ??
+        final existingFee = (_order["cashbackFee"] as num?)?.toDouble() ??
             (_order["cashback_fee"] as num?)?.toDouble() ??
             (_order[AppDBConst.orderCashbackFee] as num?)?.toDouble() ??
             0.0;
@@ -543,8 +538,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
             (_order[AppDBConst.orderDiscount] as num?)?.toDouble() ?? 0.0;
         final sqliteMerchantDiscount =
             (_order[AppDBConst.merchantDiscount] as num?)?.toDouble() ??
-            (_order["merchantDiscount"] as num?)?.toDouble() ??
-            0.0;
+                (_order["merchantDiscount"] as num?)?.toDouble() ??
+                0.0;
         final raw = await StorageProvider.offlineOrders.get(
           widget.activeOrderId.toString(),
         );
@@ -562,11 +557,10 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
             }
           }
           if (sqliteMerchantDiscount == 0) {
-            final md =
-                (offline['merchantDiscount'] ??
-                        offline['merchant_discount'] ??
-                        0)
-                    .toString();
+            final md = (offline['merchantDiscount'] ??
+                    offline['merchant_discount'] ??
+                    0)
+                .toString();
             final mdVal = double.tryParse(md) ?? 0.0;
             if (mdVal > 0) {
               _order[AppDBConst.merchantDiscount] = -mdVal;
@@ -577,8 +571,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
             }
           }
           // Enrich balance from offline storage (for pending orders)
-          final rb =
-              offline['remaining_balance'] ??
+          final rb = offline['remaining_balance'] ??
               offline['balance_amount'] ??
               offline['balanceAmount'];
           if (rb != null) {
@@ -742,21 +735,15 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
           AppDBConst.orderTax: (map["order_tax"] as num?)?.toDouble() ?? 0.0,
           "netTotal": (map["net_total"] as num?)?.toDouble() ?? 0.0,
           "payable": (map["net_payable"] as num?)?.toDouble() ?? 0.0,
-          "remaining_balance":
-              (map["remaining_balance"] ??
-                      map["balance_amount"] ??
-                      map["balanceAmount"])
-                  as num?,
-          "balance_amount":
-              (map["balance_amount"] ??
-                      map["remaining_balance"] ??
-                      map["balanceAmount"])
-                  as num?,
-          "balanceAmount":
-              (map["balanceAmount"] ??
-                      map["remaining_balance"] ??
-                      map["balance_amount"])
-                  as num?,
+          "remaining_balance": (map["remaining_balance"] ??
+              map["balance_amount"] ??
+              map["balanceAmount"]) as num?,
+          "balance_amount": (map["balance_amount"] ??
+              map["remaining_balance"] ??
+              map["balanceAmount"]) as num?,
+          "balanceAmount": (map["balanceAmount"] ??
+              map["remaining_balance"] ??
+              map["balance_amount"]) as num?,
           "cashbackFee":
               cf != null ? (double.tryParse(cf.toString()) ?? 0.0) : 0.0,
           "cashback_fee":
@@ -768,8 +755,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
           "offline": true,
         };
         orderServerId = _order[AppDBConst.orderServerId] as int?;
-        final rb =
-            map["remaining_balance"] ??
+        final rb = map["remaining_balance"] ??
             map["balance_amount"] ??
             map["balanceAmount"];
         if (rb != null) {
@@ -832,15 +818,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
           final bool isDiscountItem = name.contains("discount");
 
-          final double total =
-              rawTotal is num
-                  ? rawTotal.toDouble()
-                  : double.tryParse(rawTotal?.toString() ?? "0") ?? 0.0;
+          final double total = rawTotal is num
+              ? rawTotal.toDouble()
+              : double.tryParse(rawTotal?.toString() ?? "0") ?? 0.0;
 
-          final int qty =
-              rawQty is int
-                  ? rawQty
-                  : int.tryParse(rawQty?.toString() ?? "1") ?? 1;
+          final int qty = rawQty is int
+              ? rawQty
+              : int.tryParse(rawQty?.toString() ?? "1") ?? 1;
 
           final double unitPrice = qty > 0 ? total / qty : 0.0;
           final variationId = item[AppDBConst.itemVariationId] ?? 0;
@@ -971,8 +955,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     // Build #1.0.44 : Get Device Id
     final storeValidationRepository = StoreValidationRepository();
     try {
-      final deviceDetails =
-          await GlobalUtility.getDeviceDetails(); //Build #1.0.126: updated to GlobalUtility
+      final deviceDetails = await GlobalUtility
+          .getDeviceDetails(); //Build #1.0.126: updated to GlobalUtility
       return deviceDetails['device_id'] ?? 'unknown';
     } catch (e) {
       if (kDebugMode) {
@@ -1016,41 +1000,40 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
               Expanded(
                 child: ListView.builder(
                   itemCount: 5,
-                  itemBuilder:
-                      (_, __) => Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
+                  itemBuilder: (_, __) => Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 60,
+                          height: 60,
+                          color: Colors.white,
                         ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 60,
-                              height: 60,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    width: double.infinity,
-                                    height: 10,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(height: 5),
-                                  Container(
-                                    width: 100,
-                                    height: 10,
-                                    color: Colors.white,
-                                  ),
-                                ],
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                height: 10,
+                                color: Colors.white,
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 5),
+                              Container(
+                                width: 100,
+                                height: 10,
+                                color: Colors.white,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
               // Footer shimmer
@@ -1099,61 +1082,60 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         // )
         // If an order is active, build the regular order panel.
         : Container(
-          width: MediaQuery.of(context).size.width * 0.31,
-          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-          child: Card(
-            elevation: 4,
-            margin: const EdgeInsets.only(top: 10),
+            width: MediaQuery.of(context).size.width * 0.31,
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+            child: Card(
+              elevation: 4,
+              margin: const EdgeInsets.only(top: 10),
 
-            // ⬅ Rounded corners (works same for dark & light)
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+              // ⬅ Rounded corners (works same for dark & light)
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
 
-            child: Column(
-              children: [
-                // ⬅ Header section
-                Container(
-                  decoration: BoxDecoration(
-                    color:
-                        themeHelper.themeMode == ThemeMode.dark
-                            ? ThemeNotifier.primaryBackground
-                            : Colors.white,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(12), // match card rounding
+              child: Column(
+                children: [
+                  // ⬅ Header section
+                  Container(
+                    decoration: BoxDecoration(
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.primaryBackground
+                          : Colors.white,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(12), // match card rounding
+                      ),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                    alignment: Alignment.centerLeft,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              "#${widget.activeOrderId ?? 'N/A'}",
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            StatusWidget(
+                              status: _order?[AppDBConst.orderStatus] ?? '',
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-                  alignment: Alignment.centerLeft,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            "#${widget.activeOrderId ?? 'N/A'}",
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          StatusWidget(
-                            status: _order?[AppDBConst.orderStatus] ?? '',
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
 
-                // ⬅ Content below the header
-                Expanded(child: buildCurrentOrder()),
-              ],
+                  // ⬅ Content below the header
+                  Expanded(child: buildCurrentOrder()),
+                ],
+              ),
             ),
-          ),
-        );
+          );
   }
 
   //Build #1.0.67: Handler methods for response and error
@@ -1173,13 +1155,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         _scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text(
-              "${isPayout
-                  ? TextConstants.payout
-                  : isCoupon
-                  ? TextConstants.coupon
-                  : isCustomItem
-                  ? TextConstants.customItem
-                  : 'Item'}"
+              "${isPayout ? TextConstants.payout : isCoupon ? TextConstants.coupon : isCustomItem ? TextConstants.customItem : 'Item'}"
               "${TextConstants.removedSuccessfully}",
             ),
             backgroundColor: Colors.green,
@@ -1196,13 +1172,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
           content: Text(
             response.message ??
                 "${TextConstants.failedToRemove}"
-                    "${isPayout
-                        ? TextConstants.payout
-                        : isCoupon
-                        ? TextConstants.coupon
-                        : isCustomItem
-                        ? TextConstants.coupon
-                        : 'item'}",
+                    "${isPayout ? TextConstants.payout : isCoupon ? TextConstants.coupon : isCustomItem ? TextConstants.coupon : 'item'}",
           ),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 2),
@@ -1228,8 +1198,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         await CustomDialog.showCustomItemNotAdded(
           context,
           errorMessageTitle: TextConstants.removeCustomItemFailed,
-          errorMessageDes:
-              response.message ??
+          errorMessageDes: response.message ??
               TextConstants.customItemCouldNotBeAddedDescription,
           onRetry: retryCallback,
         );
@@ -1268,14 +1237,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     double merchantDiscount = 0.0;
 
     // 1?? Check for explicit metadata for Coupons from API (check multiple possible keys & meta_data array)
-    final bool isGeneratedOnly =
-        (order['generated_coupon_only'] == true) ||
+    final bool isGeneratedOnly = (order['generated_coupon_only'] == true) ||
         (order['generated_coupon_only']?.toString().toLowerCase() == "true");
 
     double metaCouponVal = 0.0;
     if (!isGeneratedOnly) {
-      metaCouponVal =
-          double.tryParse(
+      metaCouponVal = double.tryParse(
             order['couponValue']?.toString() ??
                 order['coupon_total']?.toString() ??
                 order['coupon_amount']?.toString() ??
@@ -1331,8 +1298,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     for (var item in orderItems) {
       final nameLower = item['item_name']?.toString().toLowerCase() ?? '';
       final typeLower = item['item_type']?.toString().toLowerCase() ?? '';
-      final itemSumPrice =
-          double.tryParse(
+      final itemSumPrice = double.tryParse(
             item['item_sum_price']?.toString() ??
                 item['amount']?.toString() ??
                 '',
@@ -1360,15 +1326,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     // Fallback: some orders store merchant discount at order-level only
     // (without a dedicated discount line item in orderItems).
     if (merchantDiscount == 0) {
-      final dynamic rawMerchantDiscount =
-          order[AppDBConst.merchantDiscount] ??
+      final dynamic rawMerchantDiscount = order[AppDBConst.merchantDiscount] ??
           order['merchantDiscount'] ??
           order['merchant_discount'] ??
           0.0;
-      final double orderLevelMerchantDiscount =
-          (rawMerchantDiscount is num)
-              ? rawMerchantDiscount.toDouble()
-              : (double.tryParse(rawMerchantDiscount.toString()) ?? 0.0);
+      final double orderLevelMerchantDiscount = (rawMerchantDiscount is num)
+          ? rawMerchantDiscount.toDouble()
+          : (double.tryParse(rawMerchantDiscount.toString()) ?? 0.0);
       if (orderLevelMerchantDiscount != 0) {
         merchantDiscount = -orderLevelMerchantDiscount.abs();
       }
@@ -1385,8 +1349,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       // ❌ SKIP unwanted items
       final name = item["item_name"]?.toString().toLowerCase() ?? "";
       final type = item["item_type"]?.toString().toLowerCase() ?? "";
-      final isRefunded =
-          item[AppDBConst.isRefundItem] == 1 ||
+      final isRefunded = item[AppDBConst.isRefundItem] == 1 ||
           item[AppDBConst.isRefundItem] == true;
       final itemSumPrice =
           double.tryParse(item["item_sum_price"]?.toString() ?? "") ?? 0.0;
@@ -1398,8 +1361,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         continue; // skip further processing
       }
 
-      final skip =
-          name.contains("discount") ||
+      final skip = name.contains("discount") ||
           name.contains("merchant discount") ||
           name.contains("coupon") ||
           name.contains("loyalty") || // FIXED
@@ -1416,8 +1378,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       }
 
       // Qty fallback logic
-      final qty =
-          int.tryParse(
+      final qty = int.tryParse(
             item["items_count"]?.toString() ??
                 item["itemCount"]?.toString() ??
                 "1",
@@ -1427,10 +1388,10 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       // Price priority
       double unitPrice =
           double.tryParse(item["item_sum_price"]?.toString() ?? "") ??
-          double.tryParse(item["amount"]?.toString() ?? "") ??
-          double.tryParse(item["item_price"]?.toString() ?? "") ??
-          double.tryParse(item["price"]?.toString() ?? "") ??
-          0.0;
+              double.tryParse(item["amount"]?.toString() ?? "") ??
+              double.tryParse(item["item_price"]?.toString() ?? "") ??
+              double.tryParse(item["price"]?.toString() ?? "") ??
+              0.0;
 
       // Extract item-level discounts accurately from meta
       String dType = (item['discount_type'] ?? '').toString().toLowerCase();
@@ -1478,8 +1439,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
     double cashbackFee = 0.0;
 
-    final wooOrderId =
-        order['wooOrderId']?.toString() ??
+    final wooOrderId = order['wooOrderId']?.toString() ??
         widget.activeOrderId?.toString() ??
         "";
 
@@ -1566,15 +1526,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     uiCashbackFee = cashbackFee;
     uiTotalItems = totalItems;
     uiRedeemedValue = hiveRedeemedValue;
-    final currentOrderStatus =
-        (_wooOrder?.status.isNotEmpty == true
-                ? _wooOrder!.status
-                : (_order?[AppDBConst.orderStatus]?.toString() ?? ''))
-            .toLowerCase()
-            .trim();
-    final normalizedStatus = currentOrderStatus
-        .replaceAll('_', '-')
-        .replaceAll(' ', '-');
+    final currentOrderStatus = (_wooOrder?.status.isNotEmpty == true
+            ? _wooOrder!.status
+            : (_order?[AppDBConst.orderStatus]?.toString() ?? ''))
+        .toLowerCase()
+        .trim();
+    final normalizedStatus =
+        currentOrderStatus.replaceAll('_', '-').replaceAll(' ', '-');
     final bool isPartialRefundOrder = normalizedStatus == 'partial-refund';
 
     // Sum refunded items from local DB (isRefundItem == 1) — most reliable source
@@ -1589,14 +1547,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
       if (isRefunded) {
         // ✅ Item price
-        final itemPrice =
-            (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
+        final itemPrice = (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
             double.tryParse(item["amount"]?.toString() ?? "0") ??
             0.0;
 
         // ✅ Item tax (check multiple keys safely)
-        final itemTax =
-            (item["item_tax"] as num?)?.toDouble() ??
+        final itemTax = (item["item_tax"] as num?)?.toDouble() ??
             (item["tax"] as num?)?.toDouble() ??
             (item["total_tax"] as num?)?.toDouble() ??
             (item["item_total_tax"] as num?)?.toDouble() ??
@@ -1618,10 +1574,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     print("💰 Final Refund (Incl Tax) → $totalRefundWithTax");
 
     // Use local items total first; fall back to Woo API totals when local is 0
-    final double alreadyRefundedAmount =
-        totalRefundWithTax > 0
-            ? totalRefundWithTax
-            : (_wooOrder?.refundTotal ?? 0) > 0
+    final double alreadyRefundedAmount = totalRefundWithTax > 0
+        ? totalRefundWithTax
+        : (_wooOrder?.refundTotal ?? 0) > 0
             ? (_wooOrder?.refundTotal ?? 0)
             : (_wooOrder?.refundOrderTotal ?? 0);
 
@@ -1634,7 +1589,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     // marked partial-refund by Woo, as long as there is a refund amount to show.
     final bool showRefundBlock =
         (isPartialRefundOrder || localRefundedItemsTotal > 0) &&
-        alreadyRefundedAmount > 0;
+            alreadyRefundedAmount > 0;
 
     final double remainingAfterRefund =
         remainingAmount; // netTotal + orderTax (refunded items already excluded from grossTotal)
@@ -1664,15 +1619,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
     final bool isPendingOrder =
         (_order?[AppDBConst.orderStatus] ?? '').toString() ==
-        TextConstants.pending;
+            TextConstants.pending;
     final double balanceDueFromTotals = (netPayable - tenderAmount).clamp(
       0.0,
       double.infinity,
     );
-    final double panelDisplayBalance =
-        balanceDueFromTotals > 0
-            ? balanceDueFromTotals
-            : (balanceAmount > 0 ? balanceAmount : balanceDueFromTotals);
+    final double panelDisplayBalance = balanceDueFromTotals > 0
+        ? balanceDueFromTotals
+        : (balanceAmount > 0 ? balanceAmount : balanceDueFromTotals);
     final bool showBalanceForPartialPayment =
         isPendingOrder && !showRefundBlock && panelDisplayBalance > 0;
     final double displayedBalanceAmount =
@@ -1683,10 +1637,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         Column(
           children: [
             Container(
-              color:
-                  themeHelper.themeMode == ThemeMode.dark
-                      ? ThemeNotifier.primaryBackground
-                      : null,
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.primaryBackground
+                  : null,
               padding: const EdgeInsets.fromLTRB(10, 5, 16, 5),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1701,10 +1654,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                           'assets/svg/calendar.svg',
                           width: 22,
                           height: 22,
-                          color:
-                              Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white
-                                  : Colors.black,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black,
                         ),
                         Text(
                           displayDate,
@@ -1719,10 +1671,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                           'assets/svg/clock.svg',
                           width: 22,
                           height: 22,
-                          color:
-                              Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white
-                                  : Colors.black,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black,
                         ),
                         Text(
                           displayTime,
@@ -1756,10 +1707,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                   //     ? const Color(0xFF353848) // dark mode background
                   //     : const Color(0xFFE0E5F7), // light mode background
                   // borderRadius: BorderRadius.circular(12),
-                  color:
-                      themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.primaryBackground
-                          : null,
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.primaryBackground
+                      : null,
                 ),
                 //color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground: null,
                 child: Padding(
@@ -1786,13 +1736,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                           orderItems.insert(newIndex, movedItem);
                           //  FORCE CASHBACK TO ALWAYS COME LAST
                           orderItems.sort((a, b) {
-                            final typeA =
-                                a[AppDBConst.itemType]
+                            final typeA = a[AppDBConst.itemType]
                                     ?.toString()
                                     .toLowerCase() ??
                                 '';
-                            final typeB =
-                                b[AppDBConst.itemType]
+                            final typeB = b[AppDBConst.itemType]
                                     ?.toString()
                                     .toLowerCase() ??
                                 '';
@@ -1826,8 +1774,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                         final dynamic refundValue =
                             orderItem[AppDBConst.isRefundItem];
 
-                        final bool isRefunded =
-                            refundValue == true ||
+                        final bool isRefunded = refundValue == true ||
                             refundValue == 1 ||
                             refundValue == '1' ||
                             refundValue == 'true';
@@ -1835,20 +1782,18 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                           "Refund value from DB: ${orderItem[AppDBConst.isRefundItem]}",
                         );
 
-                        final itemTypeRaw =
-                            orderItem[AppDBConst.itemType]
+                        final itemTypeRaw = orderItem[AppDBConst.itemType]
                                 ?.toString()
                                 .toLowerCase() ??
                             '';
 
-                        final itemNameRaw =
-                            orderItem[AppDBConst.itemName]
+                        final itemNameRaw = orderItem[AppDBConst.itemName]
                                 ?.toString()
                                 .toLowerCase() ??
                             '';
 
-                        final bool isEbtEligible =
-                            orderItem['ebt_eligible'] == 1 ||
+                        final bool isEbtEligible = orderItem['ebt_eligible'] ==
+                                1 ||
                             orderItem['is_ebt_eligible'] == 1 ||
                             orderItem['ebt_eligible'] == true ||
                             orderItem['is_ebt_eligible'] == true ||
@@ -1891,8 +1836,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                         //   );
                         // }
 
-                        final bool isCouponRow =
-                            itemTypeRaw.contains(
+                        final bool isCouponRow = itemTypeRaw.contains(
                               TextConstants.couponText.toLowerCase(),
                             ) ||
                             itemNameRaw.contains(
@@ -1900,16 +1844,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                             );
                         final bool isGeneratedCouponOnly =
                             (_order["generated_coupon_only"] == true) ||
-                            (_order["generated_coupon_only"]
-                                    ?.toString()
-                                    .toLowerCase() ==
-                                "true");
+                                (_order["generated_coupon_only"]
+                                        ?.toString()
+                                        .toLowerCase() ==
+                                    "true");
                         final bool isCouponAppliedOnOrder =
                             (_order["coupon_applied"] == true) ||
-                            (_order["coupon_applied"]
-                                    ?.toString()
-                                    .toLowerCase() ==
-                                "true");
+                                (_order["coupon_applied"]
+                                        ?.toString()
+                                        .toLowerCase() ==
+                                    "true");
 
                         if (isCouponRow &&
                             (!isCouponAppliedOnOrder ||
@@ -1944,16 +1888,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                         /// Compare item type
                         /// if it is payout change icon, name is empty, show amount in red colour
                         /// if it is coupon change icon, name is coupon code (show last 4 digits, prefix with 'X' for each character before last 4), show amount in red colour
-                        final itemType =
-                            orderItem[AppDBConst.itemType]
+                        final itemType = orderItem[AppDBConst.itemType]
                                 ?.toString()
                                 .toLowerCase() ??
                             '';
-                        final itemName =
-                            (orderItem[AppDBConst.itemName]
-                                    ?.toString()
-                                    .toLowerCase() ??
-                                '');
+                        final itemName = (orderItem[AppDBConst.itemName]
+                                ?.toString()
+                                .toLowerCase() ??
+                            '');
 
                         /// Check if the item is a payout or a coupon
                         final isPayout = itemType.contains(
@@ -1961,12 +1903,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                         );
                         final isCoupon =
                             itemType.contains(TextConstants.couponText) ||
-                            itemName.contains(
-                              TextConstants.couponText.toLowerCase(),
-                            );
+                                itemName.contains(
+                                  TextConstants.couponText.toLowerCase(),
+                                );
                         // ✅ STRONG cashback detection
-                        final isCashback =
-                            itemType.contains('cashback') ||
+                        final isCashback = itemType.contains('cashback') ||
                             itemName.contains('cashback');
                         final isCustomItem = itemType.contains(
                           TextConstants.customItemText,
@@ -1980,8 +1921,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                         // Coupon rows can have zero line amount in order items.
                         // Fall back to order-level coupon fields when applied.
                         final double couponFallbackAmount = () {
-                          final dynamic raw =
-                              _order["coupon_amount"] ??
+                          final dynamic raw = _order["coupon_amount"] ??
                               _order["couponValue"] ??
                               _order["coupon_total"] ??
                               _order["coupon_value"] ??
@@ -2005,42 +1945,41 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
                         final double multipackDiscount =
                             (orderItem[AppDBConst.multipackDiscount] as num?)
-                                ?.toDouble() ??
-                            0.0;
+                                    ?.toDouble() ??
+                                0.0;
 
                         final double autoDiscount =
                             (orderItem[AppDBConst.autoDiscountTotal] as num?)
-                                ?.toDouble() ??
-                            0.0;
+                                    ?.toDouble() ??
+                                0.0;
 
                         // final double comboDiscount =
                         //     (orderItem[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
 
                         final double comboDiscount =
                             (orderItem[AppDBConst.comboDiscountTotal] as num?)
-                                ?.toDouble() ??
-                            0.0;
+                                    ?.toDouble() ??
+                                0.0;
 
                         /// Build #1.0.134: Item Price will check sales price if it is null/empty, check regular price else unit price
-                        final salesPrice =
-                            (orderItem[AppDBConst.itemSalesPrice] == null ||
-                                    (orderItem[AppDBConst.itemSalesPrice]
+                        final salesPrice = (orderItem[
+                                        AppDBConst.itemSalesPrice] ==
+                                    null ||
+                                (orderItem[AppDBConst.itemSalesPrice]
+                                            ?.toDouble() ??
+                                        0.0) ==
+                                    0.0)
+                            ? (orderItem[AppDBConst.itemRegularPrice] == null ||
+                                    (orderItem[AppDBConst.itemRegularPrice]
                                                 ?.toDouble() ??
                                             0.0) ==
                                         0.0)
-                                ? (orderItem[AppDBConst.itemRegularPrice] ==
-                                            null ||
-                                        (orderItem[AppDBConst.itemRegularPrice]
-                                                    ?.toDouble() ??
-                                                0.0) ==
-                                            0.0)
-                                    ? orderItem[AppDBConst.itemUnitPrice]
-                                            ?.toDouble() ??
-                                        0.0
-                                    : orderItem[AppDBConst.itemRegularPrice]!
-                                        .toDouble()
-                                : orderItem[AppDBConst.itemSalesPrice]!
-                                    .toDouble();
+                                ? orderItem[AppDBConst.itemUnitPrice]
+                                        ?.toDouble() ??
+                                    0.0
+                                : orderItem[AppDBConst.itemRegularPrice]!
+                                    .toDouble()
+                            : orderItem[AppDBConst.itemSalesPrice]!.toDouble();
 
                         final regularPrice =
                             (orderItem[AppDBConst.itemRegularPrice] == null ||
@@ -2059,14 +1998,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                         if (isPayout || isCashback) {
                           itemTotalPrice =
                               (orderItem['amount'] as num?)?.toDouble() ??
-                              (orderItem[AppDBConst.itemUnitPrice] as num?)
-                                  ?.toDouble() ??
-                              0.0;
+                                  (orderItem[AppDBConst.itemUnitPrice] as num?)
+                                      ?.toDouble() ??
+                                  0.0;
                         } else {
                           itemTotalPrice =
                               (orderItem[AppDBConst.itemSumPrice] as num?)
-                                  ?.toDouble() ??
-                              0.0;
+                                      ?.toDouble() ??
+                                  0.0;
                         }
 
                         if (kDebugMode) {
@@ -2141,8 +2080,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                               child: GestureDetector(
                                 onTap: () {
                                   if (isRefunded ||
-                                      isPayoutOrCouponOrCustomItem)
-                                    return;
+                                      isPayoutOrCouponOrCustomItem) return;
 
                                   // Your edit logic here
                                 },
@@ -2153,12 +2091,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                   ),
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color:
-                                        themeHelper.themeMode == ThemeMode.dark
-                                            ? Color(0xFF252837)
-                                            : Color(
-                                              0xFFE8E8E8,
-                                            ), // ThemeNotifier.secondaryBackground color of items in order panel
+                                    color: themeHelper.themeMode ==
+                                            ThemeMode.dark
+                                        ? Color(0xFF252837)
+                                        : Color(
+                                            0xFFE8E8E8,
+                                          ), // ThemeNotifier.secondaryBackground color of items in order panel
                                     borderRadius: BorderRadius.circular(8),
                                     //   BoxShadow(
                                     //     color: Colors.black12,
@@ -2219,30 +2157,27 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                           fontSize: 12,
                                                           fontWeight:
                                                               FontWeight.w700,
-                                                          color:
-                                                              isRefunded
-                                                                  ? Colors.grey
-                                                                  : (themeHelper
-                                                                              .themeMode ==
-                                                                          ThemeMode
-                                                                              .dark
-                                                                      ? ThemeNotifier
-                                                                          .textDark
-                                                                      : ThemeNotifier
-                                                                          .textLight),
-                                                          decoration:
-                                                              isRefunded
-                                                                  ? TextDecoration
-                                                                      .lineThrough
-                                                                  : TextDecoration
-                                                                      .none,
+                                                          color: isRefunded
+                                                              ? Colors.grey
+                                                              : (themeHelper
+                                                                          .themeMode ==
+                                                                      ThemeMode
+                                                                          .dark
+                                                                  ? ThemeNotifier
+                                                                      .textDark
+                                                                  : ThemeNotifier
+                                                                      .textLight),
+                                                          decoration: isRefunded
+                                                              ? TextDecoration
+                                                                  .lineThrough
+                                                              : TextDecoration
+                                                                  .none,
                                                         ),
                                                       ),
                                                       TextSpan(
-                                                        text:
-                                                            combo == ''
-                                                                ? ''
-                                                                : " (Combo)",
+                                                        text: combo == ''
+                                                            ? ''
+                                                            : " (Combo)",
                                                         style: TextStyle(
                                                           fontSize: 8,
                                                           color: Colors.cyan,
@@ -2310,18 +2245,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                     children: [
                                                       Text(
                                                         "($variationName)",
-                                                        overflow:
-                                                            TextOverflow
-                                                                .ellipsis,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
                                                         style: TextStyle(
                                                           fontSize: 10,
-                                                          color:
-                                                              themeHelper.themeMode ==
-                                                                      ThemeMode
-                                                                          .dark
-                                                                  ? ThemeNotifier
-                                                                      .textDark
-                                                                  : Colors.grey,
+                                                          color: themeHelper
+                                                                      .themeMode ==
+                                                                  ThemeMode.dark
+                                                              ? ThemeNotifier
+                                                                  .textDark
+                                                              : Colors.grey,
                                                         ),
                                                       ),
                                                       const SizedBox(width: 4),
@@ -2340,9 +2273,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                               Container(
                                                 padding:
                                                     const EdgeInsets.symmetric(
-                                                      horizontal: 6,
-                                                      vertical: 2,
-                                                    ),
+                                                  horizontal: 6,
+                                                  vertical: 2,
+                                                ),
                                                 decoration: BoxDecoration(
                                                   color: Colors.green,
                                                   borderRadius:
@@ -2400,38 +2333,37 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                             if (!isPayoutOrCouponOrCustomItem) ...[
                                               Builder(
                                                 builder: (context) {
-                                                  double qty =
-                                                      (orderItem[AppDBConst
-                                                                  .itemCount]
+                                                  double qty = (orderItem[
+                                                                  AppDBConst
+                                                                      .itemCount]
                                                               as num?)
                                                           ?.toDouble() ??
                                                       1;
 
-                                                  double
-                                                  unitPrice =
+                                                  double unitPrice =
                                                       // (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////---
                                                       (orderItem[AppDBConst
-                                                                  .itemPrice]
-                                                              as num?)
-                                                          ?.toDouble() ??
-                                                      (orderItem[AppDBConst
-                                                                  .itemRegularPrice]
-                                                              as num?)
-                                                          ?.toDouble() ??
-                                                      (orderItem[AppDBConst
-                                                                  .itemUnitPrice]
-                                                              as num?)
-                                                          ?.toDouble() ?? ////
-                                                      0.0; ////
+                                                                      .itemPrice]
+                                                                  as num?)
+                                                              ?.toDouble() ??
+                                                          (orderItem[AppDBConst
+                                                                      .itemRegularPrice]
+                                                                  as num?)
+                                                              ?.toDouble() ??
+                                                          (orderItem[AppDBConst
+                                                                      .itemUnitPrice]
+                                                                  as num?)
+                                                              ?.toDouble() ?? ////
+                                                          0.0; ////
 
                                                   // If still zero → derive price from sum price
                                                   if (unitPrice == 0.0) {
                                                     final double sumPrice =
                                                         (orderItem[AppDBConst
-                                                                    .itemSumPrice]
-                                                                as num?)
-                                                            ?.toDouble() ??
-                                                        0.0;
+                                                                        .itemSumPrice]
+                                                                    as num?)
+                                                                ?.toDouble() ??
+                                                            0.0;
 
                                                     if (sumPrice > 0 &&
                                                         qty > 0) {
@@ -2453,12 +2385,12 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
                                                     // "= ${TextConstants.currencySymbol} ${totalAmount.toStringAsFixed(2)}",
                                                     style: TextStyle(
-                                                      color:
-                                                          themeHelper.themeMode ==
-                                                                  ThemeMode.dark
-                                                              ? ThemeNotifier
-                                                                  .textDark
-                                                              : Colors.black54,
+                                                      color: themeHelper
+                                                                  .themeMode ==
+                                                              ThemeMode.dark
+                                                          ? ThemeNotifier
+                                                              .textDark
+                                                          : Colors.black54,
                                                       fontSize: 10,
                                                     ),
                                                   );
@@ -2506,11 +2438,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                   builder: (_) {
                                                     final double lineAmount =
                                                         (orderItem[AppDBConst
-                                                                    .itemSumPrice]
-                                                                as num?)
-                                                            ?.toDouble()
-                                                            .abs() ??
-                                                        0.0;
+                                                                        .itemSumPrice]
+                                                                    as num?)
+                                                                ?.toDouble()
+                                                                .abs() ??
+                                                            0.0;
                                                     final double displayAmount =
                                                         isCoupon &&
                                                                 lineAmount <= 0
@@ -2531,22 +2463,22 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                 Builder(
                                                   builder: (context) {
                                                     final double
-                                                    actualSumPrice =
+                                                        actualSumPrice =
                                                         (orderItem[AppDBConst
-                                                                    .itemSumPrice]
-                                                                as num?)
-                                                            ?.toDouble() ??
-                                                        0.0;
+                                                                        .itemSumPrice]
+                                                                    as num?)
+                                                                ?.toDouble() ??
+                                                            0.0;
 
-                                                    double qty =
-                                                        (orderItem[AppDBConst
-                                                                    .itemCount]
+                                                    double qty = (orderItem[
+                                                                    AppDBConst
+                                                                        .itemCount]
                                                                 as num?)
                                                             ?.toDouble() ??
                                                         1;
-                                                    double unitPrice =
-                                                        (orderItem[AppDBConst
-                                                                    .itemUnitPrice]
+                                                    double unitPrice = (orderItem[
+                                                                    AppDBConst
+                                                                        .itemUnitPrice]
                                                                 as num?)
                                                             ?.toDouble() ??
                                                         (orderItem[AppDBConst
@@ -2573,18 +2505,18 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                         actualSumPrice;
                                                     final double totalDiscount =
                                                         multipackDiscount +
-                                                        autoDiscount +
-                                                        comboDiscount;
+                                                            autoDiscount +
+                                                            comboDiscount;
 
                                                     final bool
-                                                    showStrikethrough =
+                                                        showStrikethrough =
                                                         totalDiscount > 0 &&
-                                                        originalTotal >
-                                                            actualSumPrice &&
-                                                        (originalTotal -
-                                                                    actualSumPrice)
-                                                                .abs() >
-                                                            0.01;
+                                                            originalTotal >
+                                                                actualSumPrice &&
+                                                            (originalTotal -
+                                                                        actualSumPrice)
+                                                                    .abs() >
+                                                                0.01;
 
                                                     return Column(
                                                       crossAxisAlignment:
@@ -2599,36 +2531,40 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                             fontSize: 14,
                                                             fontWeight:
                                                                 FontWeight.bold,
-                                                            color:
-                                                                isCashback
-                                                                    ? (themeHelper.themeMode ==
-                                                                            ThemeMode.dark
+                                                            color: isCashback
+                                                                ? (themeHelper
+                                                                            .themeMode ==
+                                                                        ThemeMode
+                                                                            .dark
+                                                                    ? ThemeNotifier
+                                                                        .textDark
+                                                                    : ThemeNotifier
+                                                                        .textLight)
+                                                                : (showStrikethrough
+                                                                    ? Colors
+                                                                        .black87
+                                                                    : (themeHelper.themeMode ==
+                                                                            ThemeMode
+                                                                                .dark
                                                                         ? ThemeNotifier
                                                                             .textDark
                                                                         : ThemeNotifier
-                                                                            .textLight)
-                                                                    : (showStrikethrough
-                                                                        ? Colors
-                                                                            .black87
-                                                                        : (themeHelper.themeMode ==
-                                                                                ThemeMode.dark
-                                                                            ? ThemeNotifier.textDark
-                                                                            : ThemeNotifier.textLight)),
-                                                            decoration:
-                                                                isRefunded
-                                                                    ? TextDecoration
-                                                                        .lineThrough
-                                                                    : TextDecoration
-                                                                        .none,
+                                                                            .textLight)),
+                                                            decoration: isRefunded
+                                                                ? TextDecoration
+                                                                    .lineThrough
+                                                                : TextDecoration
+                                                                    .none,
                                                           ),
                                                         ),
                                                         if (!isRefunded &&
                                                             showStrikethrough)
                                                           Padding(
                                                             padding:
-                                                                const EdgeInsets.only(
-                                                                  top: 2,
-                                                                ),
+                                                                const EdgeInsets
+                                                                    .only(
+                                                              top: 2,
+                                                            ),
                                                             child: Text(
                                                               "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
                                                               style: TextStyle(
@@ -2636,14 +2572,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                                 fontWeight:
                                                                     FontWeight
                                                                         .w500,
-                                                                color:
-                                                                    themeHelper.themeMode ==
-                                                                            ThemeMode.dark
-                                                                        ? Colors
-                                                                            .grey
-                                                                            .shade400
-                                                                        : Colors
-                                                                            .black54,
+                                                                color: themeHelper.themeMode ==
+                                                                        ThemeMode
+                                                                            .dark
+                                                                    ? Colors
+                                                                        .grey
+                                                                        .shade400
+                                                                    : Colors
+                                                                        .black54,
                                                                 decoration:
                                                                     TextDecoration
                                                                         .lineThrough,
@@ -2681,518 +2617,505 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
             ///Show print and email invoice buttons if coming from order history screen
             ///else show regular buttons
             Container(
-              color:
-                  themeHelper.themeMode == ThemeMode.dark
-                      ? ThemeNotifier.primaryBackground
-                      : null,
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.primaryBackground
+                  : null,
               child: Column(
                 children: [
                   // Summary container
                   AnimatedSize(
                     duration: Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
-                    child:
-                        _showFullSummary
-                            ? SizedBox(
-                              child: Container(
-                                margin: const EdgeInsets.only(
-                                  top: 8,
-                                  right: 7,
-                                  left: 7,
+                    child: _showFullSummary
+                        ? SizedBox(
+                            child: Container(
+                              margin: const EdgeInsets.only(
+                                top: 8,
+                                right: 7,
+                                left: 7,
+                              ),
+                              // margin: const EdgeInsets.only(top: 8, right: 8, left: 8),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.only(
+                                  topRight: Radius.circular(8),
+                                  topLeft: Radius.circular(8),
                                 ),
-                                // margin: const EdgeInsets.only(top: 8, right: 8, left: 8),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.only(
-                                    topRight: Radius.circular(8),
-                                    topLeft: Radius.circular(8),
+                                color: themeHelper.themeMode == ThemeMode.dark
+                                    ? ThemeNotifier.orderPanelSummary
+                                    : Colors.white,
+                                boxShadow: [
+                                  // Shadow at the bottom
+                                  BoxShadow(
+                                    // color: Colors.black.withOpacity(0.25),
+                                    color: themeHelper.themeMode ==
+                                            ThemeMode.dark
+                                        ? Color(0xFFF0F0F0).withOpacity(
+                                            0.15,
+                                          ) // stronger shadow for dark mode
+                                        : Colors.black.withOpacity(
+                                            0.25,
+                                          ), // lighter shadow for light mode
+                                    offset: Offset(
+                                      0,
+                                      4,
+                                    ), // 0 horizontal, 4 vertical (down)
+                                    blurRadius: 6,
+                                    spreadRadius: -0.5,
                                   ),
-                                  color:
-                                      themeHelper.themeMode == ThemeMode.dark
-                                          ? ThemeNotifier.orderPanelSummary
-                                          : Colors.white,
-                                  boxShadow: [
-                                    // Shadow at the bottom
-                                    BoxShadow(
-                                      // color: Colors.black.withOpacity(0.25),
-                                      color:
-                                          themeHelper.themeMode ==
-                                                  ThemeMode.dark
-                                              ? Color(0xFFF0F0F0).withOpacity(
-                                                0.15,
-                                              ) // stronger shadow for dark mode
-                                              : Colors.black.withOpacity(
-                                                0.25,
-                                              ), // lighter shadow for light mode
-                                      offset: Offset(
-                                        0,
-                                        4,
-                                      ), // 0 horizontal, 4 vertical (down)
-                                      blurRadius: 6,
-                                      spreadRadius: -0.5,
-                                    ),
-                                    // Shadow at the top
-                                    BoxShadow(
-                                      color:
-                                          themeHelper.themeMode ==
-                                                  ThemeMode.dark
-                                              ? Color(0xFFF0F0F0).withOpacity(
+                                  // Shadow at the top
+                                  BoxShadow(
+                                    color:
+                                        themeHelper.themeMode == ThemeMode.dark
+                                            ? Color(0xFFF0F0F0).withOpacity(
                                                 0.15,
                                               ) // dark mode top shadow
-                                              : Colors.black.withOpacity(
+                                            : Colors.black.withOpacity(
                                                 0.15,
                                               ), // light mode top shadow
-                                      // color: Colors.black.withOpacity(0.15),
-                                      offset: Offset(
-                                        0,
-                                        -4,
-                                      ), // 0 horizontal, -4 vertical (up)
-                                      blurRadius: 6,
-                                      spreadRadius: -0.5,
-                                    ),
-                                  ],
-                                ),
-                                padding: const EdgeInsets.all(8),
-                                child: SingleChildScrollView(
-                                  // ✅ scroll added
-                                  physics: const BouncingScrollPhysics(),
+                                    // color: Colors.black.withOpacity(0.15),
+                                    offset: Offset(
+                                      0,
+                                      -4,
+                                    ), // 0 horizontal, -4 vertical (up)
+                                    blurRadius: 6,
+                                    spreadRadius: -0.5,
+                                  ),
+                                ],
+                              ),
+                              padding: const EdgeInsets.all(8),
+                              child: SingleChildScrollView(
+                                // ✅ scroll added
+                                physics: const BouncingScrollPhysics(),
 
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(
-                                            TextConstants.grossTotal,
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 18,
-                                            ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          TextConstants.grossTotal,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 18,
                                           ),
-                                          Text(
-                                            grossTotal < 0
-                                                ? '-${TextConstants.currencySymbol}${grossTotal.abs().toStringAsFixed(2)}'
-                                                : '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
-                                              color:
-                                                  themeHelper.themeMode ==
-                                                          ThemeMode.dark
-                                                      ? ThemeNotifier.textDark
-                                                      : ThemeNotifier.textLight,
-                                            ),
+                                        ),
+                                        Text(
+                                          grossTotal < 0
+                                              ? '-${TextConstants.currencySymbol}${grossTotal.abs().toStringAsFixed(2)}'
+                                              : '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: themeHelper.themeMode ==
+                                                    ThemeMode.dark
+                                                ? ThemeNotifier.textDark
+                                                : ThemeNotifier.textLight,
                                           ),
-                                        ],
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: 2),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          spacing: 5,
+                                          children: [
+                                            // SvgPicture.asset(
+                                            //   "assets/svg/discount_star.svg",
+                                            //   height: 12,
+                                            //   width: 12,
+                                            // ),
+                                            Text(
+                                              TextConstants.discountText,
+                                              style: TextStyle(
+                                                color: Colors.green,
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        Text(
+                                          "-${TextConstants.currencySymbol}${orderDiscount.abs().toStringAsFixed(2)}",
+                                          style: TextStyle(
+                                            color: Colors.green,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                    
+
+                                    SizedBox(height: 2),
+                                    ShaderMask(
+                                      shaderCallback: (Rect bounds) {
+                                        return LinearGradient(
+                                          begin: Alignment.centerLeft,
+                                          end: Alignment.centerRight,
+                                          colors: themeHelper.themeMode ==
+                                                  ThemeMode.dark
+                                              ? [
+                                                  Colors.white.withOpacity(
+                                                    0.1,
+                                                  ),
+                                                  Colors.white.withOpacity(
+                                                    0.7,
+                                                  ),
+                                                  Colors.white.withOpacity(
+                                                    0.1,
+                                                  ),
+                                                ]
+                                              : [
+                                                  Colors.black.withOpacity(
+                                                    0.1,
+                                                  ),
+                                                  Colors.black.withOpacity(
+                                                    0.7,
+                                                  ),
+                                                  Colors.black.withOpacity(
+                                                    0.1,
+                                                  ),
+                                                ],
+                                          stops: const [0.0, 0.5, 1.0],
+                                        ).createShader(bounds);
+                                      },
+                                      blendMode: BlendMode.srcIn,
+                                      child: DottedLine(
+                                        dashLength: 6,
+                                        dashGapLength: 4,
+                                        lineThickness: 1,
+                                        direction: Axis.horizontal,
+                                        dashColor: themeHelper.themeMode ==
+                                                ThemeMode.dark
+                                            ? Colors.white
+                                            : Colors
+                                                .black, // ✅ ensures gradient works correctly
                                       ),
-                                      SizedBox(height: 2),
+                                    ),
+                                    SizedBox(height: 2),
+                                    // const DottedLine(),
+                                    SizedBox(height: 2),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          TextConstants.netTotalText,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                        Text(
+                                          "${TextConstants.currencySymbol}${netTotal.toStringAsFixed(2)}",
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: themeHelper.themeMode ==
+                                                    ThemeMode.dark
+                                                ? ThemeNotifier.textDark
+                                                : ThemeNotifier.textLight,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: 2),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          TextConstants.taxText,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                        Text(
+                                          "${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}",
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: themeHelper.themeMode ==
+                                                    ThemeMode.dark
+                                                ? Colors.white54
+                                                : Colors.grey,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    if (uiMerchantDiscount != 0)
                                       Row(
                                         mainAxisAlignment:
                                             MainAxisAlignment.spaceBetween,
                                         children: [
                                           Row(
-                                            spacing: 5,
                                             children: [
-                                              // SvgPicture.asset(
-                                              //   "assets/svg/discount_star.svg",
-                                              //   height: 12,
-                                              //   width: 12,
-                                              // ),
                                               Text(
-                                                TextConstants.discountText,
+                                                TextConstants
+                                                    .merchantDiscount,
                                                 style: TextStyle(
-                                                  color: Colors.green,
+                                                  color: Colors.blue,
                                                   fontSize: 14,
                                                 ),
                                               ),
                                             ],
                                           ),
                                           Text(
-                                            "-${TextConstants.currencySymbol}${orderDiscount.abs().toStringAsFixed(2)}",
+                                            "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}",
                                             style: TextStyle(
-                                              color: Colors.green,
+                                              color: Colors.blue,
                                               fontSize: 14,
                                             ),
                                           ),
                                         ],
                                       ),
 
-                                      SizedBox(height: 2),
-                                      ShaderMask(
-                                        shaderCallback: (Rect bounds) {
-                                          return LinearGradient(
-                                            begin: Alignment.centerLeft,
-                                            end: Alignment.centerRight,
-                                            colors:
-                                                themeHelper.themeMode ==
-                                                        ThemeMode.dark
-                                                    ? [
-                                                      Colors.white.withOpacity(
-                                                        0.1,
-                                                      ),
-                                                      Colors.white.withOpacity(
-                                                        0.7,
-                                                      ),
-                                                      Colors.white.withOpacity(
-                                                        0.1,
-                                                      ),
-                                                    ]
-                                                    : [
-                                                      Colors.black.withOpacity(
-                                                        0.1,
-                                                      ),
-                                                      Colors.black.withOpacity(
-                                                        0.7,
-                                                      ),
-                                                      Colors.black.withOpacity(
-                                                        0.1,
-                                                      ),
-                                                    ],
-                                            stops: const [0.0, 0.5, 1.0],
-                                          ).createShader(bounds);
-                                        },
-                                        blendMode: BlendMode.srcIn,
-                                        child: DottedLine(
-                                          dashLength: 6,
-                                          dashGapLength: 4,
-                                          lineThickness: 1,
-                                          direction: Axis.horizontal,
-                                          dashColor:
-                                              themeHelper.themeMode ==
-                                                      ThemeMode.dark
-                                                  ? Colors.white
-                                                  : Colors
-                                                      .black, // ✅ ensures gradient works correctly
-                                        ),
-                                      ),
-                                      SizedBox(height: 2),
-                                      // const DottedLine(),
-                                      SizedBox(height: 2),
+                                    SizedBox(height: 2),
+
+                                    if (cashbackFee > 0)
                                       Row(
                                         mainAxisAlignment:
                                             MainAxisAlignment.spaceBetween,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.center,
                                         children: [
                                           Text(
-                                            TextConstants.netTotalText,
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                          Text(
-                                            "${TextConstants.currencySymbol}${netTotal.toStringAsFixed(2)}",
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 12,
-                                              color:
-                                                  themeHelper.themeMode ==
-                                                          ThemeMode.dark
-                                                      ? ThemeNotifier.textDark
-                                                      : ThemeNotifier.textLight,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      SizedBox(height: 2),
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.center,
-                                        children: [
-                                          Text(
-                                            TextConstants.taxText,
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
+                                            TextConstants.cashbackFee,
+                                            style: const TextStyle(
+                                              color: Color(0xFF55CBCD),
                                               fontSize: 14,
-                                              color: Colors.grey,
+                                              fontWeight: FontWeight.w500,
                                             ),
                                           ),
                                           Text(
-                                            "${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}",
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 12,
-                                              color:
-                                                  themeHelper.themeMode ==
-                                                          ThemeMode.dark
-                                                      ? Colors.white54
-                                                      : Colors.grey,
+                                            "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
+                                            style: const TextStyle(
+                                              color: Color(0xFF55CBCD),
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
                                             ),
                                           ),
                                         ],
                                       ),
-                                      if (uiMerchantDiscount != 0)
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
+                                    SizedBox(height: 2),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(TextConstants.servicecharges),
+                                        Text(
+                                          "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}",
+                                          style: const TextStyle(
+                                            color: Colors.grey,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                    SizedBox(height: 2),
+                                    if ((_wooOrder?.refundTotal ?? 0) > 0)
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            "Refund Amount",
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                              color: Colors.red,
+                                            ),
+                                          ),
+                                          Text(
+                                            "- ${TextConstants.currencySymbol}${(_wooOrder?.refundTotal ?? 0).toStringAsFixed(2)}",
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.red,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    SizedBox(height: 2),
+                                    //const DottedLine(),
+                                    ShaderMask(
+                                      shaderCallback: (Rect bounds) {
+                                        return LinearGradient(
+                                          begin: Alignment.centerLeft,
+                                          end: Alignment.centerRight,
+                                          colors: themeHelper.themeMode ==
+                                                  ThemeMode.dark
+                                              ? [
+                                                  Colors.white.withOpacity(
+                                                    0.1,
+                                                  ),
+                                                  Colors.white.withOpacity(
+                                                    0.7,
+                                                  ),
+                                                  Colors.white.withOpacity(
+                                                    0.1,
+                                                  ),
+                                                ]
+                                              : [
+                                                  Colors.black.withOpacity(
+                                                    0.1,
+                                                  ),
+                                                  Colors.black.withOpacity(
+                                                    0.7,
+                                                  ),
+                                                  Colors.black.withOpacity(
+                                                    0.1,
+                                                  ),
+                                                ],
+                                          stops: const [0.0, 0.5, 1.0],
+                                        ).createShader(bounds);
+                                      },
+                                      blendMode: BlendMode.srcIn,
+                                      child: DottedLine(
+                                        dashLength: 6,
+                                        dashGapLength: 4,
+                                        lineThickness: 1,
+                                        direction: Axis.horizontal,
+                                        dashColor: themeHelper.themeMode ==
+                                                ThemeMode.dark
+                                            ? Colors.white
+                                            : Colors
+                                                .black, // ✅ ensures gradient works correctly
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+
+                                    // if (isPendingOrder) ...[
+                                    //   SizedBox(height: 8),
+                                    //   Row(
+                                    //     mainAxisAlignment:
+                                    //         MainAxisAlignment.spaceBetween,
+                                    //     crossAxisAlignment:
+                                    //         CrossAxisAlignment.center,
+                                    //     children: [
+                                    //       Text(
+                                    //         TextConstants.balanceAmount,
+                                    //         style: const TextStyle(
+                                    //           fontWeight: FontWeight.bold,
+                                    //           fontSize: 14,
+                                    //         ),
+                                    //       ),
+                                    //       Text(
+                                    //         "${TextConstants.currencySymbol}"
+                                    //         "${panelDisplayBalance.toStringAsFixed(2)}",
+                                    //         style: TextStyle(
+                                    //           fontWeight: FontWeight.bold,
+                                    //           fontSize: 14,
+                                    //           color: themeHelper.themeMode ==
+                                    //                   ThemeMode.dark
+                                    //               ? ThemeNotifier.textDark
+                                    //               : ThemeNotifier.textLight,
+                                    //         ),
+                                    //       ),
+                                    //     ],
+                                    //   ),
+                                    //   // if (tenderAmount > 0.005)
+                                    //   //   Padding(
+                                    //   //     padding:
+                                    //   //         const EdgeInsets.only(top: 6),
+                                    //   //     child: Row(
+                                    //   //       mainAxisAlignment:
+                                    //   //           MainAxisAlignment.spaceBetween,
+                                    //   //       children: [
+                                    //   //         Text(
+                                    //   //           TextConstants.amountTendered,
+                                    //   //           style: TextStyle(
+                                    //   //             fontSize: 12,
+                                    //   //             fontWeight: FontWeight.w600,
+                                    //   //             color: themeHelper
+                                    //   //                         .themeMode ==
+                                    //   //                     ThemeMode.dark
+                                    //   //                 ? Colors.white60
+                                    //   //                 : Colors.grey[700],
+                                    //   //           ),
+                                    //   //         ),
+                                    //   //         Text(
+                                    //   //           "${TextConstants.currencySymbol}"
+                                    //   //           "${tenderAmount.toStringAsFixed(2)}",
+                                    //   //           style: TextStyle(
+                                    //   //             fontSize: 12,
+                                    //   //             fontWeight: FontWeight.w600,
+                                    //   //             color: themeHelper
+                                    //   //                         .themeMode ==
+                                    //   //                     ThemeMode.dark
+                                    //   //                 ? ThemeNotifier.textDark
+                                    //   //                 : ThemeNotifier.textLight,
+                                    //   //           ),
+                                    //   //         ),
+                                    //   //       ],
+                                    //   //     ),
+                                    //   //   ),
+                                    // ],
+                                    SizedBox(height: 2),
+                                    if (hiveRedeemedValue > 0)
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            "Redeemed Value",
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w400,
+                                              color: Colors.green,
+                                            ),
+                                          ),
+                                          Text(
+                                            "- ${TextConstants.currencySymbol}${hiveRedeemedValue.toStringAsFixed(2)}",
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w400,
+                                              color: Colors.green,
+                                            ),
+                                          ),
+                                          SizedBox(height: 2),
+                                          if (showRefundBlock) ...[
                                             Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment
+                                                      .spaceBetween,
                                               children: [
                                                 Text(
-                                                  TextConstants
-                                                      .merchantDiscount,
+                                                  "Refunded Amount",
                                                   style: TextStyle(
-                                                    color: Colors.blue,
                                                     fontSize: 14,
+                                                    fontWeight: FontWeight.w500,
+                                                    color: Colors.red,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  "${TextConstants.currencySymbol}${alreadyRefundedAmount.toStringAsFixed(2)}",
+                                                  style: const TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Colors.red,
                                                   ),
                                                 ),
                                               ],
                                             ),
-                                            Text(
-                                              "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}",
-                                              style: TextStyle(
-                                                color: Colors.blue,
-                                                fontSize: 14,
-                                              ),
-                                            ),
                                           ],
-                                        ),
-
-                                      SizedBox(height: 2),
-
-                                      if (cashbackFee > 0)
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              TextConstants.cashbackFee,
-                                              style: const TextStyle(
-                                                color: Color(0xFF55CBCD),
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                            Text(
-                                              "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
-                                              style: const TextStyle(
-                                                color: Color(0xFF55CBCD),
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      SizedBox(height: 2),
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(TextConstants.servicecharges),
-                                          Text(
-                                            "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}",
-                                            style: const TextStyle(
-                                              color: Colors.grey,
-                                              fontSize: 14,
-                                            ),
-                                          ),
                                         ],
                                       ),
-
-                                      SizedBox(height: 2),
-                                      if ((_wooOrder?.refundTotal ?? 0) > 0)
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              "Refund Amount",
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w500,
-                                                color: Colors.red,
-                                              ),
-                                            ),
-                                            Text(
-                                              "- ${TextConstants.currencySymbol}${(_wooOrder?.refundTotal ?? 0).toStringAsFixed(2)}",
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w600,
-                                                color: Colors.red,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      SizedBox(height: 2),
-                                      //const DottedLine(),
-                                      ShaderMask(
-                                        shaderCallback: (Rect bounds) {
-                                          return LinearGradient(
-                                            begin: Alignment.centerLeft,
-                                            end: Alignment.centerRight,
-                                            colors:
-                                                themeHelper.themeMode ==
-                                                        ThemeMode.dark
-                                                    ? [
-                                                      Colors.white.withOpacity(
-                                                        0.1,
-                                                      ),
-                                                      Colors.white.withOpacity(
-                                                        0.7,
-                                                      ),
-                                                      Colors.white.withOpacity(
-                                                        0.1,
-                                                      ),
-                                                    ]
-                                                    : [
-                                                      Colors.black.withOpacity(
-                                                        0.1,
-                                                      ),
-                                                      Colors.black.withOpacity(
-                                                        0.7,
-                                                      ),
-                                                      Colors.black.withOpacity(
-                                                        0.1,
-                                                      ),
-                                                    ],
-                                            stops: const [0.0, 0.5, 1.0],
-                                          ).createShader(bounds);
-                                        },
-                                        blendMode: BlendMode.srcIn,
-                                        child: DottedLine(
-                                          dashLength: 6,
-                                          dashGapLength: 4,
-                                          lineThickness: 1,
-                                          direction: Axis.horizontal,
-                                          dashColor:
-                                              themeHelper.themeMode ==
-                                                      ThemeMode.dark
-                                                  ? Colors.white
-                                                  : Colors
-                                                      .black, // ✅ ensures gradient works correctly
-                                        ),
-                                      ),
-                                      SizedBox(height: 2),
-
-                                      // if (isPendingOrder) ...[
-                                      //   SizedBox(height: 8),
-                                      //   Row(
-                                      //     mainAxisAlignment:
-                                      //         MainAxisAlignment.spaceBetween,
-                                      //     crossAxisAlignment:
-                                      //         CrossAxisAlignment.center,
-                                      //     children: [
-                                      //       Text(
-                                      //         TextConstants.balanceAmount,
-                                      //         style: const TextStyle(
-                                      //           fontWeight: FontWeight.bold,
-                                      //           fontSize: 14,
-                                      //         ),
-                                      //       ),
-                                      //       Text(
-                                      //         "${TextConstants.currencySymbol}"
-                                      //         "${panelDisplayBalance.toStringAsFixed(2)}",
-                                      //         style: TextStyle(
-                                      //           fontWeight: FontWeight.bold,
-                                      //           fontSize: 14,
-                                      //           color: themeHelper.themeMode ==
-                                      //                   ThemeMode.dark
-                                      //               ? ThemeNotifier.textDark
-                                      //               : ThemeNotifier.textLight,
-                                      //         ),
-                                      //       ),
-                                      //     ],
-                                      //   ),
-                                      //   // if (tenderAmount > 0.005)
-                                      //   //   Padding(
-                                      //   //     padding:
-                                      //   //         const EdgeInsets.only(top: 6),
-                                      //   //     child: Row(
-                                      //   //       mainAxisAlignment:
-                                      //   //           MainAxisAlignment.spaceBetween,
-                                      //   //       children: [
-                                      //   //         Text(
-                                      //   //           TextConstants.amountTendered,
-                                      //   //           style: TextStyle(
-                                      //   //             fontSize: 12,
-                                      //   //             fontWeight: FontWeight.w600,
-                                      //   //             color: themeHelper
-                                      //   //                         .themeMode ==
-                                      //   //                     ThemeMode.dark
-                                      //   //                 ? Colors.white60
-                                      //   //                 : Colors.grey[700],
-                                      //   //           ),
-                                      //   //         ),
-                                      //   //         Text(
-                                      //   //           "${TextConstants.currencySymbol}"
-                                      //   //           "${tenderAmount.toStringAsFixed(2)}",
-                                      //   //           style: TextStyle(
-                                      //   //             fontSize: 12,
-                                      //   //             fontWeight: FontWeight.w600,
-                                      //   //             color: themeHelper
-                                      //   //                         .themeMode ==
-                                      //   //                     ThemeMode.dark
-                                      //   //                 ? ThemeNotifier.textDark
-                                      //   //                 : ThemeNotifier.textLight,
-                                      //   //           ),
-                                      //   //         ),
-                                      //   //       ],
-                                      //   //     ),
-                                      //   //   ),
-                                      // ],
-                                      SizedBox(height: 2),
-                                      if (hiveRedeemedValue > 0)
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              "Redeemed Value",
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w400,
-                                                color: Colors.green,
-                                              ),
-                                            ),
-                                            Text(
-                                              "- ${TextConstants.currencySymbol}${hiveRedeemedValue.toStringAsFixed(2)}",
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w400,
-                                                color: Colors.green,
-                                              ),
-                                            ),
-                                            SizedBox(height: 2),
-                                            if (showRefundBlock) ...[
-                                              Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment
-                                                        .spaceBetween,
-                                                children: [
-                                                  Text(
-                                                    "Refunded Amount",
-                                                    style: TextStyle(
-                                                      fontSize: 14,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                      color: Colors.red,
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    "${TextConstants.currencySymbol}${alreadyRefundedAmount.toStringAsFixed(2)}",
-                                                    style: const TextStyle(
-                                                      fontSize: 16,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      color: Colors.red,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                    ],
-                                  ),
+                                  ],
                                 ),
                               ),
-                            )
-                            : SizedBox.shrink(),
+                            ),
+                          )
+                        : SizedBox.shrink(),
                   ),
                   if (widget.activeOrderId != null)
                     GestureDetector(
@@ -3209,14 +3132,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                             bottomLeft: Radius.circular(8),
                           ),
                           // color: themeHelper.themeMode == ThemeMode.dark ?const Color(0xFF393C48) : Colors.grey.shade300
-                          color:
-                              themeHelper.themeMode == ThemeMode.dark
-                                  ? const Color(
-                                    0xFF2A2C36,
-                                  ) // ✅ dark mode background 393C48
-                                  : Colors
-                                      .grey
-                                      .shade300, // ✅ light mode background
+                          color: themeHelper.themeMode == ThemeMode.dark
+                              ? const Color(
+                                  0xFF2A2C36,
+                                ) // ✅ dark mode background 393C48
+                              : Colors.grey.shade300, // ✅ light mode background
                           boxShadow: [
                             // Shadow at the bottom
                             BoxShadow(
@@ -3282,140 +3202,137 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                       ),
                       width: double.infinity,
                       height: MediaQuery.of(context).size.height * 0.0575,
-                      child:
-                          ((_order?[AppDBConst.orderStatus] ?? '') !=
-                                  TextConstants.pending)
-                              ? ElevatedButton(
-                                //Build 1.1.36: on pay tap calling updateOrderProducts api call
-                                onPressed: () async {
-                                  if (orderHelper.activeOrderId != null) {
-                                    setState(() {
-                                      _isPayBtnLoading = true;
-                                    });
+                      child: ((_order?[AppDBConst.orderStatus] ?? '') !=
+                              TextConstants.pending)
+                          ? ElevatedButton(
+                              //Build 1.1.36: on pay tap calling updateOrderProducts api call
+                              onPressed: () async {
+                                if (orderHelper.activeOrderId != null) {
+                                  setState(() {
+                                    _isPayBtnLoading = true;
+                                  });
 
-                                    if (kDebugMode) {
-                                      print(
-                                        "OrderScreenPanel - call printer setup screen, $_printerReceipt",
-                                      );
-                                    }
-                                    if (!Misc.disablePrinter) {
-                                      ///prepare receipt
-                                      await _preparePrintTicket();
-
-                                      ///print invoice
-                                      await _printTicket();
-                                    }
-                                    setState(() => _isPayBtnLoading = false);
-                                    // if(_printerReceipt == null || (_printerReceipt != null && _printerReceipt[AppDBConst.printerDeviceName] == '')){
-                                    //   /// call printer setup screen
-                                    //   if (kDebugMode) {
-                                    //     print("OrderScreenPanel - call printer setup screen");
-                                    //   }
-                                    //   Navigator.push(
-                                    //       context,
-                                    //       MaterialPageRoute(
-                                    //         builder: (context) => PrinterSetup(),
-                                    //       )).then((result) async {
-                                    //     if (result == 'refresh') {
-                                    //       await _printerSettings.loadPrinter();
-                                    //       await loadPrinterData();
-                                    //       setState(() async {
-                                    //         // Update state to refresh the UI
-                                    //         if (kDebugMode) {
-                                    //           print(
-                                    //               "OrderScreenPanel - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
-                                    //         }
-                                    //         ///print invoice
-                                    //         await _printTicket();
-                                    //         setState(() => _isPayBtnLoading = false);
-                                    //       });
-                                    //     }
-                                    //   });
-                                    // } else {
-                                    //
-                                    // }
+                                  if (kDebugMode) {
+                                    print(
+                                      "OrderScreenPanel - call printer setup screen, $_printerReceipt",
+                                    );
                                   }
-                                },
-                                // style: ElevatedButton.styleFrom(
-                                //   backgroundColor: Colors.transparent, // 🔑 keep transparent
-                                //   shadowColor: Colors.transparent, // 🔑 remove shadow blending
-                                //   shape: RoundedRectangleBorder(
-                                //     borderRadius: BorderRadius.circular(16),
-                                //   ),
-                                //   padding: EdgeInsets.zero, // 🔑 so gradient fills entire button
-                                // ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(
-                                    0xFFFF6B6B,
-                                  ), // Coral red color
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
+                                  if (!Misc.disablePrinter) {
+                                    ///prepare receipt
+                                    await _preparePrintTicket();
 
-                                //
-                                child:
-                                    _isPayBtnLoading //Build 1.1.36: added loader for pay button in order panel
-                                        ? CircularProgressIndicator(
+                                    ///print invoice
+                                    await _printTicket();
+                                  }
+                                  setState(() => _isPayBtnLoading = false);
+                                  // if(_printerReceipt == null || (_printerReceipt != null && _printerReceipt[AppDBConst.printerDeviceName] == '')){
+                                  //   /// call printer setup screen
+                                  //   if (kDebugMode) {
+                                  //     print("OrderScreenPanel - call printer setup screen");
+                                  //   }
+                                  //   Navigator.push(
+                                  //       context,
+                                  //       MaterialPageRoute(
+                                  //         builder: (context) => PrinterSetup(),
+                                  //       )).then((result) async {
+                                  //     if (result == 'refresh') {
+                                  //       await _printerSettings.loadPrinter();
+                                  //       await loadPrinterData();
+                                  //       setState(() async {
+                                  //         // Update state to refresh the UI
+                                  //         if (kDebugMode) {
+                                  //           print(
+                                  //               "OrderScreenPanel - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
+                                  //         }
+                                  //         ///print invoice
+                                  //         await _printTicket();
+                                  //         setState(() => _isPayBtnLoading = false);
+                                  //       });
+                                  //     }
+                                  //   });
+                                  // } else {
+                                  //
+                                  // }
+                                }
+                              },
+                              // style: ElevatedButton.styleFrom(
+                              //   backgroundColor: Colors.transparent, // 🔑 keep transparent
+                              //   shadowColor: Colors.transparent, // 🔑 remove shadow blending
+                              //   shape: RoundedRectangleBorder(
+                              //     borderRadius: BorderRadius.circular(16),
+                              //   ),
+                              //   padding: EdgeInsets.zero, // 🔑 so gradient fills entire button
+                              // ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(
+                                  0xFFFF6B6B,
+                                ), // Coral red color
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+
+                              //
+                              child:
+                                  _isPayBtnLoading //Build 1.1.36: added loader for pay button in order panel
+                                      ? CircularProgressIndicator(
                                           color: Colors.white,
                                         )
-                                        : Text(
+                                      : Text(
                                           TextConstants.printInvoice,
                                           style: TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w900,
                                           ),
                                         ),
-                              )
-                              : ElevatedButton(
-                                //Build 1.1.36: on pay tap calling updateOrderProducts api call
-                                onPressed:
-                                    netPayable >= 0 && orderItems.isNotEmpty
-                                        ? () async {
-                                          if (orderHelper.activeOrderId !=
-                                              null) {
-                                            setState(
-                                              () => _isPayBtnLoading = true,
-                                            );
-                                            _initialFetchDone =
-                                                false; // Build #1.0.143: Track initial fetch of fetchOrdersData
-                                            // await Navigator.push(
-                                            //   context,
-                                            //   MaterialPageRoute(builder: (context) => OrderSummaryScreen()),
-                                            // );
-                                            // On the first screen (Screen 1)
-                                            // Navigator.push(context, MaterialPageRoute(builder: (_) => OrderSummaryScreen())).then((result) {
-                                            //   if (result == 'refresh') {
-                                            //     setState(() {
-                                            //       // Update state to refresh the UI
-                                            //     });
-                                            //   }
-                                            // });
-                                            // Build #1.0.104: refresh when back to this screen
-                                            List<Map<String, dynamic>>
+                            )
+                          : ElevatedButton(
+                              //Build 1.1.36: on pay tap calling updateOrderProducts api call
+                              onPressed: netPayable >= 0 &&
+                                      orderItems.isNotEmpty
+                                  ? () async {
+                                      if (orderHelper.activeOrderId != null) {
+                                        setState(
+                                          () => _isPayBtnLoading = true,
+                                        );
+                                        _initialFetchDone =
+                                            false; // Build #1.0.143: Track initial fetch of fetchOrdersData
+                                        // await Navigator.push(
+                                        //   context,
+                                        //   MaterialPageRoute(builder: (context) => OrderSummaryScreen()),
+                                        // );
+                                        // On the first screen (Screen 1)
+                                        // Navigator.push(context, MaterialPageRoute(builder: (_) => OrderSummaryScreen())).then((result) {
+                                        //   if (result == 'refresh') {
+                                        //     setState(() {
+                                        //       // Update state to refresh the UI
+                                        //     });
+                                        //   }
+                                        // });
+                                        // Build #1.0.104: refresh when back to this screen
+                                        List<Map<String, dynamic>>
                                             visibleLineItems(
-                                              List<Map<String, dynamic>> items,
-                                            ) {
-                                              return items.where((item) {
-                                                final nameLower =
-                                                    (item[AppDBConst
-                                                                .itemName] ??
-                                                            '')
-                                                        .toString()
-                                                        .trim()
-                                                        .toLowerCase();
+                                          List<Map<String, dynamic>> items,
+                                        ) {
+                                          return items.where((item) {
+                                            final nameLower =
+                                                (item[AppDBConst.itemName] ??
+                                                        '')
+                                                    .toString()
+                                                    .trim()
+                                                    .toLowerCase();
 
-                                                final itemTypeLower =
-                                                    (item['item_type'] ??
-                                                            '') // ✅ FIXED KEY
-                                                        .toString()
-                                                        .trim()
-                                                        .toLowerCase();
+                                            final itemTypeLower =
+                                                (item['item_type'] ??
+                                                        '') // ✅ FIXED KEY
+                                                    .toString()
+                                                    .trim()
+                                                    .toLowerCase();
 
-                                                final isNonProduct =
-                                                    nameLower.contains(
+                                            final isNonProduct =
+                                                nameLower.contains(
                                                       'discount',
                                                     ) ||
                                                     nameLower.contains(
@@ -3440,164 +3357,154 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                       'loyalty',
                                                     );
 
-                                                return !isNonProduct;
-                                              }).toList();
-                                            }
-
-                                            final box =
-                                                StorageProvider.offlineOrders;
-
-                                            // Prefer server order id if exists, else offline id
-                                            final hiveKey =
-                                                orderHelper.activeOrderId
-                                                    .toString();
-
-                                            final boxData = await box.get(
-                                              hiveKey,
-                                            );
-                                            final double discountAmount =
-                                                ((boxData is Map
-                                                            ? boxData["discount_amount"]
-                                                            : null) ??
-                                                        0.0)
-                                                    .toDouble();
-
-                                            if (kDebugMode) {
-                                              print(
-                                                "🏷 Passing Discount Amount = $discountAmount",
-                                              );
-                                            }
-
-                                            final filteredItems =
-                                                visibleLineItems(orderItems);
-                                            print(
-                                              "🔎 BEFORE SUMMARY NAVIGATION",
-                                            );
-                                            for (var item in filteredItems) {
-                                              print(
-                                                "Name: ${item[AppDBConst.itemName]} "
-                                                "Price: ${item[AppDBConst.itemPrice]} "
-                                                "Qty: ${item[AppDBConst.itemCount]} "
-                                                "DiscountType: ${item['discount_type']} "
-                                                "AutoDiscount: ${item['auto_discount']} "
-                                                "ComboDiscount: ${item['combo_discount_total']} "
-                                                "MixMatchDiscount: ${item['mixmatch_discount_total']} "
-                                                "MultipackDiscount: ${item['multipack_discount_total']}",
-                                              );
-                                            }
-
-                                            final result = await Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder:
-                                                    (_) => OrderSummaryScreen(
-                                                      orderItems:
-                                                          filteredItems, // ✅ ONLY product items
-                                                      formattedDate:
-                                                          displayDate,
-                                                      formattedTime:
-                                                          displayTime,
-                                                      grossTotal:
-                                                          grossTotal.toDouble(),
-                                                      orderDiscount:
-                                                          orderDiscount,
-                                                      merchantDiscount:
-                                                          merchantDiscount,
-                                                      orderTax: orderTax,
-                                                      netPayable:
-                                                          netPayable.toDouble(),
-                                                      orderId:
-                                                          orderHelper
-                                                              .activeOrderId,
-                                                      offlineOrderId:
-                                                          orderHelper
-                                                              .activeOrderId,
-                                                      cashbackFee: cashbackFee,
-                                                      ebtAmount: ebtAmount,
-                                                      discountAmount:
-                                                          discountAmount,
-                                                    ),
-                                              ),
-                                            );
-
-                                            if (kDebugMode) {
-                                              print(
-                                                "###### OrderScreenPanel: Returned from OrderSummaryScreen with result: $result",
-                                              );
-                                            }
-                                            // Handle refresh if result is 'refresh'
-                                            if (result ==
-                                                TextConstants.refresh) {
-                                              // Build #1.0.175: added TextConstants
-                                              if (kDebugMode) {
-                                                print(
-                                                  "###### OrderScreenPanel: Refresh signal received, reinitializing entire screen",
-                                                );
-                                              }
-
-                                              // Build #1.0.143: Fixed Issue : After return from order summary screen , total order screen not refreshing with updated response
-                                              widget.refreshOrderList?.call();
-                                            }
-                                            setState(
-                                              () => _isPayBtnLoading = false,
-                                            );
-
-                                            ///No need to update here now, may cause empty items added to order
-                                            //     // Assign the subscription to your class variable
-                                            //     _updateOrderSubscription = orderBloc.updateOrderStream.listen((response) async {
-                                            //       if (!mounted) return; // Safety check
-                                            //       if (response.status == Status.LOADING) { // Build #1.0.80
-                                            //         const Center(child: CircularProgressIndicator());
-                                            //       }else if (response.status == Status.COMPLETED) {
-                                            //         if (kDebugMode) {
-                                            //           print("###### updateOrder COMPLETED");
-                                            //         }
-                                            //
-                                            //         setState(() => _isPayBtnLoading = false); // dismiss the loader
-                                            //
-                                            //         Navigator.push(
-                                            //           context,
-                                            //           MaterialPageRoute(builder: (context) => OrderSummaryScreen()),
-                                            //         );
-                                            //       } else if (response.status == Status.ERROR) {
-                                            //         ScaffoldMessenger.of(context).showSnackBar(
-                                            //           SnackBar(content: Text(response.message ?? "Failed to update order")),
-                                            //         );
-                                            //       }
-                                            //     });
-                                            //
-                                            //     // Prepare line items for API
-                                            //     List<OrderLineItem> lineItems = orderItems.map((item) => OrderLineItem(
-                                            //       productId: item[AppDBConst.itemId],
-                                            //       quantity: item[AppDBConst.itemCount],
-                                            //     )).toList();
-                                            //
-                                            //     // Call API
-                                            //     await orderBloc.updateOrderProducts(
-                                            //       dbOrderId: orderHelper.activeOrderId!,
-                                            //       orderId: serverOrderId,
-                                            //       lineItems: lineItems,
-                                            //     );
-                                          }
+                                            return !isNonProduct;
+                                          }).toList();
                                         }
-                                        : null,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor:
-                                      netPayable >= 0 && orderItems.isNotEmpty
-                                          ? const Color(0xFFFF6B6B)
-                                          : Colors.grey, // Coral red color
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
+
+                                        final box =
+                                            StorageProvider.offlineOrders;
+
+                                        // Prefer server order id if exists, else offline id
+                                        final hiveKey = orderHelper
+                                            .activeOrderId
+                                            .toString();
+
+                                        final boxData = await box.get(
+                                          hiveKey,
+                                        );
+                                        final double discountAmount = ((boxData
+                                                        is Map
+                                                    ? boxData["discount_amount"]
+                                                    : null) ??
+                                                0.0)
+                                            .toDouble();
+
+                                        if (kDebugMode) {
+                                          print(
+                                            "🏷 Passing Discount Amount = $discountAmount",
+                                          );
+                                        }
+
+                                        final filteredItems =
+                                            visibleLineItems(orderItems);
+                                        print(
+                                          "🔎 BEFORE SUMMARY NAVIGATION",
+                                        );
+                                        for (var item in filteredItems) {
+                                          print(
+                                            "Name: ${item[AppDBConst.itemName]} "
+                                            "Price: ${item[AppDBConst.itemPrice]} "
+                                            "Qty: ${item[AppDBConst.itemCount]} "
+                                            "DiscountType: ${item['discount_type']} "
+                                            "AutoDiscount: ${item['auto_discount']} "
+                                            "ComboDiscount: ${item['combo_discount_total']} "
+                                            "MixMatchDiscount: ${item['mixmatch_discount_total']} "
+                                            "MultipackDiscount: ${item['multipack_discount_total']}",
+                                          );
+                                        }
+
+                                        final result = await Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => OrderSummaryScreen(
+                                              orderItems:
+                                                  filteredItems, // ✅ ONLY product items
+                                              formattedDate: displayDate,
+                                              formattedTime: displayTime,
+                                              grossTotal: grossTotal.toDouble(),
+                                              orderDiscount: orderDiscount,
+                                              merchantDiscount:
+                                                  merchantDiscount,
+                                              orderTax: orderTax,
+                                              netPayable: netPayable.toDouble(),
+                                              orderId:
+                                                  orderHelper.activeOrderId,
+                                              offlineOrderId:
+                                                  orderHelper.activeOrderId,
+                                              cashbackFee: cashbackFee,
+                                              ebtAmount: ebtAmount,
+                                              discountAmount: discountAmount,
+                                            ),
+                                          ),
+                                        );
+
+                                        if (kDebugMode) {
+                                          print(
+                                            "###### OrderScreenPanel: Returned from OrderSummaryScreen with result: $result",
+                                          );
+                                        }
+                                        // Handle refresh if result is 'refresh'
+                                        if (result == TextConstants.refresh) {
+                                          // Build #1.0.175: added TextConstants
+                                          if (kDebugMode) {
+                                            print(
+                                              "###### OrderScreenPanel: Refresh signal received, reinitializing entire screen",
+                                            );
+                                          }
+
+                                          // Build #1.0.143: Fixed Issue : After return from order summary screen , total order screen not refreshing with updated response
+                                          widget.refreshOrderList?.call();
+                                        }
+                                        setState(
+                                          () => _isPayBtnLoading = false,
+                                        );
+
+                                        ///No need to update here now, may cause empty items added to order
+                                        //     // Assign the subscription to your class variable
+                                        //     _updateOrderSubscription = orderBloc.updateOrderStream.listen((response) async {
+                                        //       if (!mounted) return; // Safety check
+                                        //       if (response.status == Status.LOADING) { // Build #1.0.80
+                                        //         const Center(child: CircularProgressIndicator());
+                                        //       }else if (response.status == Status.COMPLETED) {
+                                        //         if (kDebugMode) {
+                                        //           print("###### updateOrder COMPLETED");
+                                        //         }
+                                        //
+                                        //         setState(() => _isPayBtnLoading = false); // dismiss the loader
+                                        //
+                                        //         Navigator.push(
+                                        //           context,
+                                        //           MaterialPageRoute(builder: (context) => OrderSummaryScreen()),
+                                        //         );
+                                        //       } else if (response.status == Status.ERROR) {
+                                        //         ScaffoldMessenger.of(context).showSnackBar(
+                                        //           SnackBar(content: Text(response.message ?? "Failed to update order")),
+                                        //         );
+                                        //       }
+                                        //     });
+                                        //
+                                        //     // Prepare line items for API
+                                        //     List<OrderLineItem> lineItems = orderItems.map((item) => OrderLineItem(
+                                        //       productId: item[AppDBConst.itemId],
+                                        //       quantity: item[AppDBConst.itemCount],
+                                        //     )).toList();
+                                        //
+                                        //     // Call API
+                                        //     await orderBloc.updateOrderProducts(
+                                        //       dbOrderId: orderHelper.activeOrderId!,
+                                        //       orderId: serverOrderId,
+                                        //       lineItems: lineItems,
+                                        //     );
+                                      }
+                                    }
+                                  : null,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor:
+                                    netPayable >= 0 && orderItems.isNotEmpty
+                                        ? const Color(0xFFFF6B6B)
+                                        : Colors.grey, // Coral red color
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
-                                child:
-                                    _isPayBtnLoading //Build 1.1.36: added loader for pay button in order panel
-                                        ? CircularProgressIndicator(
+                              ),
+                              child:
+                                  _isPayBtnLoading //Build 1.1.36: added loader for pay button in order panel
+                                      ? CircularProgressIndicator(
                                           color: Colors.white,
                                         )
-                                        : Text(
+                                      : Text(
                                           // "${TextConstants.pay} ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
                                           TextConstants
                                               .pay, // Build #1.0.175: No need show amount on PAY button in order screen panel
@@ -3606,7 +3513,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                             fontWeight: FontWeight.w900,
                                           ),
                                         ),
-                              ),
+                            ),
                     )
                   else
                     SizedBox(),
@@ -6111,8 +6018,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     // -------------------------------
     final ByteData data;
     if (logo != "") {
-      data =
-          await GlobalUtility.fileToByteData(File(logo)) ??
+      data = await GlobalUtility.fileToByteData(File(logo)) ??
           await rootBundle.load('assets/Bubbas_logo.png');
     } else {
       data = await rootBundle.load('assets/Bubbas_logo.png');
@@ -6341,10 +6247,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         AppDBConst.itemSumPrice,
       ]);
 
-      String type =
-          (item['item_type'] ?? item[AppDBConst.itemType] ?? '')
-              .toString()
-              .toLowerCase();
+      String type = (item['item_type'] ?? item[AppDBConst.itemType] ?? '')
+          .toString()
+          .toLowerCase();
 
       // Skip non-product lines
       if (itemName.toLowerCase().contains("discount") ||
@@ -6387,10 +6292,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       double autoDiscount =
           (discountType.isEmpty || discountType == 'auto') ? autoRaw : 0.0;
 
-      double multipackDiscount =
-          (discountType == 'multipack')
-              ? (autoRaw > 0 ? autoRaw : multipackRaw)
-              : 0.0;
+      double multipackDiscount = (discountType == 'multipack')
+          ? (autoRaw > 0 ? autoRaw : multipackRaw)
+          : 0.0;
 
       double comboDiscount =
           (discountType == 'combo' || discountType == 'mixmatch')
@@ -6516,10 +6420,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     bytes += ticket.row([
       PosColumn(text: TextConstants.discountText, width: 8),
       PosColumn(
-        text:
-            uiOrderDiscount != 0
-                ? formatCurrency(uiOrderDiscount)
-                : formatCurrency(0.0),
+        text: uiOrderDiscount != 0
+            ? formatCurrency(uiOrderDiscount)
+            : formatCurrency(0.0),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
@@ -6529,10 +6432,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     bytes += ticket.row([
       PosColumn(text: TextConstants.merchantDiscount, width: 8),
       PosColumn(
-        text:
-            uiMerchantDiscount != 0
-                ? "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}"
-                : "${TextConstants.currencySymbol}0.00",
+        text: uiMerchantDiscount != 0
+            ? "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}"
+            : "${TextConstants.currencySymbol}0.00",
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),

@@ -1,8 +1,8 @@
 <libraries>
   <library
-      name="__local_aars__:C:\Projects\Customer-Display_Custom_Item_V1\android\app\build\intermediates\flutter\release\libs.jar:unspecified@jar"
-      jars="C:\Projects\Customer-Display_Custom_Item_V1\android\app\build\intermediates\flutter\release\libs.jar"
-      resolved="__local_aars__:C:\Projects\Customer-Display_Custom_Item_V1\android\app\build\intermediates\flutter\release\libs.jar:unspecified"/>
+      name="__local_aars__:C:\Projects\Customer-Display_Custom_Item\android\app\build\intermediates\flutter\release\libs.jar:unspecified@jar"
+      jars="C:\Projects\Customer-Display_Custom_Item\android\app\build\intermediates\flutter\release\libs.jar"
+      resolved="__local_aars__:C:\Projects\Customer-Display_Custom_Item\android\app\build\intermediates\flutter\release\libs.jar:unspecified"/>
   <library
       name=":@@:flutter_udid::release"
       jars="C:\Users\sg\.gradle\caches\8.11.1\transforms\d524b93780d23edcfc956a9e087465b3\transformed\out\jars\classes.jar;C:\Users\sg\.gradle\caches\8.11.1\transforms\d524b93780d23edcfc956a9e087465b3\transformed\out\jars\libs\R.jar"
