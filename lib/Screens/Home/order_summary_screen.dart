@@ -6284,8 +6284,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       amount =
           '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}';
     } else if (label == TextConstants.total) {
-      amount =
-          '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
+      final double subtotal = grossTotal - discount;
+      amount = subtotal < 0
+          ? '-${TextConstants.currencySymbol}${subtotal.abs().toStringAsFixed(2)}'
+          : '${TextConstants.currencySymbol}${subtotal.toStringAsFixed(2)}'; // Adjust total with discount
     } else if (label == TextConstants.payByCash) {
       amount = '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}';
     } else if (label == TextConstants.payByOther) {
@@ -7697,7 +7699,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       0;
 
                                   final int newAvailablePoints = int.tryParse(
-                                        data["available_points"].toString(),
+                                    data["available_points"].toString(),
                                       ) ??
                                       availablePoints;
 
@@ -7822,8 +7824,120 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   bool isGenerateCouponActive = false;
-  Future<bool> _syncAndShowCouponPopup() async {
-    if (_isProcessing) return false;
+  // Future<bool> _syncAndShowCouponPopup() async {
+  //   if (_isProcessing) return false;
+  //
+  //   setState(() => _isProcessing = true);
+  //
+  //   bool loaderOpen = true;
+  //
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (_) => const Center(child: CircularProgressIndicator()),
+  //   );
+  //
+  //   try {
+  //     final response = await OrderRepository().CouponApply(offlineOrder!);
+  //
+  //     if (loaderOpen) {
+  //       Navigator.of(context).pop();
+  //       loaderOpen = false;
+  //     }
+  //
+  //     // 🔒 HARD GUARD
+  //     if (response == null || response is! Map<String, dynamic>) {
+  //       _showErrorPopup("Coupon applied but no response data received.");
+  //       return false;
+  //     }
+  //
+  //     final coupons = response["coupons"] as List? ?? [];
+  //     if (coupons.isEmpty) {
+  //       _showErrorPopup("Coupon applied, but no coupon details returned.");
+  //       return false;
+  //     }
+  //
+  //     final coupon = coupons.first;
+  //     final double discountAmount =
+  //         (coupon["amount"] as num?)?.toDouble() ?? 0.0;
+  //
+  //     // ✅ Only update UI state here; save to Hive only after user clicks OK
+  //     setState(() {
+  //       couponValue = discountAmount;
+  //       ebtTotal = 0.0;
+  //       cashbackFee = 0.0;
+  //       isGenerateCouponActive = true;
+  //     });
+  //
+  //     // ✅ Await popup result: true = OK (confirm), false = X (cancel)
+  //     final bool confirmed = await _showCouponResponsePopup(response);
+  //
+  //     if (!confirmed) {
+  //       // User closed with X – don't save to Hive, reset UI state so they can issue again
+  //       debugPrint("🔵 Coupon popup closed with X – not saving to Hive");
+  //       setState(() {
+  //         isGenerateCouponActive = false;
+  //       });
+  //       return false;
+  //     }
+  //
+  //     final box = StorageProvider.offlineOrders;
+  //
+  //     final String key = offlineOrder?['id']?.toString() ??
+  //         offlineOrder?['order_id']?.toString() ??
+  //         offlineOrder?['local_order_id']?.toString() ??
+  //         "";
+  //
+  //     if (key.isEmpty) return true;
+  //
+  //     final hasKey = await box.containsKey(key);
+  //     final raw = hasKey ? await box.get(key) : null;
+  //     final Map<String, dynamic> existing = raw is Map
+  //         ? Map<String, dynamic>.from(raw)
+  //         : Map<String, dynamic>.from(offlineOrder!);
+  //
+  //     final bool hasAppliedCoupon = existing["coupon_applied"] == true ||
+  //         ((existing["applied_coupons"] is List) &&
+  //             (existing["applied_coupons"] as List).isNotEmpty) ||
+  //         isCouponAppliedFromApi;
+  //     final String issuedAt = DateTime.now().toIso8601String();
+  //
+  //     // Keep issued-coupon data separate so we don't clobber applied-coupon state.
+  //     existing["issued_coupon_response"] = response;
+  //     existing["issued_coupon_amount"] = discountAmount;
+  //     existing["issued_coupon_at"] = issuedAt;
+  //
+  //     if (!hasAppliedCoupon) {
+  //       existing["coupon_response"] = response;
+  //       existing["coupon_applied"] =
+  //           false; // Issue Coupon is NOT a discount for this order
+  //       existing["generated_coupon_only"] = true;
+  //       existing["coupon_applied_at"] = issuedAt;
+  //       existing["coupon_amount"] = discountAmount;
+  //     } else {
+  //       // Preserve redeemed/applied coupon effects on current order totals.
+  //       existing["generated_coupon_only"] = false;
+  //     }
+  //
+  //     await box.put(key, existing);
+  //     offlineOrder = existing;
+  //
+  //     debugPrint("✅ Coupon saved in Hive for order $key");
+  //     return true;
+  //   } catch (e) {
+  //     if (loaderOpen) {
+  //       Navigator.of(context).pop();
+  //       loaderOpen = false;
+  //     }
+  //     _showErrorPopup("Something went wrong while applying coupon.");
+  //     debugPrint("❌ Coupon popup error: $e");
+  //     return false;
+  //   } finally {
+  //     setState(() => _isProcessing = false);
+  //   }
+  // }
+  Future<void> _syncAndShowCouponPopup() async {
+    if (_isProcessing) return;
 
     setState(() => _isProcessing = true);
 
@@ -7846,58 +7960,48 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // 🔒 HARD GUARD
       if (response == null || response is! Map<String, dynamic>) {
         _showErrorPopup("Coupon applied but no response data received.");
-        return false;
+        return;
       }
 
       final coupons = response["coupons"] as List? ?? [];
       if (coupons.isEmpty) {
         _showErrorPopup("Coupon applied, but no coupon details returned.");
-        return false;
+        return;
       }
 
       final coupon = coupons.first;
       final double discountAmount =
           (coupon["amount"] as num?)?.toDouble() ?? 0.0;
 
-      // ✅ Only update UI state here; save to Hive only after user clicks OK
       setState(() {
-        couponValue = discountAmount;
-        ebtTotal = 0.0;
-        cashbackFee = 0.0;
+        couponValue     = discountAmount;
+        ebtTotal        = 0.0;
+        cashbackFee    = 0.0;
         isGenerateCouponActive = true;
       });
 
-      // ✅ Await popup result: true = OK (confirm), false = X (cancel)
-      final bool confirmed = await _showCouponResponsePopup(response);
-
-      if (!confirmed) {
-        // User closed with X – don't save to Hive, reset UI state so they can issue again
-        debugPrint("🔵 Coupon popup closed with X – not saving to Hive");
-        setState(() {
-          isGenerateCouponActive = false;
-        });
-        return false;
-      }
+      _showCouponResponsePopup(response);
 
       final box = StorageProvider.offlineOrders;
 
-      final String key = offlineOrder?['id']?.toString() ??
-          offlineOrder?['order_id']?.toString() ??
-          offlineOrder?['local_order_id']?.toString() ??
-          "";
+// 🔑 always resolve order key safely
+      final String key =
+          offlineOrder?['id']?.toString() ??
+              offlineOrder?['order_id']?.toString() ??
+              offlineOrder?['local_order_id']?.toString() ??
+              "";
 
-      if (key.isEmpty) return true;
-
+// 🧠 merge with existing order
       final hasKey = await box.containsKey(key);
       final raw = hasKey ? await box.get(key) : null;
-      final Map<String, dynamic> existing = raw is Map
+      final Map<String, dynamic> existing =
+      raw is Map
           ? Map<String, dynamic>.from(raw)
           : Map<String, dynamic>.from(offlineOrder!);
 
-      existing["coupon_response"] = response;
-      existing["coupon_applied"] =
-          false; // Issue Coupon is NOT a discount for this order
-      existing["generated_coupon_only"] = true;
+// ✅ STORE coupon data for later payment success
+      existing["coupon_response"] = response;      // decoded Map
+      existing["coupon_applied"] = true;
       existing["coupon_applied_at"] = DateTime.now().toIso8601String();
       existing["coupon_amount"] = discountAmount;
 
@@ -7905,7 +8009,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       offlineOrder = existing;
 
       debugPrint("✅ Coupon saved in Hive for order $key");
-      return true;
+
+
     } catch (e) {
       if (loaderOpen) {
         Navigator.of(context).pop();
@@ -7913,12 +8018,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
       _showErrorPopup("Something went wrong while applying coupon.");
       debugPrint("❌ Coupon popup error: $e");
-      return false;
     } finally {
       setState(() => _isProcessing = false);
     }
   }
-
   void _showErrorPopup(String message) {
     showDialog(
       context: context,
@@ -8290,13 +8393,30 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   //
+  Future<String> _resolveOfflineOrderKey() async {
+    final box = StorageProvider.offlineOrders;
+    final orderedCandidates = <String>[
+      if (widget.offlineOrderId != null && widget.offlineOrderId! > 0)
+        widget.offlineOrderId!.toString(),
+      if (orderId != null && orderId! > 0) orderId!.toString(),
+      if (widget.orderId != null && widget.orderId! > 0)
+        widget.orderId!.toString(),
+    ];
+
+    // Prefer an already-existing local/offline entry to avoid creating a
+    // second order row under a different key (local id vs server id).
+    for (final key in orderedCandidates) {
+      if (await box.containsKey(key)) return key;
+    }
+
+    return orderedCandidates.isNotEmpty ? orderedCandidates.first : "";
+  }
 
   Future<void> _removeAppliedCoupon() async {
     try {
       final box = StorageProvider.offlineOrders;
 
-      final String orderKey =
-          widget.orderId?.toString() ?? widget.offlineOrderId?.toString() ?? "";
+      final String orderKey = await _resolveOfflineOrderKey();
 
       if (orderKey.isEmpty) return;
 
@@ -8405,12 +8525,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     showDialog(
       context: context,
-      barrierDismissible: true,
+      barrierDismissible: false,
       builder: (context) {
         return WillPopScope(
           onWillPop: () async {
-            ScannerGuard.isCouponPopupOpen = false; // 🔓 enable scanner again
-            return true;
+            // Keep dialog open unless user taps explicit actions (Cancel/Apply).
+            return false;
           },
           child: BarcodeKeyboardListener(
             bufferDuration: const Duration(milliseconds: 300),
@@ -8558,8 +8678,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     try {
       final box = StorageProvider.offlineOrders;
 
-      final String orderKey =
-          widget.orderId?.toString() ?? widget.offlineOrderId?.toString() ?? "";
+      final String orderKey = await _resolveOfflineOrderKey();
 
       if (orderKey.isEmpty) return;
 

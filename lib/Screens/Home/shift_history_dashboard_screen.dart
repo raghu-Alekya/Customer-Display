@@ -193,62 +193,62 @@ class _ShiftHistoryDashboardScreenState
                   ),
                 ),
               ),
-              Container(
-                margin: const EdgeInsets.only(right: 16.0, top: 10),
-                width: MediaQuery.of(context).size.width * 0.075,
-                height: MediaQuery.of(context).size.height * 0.05,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFFFF5463),
-                      Color(0xFFFF384A),
-                    ],
-                    begin: Alignment.topLeft, // start at top-left
-                    end: Alignment.topRight, // end at top-right
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: themeHelper.themeMode == ThemeMode.dark
-                          ? Color(0xFFFF384A).withOpacity(0.60)
-                          : Color(0xFFFF384A).withOpacity(0.50),
-                      blurRadius: 10,
-                      spreadRadius: 1,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: TextButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ShiftOpenCloseBalanceScreen(),
-                        settings: const RouteSettings(
-                            arguments: TextConstants.navShiftHistory),
-                      ),
-                    );
-                  },
-                  icon: const Icon(
-                    Icons.add,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                  label: const Text(
-                    'Update',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors
-                        .transparent, // make button background transparent
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                  ),
-                ),
-              ),
+              // Container(
+              //   margin: const EdgeInsets.only(right: 16.0, top: 10),
+              //   width: MediaQuery.of(context).size.width * 0.075,
+              //   height: MediaQuery.of(context).size.height * 0.05,
+              //   decoration: BoxDecoration(
+              //     gradient: const LinearGradient(
+              //       colors: [
+              //         Color(0xFFFF5463),
+              //         Color(0xFFFF384A),
+              //       ],
+              //       begin: Alignment.topLeft, // start at top-left
+              //       end: Alignment.topRight, // end at top-right
+              //     ),
+              //     boxShadow: [
+              //       BoxShadow(
+              //         color: themeHelper.themeMode == ThemeMode.dark
+              //             ? Color(0xFFFF384A).withOpacity(0.60)
+              //             : Color(0xFFFF384A).withOpacity(0.50),
+              //         blurRadius: 10,
+              //         spreadRadius: 1,
+              //         offset: Offset(0, 2),
+              //       ),
+              //     ],
+              //     borderRadius: BorderRadius.circular(14),
+              //   ),
+              //   // child: TextButton.icon(
+              //   //   onPressed: () {
+              //   //     Navigator.push(
+              //   //       context,
+              //   //       MaterialPageRoute(
+              //   //         builder: (context) => ShiftOpenCloseBalanceScreen(),
+              //   //         settings: const RouteSettings(
+              //   //             arguments: TextConstants.navShiftHistory),
+              //   //       ),
+              //   //     );
+              //   //   },
+              //   //   icon: const Icon(
+              //   //     Icons.add,
+              //   //     color: Colors.white,
+              //   //     size: 22,
+              //   //   ),
+              //   //   label: const Text(
+              //   //     'Update',
+              //   //     style: TextStyle(
+              //   //       color: Colors.white,
+              //   //       fontSize: 14,
+              //   //       fontWeight: FontWeight.bold,
+              //   //     ),
+              //   //   ),
+              //   //   style: TextButton.styleFrom(
+              //   //     backgroundColor: Colors
+              //   //         .transparent, // make button background transparent
+              //   //     padding: const EdgeInsets.symmetric(vertical: 5),
+              //   //   ),
+              //   // ),
+              // ),
             ],
           ),
           Expanded(

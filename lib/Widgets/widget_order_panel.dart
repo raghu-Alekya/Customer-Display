@@ -5869,7 +5869,46 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                           : ThemeNotifier.textLight),
                                 ),
                                 Text(
-                                    "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", //Build #1.0.68
+                                    (() {
+                                      final bool hasOnlyPayoutItems =
+                                          orderItems.isNotEmpty &&
+                                              orderItems.every((item) {
+                                                final name =
+                                                    (item[AppDBConst.itemName] ??
+                                                            item['item_name'] ??
+                                                            '')
+                                                        .toString()
+                                                        .toLowerCase();
+                                                final type =
+                                                    (item[AppDBConst.itemType] ??
+                                                            item['item_type'] ??
+                                                            '')
+                                                        .toString()
+                                                        .toLowerCase();
+                                                final isRefunded =
+                                                    item[AppDBConst
+                                                            .isRefundItem] ==
+                                                        1 ||
+                                                        item[AppDBConst
+                                                                .isRefundItem] ==
+                                                            true;
+                                                if (isRefunded) return true;
+                                                return name.contains(
+                                                        TextConstants
+                                                            .payoutText) ||
+                                                    type.contains(TextConstants
+                                                        .payoutText);
+                                              });
+                                      final double grossTotalValue =
+                                          (grossTotal as num).toDouble();
+                                      final double displayGrossTotal =
+                                          hasOnlyPayoutItems
+                                              ? -grossTotalValue.abs()
+                                              : grossTotalValue;
+                                      return displayGrossTotal < 0
+                                          ? "-${TextConstants.currencySymbol}${displayGrossTotal.abs().toStringAsFixed(2)}"
+                                          : "${TextConstants.currencySymbol}${displayGrossTotal.toStringAsFixed(2)}";
+                                    })(), // Build #1.0.68
                                     style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 15,
