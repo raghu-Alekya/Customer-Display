@@ -289,7 +289,7 @@ class OrderRepository {
         rate = taxRate;
       } else {
         final selected = taxes.firstWhere(
-          (t) => t.slug == taxClass,
+              (t) => t.slug == taxClass,
           orElse: () => Tax(slug: "", name: ""),
         );
 
@@ -338,7 +338,7 @@ class OrderRepository {
 
     // 🗑 REMOVE FROM FULL LIST CACHE
     final allProducts =
-        await StorageProvider.productCache.get("all_products_list");
+    await StorageProvider.productCache.get("all_products_list");
 
     if (allProducts is List) {
       final updated = allProducts.where((item) {
@@ -384,10 +384,10 @@ class OrderRepository {
       for (final p in paymentsPayload) {
         debugPrint(
           " → LocalID:${p['local_id']} | "
-          "Method:${p['method']} | "
-          "Amount:\$${p['amount']} | "
-          "Remaining:\$${p['remaining']} | "
-          "Status:${p['status']}",
+              "Method:${p['method']} | "
+              "Amount:\$${p['amount']} | "
+              "Remaining:\$${p['remaining']} | "
+              "Status:${p['status']}",
         );
       }
 
@@ -400,7 +400,7 @@ class OrderRepository {
       // ⭐ HANDLE PRODUCTS
       // ---------------------------------------------------------
       final productsRaw =
-          (offlineOrder['items'] ?? offlineOrder['products'] ?? []) as List;
+      (offlineOrder['items'] ?? offlineOrder['products'] ?? []) as List;
 
       final List<Map<String, dynamic>> lineItems = [];
       final List<Map<String, dynamic>> feeLines = [];
@@ -411,7 +411,7 @@ class OrderRepository {
       for (var raw in productsRaw) {
         final item = Map<String, dynamic>.from(raw);
         final discountMeta =
-            Map<String, dynamic>.from(item['discount_meta'] ?? {});
+        Map<String, dynamic>.from(item['discount_meta'] ?? {});
 
         final double autoDiscount =
             double.tryParse(discountMeta['amount']?.toString() ?? '0') ?? 0.0;
@@ -431,7 +431,7 @@ class OrderRepository {
 
         // 🔒 HARD BLOCK payout & cashback from products loop
         final String lowerName =
-            (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
+        (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
 
         final String itemType = item['type']?.toString().toLowerCase() ?? '';
 
@@ -447,17 +447,17 @@ class OrderRepository {
         }
 
         final double price = double.tryParse(
-              item['item_price']?.toString() ??
-                  item['price']?.toString() ??
-                  '0',
-            ) ??
+          item['item_price']?.toString() ??
+              item['price']?.toString() ??
+              '0',
+        ) ??
             0.0;
 
         final int qty = int.tryParse(
-              item['items_count']?.toString() ??
-                  item['quantity']?.toString() ??
-                  '1',
-            ) ??
+          item['items_count']?.toString() ??
+              item['quantity']?.toString() ??
+              '1',
+        ) ??
             1;
 
         final double subtotal = price * qty;
@@ -472,14 +472,14 @@ class OrderRepository {
             item['data']?['id'];
 
         final int? pid =
-            pidRaw == null ? null : int.tryParse(pidRaw.toString());
+        pidRaw == null ? null : int.tryParse(pidRaw.toString());
         if (pid == null || pid == 0) {
           final int qtyInt = qty.toInt();
 
           // 🔹 READ rate stored from UI
           final double taxRate = double.tryParse(item['tax_rate']?.toString() ??
-                  item['tax_Rate']?.toString() ??
-                  '0') ??
+              item['tax_Rate']?.toString() ??
+              '0') ??
               0.0;
 
           // ✅ READ TAX CLASS
@@ -500,10 +500,10 @@ class OrderRepository {
             return item['sku']?.toString().trim().isNotEmpty == true
                 ? item['sku'].toString()
                 : item['generated_sku']?.toString().trim().isNotEmpty == true
-                    ? item['generated_sku'].toString()
-                    : item['meta']?['sku']?.toString().trim().isNotEmpty == true
-                        ? item['meta']['sku'].toString()
-                        : "";
+                ? item['generated_sku'].toString()
+                : item['meta']?['sku']?.toString().trim().isNotEmpty == true
+                ? item['meta']['sku'].toString()
+                : "";
           }
 
           final String sku = resolveSku(item);
@@ -531,12 +531,12 @@ class OrderRepository {
 
             "taxes": taxAmount > 0
                 ? [
-                    {
-                      "rate_id": 0,
-                      "total": taxAmount.toStringAsFixed(2),
-                      "subtotal": taxAmount.toStringAsFixed(2),
-                    }
-                  ]
+              {
+                "rate_id": 0,
+                "total": taxAmount.toStringAsFixed(2),
+                "subtotal": taxAmount.toStringAsFixed(2),
+              }
+            ]
                 : [],
 
             // ✅ SEND RATE
@@ -599,7 +599,7 @@ class OrderRepository {
             double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0;
 
         final int? productId =
-            int.tryParse(p['payout_product_id']?.toString() ?? "");
+        int.tryParse(p['payout_product_id']?.toString() ?? "");
 
         if (productId != null && productId > 0) {
           lineItems.add({
@@ -666,10 +666,10 @@ class OrderRepository {
           double.tryParse(discountRaw?.toString() ?? "0") ?? 0.0;
 
       final discountProductIds =
-          (offlineOrder['merchantDiscountIds'] as List? ?? [])
-              .map((e) => int.tryParse(e.toString()) ?? 0)
-              .where((id) => id > 0)
-              .toList();
+      (offlineOrder['merchantDiscountIds'] as List? ?? [])
+          .map((e) => int.tryParse(e.toString()) ?? 0)
+          .where((id) => id > 0)
+          .toList();
 
       if (merchantDiscount > 0 && discountProductIds.isNotEmpty) {
         final int discountPid =
@@ -693,7 +693,7 @@ class OrderRepository {
       // ---------------------------------------------------------
       final totalAmount = lineItems.fold<double>(
         0.0,
-        (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+            (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
       );
 
       // ---------------------------------------------------------
@@ -732,7 +732,7 @@ class OrderRepository {
         "coupon_lines": [],
       };
 
-      printFullJson("SYNC Woo Payload", payload);
+      printFullJson("SYNC Woo Payloaddddd", payload);
 
       final response = await _helper.post(url, payload, true);
 
@@ -759,7 +759,7 @@ class OrderRepository {
   Map<String, dynamic> _normalizeHiveMap(dynamic data) {
     if (data is Map) {
       return data.map(
-          (key, value) => MapEntry(key.toString(), _normalizeHiveValue(value)));
+              (key, value) => MapEntry(key.toString(), _normalizeHiveValue(value)));
     }
     return {};
   }
@@ -776,6 +776,15 @@ class OrderRepository {
 
   Future<Map<String, dynamic>?> syncSingleOfflineOrder(
       Map<String, dynamic> offlineOrder) async {
+    // Helper to determine if a coupon is redeemed (generate_type == true)
+    bool _isRedeemedCoupon(Map<String, dynamic> coupon) {
+      final gt = coupon['generate_type'];
+      if (gt == true) return true;
+      if (gt == false) return false;
+      final keys = coupon.keys.toSet();
+      return keys.length == 1 && keys.contains('code');
+    }
+
     try {
       final int? localOrderIdInt = int.tryParse(
         offlineOrder['id']?.toString() ??
@@ -789,7 +798,7 @@ class OrderRepository {
 
       final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
       final int? existingWooOrderId =
-          wooOrderIdRaw != null ? int.tryParse(wooOrderIdRaw.toString()) : null;
+      wooOrderIdRaw != null ? int.tryParse(wooOrderIdRaw.toString()) : null;
       final Map<String, dynamic> couponResponse =
           (offlineOrder["coupon_response"] as Map?)?.cast<String, dynamic>() ??
               {};
@@ -876,8 +885,8 @@ class OrderRepository {
         final item = Map<String, dynamic>.from(raw);
 
         // ---------------------------------------------------------
-// 🔍 DETECT PRODUCT ID FIRST
-// ---------------------------------------------------------
+        // 🔍 DETECT PRODUCT ID FIRST
+        // ---------------------------------------------------------
         final dynamic pidRaw = item['product_id'] ??
             item['id'] ??
             item['productId'] ??
@@ -895,9 +904,9 @@ class OrderRepository {
 
         final int? pid = safeParseInt(pidRaw);
 
-// ---------------------------------------------------------
-// 🔥 FETCH DISCOUNT (SOURCE OF TRUTH)
-// ---------------------------------------------------------
+        // ---------------------------------------------------------
+        // 🔥 FETCH DISCOUNT (SOURCE OF TRUTH)
+        // ---------------------------------------------------------
         final Map<String, dynamic> discountMeta = discountLines[pid] ?? {};
 
         final double autoDiscount =
@@ -910,12 +919,6 @@ class OrderRepository {
         final String ruleId = discountMeta['rule_id']?.toString() ?? '';
         debugPrint("🎯 MATCH PID = $pid");
         debugPrint("🎯 FOUND DISCOUNT = $discountMeta");
-
-        // final double price =
-        //     double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-        // final double qty =
-        //     double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
-        // final double lineTotal = price * qty;
 
         // ✅ NORMALIZE ITEM FIELDS (POS + API)
         final String name = item['item_name'] ?? item['name'] ?? "Product";
@@ -942,7 +945,7 @@ class OrderRepository {
 
         // 🔒 HARD BLOCK payout & cashback from products loop
         final String lowerName =
-            (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
+        (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
 
         final String itemType = item['type']?.toString().toLowerCase() ?? '';
 
@@ -958,17 +961,17 @@ class OrderRepository {
         }
 
         final double price = double.tryParse(
-              item['item_price']?.toString() ??
-                  item['price']?.toString() ??
-                  '0',
-            ) ??
+          item['item_price']?.toString() ??
+              item['price']?.toString() ??
+              '0',
+        ) ??
             0.0;
 
         final int qty = int.tryParse(
-              item['items_count']?.toString() ??
-                  item['quantity']?.toString() ??
-                  '1',
-            ) ??
+          item['items_count']?.toString() ??
+              item['quantity']?.toString() ??
+              '1',
+        ) ??
             1;
 
         final double subtotal = price * qty;
@@ -977,18 +980,15 @@ class OrderRepository {
         if (pid == null || pid == 0) {
           final int qtyInt = qty.toInt();
 
-          // 🔹 READ rate stored from UI
           final double taxRate = double.tryParse(item['tax_rate']?.toString() ??
-                  item['tax_Rate']?.toString() ??
-                  '0') ??
+              item['tax_Rate']?.toString() ??
+              '0') ??
               0.0;
 
-          // ✅ READ TAX CLASS
           final String taxClass = item['tax_class']?.toString() ??
               item['tax_Class']?.toString() ??
               "";
 
-          // 🔹 RECALCULATE tax HERE (new screen)
           final double taxAmount = getCustomItemTax(
             taxClass: taxClass,
             price: price,
@@ -1001,10 +1001,10 @@ class OrderRepository {
             return item['sku']?.toString().trim().isNotEmpty == true
                 ? item['sku'].toString()
                 : item['generated_sku']?.toString().trim().isNotEmpty == true
-                    ? item['generated_sku'].toString()
-                    : item['meta']?['sku']?.toString().trim().isNotEmpty == true
-                        ? item['meta']['sku'].toString()
-                        : "";
+                ? item['generated_sku'].toString()
+                : item['meta']?['sku']?.toString().trim().isNotEmpty == true
+                ? item['meta']['sku'].toString()
+                : "";
           }
 
           final String sku = resolveSku(item);
@@ -1017,37 +1017,28 @@ class OrderRepository {
             "name": name,
             "quantity": qtyInt,
             "sku": sku,
-            //"sku": item["sku"] ?? item["generated_sku"] ?? "",
             "price": price.toStringAsFixed(2),
-
             "tax_status": "taxable",
             "tax_class": taxClass,
-
             "subtotal": (price * qtyInt).toStringAsFixed(2),
             "total": (price * qtyInt).toStringAsFixed(2),
-
-            // ✅ SEND TAX
             "subtotal_tax": taxAmount.toStringAsFixed(2),
             "total_tax": taxAmount.toStringAsFixed(2),
-
             "taxes": taxAmount > 0
                 ? [
-                    {
-                      "rate_id": 0,
-                      "total": taxAmount.toStringAsFixed(2),
-                      "subtotal": taxAmount.toStringAsFixed(2),
-                    }
-                  ]
+              {
+                "rate_id": 0,
+                "total": taxAmount.toStringAsFixed(2),
+                "subtotal": taxAmount.toStringAsFixed(2),
+              }
+            ]
                 : [],
-
-            // ✅ SEND RATE
             "meta_data": [
               {
                 "key": "_custom_tax_rate",
                 "value": taxRate.toString(),
               }
             ],
-
             "type": "custom",
           });
 
@@ -1071,17 +1062,12 @@ class OrderRepository {
           "product_id": pid,
           if (variationId != null && variationId > 0)
             "variation_id": variationId,
-          //"name": item['name'] ?? "",
           "quantity": qty,
-          // "subtotal": subtotal.toStringAsFixed(2),
           "total": total.toStringAsFixed(2),
           "subtotal": autoDiscount > 0
               ? total.toStringAsFixed(2)
               : subtotal.toStringAsFixed(2),
-
-          // Optional (Woo may override name, but fine to send)
           "name": name,
-
           "meta_data": [
             {
               "key": "_pos_auto_discount",
@@ -1116,7 +1102,7 @@ class OrderRepository {
             double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0;
 
         final int? productId =
-            int.tryParse(p['payout_product_id']?.toString() ?? "");
+        int.tryParse(p['payout_product_id']?.toString() ?? "");
 
         if (productId != null && productId > 0) {
           lineItems.add({
@@ -1138,15 +1124,11 @@ class OrderRepository {
       // ---------------------------------------------------------
       // ⭐ HANDLE CASHBACK
       // ---------------------------------------------------------
-      // ---------------------------------------------------------
-// ⭐ HANDLE CASHBACK
-// ---------------------------------------------------------
       final cashbacks = (offlineOrder['cashbacks'] ?? []) as List? ?? [];
       for (final c in cashbacks) {
         final double amount =
             double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
 
-        // Try multiple key names to be safe
         final dynamic cashbackPidRaw = c['cashback_product_id'] ??
             c['product_id'] ??
             c['id'] ??
@@ -1176,21 +1158,20 @@ class OrderRepository {
       }
 
       // ---------------------------------------------------------
-// ⭐ HANDLE MERCHANT DISCOUNT (AS LINE ITEM USING PRODUCT ID)
-// ---------------------------------------------------------
+      // ⭐ HANDLE MERCHANT DISCOUNT (AS LINE ITEM USING PRODUCT ID)
+      // ---------------------------------------------------------
       final dynamic discountRaw = offlineOrder['merchantDiscount'];
       double merchantDiscount =
           double.tryParse(discountRaw?.toString() ?? "0") ?? 0.0;
 
       final discountProductIds =
-          (offlineOrder['merchantDiscountIds'] as List? ?? [])
-              .map((e) => int.tryParse(e.toString()) ?? 0)
-              .where((id) => id > 0)
-              .toList();
+      (offlineOrder['merchantDiscountIds'] as List? ?? [])
+          .map((e) => int.tryParse(e.toString()) ?? 0)
+          .where((id) => id > 0)
+          .toList();
 
       if (merchantDiscount > 0 && discountProductIds.isNotEmpty) {
-        final int discountPid =
-            discountProductIds.first; // ⭐ Woo Product ID (11827)
+        final int discountPid = discountProductIds.first;
 
         lineItems.add({
           "product_id": discountPid,
@@ -1205,45 +1186,46 @@ class OrderRepository {
         print("🟢 Added Merchant Discount Product → $discountPid");
       }
 
-// // ---------------------------------------------------------
-// // ⭐ COUPON → PASS TO WOO
-// // ---------------------------------------------------------
-//       final List<Map<String, dynamic>> couponLines = [];
-//
-//       debugPrint("🎟 Checking coupon_response from offline order...");
-//
-//       if (couponResponse.isEmpty) {
-//         debugPrint("ℹ️ No coupon_response found for this order");
-//       } else {
-//         debugPrint("🧾 coupon_response found → ${jsonEncode(couponResponse)}");
-//
-//         final coupons = couponResponse["coupons"] as List? ?? [];
-//
-//         for (final c in coupons) {
-//           final String code = c["code"]?.toString() ?? "";
-//
-//           if (code.isNotEmpty) {
-//             couponLines.add({
-//               "code": code,
-//             });
-//
-//             debugPrint("✅ Passing coupon to Woo → $code");
-//           }
-//         }
-//       }
-//
-//       debugPrint("🎯 Final coupon_lines → ${jsonEncode(couponLines)}");
+      // ---------------------------------------------------------
+      // ⭐ SEPARATE ISSUED vs REDEEMED COUPONS
+      // ---------------------------------------------------------
+      // ---------------------------------------------------------
+// ⭐ SEPARATE ISSUED vs REDEEMED COUPONS
+// ---------------------------------------------------------
+      List<Map<String, dynamic>> issuedCoupons = [];
+      List<Map<String, dynamic>> redeemedCoupons = [];
+
+      final List<dynamic> allCoupons = couponResponse["coupons"] as List? ?? [];
+      for (final dynamic coupon in allCoupons) {
+        if (coupon is! Map) continue;
+        // Convert to Map<String, dynamic> safely
+        final Map<String, dynamic> couponMap = Map<String, dynamic>.from(coupon);
+
+        // Determine if redeemed (generate_type == true) OR (only code key present)
+        final gt = couponMap['generate_type'];
+        final bool isRedeemed;
+        if (gt == true) {
+          isRedeemed = true;
+        } else if (gt == false) {
+          isRedeemed = false;
+        } else {
+          // Fallback: if only 'code' key exists, treat as redeemed
+          final keys = couponMap.keys.toSet();
+          isRedeemed = keys.length == 1 && keys.contains('code');
+        }
+
+        if (isRedeemed) {
+          redeemedCoupons.add(couponMap);
+        } else {
+          issuedCoupons.add(couponMap);
+        }
+      }
+
+      debugPrint("📊 Issued coupons (generate_type false): ${issuedCoupons.length}");
+      debugPrint("📊 Redeemed coupons (generate_type true): ${redeemedCoupons.length}");
 
       // ---------------------------------------------------------
-      // ⭐ FINAL TOTAL
-      // ---------------------------------------------------------
-      final totalAmount = lineItems.fold<double>(
-        0.0,
-        (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
-      );
-
-      // ---------------------------------------------------------
-      // ⭐ Meta
+      // ⭐ Meta data: only include issued coupons (if any)
       // ---------------------------------------------------------
       final shiftId = await UserDbHelper().getUserShiftId();
       final userData = await UserDbHelper().getUserData();
@@ -1253,16 +1235,18 @@ class OrderRepository {
         {"key": "pos_device_id", "value": "b31b723b92047f4b"},
         {"key": "pos_placed_by", "value": "$userId"},
         {"key": "shift_id", "value": "$shiftId"},
-        {"key": "pos_cash_paid", "value": totalAmount.toStringAsFixed(2)},
+        {"key": "pos_cash_paid", "value": "0.00"},
         {"key": "_pos_client_order_id", "value": clientOrderId},
       ];
 
-      if (couponResponse.isNotEmpty) {
+      // Store issued coupons in meta_data (only if not empty)
+      if (issuedCoupons.isNotEmpty) {
         metaData.add({
           "key": "_pos_generated_coupon",
-          "value": couponResponse,
+          "value": {
+            "coupons": issuedCoupons,
+          },
         });
-
         debugPrint("✅ Generated coupon stored in meta only");
       }
 
@@ -1277,31 +1261,40 @@ class OrderRepository {
       }
 
       // ---------------------------------------------------------
-// ⭐ COUPON → PASS TO WOO
-// ---------------------------------------------------------
+      // ⭐ COUPON LINES: only include redeemed coupons
+      // ---------------------------------------------------------
       final List<Map<String, dynamic>> couponLines = [];
 
-      debugPrint("🎟 Checking coupon_response from offline order...");
-
-      if (generatedCouponOnly) {
+      if (generatedCouponOnly && redeemedCoupons.isEmpty) {
         debugPrint("ℹ️ Generated coupon only → skipping coupon_lines");
-      } else if (couponResponse.isNotEmpty) {
-        final coupons = couponResponse["coupons"] as List? ?? [];
-
-        for (final c in coupons) {
-          final String code = c["code"]?.toString() ?? "";
-
+      } else {
+        for (final c in redeemedCoupons) {
+          final String code = c["code"]?.toString().trim() ?? "";
           if (code.isNotEmpty) {
-            couponLines.add({
-              "code": code,
-            });
-
-            debugPrint("✅ Passing coupon to Woo → $code");
+            couponLines.add({"code": code});
+            debugPrint("✅ Passing redeemed coupon to Woo → $code");
           }
         }
       }
 
-      debugPrint("🎯 Final coupon_lines → ${jsonEncode(couponLines)}");
+      debugPrint(
+        "🧾 Final coupon_lines → ${jsonEncode(couponLines)}",
+        wrapWidth: 1024,
+      );
+
+      // ---------------------------------------------------------
+      // ⭐ FINAL TOTAL
+      // ---------------------------------------------------------
+      final totalAmount = lineItems.fold<double>(
+        0.0,
+            (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+      );
+
+      // Update the cash paid meta field with actual total
+      final cashPaidIndex = metaData.indexWhere((m) => m['key'] == 'pos_cash_paid');
+      if (cashPaidIndex != -1) {
+        metaData[cashPaidIndex]['value'] = totalAmount.toStringAsFixed(2);
+      }
 
       // ---------------------------------------------------------
       // ⭐ FINAL PAYLOAD
@@ -1318,7 +1311,7 @@ class OrderRepository {
         "tax_lines": [],
       };
 
-      printFullJson("SYNC Woo Payload", payload);
+      printFullJson("SYNC Woo Payloadttttt", payload);
 
       final response = isUpdate
           ? await _helper.put(url, payload, true)
@@ -1336,6 +1329,13 @@ class OrderRepository {
         "🟦 [SYNC] Woo Response → ${jsonEncode(decoded)}",
         wrapWidth: 1024,
       );
+      if (decoded is Map<String, dynamic>) {
+        debugPrint(
+          "🟦 [SYNC] Woo Response coupon_lines → ${jsonEncode(decoded['coupon_lines'] ?? [])}",
+          wrapWidth: 1024,
+        );
+      }
+
       double cashbackFee = 0.0;
       final wooFees = decoded["fee_lines"] as List? ?? [];
       for (final fee in wooFees) {
@@ -1355,8 +1355,7 @@ class OrderRepository {
             double.tryParse(decoded['total']?.toString() ?? "0") ?? 0.0;
 
         final double wooDiscount =
-            double.tryParse(decoded['discount_total']?.toString() ?? "0") ??
-                0.0;
+            double.tryParse(decoded['discount_total']?.toString() ?? "0") ?? 0.0;
 
         final double wooDiscountTax =
             double.tryParse(decoded['discount_tax']?.toString() ?? "0") ?? 0.0;
@@ -1373,7 +1372,6 @@ class OrderRepository {
         offlineOrder['wooTotal'] = wooTotal;
         offlineOrder['wooStatus'] = wooStatus;
 
-        // 🔥 IMPORTANT FIX
         offlineOrder['orderDiscount'] = wooDiscount;
         offlineOrder['tax_discount'] = wooDiscountTax;
         offlineOrder['order_tax'] = wooTax;
@@ -1381,17 +1379,14 @@ class OrderRepository {
         offlineOrder['net_payable'] = wooTotal;
         offlineOrder['remainingBalance'] = wooTotal;
 
-        // Optional: store coupon lines also
         offlineOrder['coupon_lines'] = decoded['coupon_lines'];
 
         await box.put(localOrderId, offlineOrder);
         await box.put(serverOrderId.toString(), {"map_to_local": localOrderId});
 
-        // Update Customer Display AFTER saving correct values
         await CustomerDisplayHelper.updateCustomerDisplay(
             int.tryParse(localOrderId) ?? serverOrderId);
 
-        // ⭐ RETURN VALUES TO UI
         return {
           "id": serverOrderId,
           "status": wooStatus,
@@ -1408,6 +1403,14 @@ class OrderRepository {
       print("Stack: $s");
     }
     return null;
+  }
+
+  bool _couponHiveEntryIsRedeem(Map<String, dynamic> c) {
+    final gt = c['generate_type'];
+    if (gt == true) return true;
+    if (gt == false) return false;
+    final keys = c.keys.toSet();
+    return keys.length == 1 && keys.contains('code');
   }
 
   // 2. Update Order Products
@@ -1475,17 +1478,17 @@ class OrderRepository {
   //Build #1.0.40: getOrders
   Future<OrdersListModel> getOrders(
       {bool allStatuses = false,
-      int pageNumber = 1,
-      int pageLimit = 30,
-      String status = "",
-      String orderType = "",
-      String userId = ""}) async {
+        int pageNumber = 1,
+        int pageLimit = 30,
+        String status = "",
+        String orderType = "",
+        String userId = ""}) async {
     //Build #1.0.54: added if allStatuses is true, include all statuses; otherwise, just "processing"
     final statusString = status != ""
         ? status
         : (allStatuses
-            ? TextConstants.orderScreenStatus
-            : TextConstants.processing);
+        ? TextConstants.orderScreenStatus
+        : TextConstants.processing);
 
     orderType = orderType != "" ? orderType : "";
     //
@@ -1541,18 +1544,18 @@ class OrderRepository {
   // Build #1.0.118: Fetch Total Orders Count API Call for Orders Screen
   Future<TotalOrdersResponseModel> fetchTotalOrdersCount(
       {bool allStatuses = false,
-      int pageNumber = 1,
-      int pageLimit = 10,
-      String status = "",
-      String orderType = "",
-      String userId = "",
-      String startDate = "",
-      String endDate = ""}) async {
+        int pageNumber = 1,
+        int pageLimit = 10,
+        String status = "",
+        String orderType = "",
+        String userId = "",
+        String startDate = "",
+        String endDate = ""}) async {
     final statusString = status != ""
         ? status
         : (allStatuses
-            ? TextConstants.orderScreenStatus
-            : TextConstants.processing);
+        ? TextConstants.orderScreenStatus
+        : TextConstants.processing);
 
     orderType = orderType != "" ? orderType : "";
 
@@ -1705,9 +1708,9 @@ class OrderRepository {
       final products = (order["products"] ?? []) as List;
 
       final String clientOrderId = (order["order_id"] ??
-              order["client_order_id"] ??
-              order["local_order_id"] ??
-              "")
+          order["client_order_id"] ??
+          order["local_order_id"] ??
+          "")
           .toString();
 
       if (clientOrderId.isEmpty) {
@@ -1730,8 +1733,8 @@ class OrderRepository {
 
         // ✅ EXTRACT SKU SAFELY
         final String sku =
-            (item["sku"] ?? item["product_sku"] ?? item["SKU"] ?? "")
-                .toString();
+        (item["sku"] ?? item["product_sku"] ?? item["SKU"] ?? "")
+            .toString();
 
         final dynamic pidRaw = item["product_id"] ??
             item["id"] ??
@@ -1740,7 +1743,7 @@ class OrderRepository {
             item["meta"]?["product_id"];
 
         final int? pid =
-            pidRaw == null ? null : int.tryParse(pidRaw.toString());
+        pidRaw == null ? null : int.tryParse(pidRaw.toString());
 
         if (pid == null || pid == 0) {
           // 🔹 CUSTOM ITEM
@@ -1804,7 +1807,7 @@ class OrderRepository {
             c["cashbackProductId"];
 
         final int? pid =
-            pidRaw == null ? null : int.tryParse(pidRaw.toString());
+        pidRaw == null ? null : int.tryParse(pidRaw.toString());
 
         final String name = c["product_name"] ?? "Cashback";
 
@@ -1885,7 +1888,7 @@ class OrderRepository {
 
     try {
       final response =
-          await _helper.post(url, body, true, validateMarchentUrl: true);
+      await _helper.post(url, body, true, validateMarchentUrl: true);
 
       final decoded = jsonDecode(response);
       final result = decoded["results"]?.first;
@@ -2283,7 +2286,7 @@ class OrderRepository {
   // Build #1.0.274 : Added new function for add merchant discount
   Future<OrderModel> addMerchantDiscount(
       {required int orderId,
-      required AddMerchantDiscountRequestModel request}) async {
+        required AddMerchantDiscountRequestModel request}) async {
     final url =
         "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}${EndUrlConstants.addDiscountEndUrl}";
 
@@ -2373,7 +2376,7 @@ class OrderRepository {
       // 🧩 Update existing order map
       final updatedOrder = Map<String, dynamic>.from(existingOrder);
       final payouts =
-          List<Map<String, dynamic>>.from(updatedOrder["payouts"] ?? []);
+      List<Map<String, dynamic>>.from(updatedOrder["payouts"] ?? []);
       payouts.add(payoutEntry);
       updatedOrder["payouts"] = payouts;
 
@@ -2386,7 +2389,7 @@ class OrderRepository {
       }
 
       double payoutsTotal =
-          payouts.fold(0.0, (sum, p) => sum + (p["amount"] ?? 0.0));
+      payouts.fold(0.0, (sum, p) => sum + (p["amount"] ?? 0.0));
       updatedOrder["gross_total"] = productsTotal + payoutsTotal;
 
       // 💾 Save updated order back to Hive
@@ -2410,7 +2413,7 @@ class OrderRepository {
   // Build #1.0.53 : Remove Payout from Order
   Future<OrderModel> removeFeeLine(
       {required int orderId,
-      required RemoveFeeLinesRequestModel request}) async {
+        required RemoveFeeLinesRequestModel request}) async {
     final url =
         "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
 

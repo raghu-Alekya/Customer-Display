@@ -191,7 +191,7 @@ class _InventoryTaxDropdownWidgetState
               },
               style: TextStyle(
                 color: textColor,
-                fontSize: 16,
+                fontSize: 14,
               ),
               dropdownColor: dropdownBackgroundColor,
               iconEnabledColor: Colors.grey,

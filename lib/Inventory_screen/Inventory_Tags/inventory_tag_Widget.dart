@@ -37,9 +37,11 @@ class _InventoryTagMultiSelectWidgetState
     if (tag.name.toLowerCase() == 'age restricted') {
       backgroundColor = const Color.fromRGBO(245, 230, 215, 1);
       borderColor = const Color.fromRGBO(191, 145, 104, 1);
-    } else if (tag.slug.toLowerCase() == 'ebt eligible') {
-      backgroundColor = const Color.fromRGBO(225, 245, 225, 1);
-      borderColor = const Color.fromRGBO(102, 187, 106, 1);
+    } else if (tag.slug.toLowerCase() == 'ebt-eligible') {
+      backgroundColor = const Color(0xFFA4F4CF); // background
+      borderColor = const Color(0xFFCBFBF1); // soft border
+
+
     } else {
       backgroundColor = const Color.fromRGBO(245, 247, 250, 1);
       borderColor = const Color.fromRGBO(189, 189, 189, 1);
@@ -47,7 +49,7 @@ class _InventoryTagMultiSelectWidgetState
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 3),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(6),

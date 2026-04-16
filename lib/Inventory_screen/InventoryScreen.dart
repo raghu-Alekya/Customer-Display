@@ -932,7 +932,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     return GestureDetector(
       onTap: () => setState(() => _selectedTab = index),
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? Color(0xFF2196F3) : Colors.transparent,
           borderRadius: BorderRadius.circular(4),
@@ -952,6 +952,7 @@ class _InventoryScreenState extends State<InventoryScreen>
       ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -1065,23 +1066,24 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     ),
                                   ),
                                   const SizedBox(width: 16),
-                                  Container(
-                                    height: 35,
-                                    decoration: BoxDecoration(
-                                      color: isDark
-                                          ? Color(0xFF252837)
-                                          : Colors.grey[200],
-                                      borderRadius: BorderRadius.circular(6.0),
+                                  IntrinsicWidth(
+                                    child: Container(
+                                      height: 35,
+                                      padding: EdgeInsets.symmetric(horizontal: 6),
+                                      decoration: BoxDecoration(
+                                        color: isDark ? Color(0xFF252837) : Colors.grey[200],
+                                        borderRadius: BorderRadius.circular(6.0),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min, // important
+                                        children: [
+                                          _buildTabButton('Add Product', 0, themeHelper),
+                                          // SizedBox(width: 12),
+                                          // _buildTabButton('Audit list', 1, themeHelper),
+                                        ],
+                                      ),
                                     ),
-                                    child: Row(
-                                      children: [
-                                        _buildTabButton(
-                                            'Add Product', 0, themeHelper),
-                                        _buildTabButton(
-                                            'Audit list', 1, themeHelper),
-                                      ],
-                                    ),
-                                  ),
+                                  )
                                 ],
                               ),
                             ),
@@ -1128,12 +1130,10 @@ class _InventoryScreenState extends State<InventoryScreen>
         key: _formKey,
         child: Column(
           children: [
-            isSmallScreen || isMediumScreen
-                ? _buildMobileLayout(isDark, isSmallScreen)
-                : _buildDesktopLayout(isDark),
-            SizedBox(height: 32),
+            _buildDesktopLayout(isDark),
 
-            // Error message display - Only show below text fields
+            const SizedBox(height: 32),
+
             ..._buildValidationErrors(),
           ],
         ),
@@ -1219,176 +1219,176 @@ class _InventoryScreenState extends State<InventoryScreen>
     return errorWidgets;
   }
 
-  Widget _buildMobileLayout(bool isDark, bool isSmallScreen) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildProductImageSection(isDark, isSmallScreen),
-        SizedBox(height: 16),
-        _buildSKUSection(isDark, isSmallScreen),
-        SizedBox(height: 16),
-        Text('Product Name',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white : Colors.black87)),
-        SizedBox(height: 8),
-        TextFormField(
-          controller: _nameController,
-          decoration: InputDecoration(
-            hintText: 'Enter product name',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide: BorderSide(
-                  color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0)),
-            ),
-            filled: true,
-            fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-          ),
-          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-        ),
-        SizedBox(height: 16),
-        Text('Category',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white : Colors.black87)),
-        SizedBox(height: 8),
-        InventoryCategoriesDropdown(
-          onCategorySelected: (category) {
-            setState(() {
-              _selectedCategory = category;
-            });
-          },
-        ),
-        SizedBox(height: 16),
-        Text('Product Type',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white : Colors.black87)),
-        SizedBox(height: 8),
-        InventoryGetProductTypesWidget(
-          onTypeSelected: (selectedType) {
-            setState(() {
-              _selectedProductType = selectedType;
-            });
-          },
-        ),
-        SizedBox(height: 16),
-        _buildPriceSection(isDark),
-        SizedBox(height: 16),
-        Text('Tax',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white : Colors.black87)),
-        SizedBox(height: 8),
-        InventoryTaxDropdownWidget(
-          onTaxSelected: (tax) {
-            setState(() {
-              _selectedTax = tax;
-            });
-          },
-        ),
-        SizedBox(height: 16),
-        Text('Stock',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white : Colors.black87)),
-        SizedBox(height: 8),
-        TextFormField(
-          controller: _qtyController,
-          keyboardType: TextInputType.number,
-          // enabled: !_hasVariablePrice,
-          decoration: InputDecoration(
-            hintText: 'Enter quantity',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide: BorderSide(
-                  color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0)),
-            ),
-            filled: true,
-            fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
-          ),
-          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-        ),
-
-        SizedBox(height: 16),
-        SizedBox(height: 8),
-        InventoryTagMultiSelectWidget(
-          onTypeSelected: (tag) {
-            if (tag != null) {
-              setState(() {
-                _selectedTags.clear();
-                _selectedTags.add(tag);
-              });
-            }
-          },
-        ),
-        SizedBox(height: 10),
-        _buildVariantSection(isDark, isSmallScreen),
-
-        // Add Save & Update button for mobile layout
-        Container(
-          //padding: EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              OutlinedButton(
-                onPressed: _clearForm,
-                child: Text(
-                  'Clear',
-                  style: TextStyle(
-                    color: Color(0xFF2196F3),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Color(0xFF2196F3), width: 2),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6)),
-                  padding: EdgeInsets.symmetric(
-                      horizontal: isSmallScreen ? 30 : 50, vertical: 10),
-                ),
-              ),
-              SizedBox(width: 16),
-              ElevatedButton(
-                onPressed: _isSaving ? null : _saveProduct,
-                child: _isSaving
-                    ? SizedBox(
-                  width: 15,
-                  height: 15,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor:
-                    AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-                    : Text(
-                  'Save & Update',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xFF2196F3),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6)),
-                  padding: EdgeInsets.symmetric(
-                      horizontal: isSmallScreen ? 30 : 50, vertical: 16),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+  // Widget _buildMobileLayout(bool isDark, bool isSmallScreen) {
+  //   return Column(
+  //     crossAxisAlignment: CrossAxisAlignment.start,
+  //     children: [
+  //       _buildProductImageSection(isDark, isSmallScreen),
+  //       SizedBox(height: 16),
+  //       _buildSKUSection(isDark, isSmallScreen),
+  //       SizedBox(height: 16),
+  //       Text('Product Name',
+  //           style: TextStyle(
+  //               fontSize: 14,
+  //               fontWeight: FontWeight.w600,
+  //               color: isDark ? Colors.white : Colors.black87)),
+  //       SizedBox(height: 8),
+  //       TextFormField(
+  //         controller: _nameController,
+  //         decoration: InputDecoration(
+  //           hintText: 'Enter product name',
+  //           border: OutlineInputBorder(
+  //             borderRadius: BorderRadius.circular(6),
+  //             borderSide: BorderSide(
+  //                 color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0)),
+  //           ),
+  //           filled: true,
+  //           fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+  //         ),
+  //         style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+  //       ),
+  //       SizedBox(height: 16),
+  //       Text('Category',
+  //           style: TextStyle(
+  //               fontSize: 14,
+  //               fontWeight: FontWeight.w600,
+  //               color: isDark ? Colors.white : Colors.black87)),
+  //       SizedBox(height: 8),
+  //       InventoryCategoriesDropdown(
+  //         onCategorySelected: (category) {
+  //           setState(() {
+  //             _selectedCategory = category;
+  //           });
+  //         },
+  //       ),
+  //       SizedBox(height: 16),
+  //       Text('Product Type',
+  //           style: TextStyle(
+  //               fontSize: 14,
+  //               fontWeight: FontWeight.w600,
+  //               color: isDark ? Colors.white : Colors.black87)),
+  //       SizedBox(height: 8),
+  //       InventoryGetProductTypesWidget(
+  //         onTypeSelected: (selectedType) {
+  //           setState(() {
+  //             _selectedProductType = selectedType;
+  //           });
+  //         },
+  //       ),
+  //       SizedBox(height: 16),
+  //       _buildPriceSection(isDark),
+  //       SizedBox(height: 16),
+  //       Text('Tax',
+  //           style: TextStyle(
+  //               fontSize: 14,
+  //               fontWeight: FontWeight.w600,
+  //               color: isDark ? Colors.white : Colors.black87)),
+  //       SizedBox(height: 8),
+  //       InventoryTaxDropdownWidget(
+  //         onTaxSelected: (tax) {
+  //           setState(() {
+  //             _selectedTax = tax;
+  //           });
+  //         },
+  //       ),
+  //       SizedBox(height: 16),
+  //       Text('Stock',
+  //           style: TextStyle(
+  //               fontSize: 14,
+  //               fontWeight: FontWeight.w600,
+  //               color: isDark ? Colors.white : Colors.black87)),
+  //       SizedBox(height: 8),
+  //       TextFormField(
+  //         controller: _qtyController,
+  //         keyboardType: TextInputType.number,
+  //         // enabled: !_hasVariablePrice,
+  //         decoration: InputDecoration(
+  //           hintText: 'Enter quantity',
+  //           border: OutlineInputBorder(
+  //             borderRadius: BorderRadius.circular(6),
+  //             borderSide: BorderSide(
+  //                 color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0)),
+  //           ),
+  //           filled: true,
+  //           fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+  //         ),
+  //         style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+  //       ),
+  //
+  //       SizedBox(height: 16),
+  //       SizedBox(height: 8),
+  //       InventoryTagMultiSelectWidget(
+  //         onTypeSelected: (tag) {
+  //           if (tag != null) {
+  //             setState(() {
+  //               _selectedTags.clear();
+  //               _selectedTags.add(tag);
+  //             });
+  //           }
+  //         },
+  //       ),
+  //       SizedBox(height: 10),
+  //       _buildVariantSection(isDark, isSmallScreen),
+  //
+  //       // Add Save & Update button for mobile layout
+  //       Container(
+  //         //padding: EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+  //         child: Row(
+  //           mainAxisAlignment: MainAxisAlignment.end,
+  //           children: [
+  //             OutlinedButton(
+  //               onPressed: _clearForm,
+  //               child: Text(
+  //                 'Clear',
+  //                 style: TextStyle(
+  //                   color: Color(0xFF2196F3),
+  //                   fontSize: 12,
+  //                   fontWeight: FontWeight.w600,
+  //                 ),
+  //               ),
+  //               style: OutlinedButton.styleFrom(
+  //                 side: BorderSide(color: Color(0xFF2196F3), width: 2),
+  //                 shape: RoundedRectangleBorder(
+  //                     borderRadius: BorderRadius.circular(6)),
+  //                 padding: EdgeInsets.symmetric(
+  //                     horizontal: isSmallScreen ? 30 : 50, vertical: 10),
+  //               ),
+  //             ),
+  //             SizedBox(width: 16),
+  //             ElevatedButton(
+  //               onPressed: _isSaving ? null : _saveProduct,
+  //               child: _isSaving
+  //                   ? SizedBox(
+  //                 width: 15,
+  //                 height: 15,
+  //                 child: CircularProgressIndicator(
+  //                   strokeWidth: 2,
+  //                   valueColor:
+  //                   AlwaysStoppedAnimation<Color>(Colors.white),
+  //                 ),
+  //               )
+  //                   : Text(
+  //                 'Save & Update',
+  //                 style: TextStyle(
+  //                   color: Colors.white,
+  //                   fontSize: 12,
+  //                   fontWeight: FontWeight.w600,
+  //                 ),
+  //               ),
+  //               style: ElevatedButton.styleFrom(
+  //                 backgroundColor: Color(0xFF2196F3),
+  //                 shape: RoundedRectangleBorder(
+  //                     borderRadius: BorderRadius.circular(6)),
+  //                 padding: EdgeInsets.symmetric(
+  //                     horizontal: isSmallScreen ? 30 : 50, vertical: 16),
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //       ),
+  //     ],
+  //   );
+  // }
 
   Widget _buildDesktopLayout(bool isDark) {
     final screenHeight = MediaQuery.of(context).size.height;
@@ -1420,11 +1420,13 @@ class _InventoryScreenState extends State<InventoryScreen>
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 8),
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: isDark
-                                ? const Color(0xFF89B1EE)
-                                : const Color(0xFFF5F7FA),
+                                ? const Color(0xFF2262A3)
+                                : const Color(0xFFEFF7FF), // ✅ updated color
                             borderRadius: const BorderRadius.only(
                               topLeft: Radius.circular(12),
                               topRight: Radius.circular(12),
@@ -1434,7 +1436,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                             'Basic Information',
                             style: TextStyle(
                               fontSize: 14,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w900,
                               color: isDark ? Colors.white : Colors.black87,
                             ),
                           ),
@@ -1498,28 +1500,28 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                 MainAxisAlignment
                                                     .center,
                                                 children: [
-                                                  const Icon(
-                                                    Icons.image_outlined,
-                                                    size: 30,
-                                                    color:
-                                                    Color(0xFF2196F3),
+                                                  Container(
+                                                    padding: EdgeInsets.all(6), // controls circle size
+                                                    decoration: BoxDecoration(
+                                                      color: Color(0xFF2196F3).withOpacity(0.1), // light background
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                    child: Icon(
+                                                      Icons.image_outlined,
+                                                      size: 12,
+                                                      color: Color(0xFF2196F3),
+                                                    ),
                                                   ),
-                                                  const SizedBox(
-                                                      height: 2),
+
+                                                  const SizedBox(height: 2),
+
                                                   Padding(
-                                                    padding:
-                                                    const EdgeInsets
-                                                        .only(
-                                                        left: 16.0),
+                                                    padding: const EdgeInsets.only(left: 16.0),
                                                     child: Text(
                                                       'Upload Image',
                                                       style: TextStyle(
-                                                        fontSize: 11,
-                                                        color: isDark
-                                                            ? Colors
-                                                            .white70
-                                                            : Colors
-                                                            .black54,
+                                                        fontSize: 10,
+                                                        color: isDark ? Colors.white70 : Colors.black54,
                                                       ),
                                                     ),
                                                   ),
@@ -1653,8 +1655,7 @@ class _InventoryScreenState extends State<InventoryScreen>
 
                                         /// GENERATE BUTTON (Centered, disabled when SKU present)
                                         InkWell(
-                                          onTap:
-                                          _skuController.text.trim().isEmpty
+                                          onTap: _skuController.text.trim().isEmpty
                                               ? () {
                                             setState(() {
                                               _skuController.text =
@@ -1665,14 +1666,23 @@ class _InventoryScreenState extends State<InventoryScreen>
                                           child: Container(
                                             height: double.infinity,
                                             alignment: Alignment.center,
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 20),
+                                            padding: const EdgeInsets.symmetric(horizontal: 20),
                                             decoration: BoxDecoration(
-                                              color: _skuController.text
-                                                  .trim()
-                                                  .isEmpty
-                                                  ? const Color(0xFFE91E63)
-                                                  : Colors.grey.shade400,
+                                              gradient: _skuController.text.trim().isEmpty
+                                                  ? LinearGradient(
+                                                colors: [
+                                                  Color(0xFFE91E63),
+                                                  Color(0xFFFF8A80),
+                                                ],
+                                                begin: Alignment.topLeft,
+                                                end: Alignment.bottomRight,
+                                              )
+                                                  : LinearGradient(
+                                                colors: [
+                                                  Colors.grey.shade400,
+                                                  Colors.grey.shade500,
+                                                ],
+                                              ),
                                               borderRadius: BorderRadius.only(
                                                 topRight: Radius.circular(8),
                                                 bottomRight: Radius.circular(8),
@@ -1708,17 +1718,42 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   const SizedBox(height: 4),
                                   TextFormField(
                                     controller: _nameController,
-                                    decoration: const InputDecoration(
+                                    decoration: InputDecoration(
                                       hintText: 'Enter the name',
+                                      hintStyle: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.black,
+                                      ),
                                       isDense: true,
-                                      border: OutlineInputBorder(),
+
+                                      // ✅ DEFAULT BORDER
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                        borderSide: BorderSide(color: Colors.grey),
+                                      ),
+
+                                      // ✅ WHEN NOT FOCUSED
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                        borderSide: BorderSide(color: Colors.grey),
+                                      ),
+
+                                      // ✅ WHEN FOCUSED
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                        borderSide: BorderSide(
+                                          color: Colors.grey, // 👈 keep grey
+                                          width: 1.5,
+                                        ),
+                                      ),
+
                                       contentPadding: EdgeInsets.symmetric(
-                                          horizontal: 14, vertical: 8),
+                                        horizontal: 14,
+                                        vertical: 8,
+                                      ),
                                     ),
                                     style: TextStyle(
-                                      color: isDark
-                                          ? Colors.white
-                                          : Colors.black87,
+                                      color: isDark ? Colors.white : Colors.black87,
                                     ),
                                   ),
 
@@ -1729,7 +1764,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     'Category',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      fontWeight: FontWeight.w500,
+                                      fontWeight: FontWeight.w100,
                                       color: isDark
                                           ? Colors.white70
                                           : Colors.black87,
@@ -1798,11 +1833,13 @@ class _InventoryScreenState extends State<InventoryScreen>
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 8),
+                            horizontal: 20,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: isDark
                                 ? const Color(0xFFDAC14A)
-                                : const Color(0xFFFFFBF0),
+                                : const Color(0xFFFFFBEB), // ✅ updated color
                             borderRadius: const BorderRadius.only(
                               topLeft: Radius.circular(12),
                               topRight: Radius.circular(12),
@@ -1841,169 +1878,149 @@ class _InventoryScreenState extends State<InventoryScreen>
 
                                   // Unified height for all TextFormFields
                                   const double fieldHeight = 36;
+                                  final priceTextStyle = TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.2,
+                                    color: isPriceStockDisabled
+                                        ? disabledText
+                                        : (isDark ? Colors.white : Colors.black87),
+                                  );
 
                                   return Column(
                                     crossAxisAlignment:
                                     CrossAxisAlignment.start,
                                     children: [
                                       // Prices Row
-                                      Row(
-                                        children: [
-                                          // Regular Price
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  'Regular Price',
-                                                  style: TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w500,
-                                                    color: isPriceStockDisabled
-                                                        ? Colors.grey
-                                                        : (isDark ? Colors.white70 : Colors.black87),
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 2),
-                                                SizedBox(
-                                                  height: fieldHeight,
-                                                  child: TextFormField(
-                                                    controller: _regularPriceController,
-                                                    enabled: !isPriceStockDisabled,
-                                                    keyboardType: TextInputType.number,
-                                                    textAlign: TextAlign.right,
-                                                    inputFormatters: [
-                                                      TextInputFormatter.withFunction((oldValue, newValue) {
-                                                        // Remove all non-numeric characters
-                                                        final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-                                                        if (text.isEmpty) return const TextEditingValue(text: '');
-                                                        // Convert to double / 100 for decimal formatting
-                                                        final value = int.parse(text) / 100;
-                                                        final newText = value.toStringAsFixed(2);
-                                                        return TextEditingValue(
-                                                          text: newText,
-                                                          selection: TextSelection.collapsed(offset: newText.length),
-                                                        );
-                                                      }),
-                                                    ],
-                                                    style: TextStyle(
-                                                      color: isPriceStockDisabled
-                                                          ? disabledText
-                                                          : (isDark ? Colors.white : Colors.black87),
-                                                      fontSize: 12,
-                                                    ),
-                                                    decoration: InputDecoration(
-                                                      prefixText: '\$ ',
-                                                      hintText: '0.00',
-                                                      isDense: true,
-                                                      filled: true,
-                                                      fillColor: isPriceStockDisabled
-                                                          ? disabledFill
-                                                          : Colors.transparent,
-                                                      border: const OutlineInputBorder(),
-                                                      contentPadding: const EdgeInsets.symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 8,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 16),
+                                    // 🔥 Common style (ADD THIS ABOVE)
+                                  //   final priceTextStyle = TextStyle(
+                                  //   fontSize: 14,
+                                  //   fontWeight: FontWeight.w600,
+                                  //   height: 1.2,
+                                  //   color: isPriceStockDisabled
+                                  //       ? disabledText
+                                  //       : (isDark ? Colors.white : Colors.black87),
+                                  // );
 
-                                          // Sale Price
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  'Sale Price',
-                                                  style: TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w500,
-                                                    color: isPriceStockDisabled
-                                                        ? Colors.grey
-                                                        : (isDark
-                                                        ? Colors.white70
-                                                        : Colors.black87),
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 2),
-                                                SizedBox(
-                                                  height: fieldHeight,
-                                                  child: TextFormField(
-                                                    controller:
-                                                    _salePriceController,
-                                                    enabled:
-                                                    !isPriceStockDisabled,
-                                                    keyboardType:
-                                                    TextInputType.number,
-                                                    textAlign: TextAlign.right,
-                                                    inputFormatters: [
-                                                      TextInputFormatter
-                                                          .withFunction(
-                                                              (oldValue,
-                                                              newValue) {
-                                                            final text = newValue
-                                                                .text
-                                                                .replaceAll(
-                                                                RegExp(
-                                                                    r'[^0-9]'),
-                                                                '');
-                                                            if (text.isEmpty)
-                                                              return const TextEditingValue(
-                                                                  text: '');
-                                                            final value =
-                                                                int.parse(text) /
-                                                                    100;
-                                                            final newText = value
-                                                                .toStringAsFixed(2);
-                                                            return TextEditingValue(
-                                                              text: newText,
-                                                              selection: TextSelection
-                                                                  .collapsed(
-                                                                  offset: newText
-                                                                      .length),
-                                                            );
-                                                          }),
-                                                    ],
-                                                    style: TextStyle(
-                                                      color:
-                                                      isPriceStockDisabled
-                                                          ? disabledText
-                                                          : (isDark
-                                                          ? Colors.white
-                                                          : Colors
-                                                          .black87),
-                                                    ),
-                                                    decoration: InputDecoration(
-                                                      prefixText: '\$ ',
-                                                      hintText: '0.00',
-                                                      filled: true,
-                                                      isDense: true,
-                                                      fillColor:
-                                                      isPriceStockDisabled
-                                                          ? disabledFill
-                                                          : Colors
-                                                          .transparent,
-                                                      border:
-                                                      const OutlineInputBorder(),
-                                                      contentPadding:
-                                                      const EdgeInsets
-                                                          .symmetric(
-                                                          horizontal: 8,
-                                                          vertical: 8),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
+                                  Row(
+                                    children: [
+                                      // Regular Price
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Regular Price',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w500,
+                                                color: isPriceStockDisabled
+                                                    ? Colors.grey
+                                                    : (isDark ? Colors.white70 : Colors.black87),
+                                              ),
                                             ),
-                                          ),
-                                        ],
+                                            const SizedBox(height: 2),
+                                            SizedBox(
+                                              height: fieldHeight,
+                                              child: TextFormField(
+                                                controller: _regularPriceController,
+                                                enabled: !isPriceStockDisabled,
+                                                keyboardType: TextInputType.number,
+                                                textAlign: TextAlign.right,
+                                                inputFormatters: [
+                                                  TextInputFormatter.withFunction((oldValue, newValue) {
+                                                    final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+                                                    if (text.isEmpty) return const TextEditingValue(text: '');
+                                                    final value = int.parse(text) / 100;
+                                                    final newText = value.toStringAsFixed(2);
+                                                    return TextEditingValue(
+                                                      text: newText,
+                                                      selection: TextSelection.collapsed(offset: newText.length),
+                                                    );
+                                                  }),
+                                                ],
+                                                style: priceTextStyle, // ✅ SAME STYLE
+                                                decoration: InputDecoration(
+                                                  prefixText: '\$ ',
+                                                  hintText: '0.00',
+                                                  hintStyle: priceTextStyle.copyWith(color: Colors.grey), // ✅ FIX
+                                                  isDense: true,
+                                                  filled: true,
+                                                  fillColor: isPriceStockDisabled
+                                                      ? disabledFill
+                                                      : Colors.transparent,
+                                                  border: const OutlineInputBorder(),
+                                                  contentPadding: const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 8,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
+
+                                      const SizedBox(width: 16),
+
+                                      // Sale Price
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Sale Price',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w500,
+                                                color: isPriceStockDisabled
+                                                    ? Colors.grey
+                                                    : (isDark ? Colors.white70 : Colors.black87),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            SizedBox(
+                                              height: fieldHeight,
+                                              child: TextFormField(
+                                                controller: _salePriceController,
+                                                enabled: !isPriceStockDisabled,
+                                                keyboardType: TextInputType.number,
+                                                textAlign: TextAlign.right,
+                                                inputFormatters: [
+                                                  TextInputFormatter.withFunction((oldValue, newValue) {
+                                                    final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+                                                    if (text.isEmpty) return const TextEditingValue(text: '');
+                                                    final value = int.parse(text) / 100;
+                                                    final newText = value.toStringAsFixed(2);
+                                                    return TextEditingValue(
+                                                      text: newText,
+                                                      selection: TextSelection.collapsed(offset: newText.length),
+                                                    );
+                                                  }),
+                                                ],
+                                                style: priceTextStyle, // ✅ SAME STYLE
+                                                decoration: InputDecoration(
+                                                  prefixText: '\$ ',
+                                                  hintText: '0.00',
+                                                  hintStyle: priceTextStyle.copyWith(color: Colors.grey), // ✅ FIX
+                                                  filled: true,
+                                                  isDense: true,
+                                                  fillColor: isPriceStockDisabled
+                                                      ? disabledFill
+                                                      : Colors.transparent,
+                                                  border: const OutlineInputBorder(),
+                                                  contentPadding: const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 8,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
 
                                       const SizedBox(height: 6),
 
@@ -2052,7 +2069,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         ),
                                       ),
 
-                                      const SizedBox(height: 4),
+                                      const SizedBox(height: 14),
 
                                       // Tax
                                       Text(
@@ -2103,26 +2120,49 @@ class _InventoryScreenState extends State<InventoryScreen>
                                           controller: _qtyController,
                                           enabled: !isPriceStockDisabledStock,
                                           keyboardType: TextInputType.number,
-                                          textAlign: TextAlign.right,
+
+                                          // ✅ LEFT ALIGN TEXT
+                                          textAlign: TextAlign.left,
+
                                           style: TextStyle(
                                             color: isPriceStockDisabledStock
                                                 ? disabledText
-                                                : (isDark
-                                                ? Colors.white
-                                                : Colors.black87),
-                                            fontSize: 12,
+                                                : (isDark ? Colors.white : Colors.black87),
+                                            fontSize: 13,
                                           ),
+
                                           decoration: InputDecoration(
-                                            hintText: '0',
+                                            hintText: 'Enter the quantity',
                                             filled: true,
                                             isDense: true,
                                             fillColor: isPriceStockDisabledStock
                                                 ? disabledFill
                                                 : Colors.transparent,
-                                            border: const OutlineInputBorder(),
-                                            contentPadding:
-                                            const EdgeInsets.symmetric(
-                                                horizontal: 8, vertical: 8),
+
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(6),
+                                              borderSide: BorderSide(color: Colors.grey.shade400),
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(6),
+                                              borderSide: BorderSide(color: Colors.grey.shade400),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(6),
+                                              borderSide: BorderSide(
+                                                color: Colors.grey.shade600,
+                                                width: 2.5,
+                                              ),
+                                            ),
+                                            disabledBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(6),
+                                              borderSide: BorderSide(color: Colors.grey.shade900),
+                                            ),
+
+                                            contentPadding: EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 8,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -2144,7 +2184,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       ),
                                       const SizedBox(height: 6),
                                       SizedBox(
-                                        height: 133,
+                                        height: 130,
                                         child: InventoryTagMultiSelectWidget(
                                           onTypeSelected: (tag) {
                                             if (tag != null) {
@@ -2172,58 +2212,88 @@ class _InventoryScreenState extends State<InventoryScreen>
               SizedBox(width: 16),
 
               // Variants Card
-              Expanded(
-                flex: 5,
-                child: Container(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isDark ? Color(0xFF1E3A5F) : Color(0xFFF0F7FF),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      children: [
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 8),
-                          decoration: BoxDecoration(
-                            color:
-                            isDark ? Color(0xFF4180DD) : Color(0xFFF5F7FA),
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(12),
-                              topRight: Radius.circular(12),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Text(
-                                "Variant's ",
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark ? Colors.white : Colors.black87,
-                                ),
-                              ),
-                              Text(
-                                '(${_variants.length} added)',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color:
-                                  isDark ? Colors.white70 : Colors.black54,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: _buildVariantContent(isDark),
-                        ),
-                      ],
-                    ),
+      Expanded(
+        flex: 5,
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E3A5F) : Colors.white,
+
+            // ✅ SAME radius everywhere
+            borderRadius: BorderRadius.circular(12),
+
+            // ✅ BORDER
+            border: Border.all(
+              color: isDark ? Colors.white12 : Colors.grey.shade300,
+              width: 1,
+            ),
+
+            // ✅ SHADOW
+            boxShadow: [
+              BoxShadow(
+                color: isDark
+                    ? Colors.black.withOpacity(0.3)
+                    : Colors.grey.withOpacity(0.15),
+                blurRadius: 8,
+                spreadRadius: 0,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+
+          child: Column(
+            children: [
+              // 🔷 HEADER
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF4180DD)
+                      : const Color(0xFFEFF6FF),
+
+                  // ✅ MATCH SAME RADIUS
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    topRight: Radius.circular(12),
                   ),
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      "Variant's ",
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    Text(
+                      '(${_variants.length} added)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white70 : Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ⚪ BODY
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _buildVariantContent(isDark),
                 ),
               ),
             ],
+          ),
+        ),
+      )],
           ),
         ),
 
@@ -2317,11 +2387,11 @@ class _InventoryScreenState extends State<InventoryScreen>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.image_outlined,
-                    size: 40, color: Color(0xFF2196F3)),
+                    size: 10, color: Color(0xFF2196F3)),
                 SizedBox(height: 8),
                 Text('Upload Image',
                     style: TextStyle(
-                        color: Color(0xFF2196F3), fontSize: 12)),
+                        color: Color(0xFF2196F3), fontSize: 10)),
               ],
             )
                 : null,
@@ -2374,25 +2444,43 @@ class _InventoryScreenState extends State<InventoryScreen>
             SizedBox(width: 8),
             Container(
               height: 48,
+              decoration: BoxDecoration(
+                gradient: canGenerateSku
+                    ? const LinearGradient(
+                  colors: [
+                    Color(0xFFF6339A),
+                    Color(0xFFFF2056),
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                )
+                    : null,
+                color: canGenerateSku ? null : Colors.grey.shade400,
+                borderRadius: BorderRadius.circular(6),
+              ),
               child: ElevatedButton(
                 onPressed: canGenerateSku
                     ? () => setState(() => _skuController.text =
                 'SKU${DateTime.now().millisecondsSinceEpoch}')
                     : null,
-                child: Text('Generate',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                  canGenerateSku ? Color(0xFFEA3D8F) : Colors.grey.shade400,
+                  backgroundColor: Colors.transparent, // ✅ keeps gradient visible
+                  shadowColor: Colors.transparent,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6)),
-                  padding: EdgeInsets.symmetric(horizontal: 24),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                ),
+                child: const Text(
+                  'Generate',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ),
+            )
           ],
         ),
       ],
@@ -2427,7 +2515,7 @@ class _InventoryScreenState extends State<InventoryScreen>
               value: _hasVariablePrice,
               onChanged: (val) =>
                   setState(() => _hasVariablePrice = val ?? false),
-              activeColor: Color(0xFF2196F3),
+              activeColor: Colors.white,
               side: BorderSide(color: isDark ? Colors.white38 : Colors.black38),
             ),
             Expanded(
@@ -2712,94 +2800,62 @@ class _InventoryScreenState extends State<InventoryScreen>
                               // ),
 
                               SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  // Regular price (always shown, crossed out if on sale)
-                                  Builder(
-                                    builder: (context) {
-                                      final regRaw =
-                                          variant['regularPrice']?.toString() ??
-                                              '0';
-                                      final regClean = regRaw.replaceAll(
-                                          RegExp(r'[^0-9.]'), '');
-                                      final regValue =
-                                          double.tryParse(regClean) ?? 0.0;
-                                      final regFormatted =
-                                      regValue.toStringAsFixed(2);
+                          Row(
+                            children: [
+                              Builder(
+                                builder: (context) {
+                                  final regValue = double.tryParse(
+                                    (variant['regularPrice'] ?? '0')
+                                        .toString()
+                                        .replaceAll(RegExp(r'[^0-9.]'), ''),
+                                  ) ??
+                                      0.0;
 
-                                      final hasSale = variant['salePrice'] !=
-                                          null &&
-                                          variant['salePrice']
-                                              .toString()
-                                              .trim()
-                                              .isNotEmpty &&
-                                          double.tryParse(variant['salePrice']
-                                              .toString()
-                                              .replaceAll(
-                                              RegExp(r'[^0-9.]'),
-                                              '')) !=
-                                              null &&
-                                          double.tryParse(variant['salePrice']
-                                              .toString()
-                                              .replaceAll(
-                                              RegExp(r'[^0-9.]'),
-                                              ''))! >
-                                              0;
+                                  final saleValue = double.tryParse(
+                                    (variant['salePrice'] ?? '')
+                                        .toString()
+                                        .replaceAll(RegExp(r'[^0-9.]'), ''),
+                                  ) ??
+                                      0.0;
 
-                                      return Text(
-                                        '\$$regFormatted',
+                                  final hasSale = saleValue > 0;
+
+                                  return Row(
+                                    children: [
+                                      // 🔹 Regular Price
+                                      Text(
+                                        '\$${regValue.toStringAsFixed(2)}',
                                         style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w600,
                                           color: hasSale
-                                              ? (isDark
-                                              ? Colors.grey.shade500
-                                              : Colors.grey.shade600)
-                                              : (isDark
-                                              ? Colors.white70
-                                              : Colors.black54),
-                                          decoration: hasSale
-                                              ? TextDecoration.lineThrough
-                                              : null,
+                                              ? Colors.grey.shade600
+                                              : (isDark ? Colors.white70 : Colors.black54),
+                                          decoration:
+                                          hasSale ? TextDecoration.lineThrough : null,
                                         ),
-                                      );
-                                    },
-                                  ),
+                                      ),
 
-                                  // Sale price (shown only if it exists and > 0)
-                                  if (variant['salePrice'] != null &&
-                                      variant['salePrice']
-                                          .toString()
-                                          .trim()
-                                          .isNotEmpty) ...[
-                                    const SizedBox(width: 8),
-                                    Builder(
-                                      builder: (context) {
-                                        final saleRaw =
-                                        variant['salePrice'].toString();
-                                        final saleClean = saleRaw.replaceAll(
-                                            RegExp(r'[^0-9.]'), '');
-                                        final saleValue =
-                                            double.tryParse(saleClean) ?? 0.0;
-
-                                        if (saleValue <= 0)
-                                          return const SizedBox.shrink();
-
-                                        return Text(
+                                      // 🔹 Sale Price
+                                      if (hasSale) ...[
+                                        const SizedBox(width: 6),
+                                        Text(
                                           '\$${saleValue.toStringAsFixed(2)}',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            fontWeight: FontWeight.w600,
+                                            fontWeight: FontWeight.w600, // SAME weight
                                             color: isDark
                                                 ? Colors.orange.shade300
                                                 : Colors.orange.shade700,
                                           ),
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                ],
+                                        ),
+                                      ],
+                                    ],
+                                  );
+                                },
                               ),
+                            ],
+                          )
                             ],
                           ),
                         ),
@@ -3189,7 +3245,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                   vertical: 0),
                                             ),
                                             style: TextStyle(
-                                                fontSize: 14,
+                                                fontSize: 12,
                                                 color: isDark
                                                     ? Colors.white
                                                     : Colors.black87),
@@ -3265,7 +3321,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                   vertical: 0),
                                             ),
                                             style: TextStyle(
-                                                fontSize: 14,
+                                                fontSize: 12,
                                                 color: isDark
                                                     ? Colors.white
                                                     : Colors.black87),

@@ -65,13 +65,13 @@ class PrinterSettings {
       );
 
       // Second SnackBar: Order successfully completed
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Order successfully completed"),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   const SnackBar(
+      //     content: Text("Order successfully completed"),
+      //     backgroundColor: Colors.green,
+      //     duration: Duration(seconds: 2),
+      //   ),
+      // );
     }
   }
 

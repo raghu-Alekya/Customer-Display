@@ -277,7 +277,7 @@ class _InventoryGetProductTypesWidgetState
                 print('Selected Product Type: $value');
               }
             },
-            style: TextStyle(color: textColor, fontSize: 16),
+            style: TextStyle(color: textColor, fontSize: 14),
             dropdownColor: dropdownBackgroundColor,
             iconEnabledColor: iconColor,
           );
