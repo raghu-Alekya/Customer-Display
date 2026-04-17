@@ -3058,7 +3058,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     print(paymentRequest);
     print("=========================================================");
 
-    paymentBloc.createPayment(paymentRequest);
+    // paymentBloc.createPayment(paymentRequest);
 
     StreamSubscription? subscription;
     subscription =
@@ -3992,7 +3992,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       notes: '',
     );
 
-    paymentBloc.createPayment(paymentRequest);
+    // paymentBloc.createPayment(paymentRequest);
 
     StreamSubscription? subscription;
     subscription =

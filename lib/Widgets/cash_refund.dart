@@ -75,9 +75,11 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
       amount = "";
     });
   }
-
   Widget _keyButton(String text,
       {Color? bgColor, Color? textColor, VoidCallback? onTap}) {
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -86,23 +88,34 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
         margin: const EdgeInsets.all(6),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: bgColor ?? const Color(0xFFE5E5E5),
+          color: bgColor ??
+              (isDark
+                  ? const Color(0xFF242837) // ✅ dark button bg
+                  : const Color(0xFFE5E5E5)), // ✅ light button bg
           borderRadius: BorderRadius.circular(6),
+          // border: Border.all(
+          //   color: isDark
+          //       ? const Color(0xFF3A3A3A) // subtle border in dark
+          //       : const Color(0xFFD0D0D0),
+          // ),
         ),
         child: Text(
           text,
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
-            color: textColor ?? const Color(0xFF4A4A4A),
+            color: textColor ??
+                (isDark
+                    ? const Color(0xFFEAEAEA) // ✅ readable in dark
+                    : const Color(0xFF4A4A4A)), // ✅ normal light
           ),
         ),
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
@@ -110,9 +123,11 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
         height: 530,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFF7F7F7),
+          color: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF1F1D2B)
+              : const Color(0xFFF7F7F7),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFF2E86DE), width: 2),
+          // border: Border.all(color: const Color(0xFF2E86DE), width: 2),
         ),
         child: Stack(
           children: [
@@ -122,56 +137,70 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
                 const SizedBox(height: 8),
 
                 /// TITLE
-                const Text(
+                Text(
                   "Cash Refund Amount",
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF4A4A4A),
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFFFFFFFF)
+                        : const Color(0xFF4A4A4A),
                   ),
                 ),
 
                 const SizedBox(height: 4),
 
-                const Text(
+                Text(
                   "Please enter the cash amount to be refunded",
-                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900,color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFFD9D9D9)
+                      : Colors.grey,),
                 ),
 
                 const SizedBox(height: 20),
 
                 /// ENTER PRICE
-                Row(
-                  children: [
-                    const Text(
-                      "Enter Price :",
-                      style: TextStyle(fontSize: 16),
-                    ),
-                    const SizedBox(width: 10),
+                Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min, // ✅ VERY IMPORTANT
+                    children: [
+                      const Text(
+                        "Enter Price :",
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      const SizedBox(width: 10),
 
-                    SizedBox(   // 👈 reduce width here
-                      width: 260,  // 🔹 change this value as needed
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: Text(
-                          "\$ ${(double.tryParse(amount) ?? 0.0).toStringAsFixed(2)}",
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF3D4F7C),
+                      SizedBox(
+                        width: 220, // match keypad width
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                          alignment: Alignment.centerLeft,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF353845)
+                                : Colors.white,
+                            border: Border.all(
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? const Color(0xFF3A3A3A)
+                                  : const Color(0xFFE0E0E0),
+                            ),
+                          ),
+                          child: Text(
+                            "\$ ${(double.tryParse(amount) ?? 0.0).toStringAsFixed(2)}",
+                            textAlign: TextAlign.left,
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white
+                                  : const Color(0xFF3D4F7C),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
 
                 const SizedBox(height: 20),
@@ -208,30 +237,24 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
                       children: [
                         _keyButton(
                           "Clear",
-                          bgColor: const Color(0xFFE5E5E5),
-                          textColor: Colors.red,
+                          bgColor: isDark
+                              ? const Color(0xFF483C3C) // dark red subtle
+                              : const Color(0xFFFFE5E5), // light red background
+                          textColor: isDark
+                              ? const Color(0xFFFF6B6B)
+                              : const Color(0xFFD32F2F),
                           onTap: clearAmount,
                         ),
                         _keyButton("0", onTap: () => addDigit("0")),
                         _keyButton(
                           "Add",
-                          bgColor: const Color(0xFF3D4F7C),
+                          bgColor: isDark
+                              ? const Color(0xFF4E5673) // slightly brighter for dark
+                              : const Color(0xFF3D4F7C),
                           textColor: Colors.white,
                           onTap: () async {
-
                             final enteredAmount = double.tryParse(amount) ?? 0.0;
-
-                            final result = await showDialog<double>(
-                              context: context,
-                              barrierDismissible: false,
-                              builder: (_) => PaymentSuccessDialog(
-                                amount: enteredAmount,
-                              ),
-                            );
-
-                            if (result != null) {
-                              Navigator.pop(context, result); // return value to RefundScreen
-                            }
+                            Navigator.pop(context, enteredAmount);
                           },
                         ),
                       ],
@@ -263,7 +286,6 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
   }
 }
 // import 'package:flutter/material.dart';
-
 class PaymentSuccessDialog extends StatelessWidget {
   final double? amount;
   final VoidCallback? onContinue;
@@ -276,15 +298,16 @@ class PaymentSuccessDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
         width: 520,
         padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 36),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDark ? const Color(0xFF1F1D2B) : Colors.white, // ✅ BG
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF2E86DE), width: 2),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -294,8 +317,20 @@ class PaymentSuccessDialog extends StatelessWidget {
               width: 90,
               height: 90,
               decoration: BoxDecoration(
-                color: const Color(0xFFEAF7EA),
-                borderRadius: BorderRadius.circular(16),
+                shape: BoxShape.circle, // ✅ THIS MAKES IT CIRCLE
+                gradient: isDark
+                    ? const RadialGradient(
+                  colors: [
+                    Color(0xFF283331), // center
+                    Color(0xFF283331), // outer
+                  ],
+                )
+                    : const RadialGradient(
+                  colors: [
+                    Color(0xFFEAF7EA),
+                    Color(0xFFD4F1D4),
+                  ],
+                ),
               ),
               child: const Icon(
                 Icons.check_circle,
@@ -307,12 +342,12 @@ class PaymentSuccessDialog extends StatelessWidget {
             const SizedBox(height: 30),
 
             /// TITLE
-            const Text(
+            Text(
               "Payment Confirmation",
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w500,
-                color: Color(0xFF2E2E2E),
+                color: isDark ? Colors.white : const Color(0xFF2E2E2E),
               ),
               textAlign: TextAlign.center,
             ),
@@ -322,9 +357,11 @@ class PaymentSuccessDialog extends StatelessWidget {
             /// MESSAGE
             Text(
               "Cash refund for \$$amount has been\nsuccessfully completed.",
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
-                color: Color(0xFF1E7F2D),
+                color: isDark
+                    ? const Color(0xFF7CFC9A) // brighter green for dark
+                    : const Color(0xFF1E7F2D),
                 height: 1.4,
               ),
               textAlign: TextAlign.center,
@@ -338,12 +375,14 @@ class PaymentSuccessDialog extends StatelessWidget {
               height: 56,
               child: GestureDetector(
                 onTap: () {
-                  Navigator.pop(context,amount); // close dialog
-                  if (onContinue != null) onContinue!(); // ✅ trigger callback
+                  Navigator.pop(context, amount);
+                  if (onContinue != null) onContinue!();
                 },
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFF6B6B),
+                    color: isDark
+                        ? const Color(0xFFFF6B6B) // nicer dark button
+                        : const Color(0xFFFF6B6B),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   alignment: Alignment.center,
