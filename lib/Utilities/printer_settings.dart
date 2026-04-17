@@ -56,13 +56,13 @@ class PrinterSettings {
     }
     if (context != null) {
       // First SnackBar: Cash drawer opening
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(TextConstants.cashDrawerIsOpening),
-          backgroundColor: Colors.orange,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   const SnackBar(
+      //     content: Text(TextConstants.cashDrawerIsOpening),
+      //     backgroundColor: Colors.orange,
+      //     duration: Duration(seconds: 2),
+      //   ),
+      // );
 
       // Second SnackBar: Order successfully completed
       // ScaffoldMessenger.of(context).showSnackBar(

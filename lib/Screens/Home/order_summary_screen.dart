@@ -1925,7 +1925,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       notes: payment.notes,
     );
 
-    paymentBloc.createPayment(paymentRequest);
+    // paymentBloc.createPayment(paymentRequest);
 
     StreamSubscription? subscription;
     subscription = paymentBloc.createPaymentStream.listen(
@@ -3058,7 +3058,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     print(paymentRequest);
     print("=========================================================");
 
-    paymentBloc.createPayment(paymentRequest);
+    // paymentBloc.createPayment(paymentRequest);
 
     StreamSubscription? subscription;
     subscription =
@@ -3992,7 +3992,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       notes: '',
     );
 
-    paymentBloc.createPayment(paymentRequest);
+    // paymentBloc.createPayment(paymentRequest);
 
     StreamSubscription? subscription;
     subscription =
@@ -8451,7 +8451,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     showDialog(
       context: context,
-      barrierDismissible: true,
+      barrierDismissible: false,
       builder: (context) {
         return WillPopScope(
           onWillPop: () async {

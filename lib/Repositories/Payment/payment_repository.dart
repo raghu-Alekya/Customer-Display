@@ -11,34 +11,34 @@ class PaymentRepository {  // Build #1.0.25 - added by naveen
   final APIHelper _helper = APIHelper();
 
   // 1. Create Payment
-  Future<PaymentResponseModel> createPayment(PaymentRequestModel request) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.payments}${EndUrlConstants.createPaymentEndUrl}";
-
-    if (kDebugMode) {
-      print("PaymentRepository - POST URL: $url");
-      print("PaymentRepository - Request Body: ${request.toJson()}");
-    }
-
-    final response = await _helper.post(url, request.toJson(), true);
-
-    if (kDebugMode) {
-      print("PaymentRepository - Raw Response: $response");
-    }
-
-    if (response is String) {
-      try {
-        final responseData = json.decode(response);
-        return PaymentResponseModel.fromJson(responseData);
-      } catch (e) {
-        if (kDebugMode) print("Error parsing payment response: $e");
-        throw Exception("Failed to parse payment response");
-      }
-    } else if (response is Map<String, dynamic>) {
-      return PaymentResponseModel.fromJson(response);
-    } else {
-      throw Exception("Unexpected response type in payment POST");
-    }
-  }
+  // Future<PaymentResponseModel> createPayment(PaymentRequestModel request) async {
+  //   final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.payments}${EndUrlConstants.createPaymentEndUrl}";
+  //
+  //   if (kDebugMode) {
+  //     print("PaymentRepository - POST URL: $url");
+  //     print("PaymentRepository - Request Body: ${request.toJson()}");
+  //   }
+  //
+  //   final response = await _helper.post(url, request.toJson(), true);
+  //
+  //   if (kDebugMode) {
+  //     print("PaymentRepository - Raw Response: $response");
+  //   }
+  //
+  //   if (response is String) {
+  //     try {
+  //       final responseData = json.decode(response);
+  //       return PaymentResponseModel.fromJson(responseData);
+  //     } catch (e) {
+  //       if (kDebugMode) print("Error parsing payment response: $e");
+  //       throw Exception("Failed to parse payment response");
+  //     }
+  //   } else if (response is Map<String, dynamic>) {
+  //     return PaymentResponseModel.fromJson(response);
+  //   } else {
+  //     throw Exception("Unexpected response type in payment POST");
+  //   }
+  // }
 
   // 2. Get Payment by ID
   Future<List<PaymentDetailModel>> getPaymentById(int paymentId) async {

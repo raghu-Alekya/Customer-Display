@@ -26,8 +26,8 @@ android {
         applicationId "com.example.flutter_sunmi_customer_display"
         minSdk 23
         targetSdk 36
-        versionCode 1
-        versionName "1.0.462"
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     buildTypes {

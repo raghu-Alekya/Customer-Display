@@ -704,16 +704,16 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         }
       });
 
-      await orderBloc.updateOrderProducts(
-        orderId: serverOrderId,
-        dbOrderId: dbOrderId,
-        lineItems: [
-          OrderLineItem(
-            productId: selectedProduct[AppDBConst.fastKeyProductId],
-            quantity: 1,
-          ),
-        ],
-      );
+      // await orderBloc.updateOrderProducts(
+      //   orderId: serverOrderId,
+      //   dbOrderId: dbOrderId,
+      //   lineItems: [
+      //     OrderLineItem(
+      //       productId: selectedProduct[AppDBConst.fastKeyProductId],
+      //       quantity: 1,
+      //     ),
+      //   ],
+      // );
     } catch (e) {
       if (kDebugMode) print("Exception in _onItemSelected: $e");
       ScaffoldMessenger.of(context).showSnackBar(

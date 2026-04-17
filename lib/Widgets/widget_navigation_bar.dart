@@ -755,6 +755,51 @@ class NavigationBar extends StatelessWidget {
             },
             isVertical: false,
           ),
+          const SizedBox(height: 10),
+          SidebarButton(
+            imageAsset: 'assets/refund.png',
+            label: "Refund",
+            isSelected: selectedSidebarIndex == 5,
+            isDisabled: isShiftInvalid || isShiftScreen,
+            onTap: (isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5)
+                ? () {}
+                : () async {
+              if (!await _canNavigate(5)) return;
+
+              if (kDebugMode) {
+                print("##### Refund button tapped");
+              }
+
+              lastSelectedIndex = 5;
+              onSidebarItemSelected(5);
+
+              Navigator.of(context).pushAndRemoveUntil(
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      BlocProvider(
+                        create: (context) => CompletedOrdersBloc(
+                          context.read<CompletedOrdersRepository>(),
+                        )..add(
+                          FetchCompletedOrders(
+                            page: 1,
+                            perPage: 10,
+                          ),
+                        ),
+                        child: const CompletedOrdersScreen(
+                          lastSelectedIndex: 5,
+                        ),
+                      ),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                    return child; // No animation
+                  },
+                  transitionDuration: Duration.zero,
+                ),
+                    (route) => false,
+              );
+            },
+            isVertical: isVertical,
+          ),
           // Additional dynamic items can be added here.
         ];
 

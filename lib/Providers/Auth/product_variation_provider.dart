@@ -179,17 +179,17 @@ class VariationPopup {
                               },
                             );
 
-                            await _orderBloc.updateOrderProducts(
-                              orderId: serverOrderId,
-                              dbOrderId: dbOrderId,
-                              lineItems: [
-                                OrderLineItem(
-                                  productId: variant["id"],
-                                  quantity: quantity,
-                                  // sku: variant["sku"],
-                                ),
-                              ],
-                            );
+                            // await _orderBloc.updateOrderProducts(
+                            //   orderId: serverOrderId,
+                            //   dbOrderId: dbOrderId,
+                            //   lineItems: [
+                            //     OrderLineItem(
+                            //       productId: variant["id"],
+                            //       quantity: quantity,
+                            //       // sku: variant["sku"],
+                            //     ),
+                            //   ],
+                            // );
                             // } else { ///Build #1.0.128: No need
                             //   // await orderHelper.addItemToOrder(
                             //   //   variant["id"],

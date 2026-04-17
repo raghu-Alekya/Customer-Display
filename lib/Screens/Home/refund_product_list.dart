@@ -330,34 +330,40 @@ class _RefundScreenState extends State<RefundScreen> {
           child: Column(
             children: [
               TopBar(
-                screen: Screen.ORDERS,
-                onModeChanged: () async {
-                  String newLayout;
+                  screen: Screen.ORDERS,
+                  onModeChanged: () async {
+                    String newLayout;
 
-                  if (sidebarPosition == SidebarPosition.left) {
-                    newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
+                    switch (layout) {
+                      case SharedPreferenceTextConstants.navLeftOrderRight:
+                        newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
+                        break;
+
+                      case SharedPreferenceTextConstants.navRightOrderLeft:
+                        newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
+                        break;
+
+                      case SharedPreferenceTextConstants.navBottomOrderLeft:
+                        newLayout = SharedPreferenceTextConstants.navBottomOrderRight;
+                        break;
+
+                      case SharedPreferenceTextConstants.navBottomOrderRight:
+                        newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                        break;
+
+                      default:
+                        newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                    }
+
+                    PinakaPreferences.layoutSelectionNotifier.value = newLayout;
+
+                    await UserDbHelper().saveUserSettings(
+                      {AppDBConst.layoutSelection: newLayout},
+                      modeChange: true,
+                    );
+
+                    setState(() {});
                   }
-                  else if (sidebarPosition == SidebarPosition.right) {
-                    newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
-                  }
-                  else {
-                    newLayout = orderPanelPosition == OrderPanelPosition.left
-                        ? SharedPreferenceTextConstants.navBottomOrderRight
-                        : SharedPreferenceTextConstants.navLeftOrderRight;
-                  }
-
-                  // Update layout notifier
-                  PinakaPreferences.layoutSelectionNotifier.value = newLayout;
-
-                  // Save layout in DB
-                  await UserDbHelper().saveUserSettings(
-                    {AppDBConst.layoutSelection: newLayout},
-                    modeChange: true,
-                  );
-
-                  // Refresh UI
-                  setState(() {});
-                },
               ),
               const SizedBox(height: 10),
               // const Divider(
@@ -475,20 +481,20 @@ class _RefundScreenState extends State<RefundScreen> {
                                                   });
                                                 },
                                                 child: Container(
-                                                  width: 17,
-                                                  height: 17,
+                                                  width: 18,
+                                                  height: 18,
                                                   decoration: BoxDecoration(
                                                     color: headerAllSelected ? Colors.red : Colors.transparent,
                                                     borderRadius: BorderRadius.circular(4), // border radius added
-                                                    border: Border.all(
-                                                      color: const Color(0xFFFBFBFC),
-                                                      width: 1,
-                                                    ),
+                                                    // border: Border.all(
+                                                    //   color: const Color(0xFFFBFBFC),
+                                                    //   width: 1,
+                                                    // ),
                                                   ),
                                                   child: headerAllSelected
                                                       ? const Icon(
                                                     Icons.check,
-                                                    size: 12,
+                                                    size: 16,
                                                     color: Colors.white,
                                                   )
                                                       : null,
@@ -597,19 +603,17 @@ class _RefundScreenState extends State<RefundScreen> {
                                 ),
                                 const SizedBox(height: 10),
                                 // Enter Reason
-                                // Enter Reason
                                 Container(
+                                  height: 65,
                                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                   decoration: BoxDecoration(
                                     color: isReasonEnabled
-                                        ? Colors.white
-                                        : Colors.grey.shade200, // ✅ Grey when disabled
+                                        ? Theme.of(context).colorScheme.surface
+                                        : Theme.of(context).colorScheme.surfaceContainerHighest, // ✅ disabled bg
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: isReasonEnabled
-                                          ? Colors.grey
-                                          : Colors.grey.shade300,
-                                    ),
+                                    // border: Border.all(
+                                    //   color: Theme.of(context).colorScheme.outline, // ✅ adaptive border
+                                    // ),
                                   ),
                                   child: Row(
                                     children: [
@@ -619,17 +623,22 @@ class _RefundScreenState extends State<RefundScreen> {
                                           fontWeight: FontWeight.bold,
                                           fontSize: 16,
                                           color: isReasonEnabled
-                                              ? Colors.black
-                                              : Colors.grey, // ✅ Grey text when disabled
+                                              ? Theme.of(context).colorScheme.onSurface
+                                              : Theme.of(context).colorScheme.onSurface.withOpacity(0.5), // ✅ disabled text
                                         ),
                                       ),
                                       const SizedBox(width: 16),
 
                                       SizedBox(
-                                        width: MediaQuery.of(context).size.width * 0.42,
+                                        width: MediaQuery.of(context).size.width * 0.40,
                                         child: DropdownButtonFormField<String>(
                                           value: selectedReason,
-                                          hint: const Text("Select Reason"),
+                                          hint: Text(
+                                            "Select Reason",
+                                            style: TextStyle(
+                                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                            ),
+                                          ),
                                           style: TextStyle(
                                             color: Theme.of(context).colorScheme.onSurface,
                                           ),
@@ -649,7 +658,10 @@ class _RefundScreenState extends State<RefundScreen> {
                                             enabledBorder: OutlineInputBorder(
                                               borderRadius: BorderRadius.circular(10),
                                               borderSide: BorderSide(
-                                                color: Theme.of(context).colorScheme.outline,
+                                                color: Theme.of(context).brightness == Brightness.dark
+                                                    ? const Color(0xFF1F1D2B) // ✅ Dark mode (visible subtle grey)
+                                                    : const Color(0xFFB9B9B9), // ✅ Light mode (clean soft border)
+                                                width: 1,
                                               ),
                                             ),
                                           ),
@@ -670,6 +682,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                     ],
                                   ),
                                 ),
+                                const SizedBox(height: 10),
                               ],
                             ),
                           ),
@@ -680,6 +693,7 @@ class _RefundScreenState extends State<RefundScreen> {
                           Expanded(
                             flex: 2,
                             child: Container(
+                              height: MediaQuery.of(context).size.height * 0.99,
                               padding: const EdgeInsets.all(8),
                               decoration: _boxDecoration(),
                               child: Column(
@@ -753,126 +767,121 @@ class _RefundScreenState extends State<RefundScreen> {
                                   ),
                                   const SizedBox(height: 10),
                                   // Locate the Stack inside the Summary Panel (around line 348)
-                                  Container(
-                                    width: double.infinity,
-                                    height: 360,
-                                    clipBehavior: Clip.antiAlias,
-                                    decoration: BoxDecoration(
-                                      color: isDark
-                                          ? const Color(0xFF252525)
-                                          : const Color(0xFFF1F1F3),
-                                      borderRadius: BorderRadius.circular(7),
-                                      boxShadow: const [
-                                        BoxShadow(
-                                          color: Color(0x26000000),
-                                          blurRadius: 15,
-                                          offset: Offset(0, 2),
-                                        )
-                                      ],
-                                    ),
-                                    child: Column( // Changed Stack to Column for easier scrolling
-                                      children: [
-                                        /// Header (Already exists in your code)
-                                        Container(
-                                          height: 35,
-                                          color: isDark
-                                              ? const Color(0xFF293142)
-                                              : const Color(0xFF989292),
-                                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                                          child: Row(
-                                            children: const [
-                                              Expanded(flex: 3, child: Text("Item Name", style: TextStyle(color: Colors.white, fontSize: 12))),
-                                              Expanded(flex: 2, child: Text("Price/Qty", style: TextStyle(color: Colors.white, fontSize: 12))),
-                                              Expanded(flex: 1, child: Text("Tax", style: TextStyle(color: Colors.white, fontSize: 12))),
-                                              Expanded(flex: 1, child: Text("Amount", style: TextStyle(color: Colors.white, fontSize: 12))),
-                                            ],
-                                          ),
-                                        ),
-
-                                        /// Dynamic List of Selected Items
-                                        Expanded(
-                                          child: selectedItems.isEmpty
-                                              ? const Center(
-                                            child: Text(
-                                              "No Item Selected",
-                                              style: TextStyle(
-                                                color: Color(0xFF9A9A9A),
-                                                fontSize: 12,
-                                              ),
-                                            ),
+                                  Flexible(
+                                    child: Container(
+                                      width: double.infinity,
+                                      clipBehavior: Clip.antiAlias,
+                                      decoration: BoxDecoration(
+                                        color: isDark
+                                            ? const Color(0xFF252525)
+                                            : const Color(0xFFF1F1F3),
+                                        borderRadius: BorderRadius.circular(7),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Color(0x26000000),
+                                            blurRadius: 15,
+                                            offset: Offset(0, 2),
                                           )
-                                              : ListView.builder(
-                                            itemCount: selectedItems.length,
-                                            itemBuilder: (context, index) {
-                                              final item = selectedItems[index];
-
-                                              return Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                    horizontal: 10, vertical: 8),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white, // ✅ WHITE BACKGROUND
-                                                  border: Border(
-                                                    bottom:
-                                                    BorderSide(color: Colors.grey.shade300),
-                                                  ),
-                                                ),
-                                                child: Row(
-                                                  children: [
-                                                    /// Item Name
-                                                    Expanded(
-                                                      flex: 3,
-                                                      child: Text(
-                                                        item['name'],
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: isDark ? Colors.black : Colors.black, // always black
-                                                        ),
-                                                      ),
-                                                    ),
-
-                                                    /// Price × Qty
-                                                    Expanded(
-                                                      flex: 2,
-                                                      child: Text(
-                                                        "\$${item['unit_price'].toStringAsFixed(2)} ×${item['qty']}",
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: isDark ? Colors.black : Colors.black,
-                                                        ),
-                                                      ),
-                                                    ),
-
-                                                    /// Tax
-                                                    Expanded(
-                                                      flex: 1,
-                                                      child: Text(
-                                                        "\$${item['tax'].toStringAsFixed(2)}",
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: isDark ? Colors.black : Colors.black,
-                                                        ),
-                                                      ),
-                                                    ),
-
-                                                    /// Amount
-                                                    Expanded(
-                                                      flex: 1,
-                                                      child: Text(
-                                                        "\$${item['amount'].toStringAsFixed(2)}",
-                                                        textAlign: TextAlign.right,
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: isDark ? Colors.black : Colors.black,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              );
-                                            },
+                                        ],
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          /// HEADER
+                                          Container(
+                                            height: 35,
+                                            color: isDark
+                                                ? const Color(0xFF293142)
+                                                : const Color(0xFF989292),
+                                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                                            child: Row(
+                                              children: const [
+                                                Expanded(flex: 3, child: Text("Item Name", style: TextStyle(color: Colors.white, fontSize: 12))),
+                                                Expanded(flex: 2, child: Text("Price/Qty", style: TextStyle(color: Colors.white, fontSize: 12))),
+                                                Expanded(flex: 1, child: Text("Tax", style: TextStyle(color: Colors.white, fontSize: 12))),
+                                                Expanded(flex: 1, child: Text("Amount", style: TextStyle(color: Colors.white, fontSize: 12))),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                      ],
+
+                                          /// LIST (auto adjusts now)
+                                          Expanded(
+                                            child: selectedItems.isEmpty
+                                                ? const Center(
+                                              child: Text(
+                                                "No Item Selected",
+                                                style: TextStyle(
+                                                  color: Color(0xFF9A9A9A),
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            )
+                                                : ListView.builder(
+                                              itemCount: selectedItems.length,
+                                              itemBuilder: (context, index) {
+                                                final item = selectedItems[index];
+
+                                                return Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                      horizontal: 10, vertical: 8),
+                                                  decoration: BoxDecoration(
+                                                    color: Theme.of(context).brightness == Brightness.dark
+                                                        ? const Color(0xFF121212)
+                                                        : const Color(0xFFFFFFFF),
+                                                    border: Border(
+                                                      bottom: BorderSide(color: Colors.grey.shade800),
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      Expanded(
+                                                        flex: 3,
+                                                        child: Text(
+                                                          item['name'],
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: isDark ? Colors.white : Colors.black,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Expanded(
+                                                        flex: 2,
+                                                        child: Text(
+                                                          "\$${item['unit_price'].toStringAsFixed(2)} ×${item['qty']}",
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: isDark ? Colors.white : Colors.black,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Expanded(
+                                                        flex: 1,
+                                                        child: Text(
+                                                          "\$${item['tax'].toStringAsFixed(2)}",
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: isDark ? Colors.white : Colors.black,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Expanded(
+                                                        flex: 1,
+                                                        child: Text(
+                                                          "\$${item['amount'].toStringAsFixed(2)}",
+                                                          textAlign: TextAlign.right,
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: isDark ? Colors.white : Colors.black,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 10),
@@ -980,28 +989,32 @@ class _RefundScreenState extends State<RefundScreen> {
                                         child: Container(
                                           width: double.infinity,
                                           height: 40,
-                                          decoration: const BoxDecoration(
-                                            color: Color(0xFFE5EFFF),
-                                            borderRadius: BorderRadius.only(
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context).brightness == Brightness.dark
+                                                ? const Color(0xFF5D7EB2) // dark bluish tone
+                                                : const Color(0xFFE5EFFF),
+                                            borderRadius: const BorderRadius.only(
                                               bottomLeft: Radius.circular(8),
                                               bottomRight: Radius.circular(8),
                                             ),
                                             boxShadow: [
                                               BoxShadow(
-                                                color: Color(0x26000000), // soft black
+                                                color: Theme.of(context).brightness == Brightness.dark
+                                                    ? Colors.black.withOpacity(0.6)
+                                                    : const Color(0x26000000),
                                                 blurRadius: 6,
-                                                offset: Offset(0, 4), // 👈 shadow only at bottom
+                                                offset: const Offset(0, 4),
                                               ),
                                             ],
                                           ),
                                           child: Row(
                                             children: [
                                               const SizedBox(width: 15),
-                                              const Expanded(
+                                              Expanded(
                                                 child: Text(
                                                   'Payment Summary',
                                                   style: TextStyle(
-                                                    color: Color(0xFF222222),
+                                                    color: Theme.of(context).colorScheme.onSurface, // ✅ adaptive text
                                                     fontSize: 12,
                                                     fontWeight: FontWeight.w600,
                                                   ),
@@ -1013,13 +1026,13 @@ class _RefundScreenState extends State<RefundScreen> {
                                                   isExpanded
                                                       ? Icons.keyboard_arrow_up
                                                       : Icons.keyboard_arrow_down,
+                                                  color: Theme.of(context).colorScheme.onSurface, // ✅ adaptive icon
                                                 ),
                                               ),
                                             ],
                                           ),
                                         ),
                                       ),
-
 
 
                                       // 🔥 Expand UPWARD
@@ -1037,7 +1050,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                                 padding: const EdgeInsets.symmetric(
                                                     horizontal: 15, vertical: 10),
                                                 decoration: BoxDecoration(
-                                                  color: const Color(0xFFFFFFFF),
+                                                  color: Theme.of(context).colorScheme.surface,
                                                   borderRadius: const BorderRadius.only(
                                                     topLeft: Radius.circular(8),
                                                     topRight: Radius.circular(8),
@@ -1056,7 +1069,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                                     /// ===== ORIGINAL ORDER =====
                                                     _buildRow("Gross Total", "\$${grossTotal.toStringAsFixed(2)}"),
-                                                    _buildRow("Tax", "\$${taxTotal.toStringAsFixed(2)}"),
+                                                    // _buildRow("Tax", "\$${taxTotal.toStringAsFixed(2)}"),
 
                                                     if (couponTotal > 0)
                                                       _buildRow(
@@ -1064,7 +1077,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                                         "- \$${couponTotal.toStringAsFixed(2)}",
                                                         valueColor: Colors.green,
                                                       ),
-
+                                                    _buildRow("Tax", "\$${taxTotal.toStringAsFixed(2)}"),
                                                     ShaderMask(
                                                       shaderCallback: (Rect bounds) {
                                                         final isDark =
@@ -1145,7 +1158,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                                     _buildRow(
                                                       "Total Net Payable",
-                                                      "\$${totalNetPayable.toStringAsFixed(2)}",
+                                                      "${totalNetPayable < 0 ? "-" : ""}\$${totalNetPayable.abs().toStringAsFixed(2)}",
                                                       isBold: true,
                                                     ),
 
@@ -1200,7 +1213,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                     ],
                                   ),
 
-                                  const SizedBox(height: 10),
+                                  const SizedBox(height: 15),
                                   GestureDetector(
                                     onTap: () async {
                                       if (selectedItems.isEmpty) {
@@ -1322,6 +1335,8 @@ class _RefundScreenState extends State<RefundScreen> {
   }
   Widget _buildRow(String title, String value,
       {bool isBold = false, Color? valueColor}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
@@ -1332,6 +1347,7 @@ class _RefundScreenState extends State<RefundScreen> {
             style: TextStyle(
               fontSize: 14,
               fontWeight: isBold ? FontWeight.bold : FontWeight.w400,
+              color: valueColor ?? (isDark ? Colors.white : Colors.black),
             ),
           ),
           Text(
@@ -1339,7 +1355,7 @@ class _RefundScreenState extends State<RefundScreen> {
             style: TextStyle(
               fontSize: 14,
               fontWeight: isBold ? FontWeight.bold : FontWeight.w400,
-              color: valueColor ?? Colors.black,
+              color: valueColor ?? (isDark ? Colors.white : Colors.black),
             ),
           ),
         ],

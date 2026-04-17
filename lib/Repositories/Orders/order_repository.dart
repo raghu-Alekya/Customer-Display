@@ -1414,39 +1414,39 @@ class OrderRepository {
   }
 
   // 2. Update Order Products
-  Future<OrderModel> updateOrderProducts({
-    required int orderId,
-    required UpdateOrderRequestModel request,
-  }) async {
-    final url =
-        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
-
-    if (kDebugMode) {
-      print("OrderRepositoryyyyyy - POST URL: $url");
-      print("OrderRepository - Request Body: ${request.toJson()}");
-    }
-
-    final response = await _helper.post(url, request.toJson(), true);
-
-    if (kDebugMode) {
-      print("OrderRepository - Raw Response: $response");
-    }
-
-    if (response is String) {
-      try {
-        final responseData = json.decode(response);
-        return OrderModel.fromJson(responseData);
-      } catch (e, s) {
-        if (kDebugMode)
-          print("Error parsing update order response: $e, Stack: $s");
-        throw Exception("Failed to parse update order response");
-      }
-    } else if (response is Map<String, dynamic>) {
-      return OrderModel.fromJson(response);
-    } else {
-      throw Exception("Unexpected response type in update order PUT");
-    }
-  }
+  // Future<OrderModel> updateOrderProducts({
+  //   required int orderId,
+  //   required UpdateOrderRequestModel request,
+  // }) async {
+  //   final url =
+  //       "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+  //
+  //   if (kDebugMode) {
+  //     print("OrderRepositoryyyyyy - POST URL: $url");
+  //     print("OrderRepository - Request Body: ${request.toJson()}");
+  //   }
+  //
+  //   final response = await _helper.post(url, request.toJson(), true);
+  //
+  //   if (kDebugMode) {
+  //     print("OrderRepository - Raw Response: $response");
+  //   }
+  //
+  //   if (response is String) {
+  //     try {
+  //       final responseData = json.decode(response);
+  //       return OrderModel.fromJson(responseData);
+  //     } catch (e, s) {
+  //       if (kDebugMode)
+  //         print("Error parsing update order response: $e, Stack: $s");
+  //       throw Exception("Failed to parse update order response");
+  //     }
+  //   } else if (response is Map<String, dynamic>) {
+  //     return OrderModel.fromJson(response);
+  //   } else {
+  //     throw Exception("Unexpected response type in update order PUT");
+  //   }
+  // }
 
   Future<Map<String, List<FastKeyImageModel>>> getFastKeyImages() async {
     final String url = UrlMethodConstants.fastkeyimages;

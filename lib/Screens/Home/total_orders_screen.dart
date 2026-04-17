@@ -101,12 +101,11 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   // 🔥 Page-level lazy loading
   final ScrollController _tableScrollController = ScrollController();
 
-  List<model.OrderModel> _pageOrders = [];     // full page data (20)
-  List<model.OrderModel> _visibleOrders = [];  // shown data (10 → 20)
+  List<model.OrderModel> _pageOrders = []; // full page data (20)
+  List<model.OrderModel> _visibleOrders = []; // shown data (10 → 20)
 
   int _chunkSize = 10;
   int _currentChunk = 1;
-
 
   Map<String, dynamic>? _selectedOrder;
   // int? _selectedOrderId; // Build #1.0.248: right now saving in order helper class , because state level saving resetting after re build
@@ -222,7 +221,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
       if (_tableScrollController.position.pixels >=
           _tableScrollController.position.maxScrollExtent - 80) {
-
         final maxChunks = (_pageOrders.length / _chunkSize).ceil();
 
         if (!isLoading && _currentChunk < maxChunks) {
@@ -248,16 +246,17 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
           _totalOrdersCount = total;
           isLoading = false;
         });
-        if (_orders.isEmpty) {
+        final sourceOrders = _pageOrders.isNotEmpty ? _pageOrders : _orders;
+        if (sourceOrders.isEmpty) {
           OrderHelper().selectedOrderId = null;
         } else {
           final currentSelected = OrderHelper().selectedOrderId;
           final orderToSelect = (currentSelected == null ||
-              !_orders.any((o) => o.id == currentSelected))
-              ? _orders.first.id
+              !sourceOrders.any((o) => o.id == currentSelected))
+              ? sourceOrders.first.id
               : currentSelected;
           OrderHelper().selectedOrderId = orderToSelect;
-          _onOrderRowSelected(orderToSelect!);
+          _onOrderRowSelected(orderToSelect);
         }
       });
 
@@ -267,7 +266,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
         _onOrderRowSelected(-1);
       }
     });
-
 
     // Initialize order fetching
     //_fetchOrders();
@@ -280,6 +278,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     //   fetchOrders: false, // Show shimmer initially
     // );
   }
+
   bool get _hasMoreLazyData {
     if (_rowsPerPage <= _chunkSize) return false;
 
@@ -326,15 +325,14 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
     _fetchOrdersSubscription =
         _orderBloc.fetchTotalOrdersStream.listen((response) {
-
           if (!mounted) return;
 
           if (response.status == Status.COMPLETED) {
-
             _fetchInProgress = false;
             _loadingDelayTimer?.cancel();
             _loadingDelayTimer = null;
 
+            final previousOrderIds = _pageOrders.map((o) => o.id).toSet();
             final orders = response.data?.ordersData ?? [];
 
             _TotalOrdersListCache.update(
@@ -355,27 +353,36 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
             });
 
             // 🔥 Selection Logic (kept)
-            if (_orders.isEmpty) {
+            final sourceOrders = _pageOrders.isNotEmpty ? _pageOrders : _orders;
+            if (sourceOrders.isEmpty) {
               OrderHelper().selectedOrderId = null;
               return;
             }
 
             final currentSelected = OrderHelper().selectedOrderId;
+            int? newIncomingOrderId;
+            if (previousOrderIds.isNotEmpty) {
+              for (final order in sourceOrders) {
+                if (!previousOrderIds.contains(order.id)) {
+                  newIncomingOrderId = order.id;
+                  break;
+                }
+              }
+            }
 
-            final orderToSelect =
-            (currentSelected == null ||
-                !_orders.any((o) => o.id == currentSelected))
-                ? _orders.first.id
-                : currentSelected;
+            final orderToSelect = newIncomingOrderId ??
+                ((currentSelected == null ||
+                    !sourceOrders.any((o) => o.id == currentSelected))
+                    ? sourceOrders.first.id
+                    : currentSelected);
 
             OrderHelper().selectedOrderId = orderToSelect;
 
-            _onOrderRowSelected(orderToSelect!);
+            _onOrderRowSelected(orderToSelect);
           }
 
           // ERROR
           else if (response.status == Status.ERROR) {
-
             _fetchInProgress = false;
             _loadingDelayTimer?.cancel();
             _loadingDelayTimer = null;
@@ -392,7 +399,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
           // LOADING
           else if (response.status == Status.LOADING) {
-
             _fetchInProgress = true;
             _loadingDelayTimer?.cancel();
 
@@ -897,6 +903,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     super.didChangeDependencies();
     debugPrint("????? OrdersScreen: didChangeDependencies");
   }
+
   // Build #1.0.143: Fixed Issue : After return from order summary screen , total order screen not refreshing with updated response
   void _refreshOrderList() {
     if (kDebugMode) print("_refreshOrderList called");
@@ -996,7 +1003,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                     quantities: quantities,
                     activeOrderId: OrderHelper().activeOrderId ??
                         OrderHelper().selectedOrderId,
-                    previewLineItemsFromApi: _previewLineItemsForSelectedOrder(),
+                    previewLineItemsFromApi:
+                    _previewLineItemsForSelectedOrder(),
                     previewOrderFromApi: _previewOrderForSelectedOrder(),
 
                     /// <- ADDED NULL CHECK // BUILD 1.0.213: FIXED RE-OPENED ISSUE [SCRUM-356]: Order items not displaying in Bottom Mode
@@ -1111,11 +1119,13 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                         // ],
                                         SvgPicture.asset(
                                           'assets/svg/filter_calendar.svg',
-                                          width:
-                                          MediaQuery.of(context).size.width *
+                                          width: MediaQuery.of(context)
+                                              .size
+                                              .width *
                                               0.1,
-                                          height:
-                                          MediaQuery.of(context).size.height *
+                                          height: MediaQuery.of(context)
+                                              .size
+                                              .height *
                                               0.06,
                                           colorFilter: ColorFilter.mode(
                                             _isDateRangeApplied
@@ -1173,7 +1183,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                               ? const Center(child: CircularProgressIndicator())
                               : Container(
                             decoration: BoxDecoration(
-                              color: themeHelper.themeMode == ThemeMode.dark
+                              color:
+                              themeHelper.themeMode == ThemeMode.dark
                                   ? ThemeNotifier.primaryBackground
                                   : Colors.white,
                               borderRadius: BorderRadius.circular(12),
@@ -1194,23 +1205,31 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                 children: [
                                   // ================= HEADER =================
                                   Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12),
                                     decoration: BoxDecoration(
-                                      color: themeHelper.themeMode == ThemeMode.dark
+                                      color: themeHelper.themeMode ==
+                                          ThemeMode.dark
                                           ? const Color(0xFF252837)
                                           : const Color(0xFF6F6F70),
-                                      borderRadius: const BorderRadius.vertical(
+                                      borderRadius:
+                                      const BorderRadius.vertical(
                                         top: Radius.circular(12),
                                       ),
                                     ),
                                     child: Row(
                                       children: [
                                         _buildSortableColumn("ID", 'id'),
-                                        _buildSortableColumn("Order Type", 'orderType'),
-                                        _buildSortableColumn("Date", 'date'),
-                                        _buildSortableColumn("Time", 'time'),
-                                        _buildSortableColumn("Total", 'sales_amount'),
-                                        _buildSortableColumn("Status", 'status'),
+                                        _buildSortableColumn(
+                                            "Order Type", 'orderType'),
+                                        _buildSortableColumn(
+                                            "Date", 'date'),
+                                        _buildSortableColumn(
+                                            "Time", 'time'),
+                                        _buildSortableColumn(
+                                            "Total", 'sales_amount'),
+                                        _buildSortableColumn(
+                                            "Status", 'status'),
                                       ],
                                     ),
                                   ),
@@ -1219,19 +1238,22 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                   Expanded(
                                     child: ListView.builder(
                                       controller: _tableScrollController,
-                                      physics: const BouncingScrollPhysics(),
-                                      itemCount:
-                                      _orders.length + (_hasMoreLazyData ? 1 : 0),
+                                      physics:
+                                      const BouncingScrollPhysics(),
+                                      itemCount: _orders.length +
+                                          (_hasMoreLazyData ? 1 : 0),
                                       itemBuilder: (context, index) {
                                         // 🔥 Lazy loader
                                         if (index >= _orders.length) {
                                           return const Padding(
-                                            padding: EdgeInsets.symmetric(vertical: 12),
+                                            padding: EdgeInsets.symmetric(
+                                                vertical: 12),
                                             child: Center(
                                               child: SizedBox(
                                                 height: 24,
                                                 width: 24,
-                                                child: CircularProgressIndicator(
+                                                child:
+                                                CircularProgressIndicator(
                                                   strokeWidth: 2.5,
                                                 ),
                                               ),
@@ -1240,50 +1262,74 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                         }
 
                                         final order = _orders[index];
-                                        final date = DateTime.tryParse(order.dateCreated)
+                                        final date = DateTime.tryParse(
+                                            order.dateCreated)
                                             ?.toLocal();
-                                        final isSelected =
-                                            OrderHelper().selectedOrderId == order.id;
+                                        final isSelected = OrderHelper()
+                                            .selectedOrderId ==
+                                            order.id;
 
-                                        final double total = double.tryParse(order.total.toString()) ?? 0.0;
-
+                                        final double total =
+                                            double.tryParse(order.total
+                                                .toString()) ??
+                                                0.0;
 
                                         return GestureDetector(
-                                          onTap: () => _onOrderRowSelected(order.id),
+                                          onTap: () =>
+                                              _onOrderRowSelected(
+                                                  order.id),
                                           child: Container(
-                                            padding: const EdgeInsets.symmetric(vertical: 6),
+                                            padding: const EdgeInsets
+                                                .symmetric(vertical: 6),
                                             decoration: BoxDecoration(
                                               color: isSelected
-                                                  ? (themeHelper.themeMode == ThemeMode.dark
-                                                  ? const Color(0xFF383B4C)
-                                                  : const Color(0xFFDFDFDF))
-                                                  : (themeHelper.themeMode == ThemeMode.dark
-                                                  ? const Color(0xFF201F29)
-                                                  : const Color(0xFFF9F9F9)),
+                                                  ? (themeHelper
+                                                  .themeMode ==
+                                                  ThemeMode.dark
+                                                  ? const Color(
+                                                  0xFF383B4C)
+                                                  : const Color(
+                                                  0xFFDFDFDF))
+                                                  : (themeHelper
+                                                  .themeMode ==
+                                                  ThemeMode.dark
+                                                  ? const Color(
+                                                  0xFF201F29)
+                                                  : const Color(
+                                                  0xFFF9F9F9)),
                                               border: Border(
                                                 bottom: BorderSide(
-                                                  color: themeHelper.themeMode == ThemeMode.dark
-                                                      ? const Color(0xFF474646)
-                                                      : const Color(0xFFD8D7D7),
+                                                  color: themeHelper
+                                                      .themeMode ==
+                                                      ThemeMode.dark
+                                                      ? const Color(
+                                                      0xFF474646)
+                                                      : const Color(
+                                                      0xFFD8D7D7),
                                                 ),
                                               ),
                                             ),
                                             child: Row(
                                               children: [
-                                                _buildDataCell(order.id.toString()),
                                                 _buildDataCell(
-                                                  _orderTypeLabelForOrder(order),
+                                                    order.id.toString()),
+                                                _buildDataCell(
+                                                  _orderTypeLabelForOrder(
+                                                      order),
                                                 ),
                                                 _buildDataCell(
                                                   date != null
                                                       ? DateFormat(
-                                                      TextConstants.dateFormat)
+                                                      TextConstants
+                                                          .dateFormat)
                                                       .format(date)
                                                       : '',
                                                 ),
                                                 _buildDataCell(
                                                   date != null
-                                                      ? DateFormat('HH:mm:ss').format(date)
+                                                      ? DateFormat(
+                                                      'HH:mm:ss')
+                                                      .format(date)
                                                       : '',
                                                 ),
                                                 _buildDataCell(
@@ -1335,7 +1381,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                     quantities: quantities,
                     activeOrderId: OrderHelper().activeOrderId ??
                         OrderHelper().selectedOrderId,
-                    previewLineItemsFromApi: _previewLineItemsForSelectedOrder(),
+                    previewLineItemsFromApi:
+                    _previewLineItemsForSelectedOrder(),
                     previewOrderFromApi: _previewOrderForSelectedOrder(),
 
                     /// <- ADDED NULL CHECK // BUILD 1.0.213: FIXED RE-OPENED ISSUE [SCRUM-356]: Order items not displaying in Bottom Mode
@@ -1393,14 +1440,20 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     }
 
     if (OrderHelper().selectedOrderId != null) {
-      // Use indexWhere to safely find the index of the selected order.
-      // It returns -1 if no element is found, preventing errors.
-      final index = _orders
-          .indexWhere((order) => order.id == OrderHelper().selectedOrderId);
-
-      if (index != -1) {
-        // If the index is valid, get the order from the list.
-        selectedOrder = _orders[index];
+      final selectedId = OrderHelper().selectedOrderId!;
+      for (final order in _pageOrders) {
+        if (order.id == selectedId) {
+          selectedOrder = order;
+          break;
+        }
+      }
+      if (selectedOrder == null) {
+        for (final order in _orders) {
+          if (order.id == selectedId) {
+            selectedOrder = order;
+            break;
+          }
+        }
       }
     }
 
@@ -1591,7 +1644,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
       ),
     );
   }
-
 
   // Build sortable column header
   Widget _buildSortableColumn(String label, String columnKey) {

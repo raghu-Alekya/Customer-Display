@@ -57,39 +57,39 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
   }
 
   // 1. Create Payment
-  Future<void> createPayment(PaymentRequestModel request) async {
-    if (_createPaymentController.isClosed) return;
-
-    createPaymentSink.add(APIResponse.loading(TextConstants.loading));
-    try {
-      final response = await _paymentRepository.createPayment(request);
-
-      if (kDebugMode) {
-        //  print("PaymentBloc - Payment created with ID: ${response.postId}");
-        print("PaymentBloc - Payment Message: ${response.message}");
-      }
-
-      ///Response is coming as below:
-      //{
-      //     "payment_id": 3592,
-      //     "message": "Payment Created Successfully"
-      // }
-      //await CustomerDisplayService.showThankYou();
-      createPaymentSink.add(APIResponse.completed(response));
-    } catch (e) {
-      //Build #1.0.180
-      if (e.toString().contains('UnauthorisedException')) {
-        if (kDebugMode) print("UnAutherized $e");
-        createPaymentSink.add(APIResponse.error("Unauthorised. Session is expired."));
-      }
-      if (e.toString().contains('SocketException')) {
-        createPaymentSink.add(APIResponse.error("Network error. Please check your connection."));
-      } else {
-        createPaymentSink.add(APIResponse.error("Failed to create payment: ${e.toString()}"));
-      }
-      if (kDebugMode) print("Exception in createPayment: $e");
-    }
-  }
+  // Future<void> createPayment(PaymentRequestModel request) async {
+  //   if (_createPaymentController.isClosed) return;
+  //
+  //   createPaymentSink.add(APIResponse.loading(TextConstants.loading));
+  //   try {
+  //     final response = await _paymentRepository.createPayment(request);
+  //
+  //     if (kDebugMode) {
+  //       //  print("PaymentBloc - Payment created with ID: ${response.postId}");
+  //       print("PaymentBloc - Payment Message: ${response.message}");
+  //     }
+  //
+  //     ///Response is coming as below:
+  //     //{
+  //     //     "payment_id": 3592,
+  //     //     "message": "Payment Created Successfully"
+  //     // }
+  //     //await CustomerDisplayService.showThankYou();
+  //     createPaymentSink.add(APIResponse.completed(response));
+  //   } catch (e) {
+  //     //Build #1.0.180
+  //     if (e.toString().contains('UnauthorisedException')) {
+  //       if (kDebugMode) print("UnAutherized $e");
+  //       createPaymentSink.add(APIResponse.error("Unauthorised. Session is expired."));
+  //     }
+  //     if (e.toString().contains('SocketException')) {
+  //       createPaymentSink.add(APIResponse.error("Network error. Please check your connection."));
+  //     } else {
+  //       createPaymentSink.add(APIResponse.error("Failed to create payment: ${e.toString()}"));
+  //     }
+  //     if (kDebugMode) print("Exception in createPayment: $e");
+  //   }
+  // }
 
   // 2. Get Payment by ID
   Future<void> getPaymentById(int paymentId) async {
