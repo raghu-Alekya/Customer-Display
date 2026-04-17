@@ -599,12 +599,36 @@ class _TopBarState extends State<TopBar> {
     final isar = await IsarService.instance;
     final Map<int, dynamic> uniqueProducts = {};
 
+    Iterable<dynamic> _expandCandidates(dynamic product) sync* {
+      if (product == null) return;
+      if (product is List) {
+        for (final item in product) {
+          yield* _expandCandidates(item);
+        }
+        return;
+      }
+      if (product is Map) {
+        final map = Map<String, dynamic>.from(product);
+        if (map["products"] is List) {
+          for (final nested in (map["products"] as List)) {
+            yield* _expandCandidates(nested);
+          }
+        } else if (map["product"] is Map || map["product"] is List) {
+          yield* _expandCandidates(map["product"]);
+        } else {
+          yield map;
+        }
+      }
+    }
+
     void mergeProductList(List<dynamic> products) {
       for (final product in products) {
         try {
-          final int? productId = _productIdFromCacheMap(product);
-          if (productId == null) continue;
-          uniqueProducts[productId] = product;
+          for (final candidate in _expandCandidates(product)) {
+            final int? productId = _productIdFromCacheMap(candidate);
+            if (productId == null) continue;
+            uniqueProducts[productId] = candidate;
+          }
         } catch (_) {}
       }
     }
@@ -798,7 +822,11 @@ class _TopBarState extends State<TopBar> {
     }
 
     String _resolveName(dynamic p) {
-      return (p["fast_key_item_name"] ?? p["name"] ?? "Unknown").toString();
+      final dynamic rawName = p["fast_key_item_name"] ?? p["name"];
+      if (rawName is Map && rawName["rendered"] != null) {
+        return rawName["rendered"].toString();
+      }
+      return (rawName ?? "Unknown").toString();
     }
 
     String _resolvePrice(dynamic p) {
@@ -813,23 +841,59 @@ class _TopBarState extends State<TopBar> {
       return (p["sku"] ?? p["fast_key_item_sku"] ?? "").toString();
     }
 
+    List<int> _resolveVariationIds(dynamic p) {
+      final raw = p["variations"];
+      if (raw is! List || raw.isEmpty) return <int>[];
+      return raw
+          .map((v) => v is int ? v : int.tryParse(v?.toString() ?? ""))
+          .whereType<int>()
+          .toList();
+    }
+
+    String _normalize(String input) {
+      return input
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]'), '');
+    }
+
+    bool _matchesCachedProduct(String q, dynamic p) {
+      final normalizedQuery = _normalize(q);
+      if (normalizedQuery.isEmpty) return true;
+
+      final nameRaw = _resolveName(p);
+      final skuRaw = _resolveSku(p);
+      final normalizedName = _normalize(nameRaw);
+      final normalizedSku = _normalize(skuRaw);
+
+      if (normalizedName.contains(normalizedQuery) ||
+          normalizedSku.contains(normalizedQuery)) {
+        return true;
+      }
+
+      final parts = q
+          .toLowerCase()
+          .split(RegExp(r'\s+'))
+          .map((e) => _normalize(e))
+          .where((e) => e.isNotEmpty)
+          .toList();
+      if (parts.isEmpty) return false;
+      return parts.every((part) =>
+          normalizedName.contains(part) || normalizedSku.contains(part));
+    }
+
     final Map<int, dynamic> uniqueById = {};
     for (final p in _cachedProducts) {
       final int? pid = _resolveProductId(p);
       if (pid == null) continue;
-
-      final name = _resolveName(p).trim().toLowerCase();
-      final sku = _resolveSku(p).trim().toLowerCase();
-
-      if (query.isEmpty || name.contains(query) || sku.contains(query)) {
+      if (_matchesCachedProduct(query, p)) {
         uniqueById[pid] = p;
       }
     }
 
     final list = uniqueById.values.toList()
       ..sort((a, b) {
-        final na = (a["fast_key_item_name"] ?? "").toString().toLowerCase();
-        final nb = (b["fast_key_item_name"] ?? "").toString().toLowerCase();
+        final na = _resolveName(a).toLowerCase();
+        final nb = _resolveName(b).toLowerCase();
         final sa = na.startsWith(query);
         final sb = nb.startsWith(query);
         if (sa && !sb) return -1;
@@ -903,6 +967,7 @@ class _TopBarState extends State<TopBar> {
               price: price,
               sku: sku.isNotEmpty ? sku : null,
               images: imageUrl != null ? [imageUrl!] : [],
+              variations: _resolveVariationIds(p),
             );
 
             try {
@@ -1310,7 +1375,7 @@ class _TopBarState extends State<TopBar> {
       // If none found in cache, product is treated as simple.
       List<Map<String, dynamic>> variants =
       await _getVariantsFromCache(product.id!);
-      if (variants.isEmpty && (product.variations?.isNotEmpty ?? false)) {
+      if (variants.isEmpty) {
         variants = await _fetchVariationsFromApi(product.id!);
         if (variants.isNotEmpty) {
           await StorageProvider.productCache.put(

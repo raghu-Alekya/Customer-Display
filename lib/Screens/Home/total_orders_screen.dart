@@ -101,12 +101,11 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   // 🔥 Page-level lazy loading
   final ScrollController _tableScrollController = ScrollController();
 
-  List<model.OrderModel> _pageOrders = [];     // full page data (20)
-  List<model.OrderModel> _visibleOrders = [];  // shown data (10 → 20)
+  List<model.OrderModel> _pageOrders = []; // full page data (20)
+  List<model.OrderModel> _visibleOrders = []; // shown data (10 → 20)
 
   int _chunkSize = 10;
   int _currentChunk = 1;
-
 
   Map<String, dynamic>? _selectedOrder;
   // int? _selectedOrderId; // Build #1.0.248: right now saving in order helper class , because state level saving resetting after re build
@@ -119,7 +118,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   bool _isDateRangeApplied = false;
   String? panelDate;
   String?
-  panelTime; // Build #1.0.226: UPDATED to widget level to class level declaration // ADD this logic to determine the date and time for the panel
+      panelTime; // Build #1.0.226: UPDATED to widget level to class level declaration // ADD this logic to determine the date and time for the panel
 
   // Add these variables for pagination
   int _currentPage = 1;
@@ -222,7 +221,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
       if (_tableScrollController.position.pixels >=
           _tableScrollController.position.maxScrollExtent - 80) {
-
         final maxChunks = (_pageOrders.length / _chunkSize).ceil();
 
         if (!isLoading && _currentChunk < maxChunks) {
@@ -248,16 +246,17 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
           _totalOrdersCount = total;
           isLoading = false;
         });
-        if (_orders.isEmpty) {
+        final sourceOrders = _pageOrders.isNotEmpty ? _pageOrders : _orders;
+        if (sourceOrders.isEmpty) {
           OrderHelper().selectedOrderId = null;
         } else {
           final currentSelected = OrderHelper().selectedOrderId;
           final orderToSelect = (currentSelected == null ||
-                  !_orders.any((o) => o.id == currentSelected))
-              ? _orders.first.id
+                  !sourceOrders.any((o) => o.id == currentSelected))
+              ? sourceOrders.first.id
               : currentSelected;
           OrderHelper().selectedOrderId = orderToSelect;
-          _onOrderRowSelected(orderToSelect!);
+          _onOrderRowSelected(orderToSelect);
         }
       });
 
@@ -267,7 +266,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
         _onOrderRowSelected(-1);
       }
     });
-
 
     // Initialize order fetching
     //_fetchOrders();
@@ -280,6 +278,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     //   fetchOrders: false, // Show shimmer initially
     // );
   }
+
   bool get _hasMoreLazyData {
     if (_rowsPerPage <= _chunkSize) return false;
 
@@ -326,89 +325,96 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
     _fetchOrdersSubscription =
         _orderBloc.fetchTotalOrdersStream.listen((response) {
+      if (!mounted) return;
 
-          if (!mounted) return;
+      if (response.status == Status.COMPLETED) {
+        _fetchInProgress = false;
+        _loadingDelayTimer?.cancel();
+        _loadingDelayTimer = null;
 
-          if (response.status == Status.COMPLETED) {
+        final previousOrderIds = _pageOrders.map((o) => o.id).toSet();
+        final orders = response.data?.ordersData ?? [];
 
-            _fetchInProgress = false;
-            _loadingDelayTimer?.cancel();
-            _loadingDelayTimer = null;
+        _TotalOrdersListCache.update(
+          fetchCacheKey,
+          orders,
+          response.data?.orderTotalCount ?? 0,
+        );
 
-            final orders = response.data?.ordersData ?? [];
+        setState(() {
+          _pageOrders = orders;
+          _currentChunk = 1;
 
-            _TotalOrdersListCache.update(
-              fetchCacheKey,
-              orders,
-              response.data?.orderTotalCount ?? 0,
-            );
+          _visibleOrders = _pageOrders.take(_chunkSize).toList();
+          _orders = _visibleOrders;
 
-            setState(() {
-              _pageOrders = orders;
-              _currentChunk = 1;
-
-              _visibleOrders = _pageOrders.take(_chunkSize).toList();
-              _orders = _visibleOrders;
-
-              _totalOrdersCount = response.data?.orderTotalCount ?? 0;
-              isLoading = false;
-            });
-
-            // 🔥 Selection Logic (kept)
-            if (_orders.isEmpty) {
-              OrderHelper().selectedOrderId = null;
-              return;
-            }
-
-            final currentSelected = OrderHelper().selectedOrderId;
-
-            final orderToSelect =
-            (currentSelected == null ||
-                !_orders.any((o) => o.id == currentSelected))
-                ? _orders.first.id
-                : currentSelected;
-
-            OrderHelper().selectedOrderId = orderToSelect;
-
-            _onOrderRowSelected(orderToSelect!);
-          }
-
-          // ERROR
-          else if (response.status == Status.ERROR) {
-
-            _fetchInProgress = false;
-            _loadingDelayTimer?.cancel();
-            _loadingDelayTimer = null;
-
-            setState(() => isLoading = false);
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Failed to fetch orders"),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-
-          // LOADING
-          else if (response.status == Status.LOADING) {
-
-            _fetchInProgress = true;
-            _loadingDelayTimer?.cancel();
-
-            // Avoid full-screen loader when we already have rows (silent refresh).
-            if (_pageOrders.isEmpty) {
-              _loadingDelayTimer = Timer(
-                const Duration(milliseconds: 300),
-                () {
-                  if (mounted && _fetchInProgress) {
-                    setState(() => isLoading = true);
-                  }
-                },
-              );
-            }
-          }
+          _totalOrdersCount = response.data?.orderTotalCount ?? 0;
+          isLoading = false;
         });
+
+        // 🔥 Selection Logic (kept)
+        final sourceOrders = _pageOrders.isNotEmpty ? _pageOrders : _orders;
+        if (sourceOrders.isEmpty) {
+          OrderHelper().selectedOrderId = null;
+          return;
+        }
+
+        final currentSelected = OrderHelper().selectedOrderId;
+        int? newIncomingOrderId;
+        if (previousOrderIds.isNotEmpty) {
+          for (final order in sourceOrders) {
+            if (!previousOrderIds.contains(order.id)) {
+              newIncomingOrderId = order.id;
+              break;
+            }
+          }
+        }
+
+        final orderToSelect = newIncomingOrderId ??
+            ((currentSelected == null ||
+                    !sourceOrders.any((o) => o.id == currentSelected))
+                ? sourceOrders.first.id
+                : currentSelected);
+
+        OrderHelper().selectedOrderId = orderToSelect;
+
+        _onOrderRowSelected(orderToSelect);
+      }
+
+      // ERROR
+      else if (response.status == Status.ERROR) {
+        _fetchInProgress = false;
+        _loadingDelayTimer?.cancel();
+        _loadingDelayTimer = null;
+
+        setState(() => isLoading = false);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Failed to fetch orders"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+
+      // LOADING
+      else if (response.status == Status.LOADING) {
+        _fetchInProgress = true;
+        _loadingDelayTimer?.cancel();
+
+        // Avoid full-screen loader when we already have rows (silent refresh).
+        if (_pageOrders.isEmpty) {
+          _loadingDelayTimer = Timer(
+            const Duration(milliseconds: 300),
+            () {
+              if (mounted && _fetchInProgress) {
+                setState(() => isLoading = true);
+              }
+            },
+          );
+        }
+      }
+    });
 
     // 🔥 Call Bloc (NOT repository directly)
     final selectedStatus = _resolveStatusFilterEntry().slug ?? "";
@@ -788,30 +794,30 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
         //Build #1.0.134: integrated date filter
         _startDate = range.startDate != null
             ? DateTime(
-            range.startDate!.year,
-            range.startDate!.month,
-            range.startDate!.day,
-            currentTime.hour,
-            currentTime.minute,
-            currentTime.second)
+                range.startDate!.year,
+                range.startDate!.month,
+                range.startDate!.day,
+                currentTime.hour,
+                currentTime.minute,
+                currentTime.second)
             : null;
         _endDate = range.endDate != null
             ? DateTime(
-            range.endDate!.year,
-            range.endDate!.month,
-            range.endDate!.day,
-            currentTime.hour,
-            currentTime.minute,
-            currentTime.second)
+                range.endDate!.year,
+                range.endDate!.month,
+                range.endDate!.day,
+                currentTime.hour,
+                currentTime.minute,
+                currentTime.second)
             : range.startDate != null
-            ? DateTime(
-            range.startDate!.year,
-            range.startDate!.month,
-            range.startDate!.day,
-            currentTime.hour,
-            currentTime.minute,
-            currentTime.second)
-            : null;
+                ? DateTime(
+                    range.startDate!.year,
+                    range.startDate!.month,
+                    range.startDate!.day,
+                    currentTime.hour,
+                    currentTime.minute,
+                    currentTime.second)
+                : null;
         _isDateRangeApplied = _startDate != null && _endDate != null;
         _currentPage = 1;
 
@@ -833,7 +839,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     setState(() {
       _selectedStatusFilter = "All";
       _selectedUserFilter =
-      "All"; // Changed from "User 1" to match initialization
+          "All"; // Changed from "User 1" to match initialization
       _selectedPaymentMethodFilter = "All";
       _selectedOrderTypeFilter = "All";
       _salesAmountRange = RangeValues(_minSalesAmount, _maxSalesAmount);
@@ -856,14 +862,14 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     if (orderDate == null) return true;
 
     final orderDateOnly =
-    DateTime(orderDate.year, orderDate.month, orderDate.day);
+        DateTime(orderDate.year, orderDate.month, orderDate.day);
     final startDateOnly =
-    DateTime(_startDate!.year, _startDate!.month, _startDate!.day);
+        DateTime(_startDate!.year, _startDate!.month, _startDate!.day);
     final endDateOnly =
-    DateTime(_endDate!.year, _endDate!.month, _endDate!.day);
+        DateTime(_endDate!.year, _endDate!.month, _endDate!.day);
 
     return orderDateOnly
-        .isAfter(startDateOnly.subtract(const Duration(days: 1))) &&
+            .isAfter(startDateOnly.subtract(const Duration(days: 1))) &&
         orderDateOnly.isBefore(endDateOnly.add(const Duration(days: 1)));
   }
 
@@ -872,7 +878,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     _fetchOrdersSubscription?.cancel();
     _loadingDelayTimer?.cancel();
     OrderHelper().selectedOrderId =
-    null; // Build #1.0.248: remove selected order when leave the screen !
+        null; // Build #1.0.248: remove selected order when leave the screen !
     _orderBloc.dispose();
     debugPrint("OrdersScreen: Disposed");
     super.dispose();
@@ -897,6 +903,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     super.didChangeDependencies();
     debugPrint("????? OrdersScreen: didChangeDependencies");
   }
+
   // Build #1.0.143: Fixed Issue : After return from order summary screen , total order screen not refreshing with updated response
   void _refreshOrderList() {
     if (kDebugMode) print("_refreshOrderList called");
@@ -985,23 +992,24 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                 if (sidebarPosition == SidebarPosition.right ||
                     (sidebarPosition == SidebarPosition.bottom &&
                         orderPanelPosition == OrderPanelPosition.left))
-                // Replace your OrderScreenPanel instances with:
+                  // Replace your OrderScreenPanel instances with:
                   OrderScreenPanel(
                     fetchOrders: !isLoading, // Sync with parent's loading state
                     key: ValueKey(
                         'order_screen_panel_${OrderHelper().selectedOrderId}_${sidebarPosition}_$orderPanelPosition'), //Build #1.0.234: Fixed Issue -> Processing Orders showing in order screen bottom mode
                     formattedDate:
-                    panelDate ?? '', // Build #1.0.226: updated values
+                        panelDate ?? '', // Build #1.0.226: updated values
                     formattedTime: panelTime ?? '',
                     quantities: quantities,
                     activeOrderId: OrderHelper().activeOrderId ??
                         OrderHelper().selectedOrderId,
-                    previewLineItemsFromApi: _previewLineItemsForSelectedOrder(),
+                    previewLineItemsFromApi:
+                        _previewLineItemsForSelectedOrder(),
                     previewOrderFromApi: _previewOrderForSelectedOrder(),
 
                     /// <- ADDED NULL CHECK // BUILD 1.0.213: FIXED RE-OPENED ISSUE [SCRUM-356]: Order items not displaying in Bottom Mode
                     refreshOrderList:
-                    _refreshOrderList, // Build #1.0.143: Fixed Issue : After return from order summary screen , total order screen not refreshing with updated response
+                        _refreshOrderList, // Build #1.0.143: Fixed Issue : After return from order summary screen , total order screen not refreshing with updated response
                   ),
 
                 SizedBox(
@@ -1111,19 +1119,21 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                         // ],
                                         SvgPicture.asset(
                                           'assets/svg/filter_calendar.svg',
-                                          width:
-                                          MediaQuery.of(context).size.width *
+                                          width: MediaQuery.of(context)
+                                                  .size
+                                                  .width *
                                               0.1,
-                                          height:
-                                          MediaQuery.of(context).size.height *
+                                          height: MediaQuery.of(context)
+                                                  .size
+                                                  .height *
                                               0.06,
                                           colorFilter: ColorFilter.mode(
                                             _isDateRangeApplied
                                                 ? Colors.redAccent
                                                 : themeHelper.themeMode ==
-                                                ThemeMode.dark
-                                                ? Colors.grey
-                                                : Color(0xFF6F6F70),
+                                                        ThemeMode.dark
+                                                    ? Colors.grey
+                                                    : Color(0xFF6F6F70),
                                             BlendMode.srcIn,
                                           ),
                                           //color: _isDateRangeApplied ? Colors.white : Colors.black,
@@ -1152,8 +1162,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                       icon: Icon(
                                         Icons.clear,
                                         color: isFilterApplied ||
-                                            isRangeFilterApplied ||
-                                            _isDateRangeApplied
+                                                isRangeFilterApplied ||
+                                                _isDateRangeApplied
                                             ? Colors.redAccent
                                             : Colors.black,
                                       ),
@@ -1172,138 +1182,174 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                           child: isLoading
                               ? const Center(child: CircularProgressIndicator())
                               : Container(
-                            decoration: BoxDecoration(
-                              color: themeHelper.themeMode == ThemeMode.dark
-                                  ? ThemeNotifier.primaryBackground
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            padding: const EdgeInsets.all(4),
-
-                            // 🔥 Horizontal scroll ONLY
-                            child: SizedBox(
-                              width: MediaQuery.of(context).size.width,
-                              child: Column(
-                                children: [
-                                  // ================= HEADER =================
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: themeHelper.themeMode == ThemeMode.dark
-                                          ? const Color(0xFF252837)
-                                          : const Color(0xFF6F6F70),
-                                      borderRadius: const BorderRadius.vertical(
-                                        top: Radius.circular(12),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        themeHelper.themeMode == ThemeMode.dark
+                                            ? ThemeNotifier.primaryBackground
+                                            : Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.05),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 2),
                                       ),
-                                    ),
-                                    child: Row(
+                                    ],
+                                  ),
+                                  padding: const EdgeInsets.all(4),
+
+                                  // 🔥 Horizontal scroll ONLY
+                                  child: SizedBox(
+                                    width: MediaQuery.of(context).size.width,
+                                    child: Column(
                                       children: [
-                                        _buildSortableColumn("ID", 'id'),
-                                        _buildSortableColumn("Order Type", 'orderType'),
-                                        _buildSortableColumn("Date", 'date'),
-                                        _buildSortableColumn("Time", 'time'),
-                                        _buildSortableColumn("Total", 'sales_amount'),
-                                        _buildSortableColumn("Status", 'status'),
+                                        // ================= HEADER =================
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 12),
+                                          decoration: BoxDecoration(
+                                            color: themeHelper.themeMode ==
+                                                    ThemeMode.dark
+                                                ? const Color(0xFF252837)
+                                                : const Color(0xFF6F6F70),
+                                            borderRadius:
+                                                const BorderRadius.vertical(
+                                              top: Radius.circular(12),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              _buildSortableColumn("ID", 'id'),
+                                              _buildSortableColumn(
+                                                  "Order Type", 'orderType'),
+                                              _buildSortableColumn(
+                                                  "Date", 'date'),
+                                              _buildSortableColumn(
+                                                  "Time", 'time'),
+                                              _buildSortableColumn(
+                                                  "Total", 'sales_amount'),
+                                              _buildSortableColumn(
+                                                  "Status", 'status'),
+                                            ],
+                                          ),
+                                        ),
+
+                                        // ================= BODY =================
+                                        Expanded(
+                                          child: ListView.builder(
+                                            controller: _tableScrollController,
+                                            physics:
+                                                const BouncingScrollPhysics(),
+                                            itemCount: _orders.length +
+                                                (_hasMoreLazyData ? 1 : 0),
+                                            itemBuilder: (context, index) {
+                                              // 🔥 Lazy loader
+                                              if (index >= _orders.length) {
+                                                return const Padding(
+                                                  padding: EdgeInsets.symmetric(
+                                                      vertical: 12),
+                                                  child: Center(
+                                                    child: SizedBox(
+                                                      height: 24,
+                                                      width: 24,
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                        strokeWidth: 2.5,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+
+                                              final order = _orders[index];
+                                              final date = DateTime.tryParse(
+                                                      order.dateCreated)
+                                                  ?.toLocal();
+                                              final isSelected = OrderHelper()
+                                                      .selectedOrderId ==
+                                                  order.id;
+
+                                              final double total =
+                                                  double.tryParse(order.total
+                                                          .toString()) ??
+                                                      0.0;
+
+                                              return GestureDetector(
+                                                onTap: () =>
+                                                    _onOrderRowSelected(
+                                                        order.id),
+                                                child: Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(vertical: 6),
+                                                  decoration: BoxDecoration(
+                                                    color: isSelected
+                                                        ? (themeHelper
+                                                                    .themeMode ==
+                                                                ThemeMode.dark
+                                                            ? const Color(
+                                                                0xFF383B4C)
+                                                            : const Color(
+                                                                0xFFDFDFDF))
+                                                        : (themeHelper
+                                                                    .themeMode ==
+                                                                ThemeMode.dark
+                                                            ? const Color(
+                                                                0xFF201F29)
+                                                            : const Color(
+                                                                0xFFF9F9F9)),
+                                                    border: Border(
+                                                      bottom: BorderSide(
+                                                        color: themeHelper
+                                                                    .themeMode ==
+                                                                ThemeMode.dark
+                                                            ? const Color(
+                                                                0xFF474646)
+                                                            : const Color(
+                                                                0xFFD8D7D7),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      _buildDataCell(
+                                                          order.id.toString()),
+                                                      _buildDataCell(
+                                                        _orderTypeLabelForOrder(
+                                                            order),
+                                                      ),
+                                                      _buildDataCell(
+                                                        date != null
+                                                            ? DateFormat(
+                                                                    TextConstants
+                                                                        .dateFormat)
+                                                                .format(date)
+                                                            : '',
+                                                      ),
+                                                      _buildDataCell(
+                                                        date != null
+                                                            ? DateFormat(
+                                                                    'HH:mm:ss')
+                                                                .format(date)
+                                                            : '',
+                                                      ),
+                                                      _buildDataCell(
+                                                        '${total < 0 ? '-' : ''}${order.currencySymbol}${total.abs().toStringAsFixed(2)}',
+                                                      ),
+                                                      _buildDataCell(
+                                                        order.status,
+                                                        isStatus: true,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
-
-                                  // ================= BODY =================
-                                  Expanded(
-                                    child: ListView.builder(
-                                      controller: _tableScrollController,
-                                      physics: const BouncingScrollPhysics(),
-                                      itemCount:
-                                      _orders.length + (_hasMoreLazyData ? 1 : 0),
-                                      itemBuilder: (context, index) {
-                                        // 🔥 Lazy loader
-                                        if (index >= _orders.length) {
-                                          return const Padding(
-                                            padding: EdgeInsets.symmetric(vertical: 12),
-                                            child: Center(
-                                              child: SizedBox(
-                                                height: 24,
-                                                width: 24,
-                                                child: CircularProgressIndicator(
-                                                  strokeWidth: 2.5,
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        }
-
-                                        final order = _orders[index];
-                                        final date = DateTime.tryParse(order.dateCreated)
-                                            ?.toLocal();
-                                        final isSelected =
-                                            OrderHelper().selectedOrderId == order.id;
-
-                                        final double total = double.tryParse(order.total.toString()) ?? 0.0;
-
-
-                                        return GestureDetector(
-                                          onTap: () => _onOrderRowSelected(order.id),
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(vertical: 6),
-                                            decoration: BoxDecoration(
-                                              color: isSelected
-                                                  ? (themeHelper.themeMode == ThemeMode.dark
-                                                  ? const Color(0xFF383B4C)
-                                                  : const Color(0xFFDFDFDF))
-                                                  : (themeHelper.themeMode == ThemeMode.dark
-                                                  ? const Color(0xFF201F29)
-                                                  : const Color(0xFFF9F9F9)),
-                                              border: Border(
-                                                bottom: BorderSide(
-                                                  color: themeHelper.themeMode == ThemeMode.dark
-                                                      ? const Color(0xFF474646)
-                                                      : const Color(0xFFD8D7D7),
-                                                ),
-                                              ),
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                _buildDataCell(order.id.toString()),
-                                                _buildDataCell(
-                                                  _orderTypeLabelForOrder(order),
-                                                ),
-                                                _buildDataCell(
-                                                  date != null
-                                                      ? DateFormat(
-                                                      TextConstants.dateFormat)
-                                                      .format(date)
-                                                      : '',
-                                                ),
-                                                _buildDataCell(
-                                                  date != null
-                                                      ? DateFormat('HH:mm:ss').format(date)
-                                                      : '',
-                                                ),
-                                                _buildDataCell(
-                                                  '${total < 0 ? '-' : ''}${order.currencySymbol}${total.abs().toStringAsFixed(2)}',
-                                                ),
-                                                _buildDataCell(
-                                                  order.status,
-                                                  isStatus: true,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
+                                ),
                         ),
 
                         // ADDED: Pagination Controls
@@ -1318,29 +1364,30 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                 if (sidebarPosition == SidebarPosition.bottom)
                   SizedBox(
                     width:
-                    sidebarPosition == SidebarPosition.bottom ? 20 : null,
+                        sidebarPosition == SidebarPosition.bottom ? 20 : null,
                   ),
                 // Order Panel on the Right
                 if (sidebarPosition != SidebarPosition.right &&
                     !(sidebarPosition == SidebarPosition.bottom &&
                         orderPanelPosition == OrderPanelPosition.left))
-                // Replace your OrderScreenPanel instances with:
+                  // Replace your OrderScreenPanel instances with:
                   OrderScreenPanel(
                     fetchOrders: !isLoading, // Sync with parent's loading state
                     key: ValueKey(
                         'order_screen_panel_${OrderHelper().selectedOrderId}_${sidebarPosition}_$orderPanelPosition'), //Build #1.0.234: Fixed Issue -> Processing Orders showing in order screen bottom mode
                     formattedDate:
-                    panelDate ?? '', // Build #1.0.226: updated values
+                        panelDate ?? '', // Build #1.0.226: updated values
                     formattedTime: panelTime ?? '',
                     quantities: quantities,
                     activeOrderId: OrderHelper().activeOrderId ??
                         OrderHelper().selectedOrderId,
-                    previewLineItemsFromApi: _previewLineItemsForSelectedOrder(),
+                    previewLineItemsFromApi:
+                        _previewLineItemsForSelectedOrder(),
                     previewOrderFromApi: _previewOrderForSelectedOrder(),
 
                     /// <- ADDED NULL CHECK // BUILD 1.0.213: FIXED RE-OPENED ISSUE [SCRUM-356]: Order items not displaying in Bottom Mode
                     refreshOrderList:
-                    _refreshOrderList, // Build #1.0.143: Fixed Issue : After return from order summary screen , total order screen not refreshing with updated response
+                        _refreshOrderList, // Build #1.0.143: Fixed Issue : After return from order summary screen , total order screen not refreshing with updated response
                   ),
 
                 // Right Sidebar
@@ -1393,14 +1440,20 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     }
 
     if (OrderHelper().selectedOrderId != null) {
-      // Use indexWhere to safely find the index of the selected order.
-      // It returns -1 if no element is found, preventing errors.
-      final index = _orders
-          .indexWhere((order) => order.id == OrderHelper().selectedOrderId);
-
-      if (index != -1) {
-        // If the index is valid, get the order from the list.
-        selectedOrder = _orders[index];
+      final selectedId = OrderHelper().selectedOrderId!;
+      for (final order in _pageOrders) {
+        if (order.id == selectedId) {
+          selectedOrder = order;
+          break;
+        }
+      }
+      if (selectedOrder == null) {
+        for (final order in _orders) {
+          if (order.id == selectedId) {
+            selectedOrder = order;
+            break;
+          }
+        }
       }
     }
 
@@ -1443,7 +1496,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
           "OrdersScreen: Selected order ID $OrderHelper().selectedOrderId");
     }
     setState(
-            () {}); // Build #1.0.248: Force UI to update with the new selection
+        () {}); // Build #1.0.248: Force UI to update with the new selection
     // _orderScreenPanel = OrderScreenPanel( //Build #1.0.234: No need , we already setting values in widget build method
     //   key: ValueKey(orderId), // Use orderId as key
     //   formattedDate: panelDate ?? '', // Build #1.0.226: updated values
@@ -1506,8 +1559,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
             totalItems == 0
                 ? '0-0 of 0'
                 : '${(_currentPage - 1) * _rowsPerPage + 1}'
-                '-${(_currentPage * _rowsPerPage) > totalItems ? totalItems : (_currentPage * _rowsPerPage)}'
-                ' of $totalItems',
+                    '-${(_currentPage * _rowsPerPage) > totalItems ? totalItems : (_currentPage * _rowsPerPage)}'
+                    ' of $totalItems',
           ),
 
           const SizedBox(width: 24),
@@ -1518,17 +1571,17 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
             onPressed: _currentPage == 1 || totalItems == 0
                 ? null
                 : () {
-              setState(() {
-                _currentPage = 1;
+                    setState(() {
+                      _currentPage = 1;
 
-                // 🔥 RESET LAZY STATE
-                _currentChunk = 1;
-                _pageOrders.clear();
-                _visibleOrders.clear();
+                      // 🔥 RESET LAZY STATE
+                      _currentChunk = 1;
+                      _pageOrders.clear();
+                      _visibleOrders.clear();
 
-                _fetchOrders();
-              });
-            },
+                      _fetchOrders();
+                    });
+                  },
           ),
 
           // ---------------- PREVIOUS PAGE ----------------
@@ -1537,17 +1590,17 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
             onPressed: _currentPage == 1 || totalItems == 0
                 ? null
                 : () {
-              setState(() {
-                _currentPage--;
+                    setState(() {
+                      _currentPage--;
 
-                // 🔥 RESET LAZY STATE
-                _currentChunk = 1;
-                _pageOrders.clear();
-                _visibleOrders.clear();
+                      // 🔥 RESET LAZY STATE
+                      _currentChunk = 1;
+                      _pageOrders.clear();
+                      _visibleOrders.clear();
 
-                _fetchOrders();
-              });
-            },
+                      _fetchOrders();
+                    });
+                  },
           ),
 
           // ---------------- NEXT PAGE ----------------
@@ -1556,17 +1609,17 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
             onPressed: _currentPage == totalPages || totalItems == 0
                 ? null
                 : () {
-              setState(() {
-                _currentPage++;
+                    setState(() {
+                      _currentPage++;
 
-                // 🔥 RESET LAZY STATE
-                _currentChunk = 1;
-                _pageOrders.clear();
-                _visibleOrders.clear();
+                      // 🔥 RESET LAZY STATE
+                      _currentChunk = 1;
+                      _pageOrders.clear();
+                      _visibleOrders.clear();
 
-                _fetchOrders();
-              });
-            },
+                      _fetchOrders();
+                    });
+                  },
           ),
 
           // ---------------- LAST PAGE ----------------
@@ -1575,23 +1628,22 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
             onPressed: _currentPage == totalPages || totalItems == 0
                 ? null
                 : () {
-              setState(() {
-                _currentPage = totalPages;
+                    setState(() {
+                      _currentPage = totalPages;
 
-                // 🔥 RESET LAZY STATE
-                _currentChunk = 1;
-                _pageOrders.clear();
-                _visibleOrders.clear();
+                      // 🔥 RESET LAZY STATE
+                      _currentChunk = 1;
+                      _pageOrders.clear();
+                      _visibleOrders.clear();
 
-                _fetchOrders();
-              });
-            },
+                      _fetchOrders();
+                    });
+                  },
           ),
         ],
       ),
     );
   }
-
 
   // Build sortable column header
   Widget _buildSortableColumn(String label, String columnKey) {
@@ -1668,21 +1720,21 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
         padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0),
         child: isStatus
             ? StatusWidget(
-          status: text,
-          dotSize: 8.0,
-          fontSize: 14.0,
-        )
+                status: text,
+                dotSize: 8.0,
+                fontSize: 14.0,
+              )
             : Text(
-          text,
-          style: TextStyle(
-            color: themeHelper.themeMode == ThemeMode.dark
-                ? ThemeNotifier.textDark
-                : Colors.black87,
-            fontSize: 14,
-          ),
-          textAlign: TextAlign.center,
-          overflow: TextOverflow.ellipsis,
-        ),
+                text,
+                style: TextStyle(
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.textDark
+                      : Colors.black87,
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+              ),
       ),
     );
   }

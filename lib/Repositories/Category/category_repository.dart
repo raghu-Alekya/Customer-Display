@@ -26,25 +26,61 @@ class CategoryRepository {
   // Background prefetching and in-flight tracking were removed to avoid
   // hammering the API. Repository now only loads on demand.
 
+  /// Concurrent [getCategories] with the same [parent] share one network request.
+  static final Map<int, Future<CategoryListResponse>> _inFlightByParent = {};
+
   /// Load categories from cache first, then update from API only when stale
   Future<CategoryListResponse> getCategories({int parent = 0}) async {
     final cacheKey = "categories_$parent";
 
     // 🧠 Load cached categories instantly
     final isar = await IsarService.instance;
-    final cached = await isar.isarCacheEntrys.where().keyEqualTo(cacheKey).findFirst();
+    final cached =
+        await isar.isarCacheEntrys.where().keyEqualTo(cacheKey).findFirst();
     if (cached != null) {
       final List<dynamic> cachedList = json.decode(cached.json);
       if (kDebugMode) print("📦 Loaded cached categories (parent: $parent)");
 
-      // ❌ No background refresh: simply return cached data.
+      try {
+        for (final cat in cachedList) {
+          if (cat is Map) {
+            final name = (cat["name"] ?? "").toString();
+            final slug = (cat["slug"] ?? "").toString();
+            if (name == "Default" && slug == "default") {
+              final id = int.tryParse(cat["id"].toString());
+              if (id != null) {
+                if (kDebugMode)
+                  print(
+                      "🎯 Triggering background fetch for Default category products ($id)");
+                unawaited(getProductsByCategory(id));
+              }
+            }
+          }
+        }
+      } catch (e) {
+        if (kDebugMode)
+          print("⚠️ Error triggering Default category products: $e");
+      }
+
+      //  No background refresh: simply return cached data.
       // Categories will only be refreshed when you explicitly clear cache
       // (e.g. via a manual "refresh" action) and call this again.
       return CategoryListResponse.fromJson(cachedList);
     }
 
     //  No cache → fetch directly from API once and persist to Isar.
-    return await _getCategoriesFromApi(parent);
+    return await _dedupedCategoriesApi(parent);
+  }
+
+  Future<CategoryListResponse> _dedupedCategoriesApi(int parent) {
+    final existing = _inFlightByParent[parent];
+    if (existing != null) return existing;
+
+    final future = _getCategoriesFromApi(parent).whenComplete(() {
+      _inFlightByParent.remove(parent);
+    });
+    _inFlightByParent[parent] = future;
+    return future;
   }
 
   Future<CategoryListResponse> _getCategoriesFromApi(int parent) async {
@@ -79,20 +115,44 @@ class CategoryRepository {
     });
 
     if (kDebugMode) print("💾 Cached categories (parent: $parent)");
+
+    try {
+      for (final cat in categoryList) {
+        if (cat is Map) {
+          final name = (cat["name"] ?? "").toString();
+          final slug = (cat["slug"] ?? "").toString();
+          if (name == "Default" && slug == "default") {
+            final id = int.tryParse(cat["id"].toString());
+            if (id != null) {
+              if (kDebugMode)
+                print(
+                    "🎯 Triggering fetch for Default category products ($id) from API response");
+              unawaited(getProductsByCategory(id));
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode)
+        print("⚠️ Error triggering Default category products: $e");
+    }
+
     return CategoryListResponse.fromJson(categoryList);
   }
 
-
   /// Load products by category (offline-first)
-  Future<CategoryProductListResponse> getProductsByCategory(int categoryId) async {
+  Future<CategoryProductListResponse> getProductsByCategory(
+      int categoryId) async {
     final cacheKey = "products_$categoryId";
 
     final isar = await IsarService.instance;
-    final cached = await isar.isarCacheEntrys.where().keyEqualTo(cacheKey).findFirst();
+    final cached =
+        await isar.isarCacheEntrys.where().keyEqualTo(cacheKey).findFirst();
 
     if (cached != null) {
       if (kDebugMode) {
-        print("🔍 RAW DATA FROM ISAR [$cacheKey] → ${cached.json.length} chars");
+        print(
+            "🔍 RAW DATA FROM ISAR [$cacheKey] → ${cached.json.length} chars");
 
         //  Print full JSON data
         print(" FULL DATA:\n${cached.json}");
@@ -113,9 +173,10 @@ class CategoryRepository {
   }
 
   ///  Fetch products + normalize + cache (tax + age + variants)
-  Future<CategoryProductListResponse> _getProductsFromApi(int categoryId) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants
-        .productByCategories}/$categoryId";
+  Future<CategoryProductListResponse> _getProductsFromApi(
+      int categoryId) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.productByCategories}/$categoryId";
     if (kDebugMode) print("🌍 Fetching products: $url");
 
     final response = await _helper.get(url, true);
@@ -142,7 +203,7 @@ class CategoryRepository {
           : (product["image"] is String ? product["image"] : "");
 
       final name = (product["name"] is Map &&
-          product["name"]["rendered"] != null)
+              product["name"]["rendered"] != null)
           ? product["name"]["rendered"]
           : (product["name"] is String ? product["name"] : "Unnamed Product");
 
@@ -152,12 +213,12 @@ class CategoryRepository {
       final taxClass = product["tax_class"] ?? "";
 
       final metaDiscountAuto = product["meta_data"]?.firstWhere(
-            (m) => m["key"] == "_pinaka_discount_amount_auto_apply",
+        (m) => m["key"] == "_pinaka_discount_amount_auto_apply",
         orElse: () => {"value": "no"},
       )["value"];
 
       final metaDiscountAmount = product["meta_data"]?.firstWhere(
-            (m) => m["key"] == "_discount_amount",
+        (m) => m["key"] == "_discount_amount",
         orElse: () => {"value": 0},
       )["value"];
 
@@ -167,14 +228,13 @@ class CategoryRepository {
       final bool autoApplyDiscount =
           metaDiscountAuto.toString().toLowerCase() == "yes";
 
-
       bool hasAgeRestriction = false;
       int minAge = 0;
 
       final metaAge = product["fast_key_item_min_age"] ??
           product["min_age"] ??
           product["meta_data"]?.firstWhere(
-                (m) => m["key"] == "min_age",
+            (m) => m["key"] == "min_age",
             orElse: () => {"value": 0},
           )["value"];
 
@@ -187,7 +247,7 @@ class CategoryRepository {
       final List productTags = product["tags"] ?? [];
 
       final isEbtEligible = productTags.any((t) =>
-      t["name"].toString().toLowerCase().contains("ebt") ||
+          t["name"].toString().toLowerCase().contains("ebt") ||
           t["slug"].toString().toLowerCase().contains("ebt"));
 
       return {
@@ -210,7 +270,6 @@ class CategoryRepository {
         "auto_discount_enabled": autoApplyDiscount,
         "discount_amount": discountAmount,
       };
-
     }).toList();
 
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -225,8 +284,6 @@ class CategoryRepository {
       print("--------------------------------------------------");
     }
 
-
-
 // 🔍 DEBUG: Print tags and EBT eligibility
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     print("🔍 NORMALIZED PRODUCT TAG DUMP (Category: $categoryId)");
@@ -238,7 +295,7 @@ class CategoryRepository {
       final tags = p["tags"] ?? [];
 
       final isEbtEligible = tags.any((t) =>
-      t["name"].toString().toLowerCase().contains("ebt") ||
+          t["name"].toString().toLowerCase().contains("ebt") ||
           t["slug"].toString().toLowerCase().contains("ebt"));
 
       print("🟦 PRODUCT → ID: $pid | NAME: $pname");
@@ -248,9 +305,6 @@ class CategoryRepository {
 
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-
-
-
 // Continue existing flow
 
     final categoryResponse = CategoryProductListResponse.fromJson(productList);
@@ -259,8 +313,8 @@ class CategoryRepository {
     return categoryResponse;
   }
 
-  Future<void> _cacheProductsAndVariations(
-      int categoryId, List<dynamic> productList, List<dynamic> normalizedProducts) async {
+  Future<void> _cacheProductsAndVariations(int categoryId,
+      List<dynamic> productList, List<dynamic> normalizedProducts) async {
     final isar = await IsarService.instance;
     await isar.writeTxn(() async {
       await isar.isarCacheEntrys.put(
@@ -272,7 +326,8 @@ class CategoryRepository {
     });
 
     if (kDebugMode) {
-      print("💾 Cached ${normalizedProducts.length} products with tax & age info (cat: $categoryId)");
+      print(
+          "💾 Cached ${normalizedProducts.length} products with tax & age info (cat: $categoryId)");
     }
 
     // NOTE: keeping variations cache in Hive for now; only category/product
@@ -287,7 +342,7 @@ class CategoryRepository {
       final parentMinAge = product["fast_key_item_min_age"] ??
           product["min_age"] ??
           product["meta_data"]?.firstWhere(
-                (m) => m["key"] == "min_age",
+            (m) => m["key"] == "min_age",
             orElse: () => {"value": 0},
           )["value"] ??
           0;
@@ -295,9 +350,8 @@ class CategoryRepository {
       if (hasEmbeddedVariants) {
         final variations = product['variations'] as List;
 
-        final normalized = variations
-            .whereType<Map>()
-            .map<Map<String, dynamic>>((v) {
+        final normalized =
+            variations.whereType<Map>().map<Map<String, dynamic>>((v) {
           final image = (v["image"] is Map && v["image"]["src"] != null)
               ? v["image"]["src"]
               : (v["image"] is String ? v["image"] : "");
@@ -305,10 +359,8 @@ class CategoryRepository {
               ? v["name"]["rendered"]
               : (v["name"] is String ? v["name"] : "Unnamed Variant");
           final price = v["price"]?.toString() ?? "0";
-          final varMinAge = v["min_age"] ??
-              v["fast_key_item_min_age"] ??
-              parentMinAge ??
-              0;
+          final varMinAge =
+              v["min_age"] ?? v["fast_key_item_min_age"] ?? parentMinAge ?? 0;
           final varHasAgeRestriction =
               varMinAge != null && int.tryParse(varMinAge.toString())! > 0;
 
@@ -333,11 +385,11 @@ class CategoryRepository {
         try {
           // await productRepo.fetchProductVariations(productId);
         } catch (e) {
-          if (kDebugMode) print("⚠️ Failed to fetch variations for product $productId: $e");
+          if (kDebugMode)
+            print("⚠️ Failed to fetch variations for product $productId: $e");
         }
       }
     }
-
   }
 
   /////
@@ -368,7 +420,6 @@ class CategoryRepository {
   //
   //   return uniqueProducts.values.toList();
   // }
-
 
   Future<List<dynamic>> getAllCachedProducts() async {
     final isar = await IsarService.instance;

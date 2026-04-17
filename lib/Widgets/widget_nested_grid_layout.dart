@@ -240,7 +240,10 @@ class NestedGridWidget extends StatelessWidget {
         (showAddButton ? 1 : 0) + (showBackButton ? 1 : 0) + items.length;
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
-    return Expanded(
+    // Must not use [Expanded] here: callers already wrap this widget in
+    // `Expanded` + `ValueListenableBuilder`. Nesting [Expanded] causes
+    // competing FlexParentData (ParentDataWidget assertion on hot restart).
+    return SizedBox.expand(
       child: Container(
         margin: const EdgeInsets.only(left: 10, right: 10, bottom: 10),
         decoration: BoxDecoration(

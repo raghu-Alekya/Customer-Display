@@ -17,7 +17,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
 
-version: 1.0.465+1
+version: 1.0.468+1
 
 environment:
   sdk: ^3.6.2
@@ -71,8 +71,6 @@ dependencies:
   auto_size_text: ^3.0.0
   package_info_plus: ^8.3.0
   focus_detector: ^2.0.1
-  hive: ^2.2.3
-  hive_flutter: ^1.1.0
   android_intent_plus: ^6.0.0
   usb_serial: ^0.5.2
 
@@ -98,8 +96,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
-  hive: ^2.2.3
-  hive_flutter: ^1.1.0
+
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

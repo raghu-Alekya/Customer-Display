@@ -1827,17 +1827,130 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
   static bool _productMetaInitialized = false;
 
-  Future<Map<String, dynamic>?> _getCashbackProductFromIsar() async {
-    // ⚡ FAST PATH — already cached
+  String _resolveDynamicProductName(Map<String, dynamic> map) {
+    final dynamic rawName = map["fast_key_item_name"] ?? map["name"];
+    if (rawName is Map && rawName["rendered"] != null) {
+      return rawName["rendered"].toString();
+    }
+    return (rawName ?? "").toString();
+  }
+
+  String _resolveDynamicProductSku(Map<String, dynamic> map) {
+    final dynamic rawSku = map["fast_key_item_sku"] ?? map["sku"] ?? map["item_sku"];
+    return (rawSku ?? "").toString();
+  }
+
+  String _resolveDynamicProductImage(Map<String, dynamic> map) {
+    final dynamic rawImage =
+        map["fast_key_item_image"] ?? map["image"] ?? map["images"];
+    if (rawImage is String) return rawImage;
+    if (rawImage is Map && rawImage["src"] != null) {
+      return rawImage["src"].toString();
+    }
+    if (rawImage is List && rawImage.isNotEmpty) {
+      final first = rawImage.first;
+      if (first is String) return first;
+      if (first is Map && first["src"] != null) return first["src"].toString();
+    }
+    return "";
+  }
+
+  int? _resolveDynamicProductId(Map<String, dynamic> map) {
+    final dynamic rawId =
+        map["fast_key_product_id"] ?? map["product_id"] ?? map["id"];
+    if (rawId is int) return rawId;
+    return int.tryParse(rawId?.toString() ?? "");
+  }
+
+  void _cacheDynamicProduct(Map<String, dynamic> map) {
+    final normalized = _normalizeDynamicProductMap(map);
+    final int? pid = _resolveDynamicProductId(normalized);
+    if (pid == null) return;
+    _productMetaCache[pid] = normalized;
+    _productMetaInitialized = true;
+  }
+
+  Map<String, dynamic> _normalizeDynamicProductMap(Map<String, dynamic> map) {
+    final normalized = Map<String, dynamic>.from(map);
+    final pid = _resolveDynamicProductId(normalized);
+    final name = _resolveDynamicProductName(normalized);
+    final sku = _resolveDynamicProductSku(normalized);
+    final image = _resolveDynamicProductImage(normalized);
+
+    if (pid != null) {
+      normalized["fast_key_product_id"] = pid;
+      normalized["product_id"] ??= pid;
+      normalized["id"] ??= pid;
+    }
+    if (name.isNotEmpty) {
+      normalized["fast_key_item_name"] = name;
+      normalized["name"] ??= name;
+    }
+    if (sku.isNotEmpty) {
+      normalized["fast_key_item_sku"] = sku;
+      normalized["sku"] ??= sku;
+    }
+    if (image.isNotEmpty) {
+      normalized["fast_key_item_image"] = image;
+      normalized["image"] ??= image;
+    }
+    return normalized;
+  }
+
+  bool _dynamicProductMatches(
+      Map<String, dynamic> map, List<String> tokens) {
+    final name = _resolveDynamicProductName(map).toLowerCase();
+    final sku = _resolveDynamicProductSku(map).toLowerCase();
+    for (final token in tokens) {
+      final t = token.toLowerCase();
+      if (name.contains(t) || sku.contains(t)) return true;
+    }
+    return false;
+  }
+
+  Iterable<Map<String, dynamic>> _expandDynamicProductCandidates(
+      dynamic raw) sync* {
+    if (raw == null) return;
+    if (raw is List) {
+      for (final item in raw) {
+        yield* _expandDynamicProductCandidates(item);
+      }
+      return;
+    }
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(raw);
+      if (map["products"] is List) {
+        yield* _expandDynamicProductCandidates(map["products"]);
+        return;
+      }
+      if (map["product"] is Map || map["product"] is List) {
+        yield* _expandDynamicProductCandidates(map["product"]);
+        return;
+      }
+      if (map["data"] is String) {
+        try {
+          final decoded = jsonDecode(map["data"]);
+          yield* _expandDynamicProductCandidates(decoded);
+          return;
+        } catch (_) {}
+      }
+      if (map["data"] is List || map["data"] is Map) {
+        yield* _expandDynamicProductCandidates(map["data"]);
+        return;
+      }
+      yield map;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _findDynamicProductByTokens(
+      List<String> tokens) async {
+    final normalizedTokens =
+        tokens.map((e) => e.toLowerCase().trim()).where((e) => e.isNotEmpty).toList();
+    if (normalizedTokens.isEmpty) return null;
+
     if (_productMetaInitialized && _productMetaCache.isNotEmpty) {
       for (final p in _productMetaCache.values) {
-        final name = (p["fast_key_item_name"] ?? p["name"] ?? "")
-            .toString()
-            .toLowerCase();
-
-        if (name.contains("cashback")) {
-          return p;
-        }
+        if (_dynamicProductMatches(p, normalizedTokens)) return p;
       }
     }
 
@@ -1846,83 +1959,104 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       final entries = await isar.isarCacheEntrys.where().findAll();
 
       for (final entry in entries) {
-        if (!entry.key.startsWith("products_")) continue;
+        if (!entry.key.startsWith("products_") &&
+            !entry.key.startsWith("indigo_products_")) {
+          continue;
+        }
 
-        final List<dynamic> products = jsonDecode(entry.json);
+        dynamic decoded;
+        try {
+          decoded = jsonDecode(entry.json);
+        } catch (_) {
+          continue;
+        }
 
-        for (final raw in products) {
-          if (raw is! Map) continue;
-
-          final map = Map<String, dynamic>.from(raw);
-          final name = (map["fast_key_item_name"] ?? map["name"] ?? "")
-              .toString()
-              .toLowerCase();
-
-          if (name.contains("cashback")) {
-            final pid = int.tryParse(
-                (map["fast_key_product_id"] ?? map["id"])?.toString() ?? "");
-
-            if (pid != null) {
-              _productMetaCache[pid] = map;
-              _productMetaInitialized = true;
-            }
-            return map;
-          }
+        for (final map in _expandDynamicProductCandidates(decoded)) {
+          if (!_dynamicProductMatches(map, normalizedTokens)) continue;
+          final normalized = _normalizeDynamicProductMap(map);
+          _cacheDynamicProduct(normalized);
+          return normalized;
         }
       }
     } catch (e) {
-      debugPrint("⚠️ Cashback Isar lookup failed → $e");
+      debugPrint("⚠️ Dynamic Isar lookup failed for '$normalizedTokens' → $e");
+    }
+
+    try {
+      final allList = await StorageProvider.productCache.get("all_products_list");
+      for (final map in _expandDynamicProductCandidates(allList)) {
+        if (!_dynamicProductMatches(map, normalizedTokens)) continue;
+        final normalized = _normalizeDynamicProductMap(map);
+        _cacheDynamicProduct(normalized);
+        return normalized;
+      }
+    } catch (e) {
+      debugPrint("⚠️ Dynamic productCache lookup failed for '$normalizedTokens' → $e");
     }
 
     return null;
   }
 
+  Map<String, dynamic> _buildFallbackDynamicProduct({
+    required int id,
+    required String name,
+    required String sku,
+  }) {
+    return <String, dynamic>{
+      "fast_key_product_id": id,
+      "product_id": id,
+      "id": id,
+      "fast_key_item_name": name,
+      "name": name,
+      "fast_key_item_sku": sku,
+      "sku": sku,
+      "fast_key_item_image": "",
+      "image": "",
+    };
+  }
+
+  Future<Map<String, dynamic>?> _getCashbackProductFromIsar() async {
+    final resolved = await _findDynamicProductByTokens([
+      "cashback",
+      "cash back",
+      "cash-back",
+      "cash_back",
+      "cb",
+    ]);
+    if (resolved != null) return resolved;
+
+    final fallback = _buildFallbackDynamicProduct(
+      id: 3310111,
+      name: "Cashback",
+      sku: "CASHBACK-DYNAMIC",
+    );
+    _cacheDynamicProduct(fallback);
+    if (kDebugMode) {
+      print("⚠️ Cashback product missing in cache → using fallback map");
+    }
+    return fallback;
+  }
+
   Future<Map<String, dynamic>?> _getDiscountProductFromIsar() async {
-    // 🔁 Fast path: already cached
-    if (_productMetaInitialized && _productMetaCache.isNotEmpty) {
-      for (final p in _productMetaCache.values) {
-        final name = (p["fast_key_item_name"] ?? p["name"] ?? "")
-            .toString()
-            .toLowerCase();
-        if (name.contains("discount")) return p;
-      }
+    final resolved = await _findDynamicProductByTokens([
+      "discount",
+      "merchant discount",
+      "merchant-discount",
+      "merchant_discount",
+      "md",
+    ]);
+    if (resolved != null) return resolved;
+
+    final fallback = _buildFallbackDynamicProduct(
+      id: 990002,
+      name: "Merchant Discount",
+      sku: "MERCHANT-DISCOUNT-DYNAMIC",
+    );
+    _cacheDynamicProduct(fallback);
+    if (kDebugMode) {
+      print("⚠️ Discount product missing in cache → using fallback map");
     }
-
-    try {
-      final isar = await IsarService.instance;
-      final entries = await isar.isarCacheEntrys.where().findAll();
-
-      for (final entry in entries) {
-        if (!entry.key.startsWith("products_")) continue;
-
-        final List<dynamic> products = jsonDecode(entry.json);
-        for (final raw in products) {
-          if (raw is! Map) continue;
-          final map = Map<String, dynamic>.from(raw);
-
-          final name = (map["fast_key_item_name"] ?? map["name"] ?? "")
-              .toString()
-              .toLowerCase();
-
-          if (name.contains("discount")) {
-            // cache it for future
-            final pid = int.tryParse(
-                (map["fast_key_product_id"] ?? map["id"])?.toString() ?? "");
-            if (pid != null) {
-              _productMetaCache[pid] = map;
-              _productMetaInitialized = true;
-            }
-            return map;
-          }
-        }
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print("⚠️ Discount lookup failed → $e");
-      }
-    }
-
-    return null;
+    return fallback;
   }
 
   // Build the discount value display
@@ -2665,7 +2799,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
     try {
       final offlineBox = StorageProvider.offlineOrders;
-      final productBox = StorageProvider.productCache;
       final cashbackAmount = double.parse(_cashbackAmount);
       // 🔥 MAX CASHBACK VALIDATION
       if (_maxCashbackLimit > 0 && cashbackAmount > _maxCashbackLimit) {

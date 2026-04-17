@@ -1528,6 +1528,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     Timer? _dialogSearchDebounce;
     bool _dialogSearchPending = false;
+    final ScrollController _dialogScrollController = ScrollController();
 
     // ── NEW: the filtered subset shown in the right-side ListView ───────────
     List<dynamic> _filteredList = [];
@@ -1554,7 +1555,11 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
 
     String _resolveName(dynamic p) {
-      return (p['fast_key_item_name'] ?? p['name'] ?? 'Unknown').toString();
+      final dynamic rawName = p['fast_key_item_name'] ?? p['name'];
+      if (rawName is Map && rawName['rendered'] != null) {
+        return rawName['rendered'].toString();
+      }
+      return (rawName ?? 'Unknown').toString();
     }
 
     String _resolvePrice(dynamic p) {
@@ -1569,6 +1574,35 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       return (p['sku'] ?? p['fast_key_item_sku'] ?? '').toString();
     }
 
+    String _normalize(String input) {
+      return input
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]'), '');
+    }
+
+    bool _matchesCachedProduct(String q, dynamic p) {
+      final normalizedQuery = _normalize(q);
+      if (normalizedQuery.isEmpty) return true;
+
+      final normalizedName = _normalize(_resolveName(p));
+      final normalizedSku = _normalize(_resolveSku(p));
+
+      if (normalizedName.contains(normalizedQuery) ||
+          normalizedSku.contains(normalizedQuery)) {
+        return true;
+      }
+
+      final parts = q
+          .toLowerCase()
+          .split(RegExp(r'\s+'))
+          .map((e) => _normalize(e))
+          .where((e) => e.isNotEmpty)
+          .toList();
+      if (parts.isEmpty) return false;
+      return parts.every((part) =>
+          normalizedName.contains(part) || normalizedSku.contains(part));
+    }
+
     // ── NEW: build sorted + deduplicated filtered list (mirrors TopBar) ─────
     List<dynamic> _buildFiltered(String query) {
       final searchQuery = query.toLowerCase().trim();
@@ -1581,19 +1615,15 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       for (final p in _allCached) {
         final int? pid = _resolveProductId(p);
         if (pid == null) continue;
-
-        final name = _resolveName(p).trim().toLowerCase();
-        final sku = _resolveSku(p).trim().toLowerCase();
-
-        if (!name.contains(searchQuery) && !sku.contains(searchQuery)) continue;
+        if (!_matchesCachedProduct(searchQuery, p)) continue;
 
         unique[pid] = p;
       }
 
       final result = unique.values.toList()
         ..sort((a, b) {
-          final na = (a['fast_key_item_name'] ?? '').toString().toLowerCase();
-          final nb = (b['fast_key_item_name'] ?? '').toString().toLowerCase();
+          final na = _resolveName(a).toLowerCase();
+          final nb = _resolveName(b).toLowerCase();
 
           final sa = na.startsWith(searchQuery);
           final sb = nb.startsWith(searchQuery);
@@ -1729,11 +1759,11 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                             ),
                             height: size.height * 0.5,
                             child: Scrollbar(
-                              controller: _scrollController,
+                              controller: _dialogScrollController,
                               thumbVisibility: true,
                               radius: const Radius.circular(8),
                               child: ListView.builder(
-                                controller: _scrollController,
+                                controller: _dialogScrollController,
                                 itemCount: _filteredList.length,
                                 itemBuilder: (context, index) {
                                   final p = _filteredList[index];
@@ -1937,7 +1967,10 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           },
         );
       },
-    ).whenComplete(() => _dialogSearchDebounce?.cancel());
+    ).whenComplete(() {
+      _dialogSearchDebounce?.cancel();
+      _dialogScrollController.dispose();
+    });
   }
 
   void _showCategoryDialog({required BuildContext context, int? index}) {
