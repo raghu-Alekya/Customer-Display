@@ -113,6 +113,11 @@ class _InventoryScreenState extends State<InventoryScreen>
 
   List<TextEditingController> _attributeControllers = [];
 
+  bool _showUnitNameInput = false;
+  int  _activeAddItemAttrIdx = -1;
+  final TextEditingController _unitNameInputController =
+  TextEditingController();
+
   // Validation & Loading
   final Map<String, String?> _fieldErrors = {};
   bool _isSaving = false;
@@ -146,6 +151,38 @@ class _InventoryScreenState extends State<InventoryScreen>
     _initializeAddProductBloc();
 
     _imageUploadRepo = ImageUploadRepository();
+  }
+
+  void _handleUnitNameCreate() {
+    final name = _unitNameInputController.text.trim();
+    if (name.isEmpty) return;
+
+    setState(() {
+      final slug = name.toLowerCase().replaceAll(' ', '-');
+
+      if (_activeAddItemAttrIdx >= 0 &&
+          _activeAddItemAttrIdx < _variantAttributes.length) {
+        // Triggered from "Add Item" inside the dropdown →
+        // update that row's selectedSlug with the typed name
+        _variantAttributes[_activeAddItemAttrIdx]['selectedSlug']  = slug;
+        _variantAttributes[_activeAddItemAttrIdx]['attributeItem'] = {
+          'slug': slug,
+          'name': name,
+        };
+      } else {
+        // Triggered from the last-row "+ Add" button →
+        // add a brand-new attribute row
+        _variantAttributes.add({
+          'attribute':     null,
+          'attributeItem': {'slug': slug, 'name': name},
+          'selectedSlug':  slug,
+        });
+      }
+
+      _showUnitNameInput        = false;
+      _activeAddItemAttrIdx     = -1;
+      _unitNameInputController.clear();
+    });
   }
 
   void _updateAttributeControllers() {
@@ -1041,16 +1078,16 @@ class _InventoryScreenState extends State<InventoryScreen>
                         child: Column(
                           children: [
                             Padding(
-                              padding:
-                              EdgeInsets.all(isSmallScreen ? 8.0 : 16.0),
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: isSmallScreen ? 8.0 : 16.0, vertical: 10),
                               child: Row(
                                 children: [
+                                  // Back button
                                   Container(
-                                    height: 35,
+                                    height: 38,
                                     decoration: BoxDecoration(
-                                        color: Color(0xFF3B4259),
-                                        borderRadius:
-                                        BorderRadius.circular(6.0)),
+                                        color: isDark ? Color(0xFF3B4259) : Color(0xFF3B4259),
+                                        borderRadius: BorderRadius.circular(8.0)),
                                     child: TextButton.icon(
                                       onPressed: () => Navigator.pop(context),
                                       icon: const Icon(Icons.arrow_back_rounded,
@@ -1058,32 +1095,74 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       label: const Text('Back',
                                           style: TextStyle(
                                               color: Colors.white,
-                                              fontSize: 12,
+                                              fontSize: 13,
                                               fontWeight: FontWeight.w600)),
                                       style: TextButton.styleFrom(
                                           padding: const EdgeInsets.symmetric(
-                                              horizontal: 12, vertical: 8)),
+                                              horizontal: 16, vertical: 8)),
                                     ),
                                   ),
-                                  const SizedBox(width: 16),
-                                  IntrinsicWidth(
-                                    child: Container(
-                                      height: 35,
-                                      padding: EdgeInsets.symmetric(horizontal: 6),
-                                      decoration: BoxDecoration(
-                                        color: isDark ? Color(0xFF252837) : Colors.grey[200],
-                                        borderRadius: BorderRadius.circular(6.0),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min, // important
-                                        children: [
-                                          _buildTabButton('Add Product', 0, themeHelper),
-                                          // SizedBox(width: 12),
-                                          // _buildTabButton('Audit list', 1, themeHelper),
-                                        ],
+                                  const SizedBox(width: 20),
+                                  // Title centered
+                                  Expanded(
+                                    child: Text(
+                                      'Add Product',
+                                      style: TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w700,
+                                        color: isDark ? Colors.white : Colors.black87,
                                       ),
                                     ),
-                                  )
+                                  ),
+                                  // Clear Data button (outlined red)
+                                  OutlinedButton(
+                                    onPressed: _clearForm,
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: Color(0xFFE53935), width: 1.5),
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8)),
+                                      padding:
+                                      const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                                      foregroundColor: Color(0xFFE53935),
+                                    ),
+                                    child: const Text(
+                                      'Clear Data',
+                                      style: TextStyle(
+                                        color: Color(0xFFE53935),
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  // Save & Update button (green)
+                                  ElevatedButton(
+                                    onPressed: _isSaving ? null : _saveProduct,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF2E7D32),
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8)),
+                                      padding:
+                                      const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                                    ),
+                                    child: _isSaving
+                                        ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                          AlwaysStoppedAnimation<Color>(Colors.white)),
+                                    )
+                                        : const Text(
+                                      'Save & Update',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -1892,135 +1971,135 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     CrossAxisAlignment.start,
                                     children: [
                                       // Prices Row
-                                    // 🔥 Common style (ADD THIS ABOVE)
-                                  //   final priceTextStyle = TextStyle(
-                                  //   fontSize: 14,
-                                  //   fontWeight: FontWeight.w600,
-                                  //   height: 1.2,
-                                  //   color: isPriceStockDisabled
-                                  //       ? disabledText
-                                  //       : (isDark ? Colors.white : Colors.black87),
-                                  // );
+                                      // 🔥 Common style (ADD THIS ABOVE)
+                                      //   final priceTextStyle = TextStyle(
+                                      //   fontSize: 14,
+                                      //   fontWeight: FontWeight.w600,
+                                      //   height: 1.2,
+                                      //   color: isPriceStockDisabled
+                                      //       ? disabledText
+                                      //       : (isDark ? Colors.white : Colors.black87),
+                                      // );
 
-                                  Row(
-                                    children: [
-                                      // Regular Price
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'Regular Price',
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w500,
-                                                color: isPriceStockDisabled
-                                                    ? Colors.grey
-                                                    : (isDark ? Colors.white70 : Colors.black87),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            SizedBox(
-                                              height: fieldHeight,
-                                              child: TextFormField(
-                                                controller: _regularPriceController,
-                                                enabled: !isPriceStockDisabled,
-                                                keyboardType: TextInputType.number,
-                                                textAlign: TextAlign.right,
-                                                inputFormatters: [
-                                                  TextInputFormatter.withFunction((oldValue, newValue) {
-                                                    final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-                                                    if (text.isEmpty) return const TextEditingValue(text: '');
-                                                    final value = int.parse(text) / 100;
-                                                    final newText = value.toStringAsFixed(2);
-                                                    return TextEditingValue(
-                                                      text: newText,
-                                                      selection: TextSelection.collapsed(offset: newText.length),
-                                                    );
-                                                  }),
-                                                ],
-                                                style: priceTextStyle, // ✅ SAME STYLE
-                                                decoration: InputDecoration(
-                                                  prefixText: '\$ ',
-                                                  hintText: '0.00',
-                                                  hintStyle: priceTextStyle.copyWith(color: Colors.grey), // ✅ FIX
-                                                  isDense: true,
-                                                  filled: true,
-                                                  fillColor: isPriceStockDisabled
-                                                      ? disabledFill
-                                                      : Colors.transparent,
-                                                  border: const OutlineInputBorder(),
-                                                  contentPadding: const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 8,
+                                      Row(
+                                        children: [
+                                          // Regular Price
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'Regular Price',
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w500,
+                                                    color: isPriceStockDisabled
+                                                        ? Colors.grey
+                                                        : (isDark ? Colors.white70 : Colors.black87),
                                                   ),
                                                 ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-
-                                      const SizedBox(width: 16),
-
-                                      // Sale Price
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'Sale Price',
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w500,
-                                                color: isPriceStockDisabled
-                                                    ? Colors.grey
-                                                    : (isDark ? Colors.white70 : Colors.black87),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            SizedBox(
-                                              height: fieldHeight,
-                                              child: TextFormField(
-                                                controller: _salePriceController,
-                                                enabled: !isPriceStockDisabled,
-                                                keyboardType: TextInputType.number,
-                                                textAlign: TextAlign.right,
-                                                inputFormatters: [
-                                                  TextInputFormatter.withFunction((oldValue, newValue) {
-                                                    final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-                                                    if (text.isEmpty) return const TextEditingValue(text: '');
-                                                    final value = int.parse(text) / 100;
-                                                    final newText = value.toStringAsFixed(2);
-                                                    return TextEditingValue(
-                                                      text: newText,
-                                                      selection: TextSelection.collapsed(offset: newText.length),
-                                                    );
-                                                  }),
-                                                ],
-                                                style: priceTextStyle, // ✅ SAME STYLE
-                                                decoration: InputDecoration(
-                                                  prefixText: '\$ ',
-                                                  hintText: '0.00',
-                                                  hintStyle: priceTextStyle.copyWith(color: Colors.grey), // ✅ FIX
-                                                  filled: true,
-                                                  isDense: true,
-                                                  fillColor: isPriceStockDisabled
-                                                      ? disabledFill
-                                                      : Colors.transparent,
-                                                  border: const OutlineInputBorder(),
-                                                  contentPadding: const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 8,
+                                                const SizedBox(height: 2),
+                                                SizedBox(
+                                                  height: fieldHeight,
+                                                  child: TextFormField(
+                                                    controller: _regularPriceController,
+                                                    enabled: !isPriceStockDisabled,
+                                                    keyboardType: TextInputType.number,
+                                                    textAlign: TextAlign.right,
+                                                    inputFormatters: [
+                                                      TextInputFormatter.withFunction((oldValue, newValue) {
+                                                        final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+                                                        if (text.isEmpty) return const TextEditingValue(text: '');
+                                                        final value = int.parse(text) / 100;
+                                                        final newText = value.toStringAsFixed(2);
+                                                        return TextEditingValue(
+                                                          text: newText,
+                                                          selection: TextSelection.collapsed(offset: newText.length),
+                                                        );
+                                                      }),
+                                                    ],
+                                                    style: priceTextStyle, // ✅ SAME STYLE
+                                                    decoration: InputDecoration(
+                                                      prefixText: '\$ ',
+                                                      hintText: '0.00',
+                                                      hintStyle: priceTextStyle.copyWith(color: Colors.grey), // ✅ FIX
+                                                      isDense: true,
+                                                      filled: true,
+                                                      fillColor: isPriceStockDisabled
+                                                          ? disabledFill
+                                                          : Colors.transparent,
+                                                      border: const OutlineInputBorder(),
+                                                      contentPadding: const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 8,
+                                                      ),
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
+                                              ],
                                             ),
-                                          ],
-                                        ),
+                                          ),
+
+                                          const SizedBox(width: 16),
+
+                                          // Sale Price
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'Sale Price',
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w500,
+                                                    color: isPriceStockDisabled
+                                                        ? Colors.grey
+                                                        : (isDark ? Colors.white70 : Colors.black87),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                SizedBox(
+                                                  height: fieldHeight,
+                                                  child: TextFormField(
+                                                    controller: _salePriceController,
+                                                    enabled: !isPriceStockDisabled,
+                                                    keyboardType: TextInputType.number,
+                                                    textAlign: TextAlign.right,
+                                                    inputFormatters: [
+                                                      TextInputFormatter.withFunction((oldValue, newValue) {
+                                                        final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+                                                        if (text.isEmpty) return const TextEditingValue(text: '');
+                                                        final value = int.parse(text) / 100;
+                                                        final newText = value.toStringAsFixed(2);
+                                                        return TextEditingValue(
+                                                          text: newText,
+                                                          selection: TextSelection.collapsed(offset: newText.length),
+                                                        );
+                                                      }),
+                                                    ],
+                                                    style: priceTextStyle, // ✅ SAME STYLE
+                                                    decoration: InputDecoration(
+                                                      prefixText: '\$ ',
+                                                      hintText: '0.00',
+                                                      hintStyle: priceTextStyle.copyWith(color: Colors.grey), // ✅ FIX
+                                                      filled: true,
+                                                      isDense: true,
+                                                      fillColor: isPriceStockDisabled
+                                                          ? disabledFill
+                                                          : Colors.transparent,
+                                                      border: const OutlineInputBorder(),
+                                                      contentPadding: const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 8,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
 
                                       const SizedBox(height: 6),
 
@@ -2212,145 +2291,165 @@ class _InventoryScreenState extends State<InventoryScreen>
               SizedBox(width: 16),
 
               // Variants Card
-      Expanded(
-        flex: 5,
-        child: Container(
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E3A5F) : Colors.white,
+              Expanded(
+                flex: 5,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E3A5F) : Colors.white,
 
-            // ✅ SAME radius everywhere
-            borderRadius: BorderRadius.circular(12),
+                    // ✅ SAME radius everywhere
+                    borderRadius: BorderRadius.circular(12),
 
-            // ✅ BORDER
-            border: Border.all(
-              color: isDark ? Colors.white12 : Colors.grey.shade300,
-              width: 1,
-            ),
+                    // ✅ BORDER
+                    border: Border.all(
+                      color: isDark ? Colors.white12 : Colors.grey.shade300,
+                      width: 1,
+                    ),
 
-            // ✅ SHADOW
-            boxShadow: [
-              BoxShadow(
-                color: isDark
-                    ? Colors.black.withOpacity(0.3)
-                    : Colors.grey.withOpacity(0.15),
-                blurRadius: 8,
-                spreadRadius: 0,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
+                    // ✅ SHADOW
+                    boxShadow: [
+                      BoxShadow(
+                        color: isDark
+                            ? Colors.black.withOpacity(0.3)
+                            : Colors.grey.withOpacity(0.15),
+                        blurRadius: 8,
+                        spreadRadius: 0,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
 
-          child: Column(
-            children: [
-              // 🔷 HEADER
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF4180DD)
-                      : const Color(0xFFEFF6FF),
+                  child: Column(
+                    children: [
+                      // 🔷 HEADER
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? const Color(0xFF4180DD)
+                              : const Color(0xFFEFF6FF),
 
-                  // ✅ MATCH SAME RADIUS
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(12),
-                    topRight: Radius.circular(12),
+                          // ✅ MATCH SAME RADIUS
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(12),
+                            topRight: Radius.circular(12),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              "Variant's",
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '(Optional)',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w400,
+                                color: isDark ? Colors.white54 : Colors.black45,
+                              ),
+                            ),
+                            const Spacer(),
+                            if (_variants.isNotEmpty)
+                              Container(
+                                padding:
+                                const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF2196F3).withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  '${_variants.length} added',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF2196F3),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // ⚪ BODY
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _buildVariantContent(isDark),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Text(
-                      "Variant's ",
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    Text(
-                      '(${_variants.length} added)',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.white70 : Colors.black54,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // ⚪ BODY
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _buildVariantContent(isDark),
-                ),
-              ),
-            ],
-          ),
-        ),
-      )],
+              )],
           ),
         ),
 
         // Add Save & Update button after cards
-        Container(
-          padding: EdgeInsets.only(top: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              OutlinedButton(
-                onPressed: _clearForm,
-                child: Text(
-                  'Clear',
-                  style: TextStyle(
-                    color: Color(0xFF2196F3),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Color(0xFF2196F3), width: 2),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6)),
-                  padding: EdgeInsets.symmetric(horizontal: 50, vertical: 10),
-                ),
-              ),
-              SizedBox(width: 16),
-              ElevatedButton(
-                onPressed: _isSaving ? null : _saveProduct,
-                child: _isSaving
-                    ? SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor:
-                    AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-                    : Text(
-                  'Save & Update',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xFF2196F3),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6)),
-                  padding: EdgeInsets.symmetric(horizontal: 50, vertical: 10),
-                ),
-              ),
-            ],
-          ),
-        ),
+        // Container(
+        //   padding: EdgeInsets.only(top: 8),
+        //   child: Row(
+        //     mainAxisAlignment: MainAxisAlignment.end,
+        //     children: [
+        //       OutlinedButton(
+        //         onPressed: _clearForm,
+        //         child: Text(
+        //           'Clear',
+        //           style: TextStyle(
+        //             color: Color(0xFF2196F3),
+        //             fontSize: 13,
+        //             fontWeight: FontWeight.w600,
+        //           ),
+        //         ),
+        //         style: OutlinedButton.styleFrom(
+        //           side: BorderSide(color: Color(0xFF2196F3), width: 2),
+        //           shape: RoundedRectangleBorder(
+        //               borderRadius: BorderRadius.circular(6)),
+        //           padding: EdgeInsets.symmetric(horizontal: 50, vertical: 10),
+        //         ),
+        //       ),
+        //       SizedBox(width: 16),
+        //       ElevatedButton(
+        //         onPressed: _isSaving ? null : _saveProduct,
+        //         child: _isSaving
+        //             ? SizedBox(
+        //           width: 20,
+        //           height: 20,
+        //           child: CircularProgressIndicator(
+        //             strokeWidth: 2,
+        //             valueColor:
+        //             AlwaysStoppedAnimation<Color>(Colors.white),
+        //           ),
+        //         )
+        //             : Text(
+        //           'Save & Update',
+        //           style: TextStyle(
+        //             color: Colors.white,
+        //             fontSize: 13,
+        //             fontWeight: FontWeight.w600,
+        //           ),
+        //         ),
+        //         style: ElevatedButton.styleFrom(
+        //           backgroundColor: Color(0xFF2196F3),
+        //           shape: RoundedRectangleBorder(
+        //               borderRadius: BorderRadius.circular(6)),
+        //           padding: EdgeInsets.symmetric(horizontal: 50, vertical: 10),
+        //         ),
+        //       ),
+        //     ],
+        //   ),
+        // ),
       ],
     );
   }
@@ -2800,62 +2899,62 @@ class _InventoryScreenState extends State<InventoryScreen>
                               // ),
 
                               SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Builder(
-                                builder: (context) {
-                                  final regValue = double.tryParse(
-                                    (variant['regularPrice'] ?? '0')
-                                        .toString()
-                                        .replaceAll(RegExp(r'[^0-9.]'), ''),
-                                  ) ??
-                                      0.0;
+                              Row(
+                                children: [
+                                  Builder(
+                                    builder: (context) {
+                                      final regValue = double.tryParse(
+                                        (variant['regularPrice'] ?? '0')
+                                            .toString()
+                                            .replaceAll(RegExp(r'[^0-9.]'), ''),
+                                      ) ??
+                                          0.0;
 
-                                  final saleValue = double.tryParse(
-                                    (variant['salePrice'] ?? '')
-                                        .toString()
-                                        .replaceAll(RegExp(r'[^0-9.]'), ''),
-                                  ) ??
-                                      0.0;
+                                      final saleValue = double.tryParse(
+                                        (variant['salePrice'] ?? '')
+                                            .toString()
+                                            .replaceAll(RegExp(r'[^0-9.]'), ''),
+                                      ) ??
+                                          0.0;
 
-                                  final hasSale = saleValue > 0;
+                                      final hasSale = saleValue > 0;
 
-                                  return Row(
-                                    children: [
-                                      // 🔹 Regular Price
-                                      Text(
-                                        '\$${regValue.toStringAsFixed(2)}',
-                                        style: TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w600,
-                                          color: hasSale
-                                              ? Colors.grey.shade600
-                                              : (isDark ? Colors.white70 : Colors.black54),
-                                          decoration:
-                                          hasSale ? TextDecoration.lineThrough : null,
-                                        ),
-                                      ),
-
-                                      // 🔹 Sale Price
-                                      if (hasSale) ...[
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          '\$${saleValue.toStringAsFixed(2)}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600, // SAME weight
-                                            color: isDark
-                                                ? Colors.orange.shade300
-                                                : Colors.orange.shade700,
+                                      return Row(
+                                        children: [
+                                          // 🔹 Regular Price
+                                          Text(
+                                            '\$${regValue.toStringAsFixed(2)}',
+                                            style: TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.w600,
+                                              color: hasSale
+                                                  ? Colors.grey.shade600
+                                                  : (isDark ? Colors.white70 : Colors.black54),
+                                              decoration:
+                                              hasSale ? TextDecoration.lineThrough : null,
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ],
-                                  );
-                                },
-                              ),
-                            ],
-                          )
+
+                                          // 🔹 Sale Price
+                                          if (hasSale) ...[
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              '\$${saleValue.toStringAsFixed(2)}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600, // SAME weight
+                                                color: isDark
+                                                    ? Colors.orange.shade300
+                                                    : Colors.orange.shade700,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                ],
+                              )
                             ],
                           ),
                         ),
@@ -3349,148 +3448,263 @@ class _InventoryScreenState extends State<InventoryScreen>
                       ),
                     ),
                     SizedBox(height: 6),
-                    ..._variantAttributes.asMap().entries.map((entry) {
+// Replace this block in your ..._variantAttributes.asMap().entries.map((entry) { ... })
+
+                    ..._variantAttributes.asMap().entries.expand((entry) {
                       final idx = entry.key;
                       final attr = entry.value;
                       final isLast = idx == _variantAttributes.length - 1;
 
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF2196F3).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '${idx + 1}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF2196F3),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 3,
-                              child: SizedBox(
-                                height: 48,
-                                child: InventoryAttributesWithItemsWidget(
-                                  onAttributeSelected: (attribute) {
-                                    setState(() {
-                                      _variantAttributes[idx]['attribute'] = {
-                                        'id': attribute.id,
-                                        'name': attribute.name,
-                                        'slug': attribute.slug,
-                                      };
-                                      _variantAttributes[idx]['attributeItem'] =
-                                      null;
-                                      _variantAttributes[idx]['selectedSlug'] =
-                                      null;
-                                    });
-                                  },
-                                  onItemSlugSelected: (attribute, slug) {
-                                    setState(() {
-                                      _variantAttributes[idx]
-                                      ['attributeItem'] = {'slug': slug};
-                                      _variantAttributes[idx]['selectedSlug'] =
-                                          slug;
-                                    });
-                                  },
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 2,
-                              child: Container(
-                                height: 40,
-                                padding:
-                                const EdgeInsets.symmetric(horizontal: 12),
+                      return [
+                        // ── Attribute Row ──────────────────────────────────────────
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              // Index badge
+                              Container(
+                                width: 28,
+                                height: 28,
                                 decoration: BoxDecoration(
-                                  color: isDark
-                                      ? const Color(0xFF252837)
-                                      : Colors.white70,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: isDark
-                                        ? const Color(0xFF3B4259)
-                                        : const Color(0xFFE0E0E0),
-                                  ),
+                                  color: const Color(0xFF2196F3).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
                                 ),
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
+                                child: Center(
                                   child: Text(
-                                    attr['selectedSlug'] ?? 'Not selected',
-                                    style: TextStyle(
+                                    '${idx + 1}',
+                                    style: const TextStyle(
                                       fontSize: 12,
-                                      color: isDark
-                                          ? Colors.white70
-                                          : Colors.black54,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF2196F3),
                                     ),
-                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            if (isLast)
-                              TextButton.icon(
-                                onPressed: () {
-                                  setState(() {
-                                    _variantAttributes.add({
-                                      'attribute': null,
-                                      'attributeItem': null,
-                                      'selectedSlug': null,
-                                    });
-                                  });
-                                },
-                                icon: const Icon(Icons.add,
-                                    size: 15, color: Colors.grey),
-                                label: const Text(
-                                  'Add',
-                                  style: TextStyle(
-                                      fontSize: 13, color: Colors.grey),
+                              const SizedBox(width: 12),
+
+                              // Attribute + Items Dropdown
+                              Expanded(
+                                flex: 3,
+                                child: SizedBox(
+                                  height: 48,
+                                  child: InventoryAttributesWithItemsWidget(
+                                    onAttributeSelected: (attribute) {
+                                      setState(() {
+                                        _variantAttributes[idx]['attribute'] = {
+                                          'id': attribute.id,
+                                          'name': attribute.name,
+                                          'slug': attribute.slug,
+                                        };
+                                        _variantAttributes[idx]['attributeItem'] = null;
+                                        _variantAttributes[idx]['selectedSlug'] = null;
+                                      });
+                                    },
+                                    onItemSlugSelected: (attribute, slug) {
+                                      setState(() {
+                                        _variantAttributes[idx]['attributeItem'] = {'slug': slug};
+                                        _variantAttributes[idx]['selectedSlug'] = slug;
+                                        // Hide unit name input if it was open for this row
+                                        if (_activeAddItemAttrIdx == idx) {
+                                          _showUnitNameInput = false;
+                                          _activeAddItemAttrIdx = -1;
+                                        }
+                                      });
+                                    },
+                                    // ✅ KEY FIX: wire up onAddItemTapped
+                                    onAddItemTapped: () {
+                                      setState(() {
+                                        _showUnitNameInput = true;
+                                        _activeAddItemAttrIdx = idx;
+                                        _unitNameInputController.clear();
+                                      });
+                                    },
+                                  ),
                                 ),
                               ),
-                            if (!isLast && _variantAttributes.length > 1)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 8),
-                                child: InkWell(
-                                  onTap: () {
+                              const SizedBox(width: 12),
+
+                              // Selected slug display
+                              Expanded(
+                                flex: 2,
+                                child: Container(
+                                  height: 40,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? const Color(0xFF252837) : Colors.white70,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: isDark
+                                          ? const Color(0xFF3B4259)
+                                          : const Color(0xFFE0E0E0),
+                                    ),
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      attr['selectedSlug'] ?? 'Not selected',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isDark ? Colors.white70 : Colors.black54,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+
+                              // Add / Remove button
+                              if (isLast)
+                                TextButton.icon(
+                                  onPressed: () {
                                     setState(() {
-                                      _variantAttributes.removeAt(idx);
+                                      _variantAttributes.add({
+                                        'attribute': null,
+                                        'attributeItem': null,
+                                        'selectedSlug': null,
+                                      });
                                     });
                                   },
+                                  icon: const Icon(Icons.add_circle_outline, size: 18, color: Color(0xFF2196F3)),
+                                  label: const Text(
+                                    'Add',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFF2196F3),
+                                      fontWeight: FontWeight.w500,
+                                      decoration: TextDecoration.underline,
+                                      decorationColor: Color(0xFF2196F3),
+                                    ),
+                                  ),
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                  ),
+                                ),
+                              if (!isLast && _variantAttributes.length > 1)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 8),
+                                  child: InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        _variantAttributes.removeAt(idx);
+                                        if (_activeAddItemAttrIdx == idx) {
+                                          _showUnitNameInput = false;
+                                          _activeAddItemAttrIdx = -1;
+                                        }
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEF5350).withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                            color: const Color(0xFFEF5350).withOpacity(0.3)),
+                                      ),
+                                      child: const Icon(Icons.delete_outline,
+                                          size: 20, color: Color(0xFFEF5350)),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+
+                        // ✅ KEY FIX: Unit Name input appears BELOW the matching attribute row
+                        if (_showUnitNameInput && _activeAddItemAttrIdx == idx)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding:
+                            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? const Color(0xFF1A2535)
+                                  : const Color(0xFFF0F7FF),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: isDark
+                                    ? const Color(0xFF2A3F5F)
+                                    : const Color(0xFFBBDEFB),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  'Unit Name : ',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: isDark ? Colors.white70 : Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
                                   child: Container(
-                                    padding: const EdgeInsets.all(10),
+                                    height: 40,
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFFEF5350)
-                                          .withOpacity(0.1),
+                                      color: isDark
+                                          ? const Color(0xFF252837)
+                                          : Colors.white,
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
-                                        color: const Color(0xFFEF5350)
-                                            .withOpacity(0.3),
+                                        color: isDark
+                                            ? const Color(0xFF3B4259)
+                                            : Colors.grey.shade300,
                                       ),
                                     ),
-                                    child: const Icon(
-                                      Icons.delete_outline,
-                                      size: 20,
-                                      color: Color(0xFFEF5350),
+                                    child: TextField(
+                                      controller: _unitNameInputController,
+                                      autofocus: true,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isDark ? Colors.white : Colors.black87,
+                                      ),
+                                      decoration: InputDecoration(
+                                        border: InputBorder.none,
+                                        isDense: true,
+                                        contentPadding: const EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 10),
+                                        hintText: 'e.g. blue, XL, 500ml...',
+                                        hintStyle: TextStyle(
+                                          fontSize: 12,
+                                          color: isDark
+                                              ? Colors.grey.shade600
+                                              : Colors.grey.shade400,
+                                        ),
+                                      ),
+                                      onSubmitted: (_) => _handleUnitNameCreate(),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
-                        ),
-                      );
+                                const SizedBox(width: 10),
+                                SizedBox(
+                                  height: 40,
+                                  child: ElevatedButton(
+                                    onPressed: _handleUnitNameCreate,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFB9F5C8),
+                                      foregroundColor: const Color(0xFF1B8A3A),
+                                      elevation: 0,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8)),
+                                      padding:
+                                      const EdgeInsets.symmetric(horizontal: 22),
+                                    ),
+                                    child: const Text(
+                                      'Create',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF1B8A3A),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ];
                     }).toList(),
                     SizedBox(height: 6),
                     SizedBox(

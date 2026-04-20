@@ -40,20 +40,26 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
   int? _pressedCardIndex;
   bool _isSafeEnabled = false;
   bool _isSafeDropEnabled = false;
+  bool _ready = false;
 
+  @override
   @override
   void initState() {
     super.initState();
-    _loadSafeEnable();
-    _loadSafeDropEnable();
-    _selectedSidebarIndex = widget.lastSelectedIndex ??
-        4; // Build #1.0.7: Restore previous selection
-    // Simulate a loading delay
-    Future.delayed(const Duration(seconds: 3), () {
+    _initApps();
+  }
+  Future<void> _initApps() async {
+    _selectedSidebarIndex = widget.lastSelectedIndex ?? 4;
+
+    // Load both values properly
+    _isSafeEnabled = await SafeStorageHelper.getSafeEnable();
+    _isSafeDropEnabled = await SafeStorageHelper.getSafeEnableDrop();
+
+    if (mounted) {
       setState(() {
-        isLoading = false; // Set loading to false after 3 seconds
+        isLoading = false;
       });
-    });
+    }
   }
   Future<void> _loadSafeEnable() async {
     _isSafeEnabled = await SafeStorageHelper.getSafeEnable();
@@ -155,20 +161,20 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
                             );
                           },
                         ),
-                        if (_isSafeDropEnabled)
-                          _buildCard(
-                            icon: themeHelper.themeMode == ThemeMode.dark
-                                ? Image.asset("assets/safedrop_dark.png")
-                                : Image.asset("assets/safedrop_lite.png"),
-                            cardIndex: 1,
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => SafeDropScreen()),
-                              );
-                            },
-                          ),
-
+                        _buildCard(
+                          icon: themeHelper.themeMode == ThemeMode.dark
+                              ? Image.asset("assets/safedrop_dark.png")
+                              : Image.asset("assets/safedrop_lite.png"),
+                          cardIndex: 1,
+                          onTap: _isSafeDropEnabled
+                              ? () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => SafeDropScreen()),
+                            );
+                          }
+                              : () {},
+                        ).withOpacity(_isSafeDropEnabled ? 1.0 : 0.0),
                         _buildCard(
                           //title: TextConstants.cashier,
                           icon: themeHelper.themeMode == ThemeMode.dark
@@ -195,6 +201,7 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
                     ),
                   ),
                 ),
+
 
                 // Right Sidebar (Conditional)
                 if (sidebarPosition == SidebarPosition.right)
@@ -240,6 +247,18 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
         width: 330,
         height: 330,
         child: icon,
+      ),
+    );
+  }
+
+}
+extension WidgetOpacity on Widget {
+  Widget withOpacity(double opacity) {
+    return Opacity(
+      opacity: opacity,
+      child: IgnorePointer(
+        ignoring: opacity == 0,
+        child: this,
       ),
     );
   }

@@ -4,17 +4,19 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'inventory_attribute_items_bloc/inventory_attribute_items_bloc.dart';
 import 'inventory_attribute_items_bloc/inventory_attribute_items_state.dart';
 
-
-
 class InventoryAttributeItemsWidget extends StatefulWidget {
   final int attributeId;
-
   final void Function(String itemSlug)? onItemSelected;
+
+  /// NEW (only addition): parent receives this tap to show
+  /// the "Unit Name + Create" row below the attribute list.
+  final VoidCallback? onAddItemTapped;
 
   const InventoryAttributeItemsWidget({
     super.key,
     required this.attributeId,
     this.onItemSelected,
+    this.onAddItemTapped,
   });
 
   @override
@@ -29,11 +31,10 @@ class _InventoryAttributeItemsWidgetState
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
     final borderColor = isDark ? Colors.grey.shade700 : Colors.grey.shade400;
-    final textColor = isDark ? Colors.white : Colors.black;
-    final hintColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
-    final bgColor = isDark ? Colors.grey.shade900 : Colors.white;
+    final textColor  = isDark ? Colors.white : Colors.black;
+    final hintColor  = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+    final bgColor    = isDark ? Colors.grey.shade900 : Colors.white;
 
     return BlocBuilder<InventoryAttributeItemsBloc,
         InventoryAttributeItemsState>(
@@ -61,35 +62,52 @@ class _InventoryAttributeItemsWidgetState
       ) {
     List<DropdownMenuItem<String>> dropdownItems = [];
     String hintText = 'No items found';
-    bool isEnabled = false;
+    bool isEnabled  = false;
 
-    if (state is InventoryAttributeItemsLoaded && state.items.isNotEmpty) {
-      // Reset selection if slug no longer exists
+    if (state is InventoryAttributeItemsLoaded) {
       if (_selectedItemSlug != null &&
+          _selectedItemSlug != 'add_item' &&
           !state.items.any((item) => item.slug == _selectedItemSlug)) {
         _selectedItemSlug = null;
       }
 
       dropdownItems = state.items
-          .map(
-            (item) => DropdownMenuItem<String>(
-          value: item.slug, // 👈 use slug as value
-          child: Center(
-            child: Text(
-              item.name,
+          .map((item) => DropdownMenuItem<String>(
+        value: item.slug,
+        child: Center(
+          child: Text(item.name,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: textColor),
+              style: TextStyle(fontSize: 14, color: textColor)),
+        ),
+      ))
+          .toList();
+
+      // "Add Item" entry — unchanged from original
+      dropdownItems.insert(
+        0,
+        const DropdownMenuItem<String>(
+          value: 'add_item',
+          child: Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.add, size: 16, color: Color(0xFF2196F3)),
+                SizedBox(width: 4),
+                Text('Add Item',
+                    style: TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF2196F3),
+                        fontWeight: FontWeight.w600)),
+              ],
             ),
           ),
         ),
-      )
-          .toList();
+      );
 
-      hintText = 'Select an item';
+      hintText  = 'Select an item';
       isEnabled = true;
     } else if (state is InventoryAttributeItemsLoading) {
-      hintText = 'Loading items...';
-      dropdownItems = [];
+      hintText  = 'Loading items...';
       isEnabled = false;
     }
 
@@ -103,18 +121,18 @@ class _InventoryAttributeItemsWidgetState
         contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
       ),
       hint: Center(
-        child: Text(
-          hintText,
-          style: TextStyle(color: hintColor, fontSize: 14),
-        ),
-      ),
+          child: Text(hintText,
+              style: TextStyle(color: hintColor, fontSize: 14))),
       items: dropdownItems,
       onChanged: isEnabled
           ? (value) {
-        setState(() {
-          _selectedItemSlug = value;
-        });
-
+        if (value == 'add_item') {
+          // Reset visual selection and tell parent to show the input row
+          setState(() => _selectedItemSlug = null);
+          widget.onAddItemTapped?.call(); // ← only new line
+          return;
+        }
+        setState(() => _selectedItemSlug = value);
         if (value != null && widget.onItemSelected != null) {
           widget.onItemSelected!(value);
           debugPrint('Selected Item Slug: $value');

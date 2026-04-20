@@ -6486,6 +6486,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                           }
 
                           setState(() => _isPayBtnLoading = true);
+                          // 🔥 ADD THIS LINE
+                          // await Future.delayed(Duration(milliseconds: 100));
 
                           try {
                             final int? frozenCheckoutOrderId =
@@ -6804,26 +6806,44 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             // =======================================================
                             final result = await Navigator.push(
                               context,
-                              MaterialPageRoute(
-                                builder: (_) => OrderSummaryScreen(
-                                  formattedDate: displayDate,
-                                  formattedTime: displayTime,
-                                  orderItems: summaryItems,
-                                  grossTotal: grossAfterDiscount,
-                                  orderDiscount: orderDiscount,
-                                  merchantDiscount: merchantDiscount,
-                                  orderTax: totalTaxAfterDiscount,
-                                  netPayable: (grossAfterDiscount +
-                                      totalTaxAfterDiscount),
-                                  orderId: serverOrderId ??
-                                      frozenCheckoutOrderId,
-                                  isOfflineSynced: serverOrderId != null,
-                                  offlineOrderId:
-                                  frozenCheckoutOrderId,
-                                  cashbackFee: cashbackFee,
-                                  ebtAmount: totalEbtAfterDiscount,
-                                  discountAmount: discountAmount,
-                                ),
+                              PageRouteBuilder(
+                                pageBuilder: (context, animation, secondaryAnimation) =>
+                                    OrderSummaryScreen(
+                                      formattedDate: displayDate,
+                                      formattedTime: displayTime,
+                                      orderItems: summaryItems,
+                                      grossTotal: grossAfterDiscount,
+                                      orderDiscount: orderDiscount,
+                                      merchantDiscount: merchantDiscount,
+                                      orderTax: totalTaxAfterDiscount,
+                                      netPayable: (grossAfterDiscount + totalTaxAfterDiscount),
+                                      orderId: serverOrderId ?? frozenCheckoutOrderId,
+                                      isOfflineSynced: serverOrderId != null,
+                                      offlineOrderId: frozenCheckoutOrderId,
+                                      cashbackFee: cashbackFee,
+                                      ebtAmount: totalEbtAfterDiscount,
+                                      discountAmount: discountAmount,
+                                    ),
+
+                                transitionDuration: const Duration(milliseconds: 220),
+
+                                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                  final curved = CurvedAnimation(
+                                    parent: animation,
+                                    curve: Curves.easeOutCubic,
+                                  );
+
+                                  return FadeTransition(
+                                    opacity: curved,
+                                    child: SlideTransition(
+                                      position: Tween<Offset>(
+                                        begin: const Offset(0.05, 0), // slight right → natural feel
+                                        end: Offset.zero,
+                                      ).animate(curved),
+                                      child: child,
+                                    ),
+                                  );
+                                },
                               ),
                             );
                           } catch (e, s) {

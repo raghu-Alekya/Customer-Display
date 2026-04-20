@@ -608,6 +608,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                       _DataCell(
                           order.completedAt.toString().split(' ').first),
                       // _DataCell(order.transactionId),
+                      const SizedBox(width:10),
                       Expanded(
                         child: GestureDetector(
                           onTap: () {},

@@ -55,6 +55,7 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
       );
 
       if (response['success'] == true && response.containsKey('total')) {
+        if (!mounted) return;
         setState(() {
           totalRefund = response['total']; // store total
           amount = response['total'].toStringAsFixed(2); // pre-fill numpad
