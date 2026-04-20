@@ -6708,7 +6708,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       textInputAction:
                                                       TextInputAction.done,
                                                       enabled: true,
-                                                      readOnly: false,
+                                                      readOnly: true,
                                                       textAlign:
                                                       TextAlign.right,
                                                       autofocus: false,
@@ -8452,12 +8452,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     showDialog(
       context: context,
       barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.10),
       builder: (context) {
-        return WillPopScope(
-          onWillPop: () async {
-            ScannerGuard.isCouponPopupOpen = false; // 🔓 enable scanner again
-            return true;
-          },
+        return Stack(
+            children: [
+            /// 🔹 WHITE BACKGROUND when keyboard opens
+            if (MediaQuery.of(context).viewInsets.bottom > 0)
+        Positioned.fill(
+        child: Container(
+        color: Colors.white,
+        ),
+        ),
+
+        /// 🔹 YOUR EXISTING DIALOG
+        Center(
+        child: WillPopScope(
+        onWillPop: () async {
+        ScannerGuard.isCouponPopupOpen = false;
+        return true;
+        },
           child: BarcodeKeyboardListener(
             bufferDuration: const Duration(milliseconds: 600),
             onBarcodeScanned: (barcode) {
@@ -8590,7 +8603,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               ),
             ),
           ),
-        );
+        ))
+              ]);
       },
     ).then((_) {
       ScannerGuard.isCouponPopupOpen = false; // 🔓 Ensure scanner re-enables

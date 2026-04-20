@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:dotted_border/dotted_border.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -30,6 +32,7 @@ import 'add_product_toinventory/add_product_inventory_repository_impl.dart';
 import 'image_upload_repository.dart';
 import 'inventory_Tax/inventory_tax_screen.dart';
 
+import 'inventory_attribute_items/inventory_attribute_items_remote_data_source.dart';
 import 'inventory_attributes/inventory_attributes_entity.dart';
 import 'inventory_attributes/inventory_attributes_widgets.dart';
 import 'inventory_categories/inventory_categories_widgets.dart';
@@ -134,6 +137,9 @@ class _InventoryScreenState extends State<InventoryScreen>
 
   late final ImageUploadRepository _imageUploadRepo;
 
+
+
+
   @override
   void initState() {
     super.initState();
@@ -153,34 +159,55 @@ class _InventoryScreenState extends State<InventoryScreen>
     _imageUploadRepo = ImageUploadRepository();
   }
 
-  void _handleUnitNameCreate() {
+  void _handleUnitNameCreate() async {
     final name = _unitNameInputController.text.trim();
     if (name.isEmpty) return;
 
-    setState(() {
-      final slug = name.toLowerCase().replaceAll(' ', '-');
+    final slug = name.toLowerCase().replaceAll(' ', '-');
 
+    // Get the attributeId from the active row
+    int? attributeId;
+    if (_activeAddItemAttrIdx >= 0 &&
+        _activeAddItemAttrIdx < _variantAttributes.length) {
+      final attr = _variantAttributes[_activeAddItemAttrIdx]['attribute'];
+      attributeId = attr?['id'] as int?;
+    }
+
+    //  Call API to create the term if attributeId is available
+    if (attributeId != null) {
+      try {
+        final api = InventoryAttributeItemsApi();
+        final newTerm = await api.createTerm(
+          attributeId: attributeId,
+          name: name,
+          slug: slug,
+        );
+
+        if (kDebugMode) print('Term created: ${newTerm.name} (${newTerm.slug})');
+      } catch (e) {
+        if (kDebugMode) print('Failed to create term: $e');
+
+      }
+    }
+
+    setState(() {
       if (_activeAddItemAttrIdx >= 0 &&
           _activeAddItemAttrIdx < _variantAttributes.length) {
-        // Triggered from "Add Item" inside the dropdown →
-        // update that row's selectedSlug with the typed name
-        _variantAttributes[_activeAddItemAttrIdx]['selectedSlug']  = slug;
+        _variantAttributes[_activeAddItemAttrIdx]['selectedSlug'] = slug;
         _variantAttributes[_activeAddItemAttrIdx]['attributeItem'] = {
           'slug': slug,
           'name': name,
         };
       } else {
-        // Triggered from the last-row "+ Add" button →
-        // add a brand-new attribute row
         _variantAttributes.add({
-          'attribute':     null,
+          'attribute': null,
           'attributeItem': {'slug': slug, 'name': name},
-          'selectedSlug':  slug,
+          'selectedSlug': slug,
         });
       }
 
-      _showUnitNameInput        = false;
-      _activeAddItemAttrIdx     = -1;
+      _showUnitNameInput = false;
+      _activeAddItemAttrIdx = -1;
       _unitNameInputController.clear();
     });
   }
@@ -1542,72 +1569,206 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   ),
                                   const SizedBox(height: 6),
 
+                                  // Row(
+                                  //   crossAxisAlignment:
+                                  //   CrossAxisAlignment.start,
+                                  //   children: [
+                                  //     GestureDetector(
+                                  //       onTap: _pickImage,
+                                  //       child: Stack(
+                                  //         children: [
+                                  //           Container(
+                                  //             width: 70,
+                                  //             height: 70,
+                                  //             decoration: BoxDecoration(
+                                  //               borderRadius:
+                                  //               BorderRadius.circular(8),
+                                  //               border: Border.all(
+                                  //                 color: isDark
+                                  //                     ? const Color(0xFF3B4259)
+                                  //                     : const Color(0xFFE0E0E0),
+                                  //                 width: 2,
+                                  //               ),
+                                  //               color: isDark
+                                  //                   ? const Color(0xFF252837)
+                                  //                   : Colors.white,
+                                  //               image: _imageFile != null
+                                  //                   ? DecorationImage(
+                                  //                 image: FileImage(
+                                  //                     _imageFile!),
+                                  //                 fit: BoxFit.cover,
+                                  //               )
+                                  //                   : null,
+                                  //             ),
+                                  //             child: _imageFile == null
+                                  //                 ? Column(
+                                  //               mainAxisAlignment:
+                                  //               MainAxisAlignment
+                                  //                   .center,
+                                  //               children: [
+                                  //                 Container(
+                                  //                   padding: EdgeInsets.all(6), // controls circle size
+                                  //                   decoration: BoxDecoration(
+                                  //                     color: Color(0xFF2196F3).withOpacity(0.1), // light background
+                                  //                     shape: BoxShape.circle,
+                                  //                   ),
+                                  //                   child: Icon(
+                                  //                     Icons.image_outlined,
+                                  //                     size: 12,
+                                  //                     color: Color(0xFF2196F3),
+                                  //                   ),
+                                  //                 ),
+                                  //
+                                  //                 const SizedBox(height: 2),
+                                  //
+                                  //                 Padding(
+                                  //                   padding: const EdgeInsets.only(left: 16.0),
+                                  //                   child: Text(
+                                  //                     'Upload Image',
+                                  //                     style: TextStyle(
+                                  //                       fontSize: 10,
+                                  //                       color: isDark ? Colors.white70 : Colors.black54,
+                                  //                     ),
+                                  //                   ),
+                                  //                 ),
+                                  //               ],
+                                  //             )
+                                  //                 : null,
+                                  //           ),
+                                  //           if (_imageFile != null)
+                                  //             Positioned(
+                                  //               top: 4,
+                                  //               right: 4,
+                                  //               child: GestureDetector(
+                                  //                 onTap: () {
+                                  //                   setState(() {
+                                  //                     _imageFile = null;
+                                  //                   });
+                                  //                 },
+                                  //                 child: Container(
+                                  //                   padding:
+                                  //                   const EdgeInsets.all(4),
+                                  //                   decoration:
+                                  //                   const BoxDecoration(
+                                  //                     color: Colors.black54,
+                                  //                     shape: BoxShape.circle,
+                                  //                   ),
+                                  //                   child: const Icon(
+                                  //                     Icons.close,
+                                  //                     size: 12,
+                                  //                     color: Colors.white,
+                                  //                   ),
+                                  //                 ),
+                                  //               ),
+                                  //             ),
+                                  //         ],
+                                  //       ),
+                                  //     ),
+                                  //
+                                  //     const SizedBox(width: 10),
+                                  //
+                                  //     /// IMAGE TEXT INFO (Aligned)
+                                  //     Expanded(
+                                  //       child: Column(
+                                  //         crossAxisAlignment:
+                                  //         CrossAxisAlignment.start,
+                                  //         mainAxisAlignment:
+                                  //         MainAxisAlignment.center,
+                                  //         children: [
+                                  //           Text(
+                                  //             'Please upload a clear image of the item',
+                                  //             style: TextStyle(
+                                  //               fontSize: 10,
+                                  //               color: isDark
+                                  //                   ? Colors.white54
+                                  //                   : Colors.black45,
+                                  //             ),
+                                  //           ),
+                                  //           const SizedBox(height: 6),
+                                  //           Text(
+                                  //             'Max File Size : 200KB',
+                                  //             style: TextStyle(
+                                  //               fontSize: 10,
+                                  //               fontWeight: FontWeight.w500,
+                                  //               color: isDark
+                                  //                   ? Colors.white70
+                                  //                   : Colors.black87,
+                                  //             ),
+                                  //           ),
+                                  //         ],
+                                  //       ),
+                                  //     ),
+                                  //   ],
+                                  // ),
+
                                   Row(
-                                    crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       GestureDetector(
                                         onTap: _pickImage,
                                         child: Stack(
                                           children: [
-                                            Container(
-                                              width: 70,
-                                              height: 70,
-                                              decoration: BoxDecoration(
-                                                borderRadius:
-                                                BorderRadius.circular(8),
-                                                border: Border.all(
+                                            DottedBorder(
+                                              borderType: BorderType.RRect,
+                                              radius: Radius.circular(8),
+                                              dashPattern: [4, 3],
+                                              color: isDark
+                                                  ? const Color(0xFF3B4259)
+                                                  : const Color(0xFFE0E0E0),
+                                              strokeWidth: 1.5,
+                                              child: Container(
+                                                width: 70,
+                                                height: 70,
+                                                decoration: BoxDecoration(
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  // ❌ removed solid border here
                                                   color: isDark
-                                                      ? const Color(0xFF3B4259)
-                                                      : const Color(0xFFE0E0E0),
-                                                  width: 2,
+                                                      ? const Color(0xFF252837)
+                                                      : Colors.white,
+                                                  image: _imageFile != null
+                                                      ? DecorationImage(
+                                                    image: FileImage(_imageFile!),
+                                                    fit: BoxFit.cover,
+                                                  )
+                                                      : null,
                                                 ),
-                                                color: isDark
-                                                    ? const Color(0xFF252837)
-                                                    : Colors.white,
-                                                image: _imageFile != null
-                                                    ? DecorationImage(
-                                                  image: FileImage(
-                                                      _imageFile!),
-                                                  fit: BoxFit.cover,
+                                                child: _imageFile == null
+                                                    ? Column(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    Container(
+                                                      padding: EdgeInsets.all(6),
+                                                      decoration: BoxDecoration(
+                                                        color: Color(0xFF2196F3).withOpacity(0.1),
+                                                        shape: BoxShape.circle,
+                                                      ),
+                                                      child: Icon(
+                                                        Icons.image_outlined,
+                                                        size: 12,
+                                                        color: Color(0xFF2196F3),
+                                                      ),
+                                                    ),
+
+                                                    const SizedBox(height: 2),
+
+                                                    Padding(
+                                                      padding: const EdgeInsets.only(left: 16.0),
+                                                      child: Text(
+                                                        'Upload Image',
+                                                        style: TextStyle(
+                                                          fontSize: 10,
+                                                          color: isDark
+                                                              ? Colors.white70
+                                                              : Colors.black54,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
                                                 )
                                                     : null,
                                               ),
-                                              child: _imageFile == null
-                                                  ? Column(
-                                                mainAxisAlignment:
-                                                MainAxisAlignment
-                                                    .center,
-                                                children: [
-                                                  Container(
-                                                    padding: EdgeInsets.all(6), // controls circle size
-                                                    decoration: BoxDecoration(
-                                                      color: Color(0xFF2196F3).withOpacity(0.1), // light background
-                                                      shape: BoxShape.circle,
-                                                    ),
-                                                    child: Icon(
-                                                      Icons.image_outlined,
-                                                      size: 12,
-                                                      color: Color(0xFF2196F3),
-                                                    ),
-                                                  ),
-
-                                                  const SizedBox(height: 2),
-
-                                                  Padding(
-                                                    padding: const EdgeInsets.only(left: 16.0),
-                                                    child: Text(
-                                                      'Upload Image',
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        color: isDark ? Colors.white70 : Colors.black54,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              )
-                                                  : null,
                                             ),
+
                                             if (_imageFile != null)
                                               Positioned(
                                                 top: 4,
@@ -1619,10 +1780,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                     });
                                                   },
                                                   child: Container(
-                                                    padding:
-                                                    const EdgeInsets.all(4),
-                                                    decoration:
-                                                    const BoxDecoration(
+                                                    padding: const EdgeInsets.all(4),
+                                                    decoration: const BoxDecoration(
                                                       color: Colors.black54,
                                                       shape: BoxShape.circle,
                                                     ),
@@ -1640,35 +1799,35 @@ class _InventoryScreenState extends State<InventoryScreen>
 
                                       const SizedBox(width: 10),
 
-                                      /// IMAGE TEXT INFO (Aligned)
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                          mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                          children: [
-                                            Text(
-                                              'Please upload a clear image of the item',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                color: isDark
-                                                    ? Colors.white54
-                                                    : Colors.black45,
+                                      Flexible(
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(left: 8.0),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Text(
+                                                'Please upload a clear image of the item',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: isDark
+                                                      ? Colors.white54
+                                                      : Colors.black45,
+                                                ),
                                               ),
-                                            ),
-                                            const SizedBox(height: 6),
-                                            Text(
-                                              'Max File Size : 200KB',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w500,
-                                                color: isDark
-                                                    ? Colors.white70
-                                                    : Colors.black87,
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                'Max File Size : 200KB',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: isDark
+                                                      ? Colors.white70
+                                                      : Colors.black87,
+                                                ),
                                               ),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -3518,6 +3677,9 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         _activeAddItemAttrIdx = idx;
                                         _unitNameInputController.clear();
                                       });
+                                    },
+                                    onRegisterRefresher: (refresher) {
+                                      // _attributeRefreshers[idx] = refresher;
                                     },
                                   ),
                                 ),

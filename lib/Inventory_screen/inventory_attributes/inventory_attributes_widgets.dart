@@ -10,7 +10,7 @@ import 'inventory_attributes_bloc/inventory_attributes_event.dart';
 import 'inventory_attributes_bloc/inventory_attributes_state.dart';
 import 'inventory_attributes_entity.dart';
 
-/// 🔹 ATTRIBUTE DROPDOWN (WITH INLINE SEARCH)
+/// 🔹 ATTRIBUTE DROPDOWN (WITH INLINE SEARCH) — unchanged
 class InventoryAttributesDropdown extends StatefulWidget {
   const InventoryAttributesDropdown({
     super.key,
@@ -47,7 +47,6 @@ class _InventoryAttributesDropdownState
     });
   }
 
-  /// 🔽 TOGGLE DROPDOWN
   void _toggleDropdown() {
     if (_overlayEntry != null) {
       _removeDropdown();
@@ -56,7 +55,6 @@ class _InventoryAttributesDropdownState
     }
   }
 
-  /// 🔽 SHOW DROPDOWN
   void _showDropdown() {
     TextEditingController searchController = TextEditingController();
     List<InventoryAttributesEntity> filteredList = List.from(attributes);
@@ -80,7 +78,6 @@ class _InventoryAttributesDropdownState
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        /// 🔍 SEARCH FIELD
                         SizedBox(
                           height: 34,
                           child: TextField(
@@ -103,10 +100,7 @@ class _InventoryAttributesDropdownState
                             },
                           ),
                         ),
-
                         const SizedBox(height: 6),
-
-                        /// 📋 LIST
                         Expanded(
                           child: ListView.builder(
                             shrinkWrap: true,
@@ -147,7 +141,6 @@ class _InventoryAttributesDropdownState
     Overlay.of(context).insert(_overlayEntry!);
   }
 
-  /// ❌ REMOVE DROPDOWN
   void _removeDropdown() {
     _overlayEntry?.remove();
     _overlayEntry = null;
@@ -218,15 +211,20 @@ class InventoryAttributesWithItemsWidget extends StatefulWidget {
     this.onItemSelected,
     this.onItemSlugSelected,
     this.onAddItemTapped,
+    // ✅ NEW: parent (InventoryScreen) calls this to get the refresher function
+    this.onRegisterRefresher,
   });
 
-  final void Function(InventoryAttributesEntity attribute)?
-  onAttributeSelected;
+  final void Function(InventoryAttributesEntity attribute)? onAttributeSelected;
   final void Function(InventoryAttributesEntity attribute, int itemId)?
   onItemSelected;
   final void Function(InventoryAttributesEntity attribute, String slug)?
   onItemSlugSelected;
   final VoidCallback? onAddItemTapped;
+
+  // ✅ NEW callback: gives InventoryScreen a handle to call refreshAndSelect
+  final void Function(void Function(String newSlug) refresher)?
+  onRegisterRefresher;
 
   @override
   State<InventoryAttributesWithItemsWidget> createState() =>
@@ -247,16 +245,14 @@ class _InventoryAttributesWithItemsWidgetState
         builder: (context) {
           return Row(
             children: [
-              /// LEFT
+              /// LEFT — attribute picker
               Expanded(
                 child: InventoryAttributesDropdown(
                   onAttributeSelected: (attribute) {
                     setState(() => selectedAttribute = attribute);
-
                     context.read<InventoryAttributeItemsBloc>().add(
                       FetchInventoryAttributeItems(attribute.id),
                     );
-
                     widget.onAttributeSelected?.call(attribute);
                   },
                 ),
@@ -264,23 +260,19 @@ class _InventoryAttributesWithItemsWidgetState
 
               const SizedBox(width: 6),
 
-              /// RIGHT
+              /// RIGHT — item picker
               Expanded(
                 child: selectedAttribute == null
                     ? Container(
                   height: 40,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    border:
-                    Border.all(color: Colors.blueGrey.shade200),
+                    border: Border.all(color: Colors.blueGrey.shade200),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Text(
                     'Select',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey,
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 )
                     : InventoryAttributeItemsWidget(
@@ -291,6 +283,10 @@ class _InventoryAttributesWithItemsWidgetState
                   onItemSelected: (itemSlug) {
                     widget.onItemSlugSelected
                         ?.call(selectedAttribute!, itemSlug);
+                  },
+                  // ✅ NEW: pass the refresher registration up
+                  onRegisterRefresher: (refreshFn) {
+                    widget.onRegisterRefresher?.call(refreshFn);
                   },
                 ),
               ),

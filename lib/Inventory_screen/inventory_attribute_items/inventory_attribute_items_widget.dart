@@ -2,21 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'inventory_attribute_items_bloc/inventory_attribute_items_bloc.dart';
+import 'inventory_attribute_items_bloc/inventory_attribute_items_event.dart';
 import 'inventory_attribute_items_bloc/inventory_attribute_items_state.dart';
 
 class InventoryAttributeItemsWidget extends StatefulWidget {
   final int attributeId;
   final void Function(String itemSlug)? onItemSelected;
-
-  /// NEW (only addition): parent receives this tap to show
-  /// the "Unit Name + Create" row below the attribute list.
   final VoidCallback? onAddItemTapped;
+
+  // ✅ NEW: called from parent after createTerm succeeds,
+  // triggers a re-fetch and auto-selects the new slug
+  final void Function(void Function(String newSlug) refreshAndSelect)?
+  onRegisterRefresher;
 
   const InventoryAttributeItemsWidget({
     super.key,
     required this.attributeId,
     this.onItemSelected,
     this.onAddItemTapped,
+    this.onRegisterRefresher,
   });
 
   @override
@@ -27,17 +31,54 @@ class InventoryAttributeItemsWidget extends StatefulWidget {
 class _InventoryAttributeItemsWidgetState
     extends State<InventoryAttributeItemsWidget> {
   String? _selectedItemSlug;
+  String? _pendingAutoSelectSlug; // ✅ slug to auto-select after reload
+
+  @override
+  void initState() {
+    super.initState();
+    // ✅ Register the refreshAndSelect callback with parent
+    widget.onRegisterRefresher?.call(_refreshAndSelect);
+  }
+
+  /// Called by parent after a new term is created via API.
+  /// Re-fetches items and auto-selects the new slug once loaded.
+  void _refreshAndSelect(String newSlug) {
+    if (!mounted) return;
+    setState(() {
+      _pendingAutoSelectSlug = newSlug;
+    });
+    // Re-trigger fetch so BLoC reloads from API
+    context
+        .read<InventoryAttributeItemsBloc>()
+        .add(FetchInventoryAttributeItems(widget.attributeId));
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderColor = isDark ? Colors.grey.shade700 : Colors.grey.shade400;
-    final textColor  = isDark ? Colors.white : Colors.black;
-    final hintColor  = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
-    final bgColor    = isDark ? Colors.grey.shade900 : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black;
+    final hintColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+    final bgColor = isDark ? Colors.grey.shade900 : Colors.white;
 
-    return BlocBuilder<InventoryAttributeItemsBloc,
+    return BlocConsumer<InventoryAttributeItemsBloc,
         InventoryAttributeItemsState>(
+      // ✅ listener handles auto-select after re-fetch
+      listener: (context, state) {
+        if (state is InventoryAttributeItemsLoaded &&
+            _pendingAutoSelectSlug != null) {
+          final slug = _pendingAutoSelectSlug!;
+          final exists = state.items.any((item) => item.slug == slug);
+          if (exists) {
+            setState(() {
+              _selectedItemSlug = slug;
+              _pendingAutoSelectSlug = null;
+            });
+            // Notify parent of the auto-selected slug
+            widget.onItemSelected?.call(slug);
+          }
+        }
+      },
       builder: (context, state) {
         return Container(
           height: MediaQuery.of(context).size.height * 0.06,
@@ -62,7 +103,7 @@ class _InventoryAttributeItemsWidgetState
       ) {
     List<DropdownMenuItem<String>> dropdownItems = [];
     String hintText = 'No items found';
-    bool isEnabled  = false;
+    bool isEnabled = false;
 
     if (state is InventoryAttributeItemsLoaded) {
       if (_selectedItemSlug != null &&
@@ -82,7 +123,6 @@ class _InventoryAttributeItemsWidgetState
       ))
           .toList();
 
-      // "Add Item" entry — unchanged from original
       dropdownItems.insert(
         0,
         const DropdownMenuItem<String>(
@@ -104,10 +144,10 @@ class _InventoryAttributeItemsWidgetState
         ),
       );
 
-      hintText  = 'Select an item';
+      hintText = 'Select an item';
       isEnabled = true;
     } else if (state is InventoryAttributeItemsLoading) {
-      hintText  = 'Loading items...';
+      hintText = 'Loading items...';
       isEnabled = false;
     }
 
@@ -121,15 +161,14 @@ class _InventoryAttributeItemsWidgetState
         contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
       ),
       hint: Center(
-          child: Text(hintText,
-              style: TextStyle(color: hintColor, fontSize: 14))),
+          child:
+          Text(hintText, style: TextStyle(color: hintColor, fontSize: 14))),
       items: dropdownItems,
       onChanged: isEnabled
           ? (value) {
         if (value == 'add_item') {
-          // Reset visual selection and tell parent to show the input row
           setState(() => _selectedItemSlug = null);
-          widget.onAddItemTapped?.call(); // ← only new line
+          widget.onAddItemTapped?.call();
           return;
         }
         setState(() => _selectedItemSlug = value);

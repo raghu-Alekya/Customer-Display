@@ -229,11 +229,11 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String couponNotAppliedDescription = "The coupon couldn’t be applied. Please double-check the eligibility criteria or try a different code.";
   static const String invalidDiscount       = "Invalid Discount";
   static const String invalidDiscountDescription = "The discount entered is not valid. Please review the discount details.";
-  static const String customItemCouldNotBeAdded = "Custom item could not be added";
+  static const String customItemCouldNotBeAdded = "The item is not available in the inventory.";
   static const String discounts             = "Merchant\nDiscount";
   static const String coupons               = "Coupons";
   static const String customItem            = "Custom Item";
-  static const String customItemCouldNotBeAddedDescription = "Please check the items and try again. Contact your manager if the issue continues.";
+  static const String customItemCouldNotBeAddedDescription = "Do you want to add it as a custom item for this order?";
   static const String applyDiscountToSale   = "Apply Merchant Discount to Sale";
   static const String enterCouponCode       = "Enter Coupon Code";
   static const String customItemName        = "Custom item name";

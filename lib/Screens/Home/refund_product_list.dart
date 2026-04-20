@@ -46,6 +46,7 @@ class _RefundScreenState extends State<RefundScreen> {
   late CompletedOrder selectedOrder;
   bool _showFullSummary = true;
   double? editedRefundAmount;
+  bool _isProcessingPayment = false;
   // double merchantDiscount = 0;
   void _toggleSummary() {
     setState(() {
@@ -1577,149 +1578,103 @@ class _RefundScreenState extends State<RefundScreen> {
     return Expanded(
       child: GestureDetector(
         onTap: () async {
-          print("=========== REFUND DEBUG START ===========");
+          if (_isProcessingPayment) return;
 
-          print("Order ID: ${selectedOrder.orderId}");
-          print("Selected Payment (Before Set): $selectedPayment");
+          _isProcessingPayment = true;
 
-          print("Selected Items Count: ${selectedItems.length}");
-          print("Total Order Items: ${selectedOrder.items.length}");
+          try {
+            print("=========== REFUND DEBUG START ===========");
 
-          print("Gross Total: $grossTotal");
-          print("Tax Total: $taxTotal");
-          print("Net Total: $netTotal");
-          print("Merchant Discount: $merchantDiscount");
-          print("Total Net Payable: $totalNetPayable");
+            if (type == "Cash") {
 
-          print("Refund Gross: $refundGross");
-          print("Refund Tax: $refundTax");
-          print("Refund Discount: $refundDiscount");
-          print("Total Refund: $totalRefund");
-
-          // setState(() => selectedPayment = type);
-          print("Selected Payment (After Set): $selectedPayment");
-
-          if (type == "Cash") {
-            print("---- CASH REFUND FLOW START ----");
-
-            // Require at least one selected item before proceeding to cash refund
-            if (selectedItems.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content:
-                  Text('Please select at least one product to refund.'),
-                ),
-              );
-              print("❌ No items selected for cash refund, aborting.");
-              return;
-            }
-            setState(() => selectedPayment = type);
-            final bool isFullRefund =
-                selectedItems.length == selectedOrder.items.length;
-
-            final bool isPartialRefund = !isFullRefund;
-
-            print("Is Full Refund: $isFullRefund");
-            print("Is Partial Refund: $isPartialRefund");
-
-            List<RefundItem>? refundItems;
-
-            /// Build refund items ONLY for partial refund
-            if (isPartialRefund) {
-              print("---- PARTIAL REFUND ITEM MAPPING START ----");
-
-              refundItems = selectedItems.map((item) {
-
-                final lineItem = selectedOrder.items
-                    .firstWhere((e) => e.id == item['order_item_id']);
-
-                final double refundAmount = double.parse(
-                  (lineItem.total + lineItem.totalTax).toStringAsFixed(2),
+              if (selectedItems.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please select at least one product to refund.'),
+                  ),
                 );
+                return;
+              }
 
-                print("---- Mapping Item ----");
-                print("Item Name: ${item['name']}");
-                print("Matched LineItem ID: ${lineItem.id}");
-                print("LineItem Total: ${lineItem.total}");
-                print("LineItem Tax: ${lineItem.totalTax}");
-                print("Final Refund Amount: $refundAmount");
-                print("-------------------------------");
+              setState(() => selectedPayment = type);
 
-                return RefundItem(
-                  orderItemId: lineItem.id,
-                  orderItemAmount: refundAmount,
-                );
+              final bool isFullRefund =
+                  selectedItems.length == selectedOrder.items.length;
 
-              }).toList();
+              final bool isPartialRefund = !isFullRefund;
 
-              print("Refund Items JSON: ${jsonEncode(refundItems.map((e) => e.toJson()).toList())}");
-              print("---- PARTIAL REFUND ITEM MAPPING END ----");
-            }
+              List<RefundItem>? refundItems;
 
-            final refundType = isFullRefund ? "Full" : "Partial";
+              if (isPartialRefund) {
+                refundItems = selectedItems.map((item) {
+                  final lineItem = selectedOrder.items
+                      .firstWhere((e) => e.id == item['order_item_id']);
 
-            final refundRequest = RefundRequestModel(
-              orderId: selectedOrder.orderId,
-              refundType: refundType,
-              items: refundItems,
-            );
+                  final double refundAmount = double.parse(
+                    (lineItem.total + lineItem.totalTax).toStringAsFixed(2),
+                  );
 
-            print("---- FINAL REFUND REQUEST JSON ----");
-            print(jsonEncode(refundRequest.toJson()));
+                  return RefundItem(
+                    orderItemId: lineItem.id,
+                    orderItemAmount: refundAmount,
+                  );
+                }).toList();
+              }
 
-            /// 🔥 BACKEND VALIDATION
-            final result = await CompletedOrdersRepository(baseUrl: '').refundOrder(
-              orderId: selectedOrder.orderId,
-              refundType: refundType,
-              items: refundItems?.map((e) => e.toJson()).toList(),
-            );
+              final refundType = isFullRefund ? "Full" : "Partial";
 
-            /// ❌ Backend blocked refund
-            if (result["success"] == false) {
-              print("❌ Backend blocked refund: ${result["message"]}");
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(result["message"] ?? "Refund not allowed"),
-                  backgroundColor: Colors.red,
-                ),
-              );
-
-              return;
-            }
-
-            print("✅ Backend validation passed");
-
-            /// ✅ Open dialog only if backend allows
-            final refundAmount = await showDialog<double>(
-              context: context,
-              builder: (_) => CashRefundDialog(
-                refundRequest: refundRequest,
-                refundAmount: totalRefund,
-              ),
-            );
-
-            if (refundAmount != null) {
-              await showDialog<void>(
-                context: context,
-                barrierDismissible: false,
-                builder: (_) => PaymentSuccessDialog(amount: refundAmount),
-              );
-
-              setState(() {
-                editedRefundAmount = refundAmount;
-                isConfirmEnabled = true;
-                // isReasonEnabled = true;   // ✅ enable reason here
-              });
-              OrderHelper.setManualRefundAmount(
+              final refundRequest = RefundRequestModel(
                 orderId: selectedOrder.orderId,
-                amount: refundAmount,
+                refundType: refundType,
+                items: refundItems,
               );
-            }
-            print("---- CASH REFUND FLOW END ----");
-          }
 
-          print("=========== REFUND DEBUG END ===========");
+              final result = await CompletedOrdersRepository(baseUrl: '').refundOrder(
+                orderId: selectedOrder.orderId,
+                refundType: refundType,
+                items: refundItems?.map((e) => e.toJson()).toList(),
+              );
+
+              if (result["success"] == false) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(result["message"] ?? "Refund not allowed"),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+
+              final refundAmount = await showDialog<double>(
+                context: context,
+                builder: (_) => CashRefundDialog(
+                  refundRequest: refundRequest,
+                  refundAmount: totalRefund,
+                ),
+              );
+
+              if (refundAmount != null) {
+                await showDialog<void>(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => PaymentSuccessDialog(amount: refundAmount),
+                );
+
+                setState(() {
+                  editedRefundAmount = refundAmount;
+                  isConfirmEnabled = true;
+                });
+
+                OrderHelper.setManualRefundAmount(
+                  orderId: selectedOrder.orderId,
+                  amount: refundAmount,
+                );
+              }
+            }
+
+          } finally {
+            _isProcessingPayment = false; // ✅ ALWAYS resets (even on return/error)
+          }
         },
         child: Container(
           height: 45,
