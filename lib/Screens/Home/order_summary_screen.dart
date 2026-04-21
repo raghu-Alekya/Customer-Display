@@ -8458,11 +8458,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             children: [
             /// 🔹 WHITE BACKGROUND when keyboard opens
             if (MediaQuery.of(context).viewInsets.bottom > 0)
-        Positioned.fill(
-        child: Container(
-        color: Colors.white,
-        ),
-        ),
+              Positioned.fill(
+                child: Container(
+                  color: isDark
+                      ? const Color(0xFF1F1D2B) // match your dark dialog bg
+                      : Colors.white,
+                ),
+              ),
 
         /// 🔹 YOUR EXISTING DIALOG
         Center(

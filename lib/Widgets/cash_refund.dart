@@ -188,7 +188,7 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
                             ),
                           ),
                           child: Text(
-                            "\$ ${(double.tryParse(amount) ?? 0.0).toStringAsFixed(2)}",
+                            '${(double.tryParse(amount) ?? 0.0) < 0 ? '-' : ''}\$${(double.tryParse(amount) ?? 0.0).abs().toStringAsFixed(2)}',
                             textAlign: TextAlign.left,
                             style: TextStyle(
                               fontSize: 20,
@@ -270,13 +270,14 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
               right: 0,
               top: 0,
               child: GestureDetector(
+                behavior: HitTestBehavior.opaque, // 👈 better tap area
                 // Treat close as cancel: do not return a value
                 onTap: () => Navigator.pop(context),
                 child: const CircleAvatar(
-                  radius: 10,
+                  radius: 14,
                   backgroundColor: Colors.red,
                   child: Icon(Icons.close,
-                      size: 12, color: Colors.white),
+                      size: 18, color: Colors.white),
                 ),
               ),
             ),
@@ -299,6 +300,7 @@ class PaymentSuccessDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double value = amount ?? 0.0;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Dialog(
@@ -357,7 +359,7 @@ class PaymentSuccessDialog extends StatelessWidget {
 
             /// MESSAGE
             Text(
-              "Cash refund for \$$amount has been\nsuccessfully completed.",
+              "Cash refund for ${value < 0 ? '-' : ''}\$${value.abs().toStringAsFixed(2)} has been\nsuccessfully completed.",
               style: TextStyle(
                 fontSize: 18,
                 color: isDark

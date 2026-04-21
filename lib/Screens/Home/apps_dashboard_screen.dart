@@ -178,12 +178,8 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
                         _buildCard(
                           //title: TextConstants.cashier,
                           icon: themeHelper.themeMode == ThemeMode.dark
-                              ? Image.asset(
-                            "assets/stock_inventory.png",
-                          )
-                              : Image.asset(
-                            "assets/stock_inventory.png",
-                          ),
+                              ? Image.asset("assets/stock_inventory_dark.png") // 🔥 for dark mode (light icon)
+                              : Image.asset("assets/img.png"),
                           cardIndex: 0,
                           onTap: () {
                             Navigator.push(

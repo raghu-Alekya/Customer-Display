@@ -12,6 +12,7 @@ import 'package:thermal_printer/thermal_printer.dart';
 import 'package:image/image.dart' as img;
 // import 'package:dart_ping_ios/dart_ping_ios.dart';
 import '../../../Constants/text.dart';
+import '../../../Database/printer_db_helper.dart';
 import '../../../Preferences/pinaka_preferences.dart';
 import 'image_utils.dart';
 
@@ -237,69 +238,98 @@ class _PrinterSetupState extends State<PrinterSetup> {
   }
 
   Future _printReceiveTest() async {
+    final printerData = await PrinterDBHelper().getPrinterFromDB();
+
+    String header = "";
+    String footer = "";
+
+    if (printerData.isNotEmpty) {
+      header = printerData.first['receiptHeaderText'] ?? "";
+      footer = printerData.first['receiptFooterText'] ?? "";
+    }
+
     List<int> bytes = [];
 
-    // Xprinter XP-N160I
     final profile = await CapabilityProfile.load(name: 'XP-N160I');
-
-    // PaperSize.mm80 or PaperSize.mm58
     final generator = Generator(PaperSize.mm58, profile);
+
     bytes += generator.setGlobalCodeTable('CP1252');
-    bytes += generator.text('Test Print', styles: const PosStyles(align: PosAlign.left));
-    bytes += generator.text('Product 1 - some description of the product needed here');
-    bytes += generator.text('Product 2 - some description of the product needed here');
 
-    // bytes += generator.text('￥1,990', containsChinese: true, styles: const PosStyles(align: PosAlign.left));
-    // bytes += generator.emptyLines(1);
+    /// ✅ HEADER
+    if (header.isNotEmpty) {
+      bytes += generator.text(
+        header,
+        styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size2,
+          width: PosTextSize.size2,
+        ),
+      );
+      bytes += generator.hr(); // divider
+    }
 
-    // sum width total column must be 12
+    /// ✅ ITEMS
+    bytes += generator.text(
+      'Product 1 - some description of the product needed here',
+      styles: const PosStyles(align: PosAlign.left),
+    );
+
+    bytes += generator.text(
+      'Product 2 - some description of the product needed here',
+      styles: const PosStyles(align: PosAlign.left),
+    );
+
+    bytes += generator.hr();
+
     bytes += generator.row([
-      PosColumn(width: 7, text: 'Lemon lime export quality per pound x 5 units', styles: const PosStyles(align: PosAlign.left, codeTable: 'CP1252')),
-      PosColumn(width: 3, text: 'USD 2.00', styles: const PosStyles(align: PosAlign.right, codeTable: 'CP1252')),
-      PosColumn(width: 2, text: 'Desc of USD 2.00', styles: const PosStyles(align: PosAlign.right, codeTable: 'CP1252')),
+      PosColumn(width: 7, text: 'Lemon lime export quality per pound x 5 units'),
+      PosColumn(width: 3, text: 'USD 2.00', styles: const PosStyles(align: PosAlign.right)),
+      PosColumn(width: 2, text: 'Desc', styles: const PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += generator.row([
       PosColumn(text: "x3", width: 1),
-      PosColumn(text: "Shan Haleem Masala Mix", width:7),
+      PosColumn(text: "Shan Haleem Masala Mix", width: 7),
       PosColumn(text: "135.0", width: 2),
       PosColumn(text: "420.0", width: 2),
     ]);
 
-    final ByteData data = await rootBundle.load('assets/printer.png');
-    if (data.lengthInBytes > 0) {
+    /// ✅ IMAGE (optional)
+    try {
+      final ByteData data = await rootBundle.load('assets/printer.png');
       final Uint8List imageBytes = data.buffer.asUint8List();
-      // decode the bytes into an image
-      final decodedImage = img.decodeImage(imageBytes)!;
-      // Create a black bottom layer
-      // Resize the image to a 130x? thumbnail (maintaining the aspect ratio).
-      img.Image thumbnail = img.copyResize(decodedImage, height: 130);
-      // creates a copy of the original image with set dimensions
-      img.Image originalImg = img.copyResize(decodedImage, width: 380, height: 130);
-      // fills the original image with a white background
-      img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
-      var padding = (originalImg.width - thumbnail.width) / 2;
+      final decodedImage = img.decodeImage(imageBytes);
 
-      //insert the image inside the frame and center it
-      drawImage(originalImg, thumbnail, dstX: padding.toInt());
-
-      // convert image to grayscale
-      var grayscaleImage = img.grayscale(originalImg);
-
-      bytes += generator.feed(1);
-      // bytes += generator.imageRaster(img.decodeImage(imageBytes)!, align: PosAlign.center);
-      bytes += generator.imageRaster(grayscaleImage, align: PosAlign.center);
-      bytes += generator.feed(1);
-
-      ///open cash drawer
-      // generator.drawer();
+      if (decodedImage != null) {
+        bytes += generator.feed(1);
+        bytes += generator.imageRaster(
+          img.grayscale(decodedImage),
+          align: PosAlign.center,
+        );
+        bytes += generator.feed(1);
+      }
+    } catch (e) {
+      print("Image load error: $e");
     }
 
-    // // // Chinese characters
-    // bytes += generator.row([
-    //   PosColumn(width: 8, text: '豚肉・木耳と玉子炒め弁当', styles: const PosStyles(align: PosAlign.left), containsChinese: true),
-    //   PosColumn(width: 4, text: '￥1,990', styles: const PosStyles(align: PosAlign.right), containsChinese: true),
-    // ]);
+    bytes += generator.hr();
+
+    /// ✅ FOOTER (🔥 THIS WAS MISSING)
+    if (footer.isNotEmpty) {
+      bytes += generator.text(
+        footer,
+        styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+        ),
+      );
+    }
+
+    /// ✅ CUT
+    bytes += generator.feed(2);
+    bytes += generator.cut();
+
     _printEscPos(bytes, generator);
   }
 
