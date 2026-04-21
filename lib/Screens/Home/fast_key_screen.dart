@@ -2184,7 +2184,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               ),
               actions: [
                 Padding(
-                  padding: EdgeInsets.only(bottom: 16, right: 16),
+                  padding: EdgeInsets.only(bottom: 16, right: 36),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

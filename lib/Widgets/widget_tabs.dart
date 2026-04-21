@@ -35,10 +35,10 @@ import 'widget_custom_num_pad.dart';
 class AppScreenTabWidget extends StatefulWidget {
   AppScreenTabWidget(
       {this.selectedTabIndex = 0,
-      this.barcode = "",
-      this.refreshOrderList,
-      required this.scaffoldMessengerContext,
-      super.key});
+        this.barcode = "",
+        this.refreshOrderList,
+        required this.scaffoldMessengerContext,
+        super.key});
   int selectedTabIndex = 0;
   String barcode = "";
   final BuildContext scaffoldMessengerContext;
@@ -93,9 +93,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
   // Text editing controllers
   final TextEditingController _customItemNameController =
-      TextEditingController();
+  TextEditingController();
   final TextEditingController _customItemPriceController =
-      TextEditingController();
+  TextEditingController();
   final TextEditingController _skuController = TextEditingController();
 
   // Focus nodes
@@ -233,7 +233,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         config["cash_back_service"]["max_cashback"] != null) {
       setState(() {
         _maxCashbackLimit = double.tryParse(
-                config["cash_back_service"]["max_cashback"].toString()) ??
+            config["cash_back_service"]["max_cashback"].toString()) ??
             0.0;
       });
 
@@ -253,7 +253,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       }
       if (orderId != null) {
         final order =
-            _orderHelper.orders.cast<Map<String, dynamic>>().where((o) {
+        _orderHelper.orders.cast<Map<String, dynamic>>().where((o) {
           final oid = o['order_id'] ?? o['id'] ?? o[AppDBConst.orderServerId];
           return oid != null &&
               (oid == orderId || oid.toString() == orderId.toString());
@@ -261,15 +261,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         if (order.isNotEmpty) {
           final o = order.first;
           orderTotal = (o['gross_total'] ??
-                  o['net_payable'] ??
-                  o['net_total'] ??
-                  o[AppDBConst.orderTotal] ??
-                  0.0) is num
+              o['net_payable'] ??
+              o['net_total'] ??
+              o[AppDBConst.orderTotal] ??
+              0.0) is num
               ? ((o['gross_total'] ??
-                      o['net_payable'] ??
-                      o['net_total'] ??
-                      o[AppDBConst.orderTotal]) as num)
-                  .toDouble()
+              o['net_payable'] ??
+              o['net_total'] ??
+              o[AppDBConst.orderTotal]) as num)
+              .toDouble()
               : 0.0;
         }
       }
@@ -280,57 +280,58 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   Widget build(BuildContext context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return
-        //backgroundColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.white,
-        // const Color(0xFFF1F5F9),
-        Padding(
-      padding: const EdgeInsets.fromLTRB(4, 10, 2, 10),
-      child: Container(
-        decoration: BoxDecoration(
-          color: themeHelper.themeMode == ThemeMode.dark
-              ? ThemeNotifier.primaryBackground
-              : Colors.white,
-          borderRadius: BorderRadius.circular(16.0),
-          border: Border.all(
-              color: themeHelper.themeMode == ThemeMode.dark
-                  ? Color(0xFF1A1A1A)
-                  : Color(0xFFE1E1E1)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 5,
-            )
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        // Ensures children conform to the rounded corners
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            // Top Tabs
-            _buildTabs(),
+      //backgroundColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.white,
+      // const Color(0xFFF1F5F9),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 10, 2, 10),
+        child: Container(
+          decoration: BoxDecoration(
+            color: themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.primaryBackground
+                : Colors.white,
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? Color(0xFF1A1A1A)
+                    : Color(0xFFE1E1E1)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 5,
+              )
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          // Ensures children conform to the rounded corners
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              // Top Tabs
+              _buildTabs(),
 
-            // Content based on selected tab
-            Expanded(
-                child: ClipPath(
-                    clipper:
-                        ContentSideClipper(selectedIndex: _selectedTabIndex),
-                    child: _buildTabContent())),
-          ],
+              // Content based on selected tab
+              Expanded(
+                  child: ClipPath(
+                      clipper:
+                      ContentSideClipper(selectedIndex: _selectedTabIndex),
+                      child: _buildTabContent())),
+            ],
+          ),
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildTabs() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
+    final isDark = themeHelper.themeMode == ThemeMode.dark;
     return ClipPath(
       clipper: TabSideClipper(selectedIndex: _selectedTabIndex),
       child: Container(
           width: MediaQuery.of(context).size.width * 0.12,
           decoration: BoxDecoration(
-            color: themeHelper.themeMode == ThemeMode.dark
+            color: isDark
                 ? ThemeNotifier.tabsBackground
-                : Color(0xFFEAEDFF),
+                : const Color(0xFFEAEDFF),
             // borderRadius: BorderRadius.circular(16.0),
           ),
           child: Column(
@@ -357,10 +358,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                 Divider(
                     height: 1,
                     thickness: 1,
-                    indent: 1,
-                    endIndent: 1,
+                    indent: 10,
+                    endIndent: 10,
                     color: themeHelper.themeMode == ThemeMode.dark
-                        ? Colors.black
+                        ?  Color(0xFF313441)
                         : Color(0xFF8EAAD8)),
               _buildTab(
                   1,
@@ -378,7 +379,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                     indent: 10,
                     endIndent: 10,
                     color: themeHelper.themeMode == ThemeMode.dark
-                        ? Colors.black
+                        ?  Color(0xFF313441)
                         : Color(0xFF8EAAD8)),
               _buildTab(
                   2,
@@ -396,7 +397,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                     indent: 10,
                     endIndent: 10,
                     color: themeHelper.themeMode == ThemeMode.dark
-                        ? Colors.black
+                        ? Color(0xFF313441)
                         : Color(0xFF8EAAD8)),
               _buildTab(
                   3,
@@ -412,14 +413,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   }
 
   Widget _buildTab(
-    int index,
-    String svgPath,
-    String text,
-    Color iconColor,
-    Color textColor,
-  ) {
+      int index,
+      String svgPath,
+      String text,
+      Color iconColor,
+      Color textColor,
+      ) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     bool isSelected = _selectedTabIndex == index;
+    final isDark = themeHelper.themeMode == ThemeMode.dark;
 
     return Expanded(
       child: GestureDetector(
@@ -448,8 +450,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
               // ),//**8Raghu modified the code below, with blue cards when selected it shows white
 
               color: isSelected
-                  ? const Color(0xFFFFFFFF) // selected light color
-                  : const Color(0xFFECF1FF), // unselected blue
+                  ? (isDark
+                  ? const Color(0xFF2A2D3E) // 🔹 dark selected (you can tweak)
+                  : const Color(0xFFFFFFFF)) // 🔹 light selected
+                  : (isDark
+                  ? const Color(0xFF1F1D2B) // 🔹 dark unselected
+                  : const Color(0xFFECF1FF)), // 🔹 light unselected
               //borderRadius: BorderRadius.circular(2.0),
               /// borderRadius: BorderRadius.circular(0), // REMOVE rounded corners for now
             ),
@@ -461,7 +467,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                   height: 32,
                   width: 32,
                   colorFilter: ColorFilter.mode(
-                    isSelected ? iconColor : iconColor.withOpacity(0.8),
+                    isDark
+                        ? (isSelected ? Colors.white : Colors.white70)
+                        : (isSelected ? iconColor : iconColor.withOpacity(0.8)),
                     BlendMode.srcIn,
                   ),
                 ),
@@ -473,15 +481,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                   text,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    //color: isSelected
-                    //? textColor
-                    //: textColor.withOpacity(0.8),
-                    //fontSize: isSelected ? 18 : 16,
-                    color: textColor,
+                    color: isDark
+                        ? Colors.white
+                        : textColor, // keep your existing color for light mode
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    // fontWeight:
-                    //isSelected ? FontWeight.bold : FontWeight.bold,
                   ),
                 ),
               ],
@@ -569,8 +573,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                   return (clean == "0.00" || clean.isEmpty)
                       ? Colors.grey.shade400
                       : (themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.textDark
-                          : const Color(0xFF1E2745));
+                      ? ThemeNotifier.textDark
+                      : const Color(0xFF1E2745));
                 })(),
               ),
 
@@ -580,7 +584,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                     ? ThemeNotifier.paymentEntryContainerColor
                     : Colors.white,
                 contentPadding:
-                    const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: const BorderSide(
@@ -614,7 +618,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                       .trim();
 
                   int rawValue =
-                      ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
 
                   // ✅ Handle both "digit" and "00" properly like payout tab
                   if (digit == '00') {
@@ -640,7 +644,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                       .trim();
 
                   int rawValue =
-                      ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
                   rawValue = rawValue ~/ 10;
 
                   double displayValue = rawValue / 100.0;
@@ -812,18 +816,18 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
               controller: TextEditingController(
                 // ✅ Add the symbol only here
                 text:
-                    "${TextConstants.currencySymbol}${_cashbackAmount.isEmpty ? "0.00" : _cashbackAmount}",
+                "${TextConstants.currencySymbol}${_cashbackAmount.isEmpty ? "0.00" : _cashbackAmount}",
               ),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 24,
                 fontWeight:
-                    _isAmountEntered ? FontWeight.bold : FontWeight.normal,
+                _isAmountEntered ? FontWeight.bold : FontWeight.normal,
                 color: _cashbackAmount.isEmpty
                     ? Colors.grey.shade400
                     : themeHelper.themeMode == ThemeMode.dark
-                        ? ThemeNotifier.textDark
-                        : const Color(0xFF1E2745),
+                    ? ThemeNotifier.textDark
+                    : const Color(0xFF1E2745),
               ),
               decoration: InputDecoration(
                 filled: true,
@@ -860,9 +864,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                 setState(() {
                   // Clean numeric part only
                   String cleanValue =
-                      _cashbackAmount.replaceAll(',', '').trim();
+                  _cashbackAmount.replaceAll(',', '').trim();
                   int rawAmount =
-                      ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
 
                   if (digit == '00') {
                     rawAmount = (rawAmount * 100) % 100000000;
@@ -880,9 +884,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
               onDeletePressed: () {
                 setState(() {
                   String cleanValue =
-                      _cashbackAmount.replaceAll(',', '').trim();
+                  _cashbackAmount.replaceAll(',', '').trim();
                   int rawAmount =
-                      ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
                   rawAmount = rawAmount ~/ 10;
 
                   double displayValue = rawAmount / 100.0;
@@ -1207,7 +1211,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                 controller: _customItemPriceController,
                 readOnly: true,
                 isHighlighted:
-                    _isEnteringItemPrice, // Use dynamic highlighting instead of hardcoded true
+                _isEnteringItemPrice, // Use dynamic highlighting instead of hardcoded true
               ),
               const SizedBox(width: 20),
               _buildTaxDropdown(),
@@ -1230,11 +1234,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
             setState(() {
               // Extract numeric part from current value (ignore ₹ or commas)
               String cleanValue =
-                  _customItemPrice.replaceAll(RegExp(r'[^\d.]'), '');
+              _customItemPrice.replaceAll(RegExp(r'[^\d.]'), '');
 
               // Convert current value (e.g. "12.34") to integer cents → 1234
               int rawAmount =
-                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+              ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
 
               // Append digit(s)
               if (digit == '00') {
@@ -1252,7 +1256,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
               // Update both internal value and controller text
               _customItemPrice = displayValue.toStringAsFixed(2);
               _customItemPriceController.text =
-                  "${TextConstants.currencySymbol}${_customItemPrice}";
+              "${TextConstants.currencySymbol}${_customItemPrice}";
 
               // Highlight only when price > 0
               _isEnteringItemPrice = rawAmount > 0;
@@ -1262,7 +1266,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
             setState(() {
               _customItemPrice = "0.00";
               _customItemPriceController.text =
-                  "${TextConstants.currencySymbol}0.00";
+              "${TextConstants.currencySymbol}0.00";
               _isEnteringItemPrice = false;
             });
           },
@@ -1270,11 +1274,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
             setState(() {
               // Extract numeric value (ignore ₹ or commas)
               String cleanValue =
-                  _customItemPrice.replaceAll(RegExp(r'[^\d.]'), '');
+              _customItemPrice.replaceAll(RegExp(r'[^\d.]'), '');
 
               // Convert to integer cents
               int rawAmount =
-                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+              ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
 
               // Remove one digit from the end
               rawAmount = rawAmount ~/ 10;
@@ -1285,7 +1289,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
               // Update UI + controller
               _customItemPrice = displayValue.toStringAsFixed(2);
               _customItemPriceController.text =
-                  "${TextConstants.currencySymbol}${_customItemPrice}";
+              "${TextConstants.currencySymbol}${_customItemPrice}";
 
               _isEnteringItemPrice = rawAmount > 0;
             });
@@ -1302,7 +1306,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
             // Remove symbols, spaces, etc.
             final cleanedPrice =
-                _customItemPrice.replaceAll(RegExp(r'[^0-9.]'), '');
+            _customItemPrice.replaceAll(RegExp(r'[^0-9.]'), '');
             double? price = double.tryParse(cleanedPrice);
 
             if (price == null || price <= 0) {
@@ -1339,8 +1343,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
     final borderColor = isHighlighted
         ? Colors.deepPurpleAccent
         : (themeHelper.themeMode == ThemeMode.dark
-            ? ThemeNotifier.borderColor
-            : Colors.grey.shade300);
+        ? ThemeNotifier.borderColor
+        : Colors.grey.shade300);
     final borderWidth = isHighlighted ? 2.0 : 1.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1433,7 +1437,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     contentPadding:
-                        EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                    EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                     hintText: TextConstants.generateTheSku,
                     hintStyle: TextStyle(
                         color: themeHelper.themeMode == ThemeMode.dark
@@ -1451,7 +1455,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                     backgroundColor: _isItemNameEmpty()
                         ? Colors.grey
                         : Colors
-                            .redAccent, // Change color based on button state
+                        .redAccent, // Change color based on button state
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     shape: RoundedRectangleBorder(
@@ -1511,53 +1515,53 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
           child: _isTaxLoading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
               : DropdownButtonFormField<TaxModel>(
-                  value: _selectedTax,
-                  isExpanded: true,
-                  dropdownColor: themeHelper.themeMode == ThemeMode.dark
-                      ? ThemeNotifier.primaryBackground
-                      : null,
-                  icon: const Icon(Icons.keyboard_arrow_down),
-                  items: _taxList.map((tax) {
-                    return DropdownMenuItem<TaxModel>(
-                      value: tax,
-                      child: Text(
-                        tax.name, // ✅ DISPLAY NAME FROM API
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          color: themeHelper.themeMode == ThemeMode.dark
-                              ? ThemeNotifier.textDark
-                              : const Color(0xFF1E2745),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: _isTaxDropdownEnabled
-                      ? (value) {
-                          if (kDebugMode) {
-                            print(
-                                "✅ Selected Tax: ${value?.name} | Rate: ${value?.rate}");
-                          }
-                          setState(() {
-                            _selectedTax = value;
-                          });
-                        }
-                      : null,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                  ),
-                  hint: Text(
-                    TextConstants.chooseTaxSlab,
-                    style: TextStyle(
-                      color: themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.textDark
-                          : Colors.grey,
-                      fontSize: 14,
-                    ),
+            value: _selectedTax,
+            isExpanded: true,
+            dropdownColor: themeHelper.themeMode == ThemeMode.dark
+                ? ThemeNotifier.primaryBackground
+                : null,
+            icon: const Icon(Icons.keyboard_arrow_down),
+            items: _taxList.map((tax) {
+              return DropdownMenuItem<TaxModel>(
+                value: tax,
+                child: Text(
+                  tax.name, // ✅ DISPLAY NAME FROM API
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: themeHelper.themeMode == ThemeMode.dark
+                        ? ThemeNotifier.textDark
+                        : const Color(0xFF1E2745),
                   ),
                 ),
+              );
+            }).toList(),
+            onChanged: _isTaxDropdownEnabled
+                ? (value) {
+              if (kDebugMode) {
+                print(
+                    "✅ Selected Tax: ${value?.name} | Rate: ${value?.rate}");
+              }
+              setState(() {
+                _selectedTax = value;
+              });
+            }
+                : null,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+            ),
+            hint: Text(
+              TextConstants.chooseTaxSlab,
+              style: TextStyle(
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.textDark
+                    : Colors.grey,
+                fontSize: 14,
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -1592,18 +1596,18 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
               controller: TextEditingController(
                 // ✅ Add the symbol only here
                 text:
-                    "${TextConstants.currencySymbol}${_payoutAmount.isEmpty ? "0.00" : _payoutAmount}",
+                "${TextConstants.currencySymbol}${_payoutAmount.isEmpty ? "0.00" : _payoutAmount}",
               ),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 24,
                 fontWeight:
-                    _isAmountEntered ? FontWeight.bold : FontWeight.normal,
+                _isAmountEntered ? FontWeight.bold : FontWeight.normal,
                 color: _payoutAmount.isEmpty
                     ? Colors.grey.shade400
                     : themeHelper.themeMode == ThemeMode.dark
-                        ? ThemeNotifier.textDark
-                        : const Color(0xFF1E2745),
+                    ? ThemeNotifier.textDark
+                    : const Color(0xFF1E2745),
               ),
               decoration: InputDecoration(
                 filled: true,
@@ -1641,7 +1645,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                   // Clean numeric part only
                   String cleanValue = _payoutAmount.replaceAll(',', '').trim();
                   int rawAmount =
-                      ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
 
                   if (digit == '00') {
                     rawAmount = (rawAmount * 100) % 100000000;
@@ -1660,7 +1664,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                 setState(() {
                   String cleanValue = _payoutAmount.replaceAll(',', '').trim();
                   int rawAmount =
-                      ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
+                  ((double.tryParse(cleanValue) ?? 0.0) * 100).round();
                   rawAmount = rawAmount ~/ 10;
 
                   double displayValue = rawAmount / 100.0;
@@ -1692,7 +1696,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   void _generateSku() {
     // Simple SKU generation logic - prefix + timestamp
     String timestamp =
-        DateTime.now().millisecondsSinceEpoch.toString().substring(0, 12);
+    DateTime.now().millisecondsSinceEpoch.toString().substring(0, 12);
     // String prefix = _customItemName.isNotEmpty
     //     ? _customItemName.substring(0, _customItemName.length > 3 ? 3 : _customItemName.length).toUpperCase()
     //     : "C";
@@ -1737,7 +1741,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                     _isPercentageSelected = true;
                     // Convert to percentage format
                     _discountValue =
-                        "${_discountValue.replaceAll(TextConstants.currencySymbol, '')}%"; // Build #1.0.181: 1. Replaced Hard coded ‘\$’ with TextConstants.currencySymbol
+                    "${_discountValue.replaceAll(TextConstants.currencySymbol, '')}%"; // Build #1.0.181: 1. Replaced Hard coded ‘\$’ with TextConstants.currencySymbol
                   }
                 });
               },
@@ -1747,8 +1751,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                   color: _isPercentageSelected
                       ? Colors.red.shade400
                       : themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.tabsBackground
-                          : Colors.white,
+                      ? ThemeNotifier.tabsBackground
+                      : Colors.white,
                   borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(9),
                       bottomLeft: Radius.circular(9),
@@ -1764,8 +1768,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                     color: _isPercentageSelected
                         ? Colors.white
                         : themeHelper.themeMode == ThemeMode.dark
-                            ? ThemeNotifier.textDark
-                            : Colors.black,
+                        ? ThemeNotifier.textDark
+                        : Colors.black,
                   ),
                 ),
               ),
@@ -1790,8 +1794,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                   color: !_isPercentageSelected
                       ? Colors.redAccent
                       : themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.tabsBackground
-                          : Colors.white,
+                      ? ThemeNotifier.tabsBackground
+                      : Colors.white,
                   borderRadius: const BorderRadius.only(
                     topRight: Radius.circular(9),
                     bottomRight: Radius.circular(9),
@@ -1808,8 +1812,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                     color: !_isPercentageSelected
                         ? Colors.white
                         : themeHelper.themeMode == ThemeMode.dark
-                            ? ThemeNotifier.textDark
-                            : Colors.black,
+                        ? ThemeNotifier.textDark
+                        : Colors.black,
                   ),
                 ),
               ),
@@ -2219,9 +2223,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         _discountValue == "0" ||
         _discountValue == "0%" ||
         double.tryParse(_discountValue
-                .replaceAll('%', '')
-                .replaceAll("₹", "")
-                .trim()) ==
+            .replaceAll('%', '')
+            .replaceAll("₹", "")
+            .trim()) ==
             null) {
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(
@@ -2319,7 +2323,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         for (final oi in orderItems) {
           final map = Map<String, dynamic>.from(oi is Map ? oi : {});
           final itemType =
-              (map['item_type'] ?? map['type'] ?? '').toString().toLowerCase();
+          (map['item_type'] ?? map['type'] ?? '').toString().toLowerCase();
           if (itemType.contains('discount')) continue;
           products.add({
             ...map,
@@ -2367,7 +2371,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       bool isPercentage = _isPercentageSelected;
 
       double discountAmount =
-          isPercentage ? (inputValue / 100) * grossTotal : inputValue;
+      isPercentage ? (inputValue / 100) * grossTotal : inputValue;
 
       if (discountAmount > grossTotal) {
         setState(() => _isDiscountLoading = false);
@@ -2422,7 +2426,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         "merchantDiscountPercentage": isPercentage ? inputValue : 0.0,
         "merchantDiscountFixed": isPercentage ? 0.0 : discountAmount,
         "merchantDiscountBaseGross":
-            grossTotal, // snapshot of total when applied
+        grossTotal, // snapshot of total when applied
         "merchantDiscountIds": [
           discountProduct["product_id"] ??
               discountProduct["id"] ??
@@ -2697,15 +2701,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       final key = orderId.toString();
       final rawKey = await offlineBox.get(key);
       final existingOrder =
-          Map<String, dynamic>.from(rawKey is Map ? rawKey : {});
+      Map<String, dynamic>.from(rawKey is Map ? rawKey : {});
 
       // -------------------------------------------------------
 // 🚫 STOP Cashback if order panel has EBT eligible product
 // -------------------------------------------------------
       final List<Map<String, dynamic>> existingProducts =
-          (existingOrder["products"] as List? ?? [])
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
+      (existingOrder["products"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
 
       bool hasEbtProduct = existingProducts.any((p) {
         return p["is_ebt_eligible"] == true;
@@ -2727,9 +2731,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       }
 
       final List<Map<String, dynamic>> cashbacks =
-          (existingOrder["cashbacks"] as List? ?? [])
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
+      (existingOrder["cashbacks"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
 
       // ❌ Only 1 cashback allowed
       if (cashbacks.isNotEmpty) {
@@ -2823,7 +2827,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         "cashback_product_id": cashbackProduct["fast_key_product_id"],
         "product_name": cashbackProduct["fast_key_item_name"],
         "product_image":
-            "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/cashback-line-item.jpg",
+        "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/cashback-line-item.jpg",
 
         // ---- your amount ----
         "amount": cashbackAmount,
@@ -2846,9 +2850,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       // 🔄 Recalculate total
       // -------------------------------------------------------
       final List<Map<String, dynamic>> products =
-          (existingOrder["products"] as List? ?? [])
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
+      (existingOrder["products"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
 
       double productsTotal = 0.0;
       for (var p in products) {
@@ -2884,9 +2888,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       final existingExtras = await extrasBox.get(orderId.toString());
 
       final double finalCashbackFee =
-          existingExtras != null && existingExtras['cashback_fee'] != null
-              ? (existingExtras['cashback_fee'] as num).toDouble()
-              : fee;
+      existingExtras != null && existingExtras['cashback_fee'] != null
+          ? (existingExtras['cashback_fee'] as num).toDouble()
+          : fee;
 
       await extrasBox.put(orderId.toString(), {
         "local_order_id": orderId,
@@ -3084,7 +3088,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       }
 
       final Map<String, dynamic> orderData =
-          Map<String, dynamic>.from(_convertToJsonSafe(rawOrder));
+      Map<String, dynamic>.from(_convertToJsonSafe(rawOrder));
 
       final List products = (orderData["products"] ?? [])
           .map((e) => Map<String, dynamic>.from(_convertToJsonSafe(e)))
@@ -3334,7 +3338,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         _customItemPriceController.clear();
         _skuController.clear();
         _selectedTaxSlab =
-            _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
+        _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
         _isTaxDropdownEnabled = false;
       });
 
@@ -3489,7 +3493,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       final key = orderId.toString();
       final rawExisting = await offlineBox.get(key);
       final existingOrder =
-          Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+      Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
 
       final payouts = (existingOrder["payouts"] as List? ?? [])
           .map((e) => Map<String, dynamic>.from(e as Map))
@@ -3512,7 +3516,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         "fast_key_item_name": "Payout",
         "fast_key_item_price": 0,
         "fast_key_item_image":
-            "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/payout-2-1.png",
+        "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/payout-2-1.png",
         "type": "simple",
       };
 

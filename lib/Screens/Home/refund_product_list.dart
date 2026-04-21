@@ -576,8 +576,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                                 final bool isDiscount = itemName.contains("discount");
                                                 final bool isPayoutOrCashback =
                                                     itemName.trim() == "payout" || itemName.trim() == "cashback";
-                                                final unitPrice =
-                                                (item.total / item.quantity).toStringAsFixed(2);
+                                                final double unitPrice = item.total / item.quantity;
 
                                                 return Opacity(
                                                   opacity: isPayoutOrCashback ? 0.4 : 1,
@@ -616,10 +615,10 @@ class _RefundScreenState extends State<RefundScreen> {
                                                         isDark,
                                                         item.id,
                                                         item.name,
-                                                        "\$$unitPrice ×${item.quantity}",
-                                                        "\$${item.totalTax.toStringAsFixed(2)}",
+                                                        '${unitPrice < 0 ? '-' : ''}\$${unitPrice.abs().toStringAsFixed(2)} ×${item.quantity}',
+                                                        '${item.totalTax < 0 ? '-' : ''}\$${item.totalTax.abs().toStringAsFixed(2)}',
                                                         item.quantity,
-                                                        "\$${(item.total + item.totalTax).toStringAsFixed(2)}",
+                                                        '${(item.total + item.totalTax) < 0 ? '-' : ''}\$${(item.total + item.totalTax).abs().toStringAsFixed(2)}',
                                                         hasDiscount: item.isItemsHasDiscount == "Yes",
                                                         discountType: item.itemDiscountType,
                                                       ),
@@ -732,7 +731,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                           items: [
                                             "Customer changed Opinion",
-                                            "Expired product"
+                                            "Product Expired"
                                           ]
                                               .map((e) => DropdownMenuItem(
                                             value: e,
@@ -913,7 +912,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                                       Expanded(
                                                         flex: 2,
                                                         child: Text(
-                                                          "\$${item['unit_price'].toStringAsFixed(2)} ×${item['qty']}",
+                                                          '${item['unit_price'] < 0 ? '-' : ''}\$${item['unit_price'].abs().toStringAsFixed(2)} ×${item['qty']}',
                                                           style: TextStyle(
                                                             fontSize: 12,
                                                             color: isDark ? Colors.white : Colors.black,
@@ -923,17 +922,18 @@ class _RefundScreenState extends State<RefundScreen> {
                                                       Expanded(
                                                         flex: 1,
                                                         child: Text(
-                                                          "\$${item['tax'].toStringAsFixed(2)}",
+                                                          '${item['tax'] < 0 ? '-' : ''}\$${item['tax'].abs().toStringAsFixed(2)}',
                                                           style: TextStyle(
                                                             fontSize: 12,
                                                             color: isDark ? Colors.white : Colors.black,
                                                           ),
                                                         ),
                                                       ),
+
                                                       Expanded(
                                                         flex: 1,
                                                         child: Text(
-                                                          "\$${item['amount'].toStringAsFixed(2)}",
+                                                          '${item['amount'] < 0 ? '-' : ''}\$${item['amount'].abs().toStringAsFixed(2)}',
                                                           textAlign: TextAlign.right,
                                                           style: TextStyle(
                                                             fontSize: 12,
@@ -1151,10 +1151,13 @@ class _RefundScreenState extends State<RefundScreen> {
                                                     if (couponTotal > 0)
                                                       _buildRow(
                                                         "Coupons",
-                                                        "- \$${couponTotal.toStringAsFixed(2)}",
+                                                        "-\$${couponTotal.toStringAsFixed(2)}",
                                                         valueColor: Colors.green,
                                                       ),
-                                                    _buildRow("Tax", "\$${taxTotal.toStringAsFixed(2)}"),
+                                                    _buildRow(
+                                                      "Tax",
+                                                      '${taxTotal < 0 ? '-' : ''}\$${taxTotal.abs().toStringAsFixed(2)}',
+                                                    ),
                                                     ShaderMask(
                                                       shaderCallback: (Rect bounds) {
                                                         final isDark =
@@ -1189,12 +1192,14 @@ class _RefundScreenState extends State<RefundScreen> {
                                                             : Colors.black,
                                                       ),
                                                     ),
-                                                    _buildRow("Net Total", "\$${netTotal.toStringAsFixed(2)}"),
-
+                                                    _buildRow(
+                                                      "Net Total",
+                                                      '${netTotal < 0 ? '-' : ''}\$${netTotal.abs().toStringAsFixed(2)}',
+                                                    ),
                                                     if (merchantDiscount > 0)
                                                       _buildRow(
                                                         "Merchant Discount",
-                                                        "- \$${merchantDiscount.toStringAsFixed(2)}",
+                                                        "-\$${merchantDiscount.toStringAsFixed(2)}",
                                                         valueColor: Colors.blue,
                                                       ),
 
@@ -1278,7 +1283,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                                       _buildRow(
                                                         "Refund Amount",
-                                                        "\$${(editedRefundAmount ?? totalRefund).toStringAsFixed(2)}",
+                                                        '${(editedRefundAmount ?? totalRefund) < 0 ? '-' : ''}\$${(editedRefundAmount ?? totalRefund).abs().toStringAsFixed(2)}',
                                                         isBold: true,
                                                       ),
                                                     ],
@@ -1647,6 +1652,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
               final refundAmount = await showDialog<double>(
                 context: context,
+                barrierDismissible: false,
                 builder: (_) => CashRefundDialog(
                   refundRequest: refundRequest,
                   refundAmount: totalRefund,

@@ -96,7 +96,7 @@ class _VerifyItemStatusDialogState extends State<VerifyItemStatusDialog> {
       backgroundColor: bgColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
-        height: 420,
+        height: 450,
         width: 500,
         padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 36),
         child: Column(

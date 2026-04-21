@@ -66,6 +66,7 @@ class _InventoryScreenState extends State<InventoryScreen>
 
   // Product Type
   String? _selectedProductType;
+  final FocusNode _skuFocusNode = FocusNode();  // ← Add this line
 
   // Category, Tag, Tax selection
   dynamic _selectedCategory;
@@ -157,6 +158,12 @@ class _InventoryScreenState extends State<InventoryScreen>
     _initializeAddProductBloc();
 
     _imageUploadRepo = ImageUploadRepository();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        FocusScope.of(context).requestFocus(_skuFocusNode);
+      }
+    });
   }
 
   void _handleUnitNameCreate() async {
@@ -233,6 +240,9 @@ class _InventoryScreenState extends State<InventoryScreen>
       controller.dispose();
     }
     super.dispose();
+
+    _skuFocusNode.dispose();
+
   }
 
   void _initializeAddProductBloc() {
@@ -1868,6 +1878,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         Expanded(
                                           child: TextFormField(
                                             controller: _skuController,
+                                            focusNode: _skuFocusNode,   // ← Add this line
+
                                             style: TextStyle(
                                               color: isDark
                                                   ? Colors.white
@@ -3686,35 +3698,35 @@ class _InventoryScreenState extends State<InventoryScreen>
                               ),
                               const SizedBox(width: 12),
 
-                              // Selected slug display
-                              Expanded(
-                                flex: 2,
-                                child: Container(
-                                  height: 40,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                                  decoration: BoxDecoration(
-                                    color: isDark ? const Color(0xFF252837) : Colors.white70,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: isDark
-                                          ? const Color(0xFF3B4259)
-                                          : const Color(0xFFE0E0E0),
-                                    ),
-                                  ),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      attr['selectedSlug'] ?? 'Not selected',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: isDark ? Colors.white70 : Colors.black54,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
+                              // // Selected slug display
+                              // Expanded(
+                              //   flex: 2,
+                              //   child: Container(
+                              //     height: 40,
+                              //     padding: const EdgeInsets.symmetric(horizontal: 12),
+                              //     decoration: BoxDecoration(
+                              //       color: isDark ? const Color(0xFF252837) : Colors.white70,
+                              //       borderRadius: BorderRadius.circular(8),
+                              //       border: Border.all(
+                              //         color: isDark
+                              //             ? const Color(0xFF3B4259)
+                              //             : const Color(0xFFE0E0E0),
+                              //       ),
+                              //     ),
+                              //     child: Align(
+                              //       alignment: Alignment.centerLeft,
+                              //       child: Text(
+                              //         attr['selectedSlug'] ?? 'Not selected',
+                              //         style: TextStyle(
+                              //           fontSize: 12,
+                              //           color: isDark ? Colors.white70 : Colors.black54,
+                              //         ),
+                              //         overflow: TextOverflow.ellipsis,
+                              //       ),
+                              //     ),
+                              //   ),
+                              // ),
+                              // const SizedBox(width: 12),
 
                               // Add / Remove button
                               if (isLast)

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:intl/intl.dart';
 // import 'package:pinaka_pos/Screens/Home/refund_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:syncfusion_flutter_datepicker/datepicker.dart';
@@ -646,7 +647,8 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                       _DataCell("#${order.orderId}"),
                       _DataCell(order.orderType),
                       _DataCell(
-                          order.completedAt.toString().split(' ').first),
+                        DateFormat('dd-MM-yyyy').format(order.completedAt),
+                      ),
                       // _DataCell(order.transactionId),
                       const SizedBox(width:10),
                       Expanded(
@@ -715,10 +717,10 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                       ),
                       // const SizedBox(width:5),
                       _DataCell(order.paymentMethod),
-                      _DataCell('\$${order.amount.toStringAsFixed(2)}'),
-                      _DataCell('\$${order.tax.toStringAsFixed(2)}'),
-                      _DataCell('\$${order.discount.toStringAsFixed(2)}'),
-                      _DataCell('\$${order.total.toStringAsFixed(2)}'),
+                      _DataCell('${order.amount < 0 ? '-' : ''}\$${order.amount.abs().toStringAsFixed(2)}'),
+                      _DataCell('${order.tax < 0 ? '-' : ''}\$${order.tax.abs().toStringAsFixed(2)}'),
+                      _DataCell('${order.discount < 0 ? '-' : ''}\$${order.discount.abs().toStringAsFixed(2)}'),
+                      _DataCell('${order.total < 0 ? '-' : ''}\$${order.total.abs().toStringAsFixed(2)}'),
                       const _StatusCell(),
                     ],
                   ),
