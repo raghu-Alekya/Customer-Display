@@ -4,104 +4,101 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:pinaka_pos/Screens/Auth/login_screen.dart';
 import 'package:pinaka_pos/Screens/Home/apps_dashboard_screen.dart';
-import 'package:pinaka_pos/Screens/Home/categories_screen.dart';
-import 'package:pinaka_pos/Screens/Home/fast_key_screen.dart';
 import 'package:pinaka_pos/Screens/Home/pos_home_screen.dart';
 import 'package:pinaka_pos/Widgets/scanner_guard.dart';
 import 'package:pinaka_pos/Widgets/widget_topbar.dart';
 import 'package:provider/provider.dart';
-import 'package:quickalert/models/quickalert_animtype.dart';
-import 'package:quickalert/models/quickalert_type.dart';
-import 'package:quickalert/widgets/quickalert_dialog.dart';
 import 'package:flutter_swipe_button/flutter_swipe_button.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../Blocs/Orders/refund_orderlist_bloc.dart';
-import '../Constants/misc_features.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 
 import '../Constants/text.dart';
 import '../Blocs/Auth/logout_bloc.dart';
-import '../Helper/api_response.dart';
-import '../Helper/customerdisplayhelper.dart';
 import '../Preferences/pinaka_preferences.dart';
 import '../Repositories/Auth/logout_repository.dart';
 import '../Repositories/Orders/refund_orderlist_repository.dart';
-import '../Screens/Home/add_screen.dart';
 import '../Screens/Home/Settings/settings_screen.dart';
 import '../Screens/Home/shift_open_close_balance.dart';
 import '../Screens/Home/total_orders_screen.dart';
 import '../Screens/refund_screen.dart';
 import '../Utilities/svg_images_utility.dart';
-import '../services/CustomerDisplayService.dart';
-import 'widget_alert_popup_dialogs.dart';
 
-class NavigationBar extends StatelessWidget {
+class NavigationBar extends StatefulWidget {
   final int selectedSidebarIndex;
   final Function(int) onSidebarItemSelected;
   final bool isVertical;
-  final bool isShiftScreen; // ✅ ADD THIS
+  final bool isShiftScreen;
   final Future<bool> Function(int index)? onWillNavigate;
-  /// When non-null, tapping these indices only calls onSidebarItemSelected (no Navigator push).
-  /// Used by POSHomeScreen to switch tabs without replacing route.
   final Set<int>? callbackOnlyIndices;
 
   const NavigationBar({
     required this.selectedSidebarIndex,
     required this.onSidebarItemSelected,
     this.isVertical = true,
-    this.isShiftScreen = false, // default
+    this.isShiftScreen = false,
     this.onWillNavigate,
     this.callbackOnlyIndices,
     Key? key,
   }) : super(key: key);
 
+  @override
+  State<NavigationBar> createState() => _NavigationBarState();
+}
+
+class _NavigationBarState extends State<NavigationBar> {
+  late Future<String?> _shiftIdFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _shiftIdFuture = _getShiftId();
+  }
+
   Future<bool> _canNavigate(int index) async {
-    return await onWillNavigate?.call(index) ?? true;
+    return await widget.onWillNavigate?.call(index) ?? true;
   }
 
-  String todayStart() {
-    final now = DateTime.now();
-    return DateTime(now.year, now.month, now.day, 0, 0, 0).toIso8601String();
-  }
-
-  String todayEnd() {
-    final now = DateTime.now();
-    return DateTime(now.year, now.month, now.day, 23, 59, 59).toIso8601String();
+  Future<String?> _getShiftId() async {
+    if (kDebugMode) {
+      print("### Getting shiftId from database");
+    }
+    int? shiftId = await UserDbHelper().getUserShiftId();
+    if (kDebugMode) {
+      print("### Retrieved shiftId: $shiftId");
+    }
+    return shiftId.toString();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme =
-    Theme.of(context); // Build #1.0.6 - Added theme for navigation bar
+    final theme = Theme.of(context);
     final themeHelper = Provider.of<ThemeNotifier>(context);
-    final logoutBloc = LogoutBloc(
-        LogoutRepository()); // Build #1.0.163: Initialize LogoutBloc with repository
+    final logoutBloc = LogoutBloc(LogoutRepository());
+
     return Container(
-      width: isVertical ? MediaQuery.of(context).size.width * 0.07 : null,
-      height: isVertical ? null : MediaQuery.of(context).size.height * 0.125,
+      width:
+          widget.isVertical ? MediaQuery.of(context).size.width * 0.07 : null,
+      height:
+          widget.isVertical ? null : MediaQuery.of(context).size.height * 0.125,
       color: theme.scaffoldBackgroundColor,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(5, 10, 5, 10),
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF0B1023), // latest color
-            // color: theme.primaryColor,
+            color: const Color(0xFF0B1023),
             borderRadius: BorderRadius.all(Radius.circular(10)),
           ),
           child: FutureBuilder<String?>(
-            //Build #1.0.78: restrict user don't select any other nav buttons first login
-            future: _getShiftId(),
+            future: _shiftIdFuture,
             builder: (context, snapshot) {
-              // if (snapshot.connectionState == ConnectionState.waiting) {
-              //   return Center(child: CircularProgressIndicator());
-              // }
               final shiftId = snapshot.data;
-              return isVertical
+              return widget.isVertical
                   ? _buildVerticalLayout(
-                  context, shiftId, logoutBloc) // Build #1.0.163
-                  : _buildHorizontalLayout(context, shiftId, logoutBloc);
+                      context, shiftId, logoutBloc, snapshot.connectionState)
+                  : _buildHorizontalLayout(
+                      context, shiftId, logoutBloc, snapshot.connectionState);
             },
           ),
         ),
@@ -109,382 +106,297 @@ class NavigationBar extends StatelessWidget {
     );
   }
 
-  Future<String?> _getShiftId() async {
-    //Build #1.0.78
-    if (kDebugMode) {
-      print("### Getting shiftId from database");
-    }
-    int? shiftId = await UserDbHelper()
-        .getUserShiftId(); // Build #1.0.161: added debug prints
-    if (kDebugMode) {
-      print("### Retrieved shiftId: $shiftId");
-    }
-    return shiftId.toString();
-  }
-
-  Widget _buildVerticalLayout(
-      BuildContext context, String? shiftId, LogoutBloc logoutBloc) {
+  Widget _buildVerticalLayout(BuildContext context, String? shiftId,
+      LogoutBloc logoutBloc, ConnectionState connectionState) {
     int lastSelectedIndex = 0;
-    final BuildContext scaffoldContext = context;
     final themeHelper = Provider.of<ThemeNotifier>(context);
-    // Build #1.0.161: Fixed Issue - navigation bar icons are not disabled before create shift
-    bool isShiftInvalid =
-        shiftId == null || shiftId == "null" || shiftId.isEmpty;
-    // Build #1.0.221 : Fixed Issue -> Disable navigation bar menu icons while shift create,update,close
-    // bool isShiftScreen = ModalRoute.of(context)?.settings.arguments == TextConstants.navLogout ||
-    //     ModalRoute.of(context)?.settings.arguments == TextConstants.navShiftHistory;
-    bool isShiftScreen = this.isShiftScreen;
+
+    bool isShiftInvalid = connectionState != ConnectionState.waiting &&
+        (shiftId == null || shiftId == "null" || shiftId.isEmpty);
+
+    bool isShiftScreen = widget.isShiftScreen;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         if (kDebugMode) {
-          print("#### _buildVerticalLayout constraints: $constraints");
+          print(
+              "#### _buildVerticalLayout constraints: $constraints, isShiftInvalid: $isShiftInvalid");
         }
-        // Dynamic items (scrollable if needed)
         List<Widget> dynamicItems = [
           SidebarButton(
-            svgAsset: selectedSidebarIndex == 0
+            svgAsset: widget.selectedSidebarIndex == 0
                 ? SvgUtils.fastKeySelectedIcon
-                : SvgUtils
-                .fastKeyIcon, // Build #1.0.148: Fixed Issue: Menu Bar Icons not matching with latest Figma Design , now using from assets/svg/navigation/
+                : SvgUtils.fastKeyIcon,
             label: TextConstants.fastKeyText,
-            isSelected: selectedSidebarIndex == 0,
+            isSelected: widget.selectedSidebarIndex == 0,
             onTap: isShiftInvalid ||
-                isShiftScreen ||
-                selectedSidebarIndex ==
-                    0 // Build #1.0.240 : Disabled Multiple tap on same SidebarButton
+                    isShiftScreen ||
+                    widget.selectedSidebarIndex == 0
                 ? () {}
                 : () async {
-              if (!await _canNavigate(0)) return;
-              if (kDebugMode) {
-                print("##### Fast Keys button tapped");
-              }
-              lastSelectedIndex = 0; // Store last selection
-              onSidebarItemSelected(0);
-              if (callbackOnlyIndices?.contains(0) == true) return;
+                    if (!await _canNavigate(0)) return;
+                    lastSelectedIndex = 0;
+                    widget.onSidebarItemSelected(0);
+                    if (widget.callbackOnlyIndices?.contains(0) == true) return;
 
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
+                    OrderHelper.isOrderPanelLoaded = false;
+                    OrderHelper.notifyOrderPanelToRefresh();
 
-              /// POSHomeScreen (Fast Keys tab)
-              Navigator.of(context).pushAndRemoveUntil(
-                // Build #1.0.254 : Fixed - Push and replace is showing jump animation for nav bar
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      POSHomeScreen(lastSelectedIndex: 0),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No transition animation
+                    Navigator.of(context).pushAndRemoveUntil(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            POSHomeScreen(lastSelectedIndex: 0),
+                      ),
+                      (route) => false,
+                    );
                   },
-                  transitionDuration: Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
-              // Build #1.0.247 : Updated pushReplacement TO pushAndRemoveUntil
-              // Navigator.of(context).pushAndRemoveUntil(
-              //   MaterialPageRoute(builder: (context) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex)),
-              //       (route) => false,
-              // );
-              // Navigator.pushReplacement(
-              //   context,
-              //   MaterialPageRoute(builder: (context) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex)),
-              // );
-            },
-            isVertical: isVertical,
+            isVertical: widget.isVertical,
             isDisabled: isShiftInvalid || isShiftScreen,
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.categoriesIcon,
             label: TextConstants.categoriesText,
-            isSelected: selectedSidebarIndex == 1,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 1
+            isSelected: widget.selectedSidebarIndex == 1,
+            onTap: isShiftInvalid ||
+                    isShiftScreen ||
+                    widget.selectedSidebarIndex == 1
                 ? () {}
                 : () async {
-              if (!await _canNavigate(1)) return;
-              if (kDebugMode) {
-                print("##### Categories button tapped");
-              }
-              lastSelectedIndex = 1; //Build #1.0.7: Store last selection
-              onSidebarItemSelected(1);
-              if (callbackOnlyIndices?.contains(1) == true) return;
+                    if (!await _canNavigate(1)) return;
+                    if (kDebugMode) {
+                      print("##### Categories button tapped");
+                    }
+                    lastSelectedIndex = 1;
+                    widget.onSidebarItemSelected(1);
+                    if (widget.callbackOnlyIndices?.contains(1) == true) return;
 
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
+                    OrderHelper.isOrderPanelLoaded = false;
+                    OrderHelper.notifyOrderPanelToRefresh();
 
-              /// POSHomeScreen (Categories tab)
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      POSHomeScreen(lastSelectedIndex: 1),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No transition animation
+                    Navigator.of(context).pushAndRemoveUntil(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            POSHomeScreen(lastSelectedIndex: 1),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) {
+                          return child;
+                        },
+                        transitionDuration: Duration.zero,
+                      ),
+                      (route) => false,
+                    );
                   },
-                  transitionDuration: Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
-              // Navigator.of(context).pushAndRemoveUntil(
-              //   MaterialPageRoute(builder: (context) => CategoriesScreen(lastSelectedIndex: lastSelectedIndex)),
-              //       (route) => false,
-              // );
-              // Navigator.pushReplacement(
-              //   context,
-              //   MaterialPageRoute(builder: (context) => CategoriesScreen( lastSelectedIndex: lastSelectedIndex)),
-              // );
-            },
-            isVertical: isVertical,
+            isVertical: widget.isVertical,
             isDisabled: isShiftInvalid || isShiftScreen,
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.addIcon,
             label: TextConstants.addText,
-            isSelected: selectedSidebarIndex == 2,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 2
+            isSelected: widget.selectedSidebarIndex == 2,
+            onTap: isShiftInvalid ||
+                    isShiftScreen ||
+                    widget.selectedSidebarIndex == 2
                 ? () {}
                 : () async {
-              if (!await _canNavigate(2)) return;
-              if (kDebugMode) {
-                print("##### AddScreen button tapped");
-              }
-              lastSelectedIndex = 2;
-              onSidebarItemSelected(2);
-              if (callbackOnlyIndices?.contains(2) == true) return;
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
+                    if (!await _canNavigate(2)) return;
+                    if (kDebugMode) {
+                      print("##### AddScreen button tapped");
+                    }
+                    lastSelectedIndex = 2;
+                    widget.onSidebarItemSelected(2);
+                    if (widget.callbackOnlyIndices?.contains(2) == true) return;
+                    OrderHelper.isOrderPanelLoaded = false;
+                    OrderHelper.notifyOrderPanelToRefresh();
 
-              /// POSHomeScreen (Add tab)
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      POSHomeScreen(lastSelectedIndex: 2),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No transition animation
+                    Navigator.of(context).pushAndRemoveUntil(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            POSHomeScreen(lastSelectedIndex: 2),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) {
+                          return child;
+                        },
+                        transitionDuration: Duration.zero,
+                      ),
+                      (route) => false,
+                    );
                   },
-                  transitionDuration: Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
-              // Navigator.of(context).pushAndRemoveUntil(
-              //   MaterialPageRoute(builder: (context) => AddScreen(lastSelectedIndex: lastSelectedIndex)),
-              //       (route) => false,
-              // );
-              //  Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => AddScreen(lastSelectedIndex: lastSelectedIndex)),
-              //  );
-            },
-            isVertical: isVertical,
+            isVertical: widget.isVertical,
             isDisabled: isShiftInvalid || isShiftScreen,
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.ordersIcon,
             label: TextConstants.ordersText,
-            isSelected: selectedSidebarIndex == 3,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 3
+            isSelected: widget.selectedSidebarIndex == 3,
+            onTap: isShiftInvalid ||
+                    isShiftScreen ||
+                    widget.selectedSidebarIndex == 3
                 ? () {}
                 : () async {
-              if (!await _canNavigate(3)) return;
-              if (kDebugMode) {
-                print("##### OrdersScreen button tapped");
-              }
-              lastSelectedIndex = 3;
-              onSidebarItemSelected(3);
+                    if (!await _canNavigate(3)) return;
+                    if (kDebugMode) {
+                      print("##### OrdersScreen button tapped");
+                    }
+                    lastSelectedIndex = 3;
+                    widget.onSidebarItemSelected(3);
 
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
-              // Save current POS order before switching to Orders tab
-              final oh = OrderHelper();
-              if (oh.activeOrderId != null) {
-                oh.saveLastActiveOrderId(oh.activeOrderId!);
-              }
+                    OrderHelper.isOrderPanelLoaded = false;
+                    OrderHelper.notifyOrderPanelToRefresh();
+                    final oh = OrderHelper();
+                    if (oh.activeOrderId != null) {
+                      oh.saveLastActiveOrderId(oh.activeOrderId!);
+                    }
 
-              /// OrdersScreen
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      TotalOrdersScreen(
-                          lastSelectedIndex: lastSelectedIndex),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No transition animation
+                    Navigator.of(context).pushAndRemoveUntil(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            TotalOrdersScreen(
+                                lastSelectedIndex: lastSelectedIndex),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) {
+                          return child;
+                        },
+                        transitionDuration: Duration.zero,
+                      ),
+                      (route) => false,
+                    );
                   },
-                  transitionDuration: Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
-              // Build #1.0.245: Fixed Re-Opened [SCRUM - 356] Issue -> Order items not displaying in Bottom Mode
-              // -> the processing order is showing when we switch to bottom mode
-              // -> Empty Cart/ Items shown for pending orders when move navigation bar to bottom mode.
-              // Navigator.of(context).pushAndRemoveUntil(
-              //   MaterialPageRoute(builder: (context) => TotalOrdersScreen(lastSelectedIndex: lastSelectedIndex)),
-              //       (route) => false,
-              // );
-              // Navigator.pushAndRemoveUntil(
-              //   context,
-              //   MaterialPageRoute(builder: (context) => TotalOrdersScreen(lastSelectedIndex: lastSelectedIndex)), // Build #1.0.226: Updated class name
-              // );
-            },
-            isVertical: isVertical,
+            isVertical: widget.isVertical,
             isDisabled: isShiftInvalid || isShiftScreen,
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.appsIcon,
             label: TextConstants.appsText,
-            isSelected: selectedSidebarIndex == 4,
-            onTap: selectedSidebarIndex == 4
+            isSelected: widget.selectedSidebarIndex == 4,
+            onTap: widget.selectedSidebarIndex == 4
                 ? () {}
                 : () async {
-              if (!await _canNavigate(4)) return;
-              if (kDebugMode) {
-                print("##### AppsScreen button tapped");
-              }
-              lastSelectedIndex = 4;
-              onSidebarItemSelected(4);
+                    if (!await _canNavigate(4)) return;
+                    if (kDebugMode) {
+                      print("##### AppsScreen button tapped");
+                    }
+                    lastSelectedIndex = 4;
+                    widget.onSidebarItemSelected(4);
 
-              /// AppsDashboardScreen
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      AppsDashboardScreen(
-                          lastSelectedIndex: lastSelectedIndex),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No transition animation
+                    Navigator.of(context).pushAndRemoveUntil(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            AppsDashboardScreen(
+                                lastSelectedIndex: lastSelectedIndex),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) {
+                          return child;
+                        },
+                        transitionDuration: Duration.zero,
+                      ),
+                      (route) => false,
+                    );
                   },
-                  transitionDuration: Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
-              // Navigator.of(context).pushAndRemoveUntil(
-              //   MaterialPageRoute(builder: (context) => AppsDashboardScreen(lastSelectedIndex: lastSelectedIndex)),
-              //       (route) => false,
-              // );
-              // Navigator.pushReplacement(
-              //   context,
-              //   MaterialPageRoute(
-              //       builder: (context) =>
-              //           AppsDashboardScreen(lastSelectedIndex: lastSelectedIndex)),
-              // );
-            },
-            isVertical: isVertical,
+            isVertical: widget.isVertical,
           ),
           const SizedBox(height: 10),
-
           SidebarButton(
             imageAsset: 'assets/refund.png',
             label: "Refund",
-            isSelected: selectedSidebarIndex == 5,
-            isDisabled: isShiftInvalid || isShiftScreen, // ✅ FIXED
-            onTap: (isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5)
+            isSelected: widget.selectedSidebarIndex == 5,
+            isDisabled: isShiftInvalid || isShiftScreen,
+            onTap: (isShiftInvalid ||
+                    isShiftScreen ||
+                    widget.selectedSidebarIndex == 5)
                 ? () {}
                 : () async {
-              if (!await _canNavigate(5)) return;
-              if (kDebugMode) {
-                print("##### Refund button tapped");
-              }
+                    if (!await _canNavigate(5)) return;
+                    if (kDebugMode) {
+                      print("##### Refund button tapped");
+                    }
 
-              lastSelectedIndex = 5;
-              onSidebarItemSelected(5);
+                    lastSelectedIndex = 5;
+                    widget.onSidebarItemSelected(5);
 
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => BlocProvider(
-                    create: (context) => CompletedOrdersBloc(
-                      context.read<CompletedOrdersRepository>(),
-                    )..add(
-                      FetchCompletedOrders(
-                        page: 1,
-                        perPage: 10,
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => BlocProvider(
+                          create: (context) => CompletedOrdersBloc(
+                            context.read<CompletedOrdersRepository>(),
+                          )..add(
+                              FetchCompletedOrders(
+                                page: 1,
+                                perPage: 10,
+                              ),
+                            ),
+                          child: const CompletedOrdersScreen(
+                            lastSelectedIndex: 5,
+                          ),
+                        ),
                       ),
-                    ),
-                    child: const CompletedOrdersScreen(
-                      lastSelectedIndex: 5,
-                    ),
-                  ),
-                ),
-              );
-            },
-            isVertical: isVertical,
+                    );
+                  },
+            isVertical: widget.isVertical,
           ),
-
-          // You can add more dynamic items here in the future.
         ];
 
-        // Fixed items (always visible at the bottom)
         Widget fixedItems = Column(
           children: [
             const Divider(color: Colors.black54),
             SidebarButton(
               svgAsset: SvgUtils.settingsIcon,
               label: TextConstants.settingsHeaderText,
-              isSelected: selectedSidebarIndex == 6,
+              isSelected: widget.selectedSidebarIndex == 6,
               onTap: isShiftInvalid ||
-                  isShiftScreen ||
-                  selectedSidebarIndex == 6
+                      isShiftScreen ||
+                      widget.selectedSidebarIndex == 6
                   ? () {}
                   : () async {
-                if (!await _canNavigate(6)) return;
-                if (kDebugMode) {
-                  print("##### Settings button tapped");
-                }
-                lastSelectedIndex =
-                    selectedSidebarIndex; // Build #1.0.7: Store before navigating
+                      if (!await _canNavigate(6)) return;
+                      if (kDebugMode) {
+                        print("##### Settings button tapped");
+                      }
+                      lastSelectedIndex = widget.selectedSidebarIndex;
 
-                onSidebarItemSelected(6); // Highlight settings
+                      widget.onSidebarItemSelected(6);
 
-                Navigator.push(
-                  context,
-                  PageRouteBuilder(
-                    pageBuilder:
-                        (context, animation, secondaryAnimation) =>
-                        SettingsScreen(),
-                    transitionsBuilder:
-                        (context, animation, secondaryAnimation, child) {
-                      return child; // No transition animation
+                      Navigator.push(
+                        context,
+                        PageRouteBuilder(
+                          pageBuilder:
+                              (context, animation, secondaryAnimation) =>
+                                  SettingsScreen(),
+                          transitionsBuilder:
+                              (context, animation, secondaryAnimation, child) {
+                            return child;
+                          },
+                          transitionDuration: Duration.zero,
+                        ),
+                      ).then((_) {
+                        widget.onSidebarItemSelected(lastSelectedIndex);
+                      });
                     },
-                    transitionDuration:
-                    Duration.zero, // Instant transition
-                  ),
-                ).then((_) {
-                  // Restore the sidebar selection when coming back
-                  onSidebarItemSelected(lastSelectedIndex);
-                });
-                // Navigator.push(
-                //   context,
-                //   MaterialPageRoute(
-                //     builder: (context) => SettingsScreen(),
-                //   ),
-                // ).then((_) {
-                //   // Restore the sidebar selection when coming back
-                //   onSidebarItemSelected(lastSelectedIndex);
-                // });
-              },
-              isVertical: isVertical,
+              isVertical: widget.isVertical,
               isDisabled: isShiftInvalid || isShiftScreen,
             ),
             const SizedBox(height: 10),
             SidebarButton(
               svgAsset: SvgUtils.logoutIcon,
               label: TextConstants.logoutText,
-              isSelected: selectedSidebarIndex == 7,
-              onTap: isShiftInvalid ||
-                  isShiftScreen // Build #1.0.247: Enabled Multiple click for Logout
+              isSelected: widget.selectedSidebarIndex == 7,
+              onTap: isShiftInvalid || isShiftScreen
                   ? () {}
                   : () async {
-                if (!await _canNavigate(7)) return;
-                final previousIndex = selectedSidebarIndex;
-                onSidebarItemSelected(7);
-                if (kDebugMode) {
-                  print("nav logout called");
-                }
-                _showLogoutDialog(context, logoutBloc, themeHelper, previousIndex);
-              },
-              isVertical: isVertical,
+                      if (!await _canNavigate(7)) return;
+                      final previousIndex = widget.selectedSidebarIndex;
+                      widget.onSidebarItemSelected(7);
+                      if (kDebugMode) {
+                        print("nav logout called");
+                      }
+                      _showLogoutDialog(
+                          context, logoutBloc, themeHelper, previousIndex);
+                    },
+              isVertical: widget.isVertical,
               isDisabled: isShiftInvalid || isShiftScreen,
             ),
             const SizedBox(height: 10),
@@ -492,10 +404,9 @@ class NavigationBar extends StatelessWidget {
         );
 
         return Padding(
-          padding: const EdgeInsets.only(top: 10.0), // Adjust padding as needed
+          padding: const EdgeInsets.only(top: 10.0),
           child: Column(
             children: [
-              // Dynamic part: scrollable on small screens, fixed layout on larger screens.
               Expanded(
                 child: ListView(
                   padding: EdgeInsets.only(top: 0),
@@ -510,341 +421,253 @@ class NavigationBar extends StatelessWidget {
     );
   }
 
-  Widget _buildHorizontalLayout(
-      BuildContext context, String? shiftId, LogoutBloc logoutBloc) {
+  Widget _buildHorizontalLayout(BuildContext context, String? shiftId,
+      LogoutBloc logoutBloc, ConnectionState connectionState) {
     int lastSelectedIndex = 0;
     final themeHelper = Provider.of<ThemeNotifier>(context);
-    // Build #1.0.161: Fixed Issue - navigation bar icons are not disabled before create shift
-    bool isShiftInvalid =
-        shiftId == null || shiftId == "null" || shiftId.isEmpty;
-    // // Build #1.0.221 : Fixed Issue -> Disable navigation bar menu icons while shift create,update,close
-    // bool isShiftScreen = ModalRoute.of(context)?.settings.arguments == TextConstants.navLogout ||
-    //     ModalRoute.of(context)?.settings.arguments == TextConstants.navShiftHistory;
-    bool isShiftScreen = this.isShiftScreen;
+
+    bool isShiftInvalid = connectionState != ConnectionState.waiting &&
+        (shiftId == null || shiftId == "null" || shiftId.isEmpty);
+
+    bool isShiftScreen = widget.isShiftScreen;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         if (kDebugMode) {
-          print("#### _buildHorizontalLayout constraints: $constraints");
+          print(
+              "#### _buildHorizontalLayout constraints: $constraints, isShiftInvalid: $isShiftInvalid");
         }
-        // Dynamic items (scrollable horizontally if needed)
+
         List<Widget> dynamicItems = [
           SidebarButton(
-            svgAsset: selectedSidebarIndex == 0
+            svgAsset: widget.selectedSidebarIndex == 0
                 ? SvgUtils.fastKeySelectedIcon
-                : SvgUtils
-                .fastKeyIcon, // Build #1.0.148: Fixed Issue: Menu Bar Icons not matching with latest Figma Design , now using from assets/svg/navigation/
+                : SvgUtils.fastKeyIcon,
             label: TextConstants.fastKeyText,
-            isSelected: selectedSidebarIndex == 0,
+            isSelected: widget.selectedSidebarIndex == 0,
             onTap: isShiftInvalid ||
-                isShiftScreen ||
-                selectedSidebarIndex ==
-                    0 // Build #1.0.240 : Disabled Multiple tap on same SidebarButton
+                    isShiftScreen ||
+                    widget.selectedSidebarIndex == 0
                 ? () {}
                 : () async {
-              if (!await _canNavigate(0)) return;
-              if (kDebugMode) {
-                print("##### Fast Keys button tapped");
-              }
-              lastSelectedIndex = 0; // Store last selection
-              onSidebarItemSelected(0);
-              if (callbackOnlyIndices?.contains(0) == true) return;
+                    if (!await _canNavigate(0)) return;
+                    lastSelectedIndex = 0;
+                    widget.onSidebarItemSelected(0);
+                    if (widget.callbackOnlyIndices?.contains(0) == true) return;
 
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
+                    OrderHelper.isOrderPanelLoaded = false;
+                    OrderHelper.notifyOrderPanelToRefresh();
 
-              /// POSHomeScreen (Fast Keys tab)
-              Navigator.of(context).pushAndRemoveUntil(
-                // Build #1.0.254 : Fixed - Push and replace is showing jump animation for nav bar
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      POSHomeScreen(lastSelectedIndex: 0),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No transition animation
+                    Navigator.of(context).pushAndRemoveUntil(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            POSHomeScreen(lastSelectedIndex: 0),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) =>
+                                child,
+                        transitionDuration: Duration.zero,
+                      ),
+                      (route) => false,
+                    );
                   },
-                  transitionDuration: Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
-              // Navigator.of(context).pushAndRemoveUntil(
-              //   MaterialPageRoute(builder: (context) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex)),
-              //       (route) => false,
-              // );
-              // Navigator.pushReplacement(
-              //   context,
-              //   MaterialPageRoute(builder: (context) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex)),
-              // );
-            },
-            isVertical: false, //Build #1.0.54: updated
+            isVertical: false,
             isDisabled: isShiftInvalid || isShiftScreen,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(width: 10),
           SidebarButton(
             svgAsset: SvgUtils.categoriesIcon,
             label: TextConstants.categoriesText,
-            isSelected: selectedSidebarIndex == 1,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 1
+            isSelected: widget.selectedSidebarIndex == 1,
+            onTap: isShiftInvalid ||
+                    isShiftScreen ||
+                    widget.selectedSidebarIndex == 1
                 ? () {}
                 : () async {
-              if (!await _canNavigate(1)) return;
-              if (kDebugMode) {
-                print("##### Categories button tapped");
-              }
-              lastSelectedIndex = 1; // Store last selection
-              onSidebarItemSelected(1);
-              if (callbackOnlyIndices?.contains(1) == true) return;
+                    if (!await _canNavigate(1)) return;
+                    lastSelectedIndex = 1;
+                    widget.onSidebarItemSelected(1);
+                    if (widget.callbackOnlyIndices?.contains(1) == true) return;
 
-              /// CategoriesScreen
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      CategoriesScreen(
-                          lastSelectedIndex: lastSelectedIndex),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No transition animation
+                    OrderHelper.isOrderPanelLoaded = false;
+                    OrderHelper.notifyOrderPanelToRefresh();
+
+                    Navigator.of(context).pushAndRemoveUntil(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            POSHomeScreen(lastSelectedIndex: 1),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) =>
+                                child,
+                        transitionDuration: Duration.zero,
+                      ),
+                      (route) => false,
+                    );
                   },
-                  transitionDuration: Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
-              // Navigator.of(context).pushAndRemoveUntil(
-              //   MaterialPageRoute(builder: (context) => CategoriesScreen(lastSelectedIndex: lastSelectedIndex)),
-              //       (route) => false,
-              // );
-              // Navigator.pushReplacement(
-              //   context,
-              //   MaterialPageRoute(
-              //       builder: (context) =>
-              //           CategoriesScreen(lastSelectedIndex: lastSelectedIndex)),
-              // );
-            },
             isVertical: false,
             isDisabled: isShiftInvalid || isShiftScreen,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(width: 10),
           SidebarButton(
             svgAsset: SvgUtils.addIcon,
             label: TextConstants.addText,
-            isSelected: selectedSidebarIndex == 2,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 2
+            isSelected: widget.selectedSidebarIndex == 2,
+            onTap: isShiftInvalid ||
+                    isShiftScreen ||
+                    widget.selectedSidebarIndex == 2
                 ? () {}
                 : () async {
-              if (!await _canNavigate(2)) return;
-              if (kDebugMode) {
-                print("##### AddScreen button tapped");
-              }
-              lastSelectedIndex = 2;
-              onSidebarItemSelected(2);
-              if (callbackOnlyIndices?.contains(2) == true) return;
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
+                    if (!await _canNavigate(2)) return;
+                    lastSelectedIndex = 2;
+                    widget.onSidebarItemSelected(2);
+                    if (widget.callbackOnlyIndices?.contains(2) == true) return;
+                    OrderHelper.isOrderPanelLoaded = false;
+                    OrderHelper.notifyOrderPanelToRefresh();
 
-              /// POSHomeScreen (Add tab)
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      POSHomeScreen(lastSelectedIndex: 2),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No transition animation
+                    Navigator.of(context).pushAndRemoveUntil(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            POSHomeScreen(lastSelectedIndex: 2),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) =>
+                                child,
+                        transitionDuration: Duration.zero,
+                      ),
+                      (route) => false,
+                    );
                   },
-                  transitionDuration: Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
-              // Navigator.pushReplacement(
-              //   context,
-              //   MaterialPageRoute(builder: (context) => AddScreen()),
-              // );
-              // Navigator.of(context).pushAndRemoveUntil(
-              //   MaterialPageRoute(builder: (context) => AddScreen(lastSelectedIndex: lastSelectedIndex)),
-              //       (route) => false,
-              // );
-            },
             isVertical: false,
             isDisabled: isShiftInvalid || isShiftScreen,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(width: 10),
           SidebarButton(
             svgAsset: SvgUtils.ordersIcon,
             label: TextConstants.ordersText,
-            isSelected: selectedSidebarIndex == 3,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 3
+            isSelected: widget.selectedSidebarIndex == 3,
+            onTap: isShiftInvalid ||
+                    isShiftScreen ||
+                    widget.selectedSidebarIndex == 3
                 ? () {}
                 : () async {
-              if (!await _canNavigate(3)) return;
-              if (kDebugMode) {
-                print("##### OrdersScreen button tapped");
-              }
-              lastSelectedIndex = 3;
-              onSidebarItemSelected(3);
+                    if (!await _canNavigate(3)) return;
+                    lastSelectedIndex = 3;
+                    widget.onSidebarItemSelected(3);
 
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
-              // Save current POS order before switching to Orders tab
-              final oh = OrderHelper();
-              if (oh.activeOrderId != null) {
-                oh.saveLastActiveOrderId(oh.activeOrderId!);
-              }
+                    OrderHelper.isOrderPanelLoaded = false;
+                    OrderHelper.notifyOrderPanelToRefresh();
+                    final oh = OrderHelper();
+                    if (oh.activeOrderId != null) {
+                      oh.saveLastActiveOrderId(oh.activeOrderId!);
+                    }
 
-              /// OrdersScreen
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      TotalOrdersScreen(
-                          lastSelectedIndex: lastSelectedIndex),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No transition animation
+                    Navigator.of(context).pushAndRemoveUntil(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            TotalOrdersScreen(
+                                lastSelectedIndex: lastSelectedIndex),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) =>
+                                child,
+                        transitionDuration: Duration.zero,
+                      ),
+                      (route) => false,
+                    );
                   },
-                  transitionDuration: Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
-              // Navigator.of(context).pushAndRemoveUntil(
-              //   MaterialPageRoute(builder: (context) => TotalOrdersScreen(lastSelectedIndex: lastSelectedIndex)),
-              //       (route) => false,
-              // );
-              // Navigator.pushReplacement(
-              //   context,
-              //   MaterialPageRoute(builder: (context) => TotalOrdersScreen(lastSelectedIndex: lastSelectedIndex)), // Build #1.0.226: Updated class name
-              // );
-            },
             isVertical: false,
             isDisabled: isShiftInvalid || isShiftScreen,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(width: 10),
           SidebarButton(
             svgAsset: SvgUtils.appsIcon,
             label: TextConstants.appsText,
-            isSelected: selectedSidebarIndex == 4,
-            onTap: selectedSidebarIndex == 4
+            isSelected: widget.selectedSidebarIndex == 4,
+            onTap: widget.selectedSidebarIndex == 4
                 ? () {}
                 : () async {
-              if (!await _canNavigate(4)) return;
-              if (kDebugMode) {
-                print("##### AppsScreen button tapped");
-              }
-              lastSelectedIndex = 4;
-              onSidebarItemSelected(4);
+                    if (!await _canNavigate(4)) return;
+                    lastSelectedIndex = 4;
+                    widget.onSidebarItemSelected(4);
 
-              ///
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      AppsDashboardScreen(
-                          lastSelectedIndex: lastSelectedIndex),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No transition animation
+                    Navigator.of(context).pushAndRemoveUntil(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            AppsDashboardScreen(
+                                lastSelectedIndex: lastSelectedIndex),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) =>
+                                child,
+                        transitionDuration: Duration.zero,
+                      ),
+                      (route) => false,
+                    );
                   },
-                  transitionDuration: Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
-              // Navigator.of(context).pushAndRemoveUntil(
-              //   MaterialPageRoute(builder: (context) => AppsDashboardScreen(lastSelectedIndex: lastSelectedIndex)),
-              //       (route) => false,
-              // );
-              // Navigator.pushReplacement(
-              //   context,
-              //   MaterialPageRoute(builder: (context) => AppsDashboardScreen()),
-              // );
-            },
             isVertical: false,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(width: 10),
           SidebarButton(
             imageAsset: 'assets/refund.png',
             label: "Refund",
-            isSelected: selectedSidebarIndex == 5,
+            isSelected: widget.selectedSidebarIndex == 5,
             isDisabled: isShiftInvalid || isShiftScreen,
-            onTap: (isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5)
+            onTap: (isShiftInvalid ||
+                    isShiftScreen ||
+                    widget.selectedSidebarIndex == 5)
                 ? () {}
                 : () async {
-              if (!await _canNavigate(5)) return;
+                    if (!await _canNavigate(5)) return;
+                    lastSelectedIndex = 5;
+                    widget.onSidebarItemSelected(5);
 
-              if (kDebugMode) {
-                print("##### Refund button tapped");
-              }
-
-              lastSelectedIndex = 5;
-              onSidebarItemSelected(5);
-
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      BlocProvider(
-                        create: (context) => CompletedOrdersBloc(
-                          context.read<CompletedOrdersRepository>(),
-                        )..add(
-                          FetchCompletedOrders(
-                            page: 1,
-                            perPage: 10,
-                          ),
+                    Navigator.of(context).pushAndRemoveUntil(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            BlocProvider(
+                          create: (context) => CompletedOrdersBloc(
+                            context.read<CompletedOrdersRepository>(),
+                          )..add(FetchCompletedOrders(page: 1, perPage: 10)),
+                          child:
+                              const CompletedOrdersScreen(lastSelectedIndex: 5),
                         ),
-                        child: const CompletedOrdersScreen(
-                          lastSelectedIndex: 5,
-                        ),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) =>
+                                child,
+                        transitionDuration: Duration.zero,
                       ),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No animation
+                      (route) => false,
+                    );
                   },
-                  transitionDuration: Duration.zero,
-                ),
-                    (route) => false,
-              );
-            },
-            isVertical: isVertical,
+            isVertical: false,
           ),
-          // Additional dynamic items can be added here.
         ];
 
-        // Fixed items that remain visible (on the right)
         List<Widget> fixedItems = [
           const VerticalDivider(color: Colors.black54),
           SidebarButton(
             svgAsset: SvgUtils.settingsIcon,
             label: TextConstants.settingsHeaderText,
-            isSelected: selectedSidebarIndex == 5,
-            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5
+            isSelected: widget.selectedSidebarIndex == 6,
+            onTap: isShiftInvalid ||
+                    isShiftScreen ||
+                    widget.selectedSidebarIndex == 6
                 ? () {}
                 : () async {
-              if (!await _canNavigate(5)) return;
-              if (kDebugMode) {
-                print("##### Settings button tapped");
-              }
-              lastSelectedIndex =
-                  selectedSidebarIndex; // Store before navigating
+                    if (!await _canNavigate(6)) return;
+                    lastSelectedIndex = widget.selectedSidebarIndex;
+                    widget.onSidebarItemSelected(6);
 
-              onSidebarItemSelected(5); // Highlight settings
-
-              Navigator.push(
-                context,
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      SettingsScreen(),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No transition animation
+                    Navigator.push(
+                      context,
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            SettingsScreen(),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) =>
+                                child,
+                        transitionDuration: Duration.zero,
+                      ),
+                    ).then((_) {
+                      widget.onSidebarItemSelected(lastSelectedIndex);
+                    });
                   },
-                  transitionDuration: Duration.zero, // Instant transition
-                ),
-              ).then((_) {
-                // Restore the sidebar selection when coming back
-                onSidebarItemSelected(lastSelectedIndex);
-              });
-              // Navigator.push(
-              //   context,
-              //   MaterialPageRoute(builder: (context) => SettingsScreen()),
-              // ).then((_) {
-              //   // Restore the sidebar selection when coming back
-              //   onSidebarItemSelected(lastSelectedIndex);
-              // });
-            },
             isVertical: false,
             isDisabled: isShiftInvalid || isShiftScreen,
           ),
@@ -852,25 +675,22 @@ class NavigationBar extends StatelessWidget {
           SidebarButton(
             svgAsset: SvgUtils.logoutIcon,
             label: TextConstants.logoutText,
-            isSelected: selectedSidebarIndex == 6,
+            isSelected: widget.selectedSidebarIndex == 7,
             onTap: isShiftInvalid || isShiftScreen
                 ? () {}
                 : () async {
-              if (!await _canNavigate(6)) return;
-              final previousIndex = selectedSidebarIndex;
-              onSidebarItemSelected(6);
-              if (kDebugMode) {
-                print("nav logout called");
-              }
-              _showLogoutDialog(context, logoutBloc, themeHelper,previousIndex);
-            },
+                    if (!await _canNavigate(7)) return;
+                    final previousIndex = widget.selectedSidebarIndex;
+                    widget.onSidebarItemSelected(7);
+                    _showLogoutDialog(
+                        context, logoutBloc, themeHelper, previousIndex);
+                  },
             isVertical: false,
             isDisabled: isShiftInvalid || isShiftScreen,
           ),
           const SizedBox(width: 10),
         ];
 
-        // Dynamic part: scrollable if small, evenly spaced if not.
         Widget dynamicRow = SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -882,14 +702,11 @@ class NavigationBar extends StatelessWidget {
         );
 
         return Padding(
-          padding: const EdgeInsets.fromLTRB(
-              16, 0, 16, 0), // Adjust padding as needed
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Dynamic part takes the available space.
               Expanded(child: dynamicRow),
-              // Fixed items remain at the end.
               Row(
                 children: fixedItems,
               ),
@@ -902,10 +719,10 @@ class NavigationBar extends StatelessWidget {
 
   /// Handles swipe-to-close-shift: checks for open orders, then navigates to close shift screen or shows warning.
   void _handleSwipeToCloseShift(
-      BuildContext context,
-      NavigatorState navigator,
-      bool isDarkMode,
-      ) async {
+    BuildContext context,
+    NavigatorState navigator,
+    bool isDarkMode,
+  ) async {
     final orderHelper = OrderHelper();
 
     // Build #1.0.281: Check if there are any ACTIVE orders (with items or payments)
@@ -1018,8 +835,8 @@ class NavigationBar extends StatelessWidget {
     }
   }
 
-  void _showLogoutDialog(
-      BuildContext context, LogoutBloc logoutBloc, ThemeNotifier themeHelper, int previousIndex) {
+  void _showLogoutDialog(BuildContext context, LogoutBloc logoutBloc,
+      ThemeNotifier themeHelper, int previousIndex) {
     ScannerGuard.isCouponPopupOpen = true;
     showDialog(
       context: context,
@@ -1029,11 +846,11 @@ class NavigationBar extends StatelessWidget {
 
         return Dialog(
           backgroundColor:
-          Colors.transparent, // transparent to show tilted container
+              Colors.transparent, // transparent to show tilted container
           insetPadding: const EdgeInsets.all(16),
           child: Stack(
             alignment:
-            Alignment.center, // centers both horizontally & vertically
+                Alignment.center, // centers both horizontally & vertically
             children: [
               // 🔹 Tilted outer container
               Transform.rotate(
@@ -1071,13 +888,13 @@ class NavigationBar extends StatelessWidget {
                     ],
                   ),
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment:
-                    MainAxisAlignment.center, // vertical center
+                        MainAxisAlignment.center, // vertical center
                     crossAxisAlignment:
-                    CrossAxisAlignment.center, // horizontal center
+                        CrossAxisAlignment.center, // horizontal center
                     children: [
                       Image.asset(
                         "assets/logout.png",
@@ -1085,7 +902,7 @@ class NavigationBar extends StatelessWidget {
                         width: 80,
                         fit: BoxFit.contain,
                         errorBuilder: (context, error, stackTrace) =>
-                        const SizedBox.shrink(),
+                            const SizedBox.shrink(),
                       ),
                       const SizedBox(height: 16),
                       Text(
@@ -1179,7 +996,7 @@ class NavigationBar extends StatelessWidget {
                               onPressed: () {
                                 ScannerGuard.isCouponPopupOpen = false;
                                 Navigator.of(context).pop();
-                                onSidebarItemSelected(previousIndex);
+                                widget.onSidebarItemSelected(previousIndex);
                               },
                               child: Text(
                                 TextConstants.cancelText,
@@ -1309,7 +1126,7 @@ class SidebarButton extends StatelessWidget {
         Container(
           width: MediaQuery.of(context).size.width * 0.05,
           padding:
-          const EdgeInsets.only(top: 10.0, bottom: 10, left: 2, right: 2),
+              const EdgeInsets.only(top: 10.0, bottom: 10, left: 2, right: 2),
           decoration: BoxDecoration(
             shape: BoxShape.rectangle,
             color: isSelected ? Color(0xFFFE6464) : Color(0xFF3B4259),
@@ -1329,8 +1146,8 @@ class SidebarButton extends StatelessWidget {
                     isSelected
                         ? Colors.white
                         : isDisabled
-                        ? Colors.grey.shade800
-                        : Colors.white70,
+                            ? Colors.grey.shade800
+                            : Colors.white70,
                     BlendMode.srcIn,
                   ),
                 )
@@ -1341,8 +1158,8 @@ class SidebarButton extends StatelessWidget {
                   color: isSelected
                       ? Colors.white
                       : isDisabled
-                      ? Colors.grey.shade800
-                      : Colors.white70,
+                          ? Colors.grey.shade800
+                          : Colors.white70,
                 )
               else
                 Icon(
@@ -1350,8 +1167,8 @@ class SidebarButton extends StatelessWidget {
                   color: isSelected
                       ? Colors.white
                       : isDisabled
-                      ? Colors.grey.shade800
-                      : Colors.white70,
+                          ? Colors.grey.shade800
+                          : Colors.white70,
                 ),
 
               const SizedBox(height: 7),
@@ -1363,8 +1180,8 @@ class SidebarButton extends StatelessWidget {
                   color: isSelected
                       ? Colors.white
                       : isDisabled
-                      ? Colors.grey.shade800
-                      : Colors.white70,
+                          ? Colors.grey.shade800
+                          : Colors.white70,
                   fontWeight: FontWeight.bold,
                   fontSize: isSelected ? 10.0 : 9.0,
                 ),
@@ -1389,25 +1206,25 @@ class SidebarButton extends StatelessWidget {
         children: [
           svgAsset != null
               ? SvgPicture.asset(
-            svgAsset!,
-            colorFilter: ColorFilter.mode(
-              isSelected
-                  ? Colors.white
-                  : isDisabled
-                  ? Colors.grey.shade800
-                  : Colors.white70,
-              BlendMode.srcIn,
-            ),
-            height: 22,
-          )
+                  svgAsset!,
+                  colorFilter: ColorFilter.mode(
+                    isSelected
+                        ? Colors.white
+                        : isDisabled
+                            ? Colors.grey.shade800
+                            : Colors.white70,
+                    BlendMode.srcIn,
+                  ),
+                  height: 22,
+                )
               : Icon(
-            icon,
-            color: isSelected
-                ? Colors.white
-                : isDisabled
-                ? Colors.grey.shade800
-                : Colors.white,
-          ),
+                  icon,
+                  color: isSelected
+                      ? Colors.white
+                      : isDisabled
+                          ? Colors.grey.shade800
+                          : Colors.white,
+                ),
           SizedBox(width: isSelected ? 6.0 : 4.0),
           // const SizedBox(width: 6), // reduced from 10
           Text(
@@ -1416,8 +1233,8 @@ class SidebarButton extends StatelessWidget {
               color: isSelected
                   ? Colors.white
                   : isDisabled
-                  ? Colors.grey.shade800
-                  : Colors.white,
+                      ? Colors.grey.shade800
+                      : Colors.white,
               fontWeight: FontWeight.bold,
               fontSize: isSelected ? 16.0 : 14.0, // Slight increase if selected
             ),
