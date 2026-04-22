@@ -725,8 +725,12 @@ class MainActivity : FlutterActivity() {
 
             if (items.isEmpty() || grossTotal == 0.0) {
                 Log.d("CustomerDisplay", "📢 Empty cart → hide summary")
+                Log.d("CustomerDisplay", "🆔 EMPTY ORDER ID = $orderId")
 
                 summaryContainer.visibility = View.GONE
+
+                // ✅ ADD THIS LINE (CRITICAL)
+                orderIdView.text = " #$orderId"
 
                 // 🔲 Frame container
                 val frameLayout = LinearLayout(context).apply {

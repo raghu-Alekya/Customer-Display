@@ -25,4 +25,10 @@ class SafeStorageHelper {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_safeEnableDropKey) ?? false;
   }
+
+  // 🔄 RELOAD (Force sync with disk)
+  static Future<void> reload() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+  }
 }

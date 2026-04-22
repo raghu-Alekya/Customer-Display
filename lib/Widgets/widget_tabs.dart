@@ -76,7 +76,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   List<TaxModel> _taxList = [];
   TaxModel? _selectedTax;
   bool _isTaxLoading = false;
-
+bool _isSkuGenerated = false;
   // Tax slab options
   late List<String> _taxSlabOptions = [];
   String _selectedTaxSlab = '';
@@ -1449,7 +1449,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
               Padding(
                 padding: const EdgeInsets.all(6.0),
                 child: ElevatedButton(
-                  onPressed: _isItemNameEmpty() ? null : _generateSku,
+                  //onPressed: _isItemNameEmpty() ? null : _generateSku,
+                  onPressed: (_isItemNameEmpty() || _isSkuGenerated) ? null : _generateSku,
+// Disable functionality if item name is empty,
                   // Disable functionality if item name is empty,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _isItemNameEmpty()
@@ -1705,6 +1707,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
     setState(() {
       _sku = "$prefix-$timestamp";
       _skuController.text = _sku;
+      _isSkuGenerated = true;
     });
 
     // Show confirmation snackbar
@@ -3337,6 +3340,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         _customItemNameController.clear();
         _customItemPriceController.clear();
         _skuController.clear();
+        _selectedTax = null;
         _selectedTaxSlab =
         _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
         _isTaxDropdownEnabled = false;

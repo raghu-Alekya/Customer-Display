@@ -141,6 +141,10 @@ class _NavigationBarState extends State<NavigationBar> {
 
                     OrderHelper.isOrderPanelLoaded = false;
                     OrderHelper.notifyOrderPanelToRefresh();
+                    final oh = OrderHelper();
+                    if (oh.activeOrderId != null) {
+                      await oh.saveLastActiveOrderId(oh.activeOrderId!);
+                    }
 
                     Navigator.of(context).pushAndRemoveUntil(
                       PageRouteBuilder(
@@ -173,6 +177,10 @@ class _NavigationBarState extends State<NavigationBar> {
 
                     OrderHelper.isOrderPanelLoaded = false;
                     OrderHelper.notifyOrderPanelToRefresh();
+                    final oh = OrderHelper();
+                    if (oh.activeOrderId != null) {
+                      await oh.saveLastActiveOrderId(oh.activeOrderId!);
+                    }
 
                     Navigator.of(context).pushAndRemoveUntil(
                       PageRouteBuilder(
@@ -209,6 +217,10 @@ class _NavigationBarState extends State<NavigationBar> {
                     if (widget.callbackOnlyIndices?.contains(2) == true) return;
                     OrderHelper.isOrderPanelLoaded = false;
                     OrderHelper.notifyOrderPanelToRefresh();
+                    final ohV2 = OrderHelper();
+                    if (ohV2.activeOrderId != null) {
+                      await ohV2.saveLastActiveOrderId(ohV2.activeOrderId!);
+                    }
 
                     Navigator.of(context).pushAndRemoveUntil(
                       PageRouteBuilder(
@@ -281,6 +293,10 @@ class _NavigationBarState extends State<NavigationBar> {
                     }
                     lastSelectedIndex = 4;
                     widget.onSidebarItemSelected(4);
+                    final oh = OrderHelper();
+                    if (oh.activeOrderId != null) {
+                      await oh.saveLastActiveOrderId(oh.activeOrderId!);
+                    }
 
                     Navigator.of(context).pushAndRemoveUntil(
                       PageRouteBuilder(
@@ -316,6 +332,10 @@ class _NavigationBarState extends State<NavigationBar> {
 
                     lastSelectedIndex = 5;
                     widget.onSidebarItemSelected(5);
+                    final oh = OrderHelper();
+                    if (oh.activeOrderId != null) {
+                      await oh.saveLastActiveOrderId(oh.activeOrderId!);
+                    }
 
                     Navigator.push(
                       context,
@@ -457,6 +477,10 @@ class _NavigationBarState extends State<NavigationBar> {
 
                     OrderHelper.isOrderPanelLoaded = false;
                     OrderHelper.notifyOrderPanelToRefresh();
+                    final ohH0 = OrderHelper();
+                    if (ohH0.activeOrderId != null) {
+                      await ohH0.saveLastActiveOrderId(ohH0.activeOrderId!);
+                    }
 
                     Navigator.of(context).pushAndRemoveUntil(
                       PageRouteBuilder(
@@ -490,6 +514,10 @@ class _NavigationBarState extends State<NavigationBar> {
 
                     OrderHelper.isOrderPanelLoaded = false;
                     OrderHelper.notifyOrderPanelToRefresh();
+                    final ohH1 = OrderHelper();
+                    if (ohH1.activeOrderId != null) {
+                      await ohH1.saveLastActiveOrderId(ohH1.activeOrderId!);
+                    }
 
                     Navigator.of(context).pushAndRemoveUntil(
                       PageRouteBuilder(
@@ -522,6 +550,10 @@ class _NavigationBarState extends State<NavigationBar> {
                     if (widget.callbackOnlyIndices?.contains(2) == true) return;
                     OrderHelper.isOrderPanelLoaded = false;
                     OrderHelper.notifyOrderPanelToRefresh();
+                    final ohH2 = OrderHelper();
+                    if (ohH2.activeOrderId != null) {
+                      await ohH2.saveLastActiveOrderId(ohH2.activeOrderId!);
+                    }
 
                     Navigator.of(context).pushAndRemoveUntil(
                       PageRouteBuilder(
@@ -586,6 +618,10 @@ class _NavigationBarState extends State<NavigationBar> {
                     if (!await _canNavigate(4)) return;
                     lastSelectedIndex = 4;
                     widget.onSidebarItemSelected(4);
+                    final ohH4 = OrderHelper();
+                    if (ohH4.activeOrderId != null) {
+                      await ohH4.saveLastActiveOrderId(ohH4.activeOrderId!);
+                    }
 
                     Navigator.of(context).pushAndRemoveUntil(
                       PageRouteBuilder(
@@ -616,6 +652,10 @@ class _NavigationBarState extends State<NavigationBar> {
                     if (!await _canNavigate(5)) return;
                     lastSelectedIndex = 5;
                     widget.onSidebarItemSelected(5);
+                    final ohH5 = OrderHelper();
+                    if (ohH5.activeOrderId != null) {
+                      await ohH5.saveLastActiveOrderId(ohH5.activeOrderId!);
+                    }
 
                     Navigator.of(context).pushAndRemoveUntil(
                       PageRouteBuilder(
@@ -1195,52 +1235,69 @@ class SidebarButton extends StatelessWidget {
   }
 
   Widget _buildHorizontalLayout() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
-      decoration: BoxDecoration(
-        shape: BoxShape.rectangle,
-        color: isSelected ? Color(0xFFFE6464) : const Color(0xFF3B4259),
-        borderRadius: const BorderRadius.all(Radius.circular(8)),
-      ),
-      child: Row(
-        children: [
-          svgAsset != null
-              ? SvgPicture.asset(
-                  svgAsset!,
-                  colorFilter: ColorFilter.mode(
-                    isSelected
-                        ? Colors.white
-                        : isDisabled
-                            ? Colors.grey.shade800
-                            : Colors.white70,
-                    BlendMode.srcIn,
-                  ),
-                  height: 22,
-                )
-              : Icon(
-                  icon,
-                  color: isSelected
-                      ? Colors.white
-                      : isDisabled
-                          ? Colors.grey.shade800
-                          : Colors.white,
-                ),
-          SizedBox(width: isSelected ? 6.0 : 4.0),
-          // const SizedBox(width: 6), // reduced from 10
-          Text(
-            label,
-            style: TextStyle(
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
+    decoration: BoxDecoration(
+      shape: BoxShape.rectangle,
+      color: isSelected ? Color(0xFFFE6464) : const Color(0xFF3B4259),
+      borderRadius: const BorderRadius.all(Radius.circular(8)),
+    ),
+    child: Row(
+      children: [
+        /// ✅ PRIORITY 1: IMAGE
+        if (imageAsset != null)
+          Image.asset(
+            imageAsset!,
+            height: 22,
+            color: isSelected
+                ? Colors.white
+                : isDisabled
+                ? Colors.grey.shade800
+                : Colors.white70,
+          )
+
+        /// ✅ PRIORITY 2: SVG
+        else if (svgAsset != null)
+          SvgPicture.asset(
+            svgAsset!,
+            colorFilter: ColorFilter.mode(
+              isSelected
+                  ? Colors.white
+                  : isDisabled
+                  ? Colors.grey.shade800
+                  : Colors.white70,
+              BlendMode.srcIn,
+            ),
+            height: 22,
+          )
+
+        /// ✅ PRIORITY 3: ICON
+        else if (icon != null)
+            Icon(
+              icon,
               color: isSelected
                   ? Colors.white
                   : isDisabled
-                      ? Colors.grey.shade800
-                      : Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: isSelected ? 16.0 : 14.0, // Slight increase if selected
+                  ? Colors.grey.shade800
+                  : Colors.white,
             ),
+
+        SizedBox(width: isSelected ? 6.0 : 4.0),
+
+        Text(
+          label,
+          style: TextStyle(
+            color: isSelected
+                ? Colors.white
+                : isDisabled
+                ? Colors.grey.shade800
+                : Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: isSelected ? 16.0 : 14.0,
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 }

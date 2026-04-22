@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_svg/svg.dart';
 import 'package:intl/intl.dart';
 // import 'package:pinaka_pos/Screens/Home/refund_screen.dart';
 import 'package:provider/provider.dart';
@@ -471,13 +472,19 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
 
             // CALENDAR ICON FILTER
             InkWell(
-              onTap: _openDateRangePickerDialog, // ✅ use range picker
+              onTap: _openDateRangePickerDialog,
               child: Container(
                 padding: const EdgeInsets.all(7),
-                child: Icon(
-                  Icons.calendar_today,
-                  size: 18,
-                  color: Theme.of(context).colorScheme.onSurface, // ✅ always same
+                child: SvgPicture.asset(
+                  'assets/svg/filter_calendar.svg',
+                  width: 32,
+                  height: 32,
+                  colorFilter: ColorFilter.mode(
+                    _isDateRangeApplied
+                        ? Colors.redAccent
+                        : Theme.of(context).colorScheme.onSurface,
+                    BlendMode.srcIn,
+                  ),
                 ),
               ),
             ),

@@ -196,7 +196,7 @@ class _PinBoxFieldState extends State<_PinBoxField> {
         controller: widget.controller,
         maxLength: 6,
         autofocus: true,
-        keyboardType: TextInputType.text,
+        keyboardType: TextInputType.number,
         obscureText: _obscure,
         enableSuggestions: false,
         autocorrect: false,

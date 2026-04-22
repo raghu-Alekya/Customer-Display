@@ -41,15 +41,7 @@ class CustomerDisplayHelper {
 
       final int? activeId = OrderHelper().activeOrderId;
 
-      // If no active order, FORCE welcome screen
-      if (activeId == null) {
-        print("🟢 [CD] No active order → showing welcome");
-        await CustomerDisplayService.showWelcome();
-        return;
-      }
-
-// Ignore only truly stale updates
-      if (activeId != serverOrderId) {
+      if (activeId != null && activeId != serverOrderId) {
         print("🟥 [CD] Ignoring stale display update");
         return;
       }
@@ -63,12 +55,28 @@ class CustomerDisplayHelper {
       print("🗃 [CD] Checking Hive for key=$serverOrderId → found=${raw != null}");
 
       if (raw == null) {
-        print("❌ [CD] No offline order found → resetting display");
+        print("🟡 [CD] No Hive data yet → showing empty order");
 
-        await CustomerDisplayService.showWelcome();
+        await CustomerDisplayService.showCustomerData(
+          orderId: serverOrderId,
+          items: [],
+          grossTotal: 0.0,
+          discount: 0.0,
+          merchantDiscount: 0.0,
+          netTotal: 0.0,
+          tax: 0.0,
+          netPayable: 0.0,
+          orderDate: "",
+          orderTime: "",
+          cashbackFee: 0.0,
+          loyaltyContact: "",
+          summaryEnabled: summaryEnabled,
+          discountType: "NONE",
+          discountValue: 0.0,
+        );
+
         return;
       }
-
 
       final data = Map<String, dynamic>.from(raw);
 
@@ -167,8 +175,26 @@ class CustomerDisplayHelper {
       final productsRaw = (data["products"] ?? []) as List;
 
       if (productsRaw.isEmpty) {
-        print("🟥 [CD] Order has no items → resetting display");
-        await CustomerDisplayService.showWelcome();
+        print("🟡 [CD] Empty order → showing order with no items");
+
+        await CustomerDisplayService.showCustomerData(
+          orderId: serverOrderId,
+          items: [],
+          grossTotal: 0.0,
+          discount: 0.0,
+          merchantDiscount: 0.0,
+          netTotal: 0.0,
+          tax: 0.0,
+          netPayable: 0.0,
+          orderDate: "",
+          orderTime: "",
+          cashbackFee: 0.0,
+          loyaltyContact: "",
+          summaryEnabled: summaryEnabled,
+          discountType: "NONE",
+          discountValue: 0.0,
+        );
+
         return;
       }
 
