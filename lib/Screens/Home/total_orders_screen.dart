@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:intl/intl.dart';
@@ -89,6 +90,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   int _totalOrdersCount = 0;
   bool _fetchInProgress = false;
   Timer? _loadingDelayTimer;
+  final TextEditingController _searchController = TextEditingController();
 
   ///Filters
   // List<String> _availableStatuses = ["All"];
@@ -208,6 +210,10 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     if (oh.activeOrderId != null) {
       oh.saveLastActiveOrderId(oh.activeOrderId!);
     }
+
+    _searchController.addListener(() {
+      setState(() {}); // ✅ ensures UI updates when text changes or clears
+    });
     _minSalesAmount = 0.0;
     _maxSalesAmount = 10000.0; // Default max, will be updated from API
     _salesAmountRange = RangeValues(_minSalesAmount, _maxSalesAmount);
@@ -881,6 +887,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     null; // Build #1.0.248: remove selected order when leave the screen !
     _orderBloc.dispose();
     debugPrint("OrdersScreen: Disposed");
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -1043,6 +1050,89 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                         Row(
                           children: [
                             Spacer(),
+                            SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.075, // ✅ same as filter
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(vertical: 10),
+                                child: Chip(
+                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  padding: EdgeInsets.zero, // ✅ remove extra chip padding
+                                  backgroundColor: _searchController.text.isNotEmpty
+                                      ? Colors.redAccent
+                                      : themeHelper.themeMode == ThemeMode.dark
+                                      ? const Color(0xFF252837)
+                                      : Colors.grey.shade200,
+                                  side: BorderSide(
+                                    color: themeHelper.themeMode == ThemeMode.dark
+                                        ? ThemeNotifier.borderColor
+                                        : Colors.grey.shade400,
+                                    width: 1.0,
+                                  ),
+                                  label: SizedBox(
+                                    width: 150,
+                                    height: double.infinity, // ✅ fill full chip height
+                                    child: TextField(
+                                      controller: _searchController,
+                                      keyboardType: TextInputType.number, // ✅ numeric keyboard
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly, // ✅ only digits allowed
+                                      ],
+                                      textAlignVertical: TextAlignVertical.center,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _currentPage = 1;
+                                          _fetchOrders();
+                                        });
+                                      },
+                                      style: TextStyle(
+                                        color: _searchController.text.isNotEmpty
+                                            ? Colors.white
+                                            : themeHelper.themeMode == ThemeMode.dark
+                                            ? ThemeNotifier.textDark
+                                            : Colors.black,
+                                        fontSize: 13,
+                                      ),
+                                      decoration: InputDecoration(
+                                        hintText: "Search",
+                                        hintStyle: TextStyle(
+                                          color: _searchController.text.isNotEmpty
+                                              ? Colors.white70
+                                              : themeHelper.themeMode == ThemeMode.dark
+                                              ? ThemeNotifier.textDark
+                                              : Colors.black,
+                                          fontSize: 13,
+                                        ),
+                                        prefixIcon: Icon(
+                                          Icons.search,
+                                          size: 18,
+                                          color: _searchController.text.isNotEmpty
+                                              ? Colors.white
+                                              : themeHelper.themeMode == ThemeMode.dark
+                                              ? ThemeNotifier.textDark
+                                              : Colors.black,
+                                        ),
+                                        suffixIcon: _searchController.text.isNotEmpty
+                                            ? IconButton(
+                                          icon: const Icon(Icons.close, size: 18, color: Colors.white),
+                                          onPressed: () {
+                                            _searchController.clear();
+                                            _currentPage = 1;
+                                            setState(() {
+                                              _fetchOrders();
+                                            });
+                                          },
+                                        )
+                                            : null,
+                                        border: InputBorder.none,
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.zero, // ✅ important for height match
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 20,),
                             Wrap(
                               spacing: 8.0,
                               crossAxisAlignment: WrapCrossAlignment.end,

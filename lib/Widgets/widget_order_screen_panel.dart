@@ -3183,33 +3183,55 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                           SizedBox(
                                             height: 2,
                                           ),
-                                          if (showRefundBlock) ...[
-                                            Row(
-                                              mainAxisAlignment:
-                                              MainAxisAlignment
-                                                  .spaceBetween,
-                                              children: [
-                                                Text(
-                                                  "Refunded Amount",
-                                                  style: TextStyle(
-                                                    fontSize: 14,
-                                                    fontWeight:
-                                                    FontWeight.w500,
-                                                    color: Colors.red,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  "${TextConstants.currencySymbol}${alreadyRefundedAmount.toStringAsFixed(2)}",
-                                                  style: const TextStyle(
-                                                    fontSize: 16,
-                                                    fontWeight:
-                                                    FontWeight.w600,
-                                                    color: Colors.red,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
+    if (hiveRedeemedValue > 0) ...[
+    Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+    Text(
+    "Redeemed Value",
+    style: TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w400,
+    color: Colors.green,
+    ),
+    ),
+    Text(
+    "- ${TextConstants.currencySymbol}${hiveRedeemedValue.toStringAsFixed(2)}",
+    style: TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w400,
+    color: Colors.green,
+    ),
+    ),
+    ],
+    ),
+
+    const SizedBox(height: 2),
+    ],
+
+    /// ✅ KEEP THIS OUTSIDE
+    if (showRefundBlock) ...[
+    Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+    Text(
+    "Refunded Amount",
+    style: TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+    color: Colors.red,
+    ),
+    ),
+    Text(
+    "${TextConstants.currencySymbol}${alreadyRefundedAmount.toStringAsFixed(2)}",
+    style: const TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    color: Colors.red,
+    ),
+    ),
+    ],
+    ),]
                                         ],
                                       ),
                                   ],

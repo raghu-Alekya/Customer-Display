@@ -1856,6 +1856,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     if (isPaymentComplete && !_successPopupShown) {
       _successPopupShown = true;
+      // ✅ ADD THIS LINE (CRITICAL FIX)
+      await CustomerDisplayService.showThankYou();
+      // ✅ STEP 2: CLEAR ACTIVE ORDER (CRITICAL)
+      await orderHelper.setActiveOrder(null);
+
+      // ✅ STEP 3: RESET DISPLAY (FINAL STATE)
+      await CustomerDisplayService.resetDisplay();
+
+      print("✅ Payment complete → display reset");
       // ✅ SHOW SUCCESS SNACKBAR
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

@@ -125,8 +125,13 @@ bool _isSkuGenerated = false;
     _loadCashbackLimit();
 
     _customItemNameController.addListener(() {
-      _customItemName = _customItemNameController.text;
-      setState(() {}); // Trigger a rebuild when the text changes
+      setState(() {
+        _customItemName = _customItemNameController.text;
+
+        // 🔥 FIX: re-enable tax + SKU when name entered
+        _isTaxDropdownEnabled = _customItemName.trim().isNotEmpty;
+        _isSkuGenerated = false; // reset SKU state for new item
+      });
     });
     _customItemPriceController.addListener(() {
       _customItemPrice = _customItemPriceController.text;
@@ -1538,7 +1543,7 @@ bool _isSkuGenerated = false;
                 ),
               );
             }).toList(),
-            onChanged: _isTaxDropdownEnabled
+            onChanged: _customItemNameController.text.trim().isNotEmpty
                 ? (value) {
               if (kDebugMode) {
                 print(
@@ -3340,10 +3345,12 @@ bool _isSkuGenerated = false;
         _customItemNameController.clear();
         _customItemPriceController.clear();
         _skuController.clear();
+        _isSkuGenerated = false;
+        _isTaxDropdownEnabled = true; // or remove completely
         _selectedTax = null;
         _selectedTaxSlab =
         _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
-        _isTaxDropdownEnabled = false;
+        // _isTaxDropdownEnabled = false;
       });
 
       await _orderHelper.loadData();

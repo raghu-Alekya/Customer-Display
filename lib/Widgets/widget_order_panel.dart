@@ -492,21 +492,25 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         await orderHelper.setActiveOrder(newActiveId);
         await orderHelper.saveLastActiveOrderId(newActiveId);
 
-        // 🔄 Update customer display for new order
-        CustomerDisplayHelper.updateCustomerDisplay(newActiveId);
+        // ✅ ONLY update display if active order exists
+        if (newActiveId != 0) {
+          print("✅ Showing new active order on display → $newActiveId");
+          await CustomerDisplayHelper.updateCustomerDisplay(newActiveId);
+        }
+
       } else {
         // ❌ NO orders left → FULL RESET
         await orderHelper.setActiveOrder(null);
-        //await orderHelper.saveLastActiveOrderId(null);
 
-        // ⛔ CLEAR UI STATE
         if (mounted) {
           setState(() {
             orderItems.clear();
           });
         }
 
-        // ⛔ CRITICAL: RESET CUSTOMER DISPLAY
+        print("✅ No active orders → showing welcome screen");
+
+        // ✅ ALWAYS fallback to welcome when no orders
         await CustomerDisplayService.showWelcome();
       }
     }
@@ -2865,7 +2869,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             orderHelper.activeOrderId = null;
             orderItems = [];
 
-            await _initializeTabController(); // ⭐ THIS TRIGGERS WELCOME
+            print("🧹 No tabs left → FINAL display reset");
+
+            // 🔥 FINAL authoritative reset
+            await CustomerDisplayService.resetDisplay();
+
+            await _initializeTabController();
+
             setState(() => _isLoading = false);
             return;
           }

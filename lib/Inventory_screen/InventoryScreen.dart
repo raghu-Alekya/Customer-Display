@@ -158,10 +158,15 @@ class _InventoryScreenState extends State<InventoryScreen>
     _initializeAddProductBloc();
 
     _imageUploadRepo = ImageUploadRepository();
-
+    //
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   if (mounted) {
+    //     FocusScope.of(context).requestFocus(_skuFocusNode);
+    //   }
+    // });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        FocusScope.of(context).requestFocus(_skuFocusNode);
+        FocusScope.of(context).unfocus(); // ✅ ensures no keyboard
       }
     });
   }
@@ -1074,7 +1079,7 @@ class _InventoryScreenState extends State<InventoryScreen>
           body: Column(
             children: [
               TopBar(
-                screen: Screen.SHIFT,
+                screen: Screen.ORDERS,
                 onModeChanged: () async {
                   String newLayout;
                   if (sidebarPosition == SidebarPosition.left) {
@@ -1878,6 +1883,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         Expanded(
                                           child: TextFormField(
                                             controller: _skuController,
+                                            autofocus: false,
                                             focusNode: _skuFocusNode,   // ← Add this line
 
                                             style: TextStyle(

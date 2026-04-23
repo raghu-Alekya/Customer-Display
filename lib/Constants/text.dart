@@ -206,7 +206,7 @@ class TextConstants {
 
   static const String invalidCouponDescription =
       "The coupon code you entered is not valid. Please check the code and try again.";
-  static const String letsTryAgain = "Let's, Try Again";
+  static const String letsTryAgain = "Continue";
   static const String removePayoutFailed = "Failed to remove payout";
   static const String removeCouponFailed = "Failed to remove coupon";
   static const String removeDiscountFailed = "Failed to remove discount";

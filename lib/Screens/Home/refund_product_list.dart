@@ -1633,12 +1633,22 @@ class _RefundScreenState extends State<RefundScreen> {
                 refundType: refundType,
                 items: refundItems,
               );
+              /// ✅ SHOW LOADER
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+              );
 
               final result = await CompletedOrdersRepository(baseUrl: '').refundOrder(
                 orderId: selectedOrder.orderId,
                 refundType: refundType,
                 items: refundItems?.map((e) => e.toJson()).toList(),
               );
+              /// ✅ HIDE LOADER
+              Navigator.pop(context);
 
               if (result["success"] == false) {
                 ScaffoldMessenger.of(context).showSnackBar(

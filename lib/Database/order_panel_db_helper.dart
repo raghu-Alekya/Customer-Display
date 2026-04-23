@@ -8,9 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:isar/isar.dart'; // Build #1.0.104
 import '../Constants/text.dart';
 import '../Helper/Extentions/money_rounding_helper.dart';
+import '../Helper/customerdisplayhelper.dart';
 import '../Models/Category/category_product_model.dart';
 import '../Models/Orders/get_orders_model.dart' as model;
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
+import '../services/CustomerDisplayService.dart';
 import '../services/customer_services.dart';
 import 'db_helper.dart';
 import 'isar_service.dart'; // Build #1.0.104
@@ -2041,9 +2043,23 @@ class OrderHelper {
       await prefs.remove('activeOrderId');
     }
 
-    // Reload the updated order list
     await loadData();
 
+// ✅ Capture final state AFTER loadData
+    final int? finalActiveId = activeOrderId;
+
+    print("🎯 Final activeOrderId after loadData: $finalActiveId");
+
+// 🔥 SYNC CUSTOMER DISPLAY AFTER DELETE
+    if (finalActiveId != null) {
+      print("🔄 Active order exists → updating display: $finalActiveId");
+
+      await CustomerDisplayHelper.updateCustomerDisplay(finalActiveId);
+    } else {
+      print("🧹 No active order → resetting display");
+
+      await CustomerDisplayService.resetDisplay();
+    }
     // Debugging logs
     if (kDebugMode) {
       print('#### Order deleted with ID: $orderId');

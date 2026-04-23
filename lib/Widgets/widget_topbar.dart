@@ -33,19 +33,19 @@ import 'ManualPriceDialog.dart';
 
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 
-// ══════════════════════════════════════════════════════════════════════════════
-// NATIVE SCALE CHANNELS — talks to UsbSerialManager.kt via MethodChannel/EventChannel
-// ══════════════════════════════════════════════════════════════════════════════
-
-/// MethodChannel for start / stop / reconnect commands.
-const _scaleMethodChannel = MethodChannel('magellan_scale');
-
-/// EventChannel stream that carries JSON events from UsbSerialManager.kt.
-const _scaleEventChannel = EventChannel('magellan_scale/events');
-
-// ══════════════════════════════════════════════════════════════════════════════
-// 7-SEGMENT LCD DISPLAY
-// ══════════════════════════════════════════════════════════════════════════════
+// // ══════════════════════════════════════════════════════════════════════════════
+// // NATIVE SCALE CHANNELS — talks to UsbSerialManager.kt via MethodChannel/EventChannel
+// // ══════════════════════════════════════════════════════════════════════════════
+//
+// /// MethodChannel for start / stop / reconnect commands.
+// const _scaleMethodChannel = MethodChannel('magellan_scale');
+//
+// /// EventChannel stream that carries JSON events from UsbSerialManager.kt.
+// const _scaleEventChannel = EventChannel('magellan_scale/events');
+//
+// // ══════════════════════════════════════════════════════════════════════════════
+// // 7-SEGMENT LCD DISPLAY
+// // ══════════════════════════════════════════════════════════════════════════════
 
 class _SegmentPainter extends CustomPainter {
   final String char;
@@ -196,7 +196,10 @@ class _PinBoxFieldState extends State<_PinBoxField> {
         controller: widget.controller,
         maxLength: 6,
         autofocus: true,
-        keyboardType: TextInputType.number,
+        keyboardType: TextInputType.number, // ✅ numeric keyboard
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly, // ✅ only digits allowed
+        ],
         obscureText: _obscure,
         enableSuggestions: false,
         autocorrect: false,
@@ -366,11 +369,11 @@ class _TopBarState extends State<TopBar> {
     _loadCachedProducts();
 
     // Defer Provider access until after first build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _weightProvider = Provider.of<WeightProvider>(context, listen: false);
-      _listenToScale();
-    });
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   if (!mounted) return;
+    //   _weightProvider = Provider.of<WeightProvider>(context, listen: false);
+    //   _listenToScale();
+    // });
 
     if (!_isUserDataLoaded) {
       _initialUserFuture = UserDbHelper().getUserData();
@@ -420,96 +423,96 @@ class _TopBarState extends State<TopBar> {
     _searchFocusNode.dispose();
     _orderBloc.dispose();
     _removeOverlay();
-    _stopScale();
+    // _stopScale();
     super.dispose();
     TopBar.clearUserCache();
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
   // SCALE — Native EventChannel listener
-  // ══════════════════════════════════════════════════════════════════════════════
-
-  void _listenToScale() {
-    if (_scaleSubscription != null) return;
-    _scaleLog('🔌 Subscribing to native magellan_scale/events...');
-
-    _scaleSubscription = _scaleEventChannel.receiveBroadcastStream().listen(
-          (event) {
-        try {
-          final Map<String, dynamic> data = jsonDecode(event as String);
-          final String type = data['type'] as String? ?? '';
-
-          _scaleLog('📡 Native event: $event');
-
-          switch (type) {
-            case 'status':
-              final status = data['status'] as String? ?? '';
-              final message = data['message'] as String? ?? '';
-              _scaleLog('📊 Status: $status — $message');
-              if (mounted)
-                setState(() {
-                  _scaleStatus = message;
-                  _isConnecting = status == 'connecting';
-                });
-              _weightProvider?.setConnected(status == 'connected');
-              if (status == 'disconnected' || status == 'error') {
-                _weightProvider?.updateWeight(0.0);
-              }
-              break;
-
-            case 'weight':
-              final double w = (data['weight'] as num?)?.toDouble() ?? 0.0;
-              final String unit = data['unit'] as String? ?? 'lb';
-              _scaleLog('⚖️ Weight: $w $unit');
-              double kg = w;
-              if (unit == 'lb')
-                kg = w * 0.453592;
-              else if (unit == 'g')
-                kg = w / 1000;
-              else if (unit == 'oz') kg = w * 0.0283495;
-              // Always derive lb from stored kg so top bar matches popup/dialog.
-              final double lb = kg * 2.20462;
-              final displayText = '${lb.toStringAsFixed(2)} lb';
-              _weightProvider?.updateWeight(kg, displayText: displayText);
-              break;
-
-            case 'scan':
-              final raw = data['raw'] as String? ?? '';
-              _scaleLog('📷 Scan: $raw');
-              break;
-
-            case 'raw':
-              _scaleLog('📦 Raw: ${data['raw']}');
-              break;
-
-            default:
-              _scaleLog('❓ Unknown event type: $type');
-          }
-        } catch (e) {
-          _scaleLog('❌ Event parse error: $e');
-        }
-      },
-      onError: (e) {
-        _scaleLog('❌ EventChannel error: $e');
-        _weightProvider?.setConnected(false);
-        if (mounted)
-          setState(() {
-            _scaleStatus = 'Channel error';
-            _isConnecting = false;
-          });
-      },
-      onDone: () {
-        _scaleLog('⚠️ EventChannel closed.');
-        _weightProvider?.setConnected(false);
-        if (mounted)
-          setState(() {
-            _scaleStatus = 'Disconnected';
-            _isConnecting = false;
-          });
-      },
-      cancelOnError: false,
-    );
-  }
+  // // ══════════════════════════════════════════════════════════════════════════════
+  //
+  // void _listenToScale() {
+  //   if (_scaleSubscription != null) return;
+  //   _scaleLog('🔌 Subscribing to native magellan_scale/events...');
+  //
+  //   _scaleSubscription = _scaleEventChannel.receiveBroadcastStream().listen(
+  //         (event) {
+  //       try {
+  //         final Map<String, dynamic> data = jsonDecode(event as String);
+  //         final String type = data['type'] as String? ?? '';
+  //
+  //         _scaleLog('📡 Native event: $event');
+  //
+  //         switch (type) {
+  //           case 'status':
+  //             final status = data['status'] as String? ?? '';
+  //             final message = data['message'] as String? ?? '';
+  //             _scaleLog('📊 Status: $status — $message');
+  //             if (mounted)
+  //               setState(() {
+  //                 _scaleStatus = message;
+  //                 _isConnecting = status == 'connecting';
+  //               });
+  //             _weightProvider?.setConnected(status == 'connected');
+  //             if (status == 'disconnected' || status == 'error') {
+  //               _weightProvider?.updateWeight(0.0);
+  //             }
+  //             break;
+  //
+  //           case 'weight':
+  //             final double w = (data['weight'] as num?)?.toDouble() ?? 0.0;
+  //             final String unit = data['unit'] as String? ?? 'lb';
+  //             _scaleLog('⚖️ Weight: $w $unit');
+  //             double kg = w;
+  //             if (unit == 'lb')
+  //               kg = w * 0.453592;
+  //             else if (unit == 'g')
+  //               kg = w / 1000;
+  //             else if (unit == 'oz') kg = w * 0.0283495;
+  //             // Always derive lb from stored kg so top bar matches popup/dialog.
+  //             final double lb = kg * 2.20462;
+  //             final displayText = '${lb.toStringAsFixed(2)} lb';
+  //             _weightProvider?.updateWeight(kg, displayText: displayText);
+  //             break;
+  //
+  //           case 'scan':
+  //             final raw = data['raw'] as String? ?? '';
+  //             _scaleLog('📷 Scan: $raw');
+  //             break;
+  //
+  //           case 'raw':
+  //             _scaleLog('📦 Raw: ${data['raw']}');
+  //             break;
+  //
+  //           default:
+  //             _scaleLog('❓ Unknown event type: $type');
+  //         }
+  //       } catch (e) {
+  //         _scaleLog('❌ Event parse error: $e');
+  //       }
+  //     },
+  //     onError: (e) {
+  //       _scaleLog('❌ EventChannel error: $e');
+  //       _weightProvider?.setConnected(false);
+  //       if (mounted)
+  //         setState(() {
+  //           _scaleStatus = 'Channel error';
+  //           _isConnecting = false;
+  //         });
+  //     },
+  //     onDone: () {
+  //       _scaleLog('⚠️ EventChannel closed.');
+  //       _weightProvider?.setConnected(false);
+  //       if (mounted)
+  //         setState(() {
+  //           _scaleStatus = 'Disconnected';
+  //           _isConnecting = false;
+  //         });
+  //     },
+  //     cancelOnError: false,
+  //   );
+  // }
 
   Future<void> refreshProducts() async {
     try {
@@ -999,32 +1002,32 @@ class _TopBarState extends State<TopBar> {
     if (kDebugMode) debugPrint('[Scale] $msg');
   }
 
-  void _stopScale() {
-    _scaleSubscription?.cancel();
-    _scaleSubscription = null;
-    try {
-      _scaleMethodChannel.invokeMethod('stop');
-    } catch (_) {}
-    _weightProvider?.setConnected(false);
-    _weightProvider?.updateWeight(0.0);
-  }
+  // void _stopScale() {
+  //   _scaleSubscription?.cancel();
+  //   _scaleSubscription = null;
+  //   try {
+  //     _scaleMethodChannel.invokeMethod('stop');
+  //   } catch (_) {}
+  //   _weightProvider?.setConnected(false);
+  //   _weightProvider?.updateWeight(0.0);
+  // }
 
-  Future<void> _reconnectScale() async {
-    _scaleLog('🔄 Reconnecting...');
-    if (mounted)
-      setState(() {
-        _isConnecting = true;
-        _scaleStatus = 'Reconnecting...';
-      });
-    try {
-      await _scaleMethodChannel.invokeMethod('reconnect');
-    } catch (e) {
-      _scaleLog('❌ Reconnect error: $e');
-    }
-    if (_scaleSubscription == null) {
-      _listenToScale();
-    }
-  }
+  // Future<void> _reconnectScale() async {
+  //   _scaleLog('🔄 Reconnecting...');
+  //   if (mounted)
+  //     setState(() {
+  //       _isConnecting = true;
+  //       _scaleStatus = 'Reconnecting...';
+  //     });
+  //   try {
+  //     await _scaleMethodChannel.invokeMethod('reconnect');
+  //   } catch (e) {
+  //     _scaleLog('❌ Reconnect error: $e');
+  //   }
+  //   if (_scaleSubscription == null) {
+  //     _listenToScale();
+  //   }
+  // }
 
   // ══════════════════════════════════════════════════════════════════════════════
   // SEARCH

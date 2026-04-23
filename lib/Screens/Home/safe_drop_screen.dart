@@ -809,7 +809,7 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
             children: [
               /// TopBar
               TopBar(
-                screen: Screen.SAFE,
+                screen: Screen.ORDERS,
                 onModeChanged: () async {
                   String newLayout;
                   if (sidebarPosition == SidebarPosition.left) {

@@ -40,6 +40,7 @@ class MainActivity : FlutterActivity() {
     private var currentStoreBaseUrl: String = ""
     private val PAYMENT_CHANNEL = "sunmi_payment_channel"
     private var saleResultCallback: MethodChannel.Result? = null
+    private var isOrderActive = false
 
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -84,7 +85,8 @@ class MainActivity : FlutterActivity() {
                     if (storeBaseUrl.isNotEmpty()) {
                         Thread {
                             try {
-                                val apiUrl = "$storeBaseUrl/wp-content/plugins/pinaka-pos-wp/promotion_images.php"
+                                val apiUrl =
+                                    "$storeBaseUrl/wp-content/plugins/pinaka-pos-wp/promotion_images.php"
                                 val json = URL(apiUrl).readText()
                                 val jsonArray = JSONArray(json)
 
@@ -95,17 +97,26 @@ class MainActivity : FlutterActivity() {
                                     imageUrls.add(url)
                                 }
 
-                                Log.d("CustomerDisplay", "✅ Slideshow API returned ${imageUrls.size} images for store $storeName")
+                                Log.d(
+                                    "CustomerDisplay",
+                                    "✅ Slideshow API returned ${imageUrls.size} images for store $storeName"
+                                )
                                 for (url in imageUrls) {
                                     Log.d("CustomerDisplay", "Slide URL: $url")
                                 }
 
                             } catch (e: Exception) {
-                                Log.e("CustomerDisplay", "❌ Failed to load slideshow for store $storeName: ${e.message}")
+                                Log.e(
+                                    "CustomerDisplay",
+                                    "❌ Failed to load slideshow for store $storeName: ${e.message}"
+                                )
                             }
                         }.start()
                     } else {
-                        Log.e("CustomerDisplay", "storeBaseUrl is empty → cannot load slideshow for store $storeName")
+                        Log.e(
+                            "CustomerDisplay",
+                            "storeBaseUrl is empty → cannot load slideshow for store $storeName"
+                        )
                     }
 
                     // --- Show Welcome layout on customer display ---
@@ -113,7 +124,17 @@ class MainActivity : FlutterActivity() {
                         showWelcomeOnCustomerDisplay()
                     }
 
-                    customerDisplayPresentation?.showWelcomeLayout(storeId, storeName, storeLogoUrl, storeBaseUrl)
+// ✅ Prevent override during active order
+                    if (!isOrderActive) {
+                        customerDisplayPresentation?.showWelcomeLayout(
+                            storeId,
+                            storeName,
+                            storeLogoUrl,
+                            storeBaseUrl
+                        )
+                    } else {
+                        Log.d("CustomerDisplay", "⛔ Skipping welcome update — order is active")
+                    }
 
                     result.success("Welcome updated with store")
                 }
@@ -163,6 +184,32 @@ class MainActivity : FlutterActivity() {
                         Log.e("CustomerDisplay", "❌ No secondary display found for Thank You")
                         result.error("NO_DISPLAY", "No secondary display found", null)
                     }
+                }
+                "resetDisplay" -> {
+                    Log.d("CustomerDisplay", "🔥 resetDisplay called")
+
+                    isOrderActive = false
+
+                    val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+                    val displays = displayManager.displays
+
+                    if (displays.size > 1) {
+                        val secondaryDisplay = displays[1]
+
+                        customerDisplayPresentation?.dismiss()
+                        customerDisplayPresentation =
+                            CustomerDisplayPresentation(this, secondaryDisplay)
+                        customerDisplayPresentation?.show()
+
+                        customerDisplayPresentation?.showWelcomeLayout(
+                            currentStoreId,
+                            currentStoreName,
+                            currentStoreLogoUrl,
+                            currentStoreBaseUrl
+                        )
+                    }
+
+                    result.success("Display reset to welcome")
                 }
 
                 else -> {
@@ -256,23 +303,28 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         Log.d("CustomerDisplay", "➡ onResume called")
-        showWelcomeOnCustomerDisplay()
+//        showWelcomeOnCustomerDisplay()
     }
 
     private fun showWelcomeOnCustomerDisplay(): Boolean {
+
+        // ✅ BLOCK welcome if order is active
+        if (isOrderActive) {
+            Log.d("CustomerDisplay", "⛔ Ignoring Welcome — Order is active")
+            return true
+        }
+
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val displays = displayManager.displays
         Log.d("CustomerDisplay", "Detected displays: ${displays.size}")
 
         return if (displays.size > 1) {
             val secondaryDisplay = displays[1]
-            Log.d("CustomerDisplay", "Secondary display found: ${secondaryDisplay.name}")
 
             if (customerDisplayPresentation == null || customerDisplayPresentation?.display != secondaryDisplay) {
                 customerDisplayPresentation?.dismiss()
                 customerDisplayPresentation = CustomerDisplayPresentation(this, secondaryDisplay)
                 customerDisplayPresentation?.show()
-                Log.d("CustomerDisplay", "✔ CustomerDisplayPresentation shown on secondary display")
             }
             true
         } else {
@@ -280,7 +332,6 @@ class MainActivity : FlutterActivity() {
             false
         }
     }
-
     private fun showDataOnCustomerDisplay(
         orderId: Int,
         storeId: String,
@@ -299,10 +350,21 @@ class MainActivity : FlutterActivity() {
         loyaltyContact: String,
         summaryEnabled: Boolean
     ): Boolean {
+        // 🔥 ADD THIS LINE HERE (FIRST LINE)
+        isOrderActive = true
+
 
         if (customerDisplayPresentation == null) {
-            Log.d("CustomerDisplay", "CustomerDisplayPresentation null, showing Welcome first")
-            showWelcomeOnCustomerDisplay()
+            Log.d("CustomerDisplay", "CustomerDisplayPresentation null, recreating display")
+
+            val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+            val displays = displayManager.displays
+
+            if (displays.size > 1) {
+                val secondaryDisplay = displays[1]
+                customerDisplayPresentation = CustomerDisplayPresentation(this, secondaryDisplay)
+                customerDisplayPresentation?.show()
+            }
         }
 
         customerDisplayPresentation?.updateCustomerData(
@@ -331,6 +393,8 @@ class MainActivity : FlutterActivity() {
 
 
     private fun showThankYouOnCustomerDisplay(): Boolean {
+        isOrderActive = false
+
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val displays = displayManager.displays
         Log.d("CustomerDisplay", "Detected displays: ${displays.size} for Thank You")
@@ -531,12 +595,18 @@ class MainActivity : FlutterActivity() {
             storeBaseUrl: String? = null
         ) {
             stopSlideshow()
+
+            // ✅ BLOCK if order already shown
+            if (firstOrderShown) {
+                Log.d("CustomerDisplay", "⛔ Skipping welcome — order already shown")
+                return
+            }
+
             Log.d("CustomerDisplay", "➡ Switching back to Welcome layout")
 
             Handler(Looper.getMainLooper()).post {
                 setContentView(R.layout.welcome_layout)
 
-                // update current store details
                 currentStoreId = storeId
                 currentStoreName = storeName
                 currentStoreLogoUrl = storeLogoUrl
@@ -545,12 +615,14 @@ class MainActivity : FlutterActivity() {
                 welcomeText = findViewById(R.id.welcome_text)
                 val footerText = findViewById<TextView>(R.id.footer_text)
                 val logoView = findViewById<ImageView>(R.id.welcome_logo)
-                slideshowImageView = findViewById(R.id.slideshow_image) // <-- important
+                slideshowImageView = findViewById(R.id.slideshow_image)
 
-                welcomeText.text = if (storeName.isNotEmpty()) "Welcome to $storeName" else "👋 Welcome to Pinaka"
-                footerText.visibility = if (storeName.isNotEmpty()) View.VISIBLE else View.GONE
+                welcomeText.text =
+                    if (storeName.isNotEmpty()) "Welcome to $storeName" else "👋 Welcome to Pinaka"
 
-                // Load logo
+                footerText.visibility =
+                    if (storeName.isNotEmpty()) View.VISIBLE else View.GONE
+
                 if (!storeLogoUrl.isNullOrEmpty()) {
                     Thread {
                         try {
@@ -558,12 +630,10 @@ class MainActivity : FlutterActivity() {
                             val bitmap = BitmapFactory.decodeStream(input)
                             Handler(Looper.getMainLooper()).post {
                                 logoView.setImageBitmap(bitmap)
-                                Log.d("CustomerDisplay", "✅ Welcome logo loaded")
                             }
                         } catch (e: Exception) {
                             Handler(Looper.getMainLooper()).post {
                                 logoView.setImageResource(R.drawable.pinaka_logo)
-                                Log.e("CustomerDisplay", "❌ Failed to load Welcome logo: ${e.message}")
                             }
                         }
                     }.start()
@@ -571,16 +641,15 @@ class MainActivity : FlutterActivity() {
                     logoView.setImageResource(R.drawable.pinaka_logo)
                 }
 
-                // Stop any previous slideshow
                 slideshowHandler?.removeCallbacksAndMessages(null)
                 slideshowHandler = Handler(Looper.getMainLooper())
 
-                // Load slideshow
                 if (!currentStoreBaseUrl.isNullOrEmpty() && storeName.isNotEmpty()) {
                     loadSlideshowFromApi(currentStoreBaseUrl)
                 }
 
-                firstOrderShown = false
+                // ❌ REMOVE THIS LINE
+                // firstOrderShown = false
             }
         }
 
@@ -662,7 +731,7 @@ class MainActivity : FlutterActivity() {
             cashbackFee: Double,
             loyaltyContact: String,
             summaryEnabled: Boolean
-        ) {
+        ) {  firstOrderShown = true
             val defaultStoreId = "STORE001"
             val defaultStoreName = "Pinaka"
             val defaultStoreLogoUrl: String? = null

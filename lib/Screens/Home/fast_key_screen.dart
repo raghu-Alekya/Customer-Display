@@ -1944,8 +1944,17 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     bool isEditing = index != null;
     TextEditingController nameController = TextEditingController(
         text: isEditing ? fastKeyTabs[index!].fastkeyTitle : '');
-    String imagePath =
-    isEditing ? fastKeyTabs[index!].fastkeyImage : 'assets/default.png';
+    String imagePath;
+
+    if (isEditing) {
+      final existingImage = fastKeyTabs[index!].fastkeyImage;
+
+      imagePath = (existingImage != null && existingImage.isNotEmpty)
+          ? existingImage
+          : 'assets/default.png'; // 👈 SAME default as before
+    } else {
+      imagePath = 'assets/default.png';
+    }
     bool showError = false;
     final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);
     bool isLoading = false;
@@ -2032,7 +2041,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                         ),
                                       ],
                                     ),
-                                    child: _buildImageWidget(imagePath)),
+                                    child: _buildImageWidget(context,imagePath)),
                                 Positioned(
                                   right: 0,
                                   top: 0,
@@ -2065,7 +2074,9 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                         }
 
                                         setStateDialog(() {
-                                          imagePath = image;
+                                          if (image != null && image.isNotEmpty) {
+                                            imagePath = image;   // ✅ only update if user selected
+                                          }
                                           isLoading = false;
                                         });
                                       },
@@ -2184,7 +2195,11 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               ),
               actions: [
                 Padding(
-                  padding: EdgeInsets.only(bottom: 16, right: 36),
+                  padding: EdgeInsets.only(
+                    bottom: 16,
+                    right: isEditing ? 0 : 36,  // adjust right first edit then add
+                    left: isEditing ? 24 : 0,    // add left only for edit
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -2354,17 +2369,63 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                           ),
                         ),
                       ),
+
+                      const SizedBox(width: 10),
+
+                      /// DELETE (only in edit)
+                      if (isEditing)
+                        SizedBox(
+                          height: 50,
+                          width: 110,
+                          child: TextButton(
+                            onPressed: () =>
+                                _showDeleteConfirmationDialog(tabIndex: index),
+                            style: TextButton.styleFrom(
+                              backgroundColor: Colors.white, // white inside
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                side: BorderSide(color: Colors.red, width: 1.5), // red border
+                              ),
+                            ),
+                            child: const Text(
+                              TextConstants.deleteText,
+                              style: TextStyle(
+                                color: Colors.red, // red text
+                                fontWeight: FontWeight.w500,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
-                if (isEditing)
-                  TextButton(
-                    onPressed: () => _showDeleteConfirmationDialog(
-                        tabIndex:
-                        index), // Build #1.0.104: updated delete dialog
-                    child: const Text(TextConstants.deleteText,
-                        style: TextStyle(color: Colors.red)),
-                  ),
+                // if (isEditing)
+                //   Padding(
+                //     padding: const EdgeInsets.only(bottom: 16),
+                //     child: SizedBox(
+                //       height: 50,
+                //       width: 120,
+                //       child: TextButton(
+                //         onPressed: () => _showDeleteConfirmationDialog(tabIndex: index),
+                //         style: TextButton.styleFrom(
+                //           backgroundColor: Colors.red[100], // light red background
+                //           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                //           shape: RoundedRectangleBorder(
+                //             borderRadius: BorderRadius.circular(8),
+                //           ),
+                //         ),
+                //         child: const Text(
+                //           TextConstants.deleteText,
+                //           style: TextStyle(
+                //             color: Colors.red,
+                //             fontWeight: FontWeight.w500,
+                //             fontSize: 16,
+                //           ),
+                //         ),
+                //       ),
+                //     ),
+                //   ),
               ],
             );
           },
@@ -2479,7 +2540,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                               onTap: () => Navigator.pop(context, img.url),
                               child: Container(
                                 padding: EdgeInsets.all(8),
-                                child: _buildImageWidget(img.url),
+                                child: _buildImageWidget(context,img.url),
                               ),
                             );
                           },
@@ -2570,34 +2631,64 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     );
   }
 
-  Widget _buildImageWidget(String imagePath) {
+  Widget _buildImageWidget(BuildContext context, String imagePath) {
     if (kDebugMode) {
       print("_buildImageWidget for imagePath: $imagePath");
     }
 
+    final bool isDark =
+        Theme.of(context).brightness == Brightness.dark;
+    print("isDark: $isDark");
+
+    final String defaultImage =
+    isDark ? 'assets/default_dark.png' : 'assets/default.png';
+
+    final String defaultSvg =
+    isDark
+        ? 'assets/svg/password_placeholder.svg'
+        : 'assets/svg/password_placeholder.svg';
+
+    /// 🔹 Empty case
     if (imagePath.isEmpty) {
-      return _safeSvgPicture('assets/svg/password_placeholder.svg');
+      return _safeSvgPicture(defaultSvg, defaultImage);
     }
 
+    /// 🔹 SVG asset
     if (imagePath.startsWith('assets/') && imagePath.endsWith('.svg')) {
-      return _safeSvgPicture(imagePath);
-    } else if (imagePath.startsWith('assets/')) {
+      return _safeSvgPicture(imagePath, defaultImage);
+    }
+
+    /// 🔹 Normal asset image
+    else if (imagePath.startsWith('assets/')) {
+      final String finalPath =
+      imagePath == 'assets/default.png'
+          ? defaultImage // 👈 switch based on theme
+          : imagePath;
+
       return ClipRRect(
         borderRadius: BorderRadius.circular(16.0),
         child: Image.asset(
-          imagePath,
+          finalPath,
           height: 80,
           width: 80,
           fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Image.asset(
+            defaultImage,
+            height: 80,
+            width: 80,
+          ),
         ),
       );
-    } else if (imagePath.startsWith("http")) {
+    }
+
+    /// 🔹 Network image
+    else if (imagePath.startsWith("http")) {
       return Container(
         width: 75,
         height: 75,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          color: Colors.transparent, // <-- FIXED (no grey background)
+          color: Colors.transparent,
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16.0),
@@ -2607,20 +2698,22 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             height: 75,
             fit: BoxFit.cover,
             errorBuilder: (context, error, stackTrace) {
-              return Container(
+              return Image.asset(
+                defaultImage,
                 width: 75,
                 height: 75,
-                color: Colors.transparent, // also transparent on error
-                child: const Icon(Icons.broken_image, color: Colors.grey),
               );
             },
           ),
         ),
       );
-    } else {
+    }
+
+    /// 🔹 File / fallback
+    else {
       return Platform.isWindows
           ? Image.asset(
-        'assets/default.png',
+        defaultImage,
         height: 75,
         width: 75,
       )
@@ -2630,29 +2723,35 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         width: 80,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) =>
-            _safeSvgPicture('assets/svg/password_placeholder.svg'),
+            _safeSvgPicture(defaultSvg, defaultImage),
       );
     }
   }
 
-  Widget _safeSvgPicture(String assetPath) {
+  Widget _safeSvgPicture(String assetPath, String fallbackImage) {
     try {
       return ClipRRect(
-          borderRadius: BorderRadius.circular(16.0),
-          child: SvgPicture.asset(
-            assetPath,
-            height: 80,
-            width: 80,
-            placeholderBuilder: (context) => const Icon(Icons.image, size: 40),
-          ));
+        borderRadius: BorderRadius.circular(16.0),
+        child: SvgPicture.asset(
+          assetPath,
+          height: 80,
+          width: 80,
+          placeholderBuilder: (context) =>
+          const Icon(Icons.image, size: 40),
+        ),
+      );
     } catch (e) {
       debugPrint("FastKeyScreen: SVG Parsing Error: $e");
       return ClipRRect(
-          borderRadius: BorderRadius.circular(16.0),
-          child: Image.asset('assets/default.png', height: 80, width: 80));
+        borderRadius: BorderRadius.circular(16.0),
+        child: Image.asset(
+          fallbackImage,
+          height: 80,
+          width: 80,
+        ),
+      );
     }
   }
-
   // Build #1.0.104: updated delete dialog with this new implementation
   void _showDeleteConfirmationDialog({
     int? tabIndex,

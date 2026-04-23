@@ -1235,69 +1235,64 @@ class SidebarButton extends StatelessWidget {
   }
 
   Widget _buildHorizontalLayout() {
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
-    decoration: BoxDecoration(
-      shape: BoxShape.rectangle,
-      color: isSelected ? Color(0xFFFE6464) : const Color(0xFF3B4259),
-      borderRadius: const BorderRadius.all(Radius.circular(8)),
-    ),
-    child: Row(
-      children: [
-        /// ✅ PRIORITY 1: IMAGE
-        if (imageAsset != null)
-          Image.asset(
-            imageAsset!,
-            height: 22,
-            color: isSelected
-                ? Colors.white
-                : isDisabled
-                ? Colors.grey.shade800
-                : Colors.white70,
-          )
-
-        /// ✅ PRIORITY 2: SVG
-        else if (svgAsset != null)
-          SvgPicture.asset(
-            svgAsset!,
-            colorFilter: ColorFilter.mode(
-              isSelected
-                  ? Colors.white
-                  : isDisabled
-                  ? Colors.grey.shade800
-                  : Colors.white70,
-              BlendMode.srcIn,
-            ),
-            height: 22,
-          )
-
-        /// ✅ PRIORITY 3: ICON
-        else if (icon != null)
-            Icon(
-              icon,
-              color: isSelected
-                  ? Colors.white
-                  : isDisabled
-                  ? Colors.grey.shade800
-                  : Colors.white,
-            ),
-
-        SizedBox(width: isSelected ? 6.0 : 4.0),
-
-        Text(
-          label,
-          style: TextStyle(
-            color: isSelected
-                ? Colors.white
-                : isDisabled
-                ? Colors.grey.shade800
-                : Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: isSelected ? 16.0 : 14.0,
-          ),
+    return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
+        decoration: BoxDecoration(
+          shape: BoxShape.rectangle,
+          color: isSelected ? Color(0xFFFE6464) : const Color(0xFF3B4259),
+          borderRadius: const BorderRadius.all(Radius.circular(8)),
         ),
-      ],
-    ),
-  );
-}
+        child: Row(
+          children: [
+            if (svgAsset != null)
+              SvgPicture.asset(
+                svgAsset!,
+                colorFilter: ColorFilter.mode(
+                  isSelected
+                      ? Colors.white
+                      : isDisabled
+                      ? Colors.grey.shade800
+                      : Colors.white70,
+                  BlendMode.srcIn,
+                ),
+                height: 22,
+              )
+            else if (imageAsset != null)
+              Image.asset(
+                imageAsset!,
+                height: 22,
+                color: isSelected
+                    ? Colors.white
+                    : isDisabled
+                    ? Colors.grey.shade800
+                    : Colors.white70,
+              )
+            else
+              Icon(
+                icon,
+                color: isSelected
+                    ? Colors.white
+                    : isDisabled
+                    ? Colors.grey.shade800
+                    : Colors.white,
+              ),
+
+            SizedBox(width: isSelected ? 6.0 : 4.0),
+
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected
+                    ? Colors.white
+                    : isDisabled
+                    ? Colors.grey.shade800
+                    : Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: isSelected ? 16.0 : 14.0,
+              ),
+            ),
+          ],
+        )
+    );
+  }
 }

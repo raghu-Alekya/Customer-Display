@@ -21,6 +21,7 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
   late CompletedOrdersRepository repository;
   String amount = "0.00";
   double totalRefund = 0.0;
+  String amountDigits = "0"; // store as "567"
 
   @override
   void initState() {
@@ -30,6 +31,9 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
     repository = CompletedOrdersRepository(baseUrl: "https://merchantretail.alektasolutions.com");
 
     // Set initial value from passed refundAmount
+    // amount = widget.refundAmount.toStringAsFixed(2);
+    // ✅ Set both values immediately
+    totalRefund = widget.refundAmount;
     amount = widget.refundAmount.toStringAsFixed(2);
 
     // Fetch refund total from API
@@ -66,14 +70,53 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
     }
   }
   void addDigit(String value) {
+    if (totalRefund <= 0) return;
+
+    // Append digit (max 6-7 digits optional safety)
+    String newDigits = amountDigits + value;
+
+    // Remove leading zeros
+    newDigits = newDigits.replaceFirst(RegExp(r'^0+'), '');
+    if (newDigits.isEmpty) newDigits = "0";
+
+    // Convert to decimal
+    double parsed = double.parse(newDigits) / 100;
+
+    // 🚫 Limit check
+    if (parsed > totalRefund) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Max refund allowed is \$${totalRefund.toStringAsFixed(2)}",
+          ),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+      return;
+    }
+
     setState(() {
-      amount += value;
+      amountDigits = newDigits;
+      amount = parsed.toStringAsFixed(2);
     });
   }
-
   void clearAmount() {
     setState(() {
-      amount = "";
+      amountDigits = "0";
+      amount = "0.00";
+    });
+  }
+  void removeDigit() {
+    if (amountDigits.length <= 1) {
+      amountDigits = "0";
+    } else {
+      amountDigits = amountDigits.substring(0, amountDigits.length - 1);
+    }
+
+    double parsed = double.parse(amountDigits) / 100;
+
+    setState(() {
+      amount = parsed.toStringAsFixed(2);
     });
   }
   Widget _keyButton(String text,

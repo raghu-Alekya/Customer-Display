@@ -69,7 +69,7 @@ class _ShiftHistoryDashboardScreenState
       body: Column(
         children: [
           TopBar(
-            screen: Screen.SHIFT,
+          screen: Screen.ORDERS,
             onModeChanged: () async {
               /// Build #1.0.192: Fixed -> Exception -> setState() callback argument returned a Future. (onModeChanged in all screens)
               String newLayout;

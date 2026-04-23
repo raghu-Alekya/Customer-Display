@@ -14,6 +14,13 @@ class CustomerDisplayHelper {
       }) async {
     print(
         "🟢 [CustomerDisplayHelper] Updating welcome → storeId: $storeId, storeName: $storeName, logo: $storeLogoUrl, baseUrl: $storeBaseUrl");
+    final activeId = OrderHelper().activeOrderId;
+
+    // ✅ ONLY show welcome if no active order
+    if (activeId != null) {
+      print("⛔ Skipping welcome — active order exists");
+      return;
+    }
 
     await CustomerDisplayService.showWelcomeWithStore(
       storeId: storeId,
@@ -41,11 +48,17 @@ class CustomerDisplayHelper {
 
       final int? activeId = OrderHelper().activeOrderId;
 
-      if (activeId != null && activeId != serverOrderId) {
-        print("🟥 [CD] Ignoring stale display update");
+// ❌ BLOCK if no active order
+      if (activeId == null) {
+        print("⛔ [CD] No active order → skipping display update");
         return;
       }
 
+// ❌ BLOCK stale updates
+      if (activeId != serverOrderId) {
+        print("🟥 [CD] Ignoring stale display update");
+        return;
+      }
 
       print("🟡 [CD] START updateCustomerDisplay → serverOrderId=$serverOrderId");
 
