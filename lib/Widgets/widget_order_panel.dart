@@ -387,7 +387,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     // --------------------------------------------------
     final List<Map<String, dynamic>> visibleOrders = [];
 
-    for (final order in orderHelper.orders) {
+    // Build #1.0.287: Take a snapshot of orders to avoid race conditions during async loop
+    final List<Map<String, dynamic>> ordersSnapshot =
+    List<Map<String, dynamic>>.from(orderHelper.orders);
+
+    for (final order in ordersSnapshot) {
       final int? orderId = _normalizeOrderId(
         order[AppDBConst.orderServerId] ?? order['order_id'] ?? order['id'],
       );
@@ -416,7 +420,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     if (!mounted) return;
 
     setState(() {
-      tabs = visibleOrders.asMap().entries.map((entry) {
+      tabs = visibleOrders
+          .asMap()
+          .entries
+          .map((entry) {
         final o = entry.value;
         final normalizedId = _normalizeOrderId(
           o[AppDBConst.orderServerId] ??
@@ -436,7 +443,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           "subtitle": "Tab ${entry.key + 1}",
           "orderId": normalizedId,
         };
-      }).where((t) => (t["orderId"] as int) > 0).toList();
+      })
+          .where((t) => (t["orderId"] as int) > 0)
+          .toList();
 
       if (kDebugMode) {
         print("##### DEBUG: Loaded ${tabs.length} tabs: $tabs");
@@ -463,8 +472,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // --------------------------------------------------
 // 3️⃣ HARD ACTIVE ORDER SAFETY (REQUIRED)
 // --------------------------------------------------
-    final visibleOrderIds =
-    tabs.map((t) => _normalizeOrderId(t['orderId'])).whereType<int>().toList();
+    final visibleOrderIds = tabs
+        .map((t) => _normalizeOrderId(t['orderId']))
+        .whereType<int>()
+        .toList();
 
     final int? activeId = orderHelper.activeOrderId;
 
@@ -481,21 +492,25 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         await orderHelper.setActiveOrder(newActiveId);
         await orderHelper.saveLastActiveOrderId(newActiveId);
 
-        // 🔄 Update customer display for new order
-        CustomerDisplayHelper.updateCustomerDisplay(newActiveId);
+        // ✅ ONLY update display if active order exists
+        if (newActiveId != 0) {
+          print("✅ Showing new active order on display → $newActiveId");
+          await CustomerDisplayHelper.updateCustomerDisplay(newActiveId);
+        }
+
       } else {
         // ❌ NO orders left → FULL RESET
         await orderHelper.setActiveOrder(null);
-        //await orderHelper.saveLastActiveOrderId(null);
 
-        // ⛔ CLEAR UI STATE
         if (mounted) {
           setState(() {
             orderItems.clear();
           });
         }
 
-        // ⛔ CRITICAL: RESET CUSTOMER DISPLAY
+        print("✅ No active orders → showing welcome screen");
+
+        // ✅ ALWAYS fallback to welcome when no orders
         await CustomerDisplayService.showWelcome();
       }
     }
@@ -610,7 +625,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     if (!_tabsContainActiveOrder(activeId)) {
       if (kDebugMode) {
         print(
-            "⚠️ fetchOrderItems — active order not in tab bar; still loading by id: $activeId",
+          "⚠️ fetchOrderItems — active order not in tab bar; still loading by id: $activeId",
         );
       }
     }
@@ -627,9 +642,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         final int oid = orderHelper.activeOrderId!;
         // 1️⃣ Prefer offline storage; 2️⃣ SQLite — run both reads in parallel when offline may be empty.
         final Future<List<Map<String, dynamic>>> offlineFuture =
-            orderHelper.getOrderItemsFromOffline(oid);
+        orderHelper.getOrderItemsFromOffline(oid);
         final Future<List<Map<String, dynamic>>> ordersFuture =
-            orderHelper.getOrderById(oid);
+        orderHelper.getOrderById(oid);
         final offlineItems = await offlineFuture;
         if (requestId != _fetchOrderItemsRequestId) return;
         // #region agent log
@@ -772,9 +787,33 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       return;
     }
 
-    _tabController?.dispose();
+    // 1️⃣ Calculate Default Index BEFORE creating controller
+    int defaultIndex = 0;
+    if (orderHelper.activeOrderId != null) {
+      final idx = tabs.indexWhere(
+            (t) => _normalizeOrderId(t["orderId"]) == orderHelper.activeOrderId,
+      );
 
-    _tabController = TabController(length: tabs.length, vsync: this);
+      if (idx != -1) {
+        defaultIndex = idx;
+      } else {
+        // Fallback to first tab if active order not visible
+        defaultIndex = 0;
+        final fallbackOrderId = _normalizeOrderId(tabs[0]["orderId"]) ?? 0;
+        if (fallbackOrderId != 0) {
+          await orderHelper.setActiveOrder(fallbackOrderId);
+          await orderHelper.saveLastActiveOrderId(fallbackOrderId);
+        }
+      }
+    }
+
+    // 2️⃣ Initialize TabController with initialIndex
+    _tabController?.dispose();
+    _tabController = TabController(
+      length: tabs.length,
+      vsync: this,
+      initialIndex: defaultIndex,
+    );
 
     _tabController!.addListener(() async {
       if (!_tabController!.indexIsChanging &&
@@ -798,36 +837,14 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
     });
 
-    int defaultIndex = 0;
-
-    if (orderHelper.activeOrderId != null) {
-      final idx = tabs.indexWhere(
-            (t) =>
-                _normalizeOrderId(t["orderId"]) ==
-                orderHelper.activeOrderId,
-      );
-
-      if (idx != -1) {
-        defaultIndex = idx;
-      } else {
-        //  Active order not found → fallback to first tab
-        defaultIndex = 0;
-
-        final fallbackOrderId = _normalizeOrderId(tabs[0]["orderId"]) ?? 0;
-        if (fallbackOrderId == 0) return;
-        await orderHelper.setActiveOrder(fallbackOrderId);
-        await orderHelper.saveLastActiveOrderId(fallbackOrderId);
-      }
-    }
-
+    // 3️⃣ Final UI Sync
     if (mounted) {
-      _tabController!.index = defaultIndex;
       final activeTabOrderId =
           _normalizeOrderId(tabs[defaultIndex]["orderId"]) ?? 0;
-      if (activeTabOrderId == 0) return;
-      CustomerDisplayHelper.updateCustomerDisplay(
-        activeTabOrderId,
-      );
+      if (activeTabOrderId != 0) {
+        CustomerDisplayHelper.updateCustomerDisplay(activeTabOrderId);
+      }
+      setState(() {}); // Ensure UI highlights the correct tab
     }
   }
 
@@ -837,47 +854,27 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   // Updated UI (tabs, tab controller, items) after API success.
   // Added alert dialog for error handling with retry option.
   // Loader is shown via _isLoading during the API call.
-  Future<void> addNewTab() async {
-    if (_isNewTabDisabled) return; // 🔒 hard guard
+  Future<void> addNewTab() async {Future<void> addNewTab() async {
+    if (_isNewTabDisabled) return;
 
     setState(() {
       _isNewTabDisabled = true;
     });
 
-    // 🔓 auto-unlock after 3 seconds
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
         setState(() => _isNewTabDisabled = false);
       }
     });
-    // Create new order if none exists
+
     if (kDebugMode) {
       print("##### DEBUG: addNewTab - Creating new order");
     }
+
     showLogs = true;
     logString += "##### DEBUG: addNewTab - Creating new order \n ";
 
-    /// Build #1.0.128: No need here , now we are handling from Order repository class
-    // final prefs = await SharedPreferences.getInstance();
-    // final shiftId = prefs.getString(TextConstants.shiftId);
-    //
-    // //Build #1.0.78: Validation required : if shift id is empty show toast or alert user to start the shift first
-    // if (shiftId == null || shiftId.isEmpty) {
-    //   if (kDebugMode) print("####### _createOrder() : shiftId -> $shiftId");
-    //   ScaffoldMessenger.of(context).showSnackBar(
-    //     SnackBar(
-    //       content: Text("Please start your shift before creating an order."),
-    //       backgroundColor: Colors.green,
-    //       duration: const Duration(seconds: 2),
-    //     ),
-    //   );
-    // }
-    setState(() => _isLoading = true); // Show loader
-    // String deviceId = await getDeviceId();
-    // OrderMetaData device = OrderMetaData(key: OrderMetaData.posDeviceId, value: deviceId);
-    // OrderMetaData placedBy = OrderMetaData(key: OrderMetaData.posPlacedBy, value: '${orderHelper.activeUserId ?? 1}');
-    // OrderMetaData shiftIdValue = OrderMetaData(key: OrderMetaData.shiftId, value: shiftId!);
-    // List<OrderMetaData> metaData = [device, placedBy, shiftIdValue];
+    setState(() => _isLoading = true);
 
     _updateOrderSubscription?.cancel();
     _updateOrderSubscription =
@@ -885,79 +882,204 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           if (!mounted) return;
 
           if (response.status == Status.COMPLETED) {
-            setState(() => _isLoading = false); // Hide loader
+            setState(() => _isLoading = false);
+
+            final orderId = response.data!.id;
+
             if (kDebugMode) {
-              print(
-                  "##### DEBUG: addNewTab - Order created successfully, serverOrderId: ${response.data!.id}");
+              print("##### Order created: $orderId");
             }
-            // Persist to SQLite so order panel shows this order
-            await orderHelper.createOrder(serverOrderId: response.data!.id);
+
+            // ✅ Save order locally
+            await orderHelper.createOrder(serverOrderId: orderId);
+
+            // ✅ Set active order
+            await orderHelper.setActiveOrder(orderId);
+            await orderHelper.saveLastActiveOrderId(orderId);
+
+            // 🔥🔥🔥 ADD THIS BLOCK (IMPORTANT)
+            await CustomerDisplayService.showCustomerData(
+              orderId: orderId,
+              items: [],
+              grossTotal: 0.0,
+              discount: 0.0,
+              merchantDiscount: 0.0,
+              netTotal: 0.0,
+              tax: 0.0,
+              netPayable: 0.0,
+              orderDate: "",
+              orderTime: "",
+              cashbackFee: 0.0,
+              loyaltyContact: "",
+              summaryEnabled: false,
+              discountType: "NONE",
+              discountValue: 0.0,
+            );
+            // 🔥🔥🔥 END FIX
+
+            // ✅ Add tab
             setState(() {
               tabs.add({
-                "title": "${response.data!.id}",
+                "title": "$orderId",
                 "subtitle": "Tab ${tabs.length + 1}",
-                "orderId": response.data!.id as Object,
+                "orderId": orderId as Object,
               });
             });
 
             _initializeTabController();
             _tabController?.index = tabs.length - 1;
             _scrollToSelectedTab();
+
             await fetchOrderItems();
 
+            // ✅ Optional: keep this (will refresh if data comes later)
+            await CustomerDisplayHelper.updateCustomerDisplay(orderId);
+
             if (Misc.showDebugSnackBar) {
-              // Build #1.0.254
               _scaffoldMessenger.showSnackBar(
-                SnackBar(
+                const SnackBar(
                   content: Text("Order created successfully"),
                   backgroundColor: Colors.green,
-                  duration: const Duration(seconds: 2),
+                  duration: Duration(seconds: 2),
                 ),
               );
             }
           } else if (response.status == Status.ERROR) {
-            if (response.message!.contains('Unauthorised')) {
-              if (kDebugMode) {
-                print(
-                    "categories screen 2  ---- Unauthorised : ${response.message!}");
-              }
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) {
-                  Navigator.pushReplacement(context,
-                      MaterialPageRoute(builder: (context) => LoginScreen()));
+            setState(() => _isLoading = false);
 
-                  if (kDebugMode) {
-                    print("message 2 --- ${response.message}");
-                  }
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content:
-                      Text("Unauthorised. Session is expired on this device."),
-                      backgroundColor: Colors.red,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                }
-              });
-            } else {
-              setState(() => _isLoading = false); //Build #1.0.99: Hide loader
-              if (kDebugMode) {
-                print(
-                    "##### ERROR: addNewTab - Failed to create order: ${response.message}");
-              }
-              _scaffoldMessenger.showSnackBar(
-                SnackBar(
-                  content: Text(response.message ?? "Failed to create order"),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            }
+            _scaffoldMessenger.showSnackBar(
+              SnackBar(
+                content: Text(response.message ?? "Failed to create order"),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 2),
+              ),
+            );
           }
         });
 
-    logString += await orderBloc.createOrder(); // Build #1.0.128
+    logString += await orderBloc.createOrder();
     setState(() {});
+  }
+  if (_isNewTabDisabled) return; // 🔒 hard guard
+
+  setState(() {
+    _isNewTabDisabled = true;
+  });
+
+  // 🔓 auto-unlock after 3 seconds
+  Future.delayed(const Duration(seconds: 3), () {
+    if (mounted) {
+      setState(() => _isNewTabDisabled = false);
+    }
+  });
+  // Create new order if none exists
+  if (kDebugMode) {
+    print("##### DEBUG: addNewTab - Creating new order");
+  }
+  showLogs = true;
+  logString += "##### DEBUG: addNewTab - Creating new order \n ";
+
+  /// Build #1.0.128: No need here , now we are handling from Order repository class
+  // final prefs = await SharedPreferences.getInstance();
+  // final shiftId = prefs.getString(TextConstants.shiftId);
+  //
+  // //Build #1.0.78: Validation required : if shift id is empty show toast or alert user to start the shift first
+  // if (shiftId == null || shiftId.isEmpty) {
+  //   if (kDebugMode) print("####### _createOrder() : shiftId -> $shiftId");
+  //   ScaffoldMessenger.of(context).showSnackBar(
+  //     SnackBar(
+  //       content: Text("Please start your shift before creating an order."),
+  //       backgroundColor: Colors.green,
+  //       duration: const Duration(seconds: 2),
+  //     ),
+  //   );
+  // }
+  setState(() => _isLoading = true); // Show loader
+  // String deviceId = await getDeviceId();
+  // OrderMetaData device = OrderMetaData(key: OrderMetaData.posDeviceId, value: deviceId);
+  // OrderMetaData placedBy = OrderMetaData(key: OrderMetaData.posPlacedBy, value: '${orderHelper.activeUserId ?? 1}');
+  // OrderMetaData shiftIdValue = OrderMetaData(key: OrderMetaData.shiftId, value: shiftId!);
+  // List<OrderMetaData> metaData = [device, placedBy, shiftIdValue];
+
+  _updateOrderSubscription?.cancel();
+  _updateOrderSubscription =
+      orderBloc.createOrderStream.listen((response) async {
+        if (!mounted) return;
+
+        if (response.status == Status.COMPLETED) {
+          setState(() => _isLoading = false); // Hide loader
+          if (kDebugMode) {
+            print(
+                "##### DEBUG: addNewTab - Order created successfully, serverOrderId: ${response.data!.id}");
+          }
+          // Persist to SQLite so order panel shows this order
+          await orderHelper.createOrder(serverOrderId: response.data!.id);
+          setState(() {
+            tabs.add({
+              "title": "${response.data!.id}",
+              "subtitle": "Tab ${tabs.length + 1}",
+              "orderId": response.data!.id as Object,
+            });
+          });
+
+          _initializeTabController();
+          _tabController?.index = tabs.length - 1;
+          _scrollToSelectedTab();
+          await fetchOrderItems();
+
+          if (Misc.showDebugSnackBar) {
+            // Build #1.0.254
+            _scaffoldMessenger.showSnackBar(
+              SnackBar(
+                content: Text("Order created successfully"),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        } else if (response.status == Status.ERROR) {
+          if (response.message!.contains('Unauthorised')) {
+            if (kDebugMode) {
+              print(
+                  "categories screen 2  ---- Unauthorised : ${response.message!}");
+            }
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                Navigator.pushReplacement(context,
+                    MaterialPageRoute(builder: (context) => LoginScreen()));
+
+                if (kDebugMode) {
+                  print("message 2 --- ${response.message}");
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content:
+                    Text("Unauthorised. Session is expired on this device."),
+                    backgroundColor: Colors.red,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            });
+          } else {
+            setState(() => _isLoading = false); //Build #1.0.99: Hide loader
+            if (kDebugMode) {
+              print(
+                  "##### ERROR: addNewTab - Failed to create order: ${response.message}");
+            }
+            _scaffoldMessenger.showSnackBar(
+              SnackBar(
+                content: Text(response.message ?? "Failed to create order"),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      });
+
+  logString += await orderBloc.createOrder(); // Build #1.0.128
+  setState(() {});
   }
 
   // =============================================================
@@ -2027,8 +2149,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                 variants = decoded
                     .whereType<Map>()
                     .map<Map<String, dynamic>>((v) {
-                  final map =
-                  v.map((key, value) => MapEntry(key.toString(), value));
+                  final map = v
+                      .map((key, value) => MapEntry(key.toString(), value));
                   final attrs = map["attributes"];
                   final String fallbackName = attrs is List
                       ? attrs
@@ -2041,16 +2163,20 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                     "id": map["id"],
                     "name": (map["name"] ?? "").toString().isNotEmpty
                         ? map["name"]
-                        : (fallbackName.isNotEmpty ? fallbackName : "Variant"),
-                    "price":
-                    (map["price"] ?? map["regular_price"] ?? "0").toString(),
-                    "image": (map["image"] is Map &&
-                        map["image"]["src"] != null)
+                        : (fallbackName.isNotEmpty
+                        ? fallbackName
+                        : "Variant"),
+                    "price": (map["price"] ?? map["regular_price"] ?? "0")
+                        .toString(),
+                    "image":
+                    (map["image"] is Map && map["image"]["src"] != null)
                         ? map["image"]["src"]
                         : (map["image"] is String ? map["image"] : ""),
                     "sku": map["sku"] ?? "",
                   };
-                }).where((v) => v["id"] != null).toList();
+                })
+                    .where((v) => v["id"] != null)
+                    .toList();
               }
             }
           } catch (e) {
@@ -2198,12 +2324,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                   children: _tabController == null
                                       ? []
                                       : List.generate(tabs.length, (index) {
-                                    final tabOrderId =
-                                    _normalizeOrderId(
+                                    final tabOrderId = _normalizeOrderId(
                                         tabs[index]["orderId"]);
-                                    final isSelected = tabOrderId != null &&
-                                        tabOrderId ==
-                                            orderHelper.activeOrderId;
+                                    final isSelected =
+                                        tabOrderId != null &&
+                                            tabOrderId ==
+                                                orderHelper.activeOrderId;
 
                                     return Padding(
                                       padding: const EdgeInsets.symmetric(
@@ -2241,7 +2367,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                           child: Row(
                                             children: [
                                               Text(
-                                                (tabs[index]["title"] ?? "")
+                                                (tabs[index]["title"] ??
+                                                    "")
                                                     .toString(),
                                                 style: TextStyle(
                                                   color: isSelected
@@ -2742,7 +2869,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             orderHelper.activeOrderId = null;
             orderItems = [];
 
-            await _initializeTabController(); // ⭐ THIS TRIGGERS WELCOME
+            print("🧹 No tabs left → FINAL display reset");
+
+            // 🔥 FINAL authoritative reset
+            await CustomerDisplayService.resetDisplay();
+
+            await _initializeTabController();
+
             setState(() => _isLoading = false);
             return;
           }
@@ -5868,8 +6001,47 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                           ? ThemeNotifier.textDark
                                           : ThemeNotifier.textLight),
                                 ),
-                                Text(
-                                    "${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}", //Build #1.0.68
+                                Text((() {
+                                  final bool hasOnlyPayoutItems =
+                                      orderItems.isNotEmpty &&
+                                          orderItems.every((item) {
+                                            final name = (item[AppDBConst
+                                                .itemName] ??
+                                                item['item_name'] ??
+                                                '')
+                                                .toString()
+                                                .toLowerCase();
+                                            final type = (item[AppDBConst
+                                                .itemType] ??
+                                                item['item_type'] ??
+                                                '')
+                                                .toString()
+                                                .toLowerCase();
+                                            final isRefunded = item[
+                                            AppDBConst
+                                                .isRefundItem] ==
+                                                1 ||
+                                                item[AppDBConst
+                                                    .isRefundItem] ==
+                                                    true;
+                                            if (isRefunded) return true;
+                                            return name.contains(
+                                                TextConstants
+                                                    .payoutText) ||
+                                                type.contains(
+                                                    TextConstants
+                                                        .payoutText);
+                                          });
+                                  final double grossTotalValue =
+                                  (grossTotal as num).toDouble();
+                                  final double displayGrossTotal =
+                                  hasOnlyPayoutItems
+                                      ? -grossTotalValue.abs()
+                                      : grossTotalValue;
+                                  return displayGrossTotal < 0
+                                      ? "-${TextConstants.currencySymbol}${displayGrossTotal.abs().toStringAsFixed(2)}"
+                                      : "${TextConstants.currencySymbol}${displayGrossTotal.toStringAsFixed(2)}";
+                                })(), // Build #1.0.68
                                     style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 15,
@@ -5999,6 +6171,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                   String,
                                                   dynamic>.from(
                                                   rawOrder);
+
+                                              // Build #1.0.287: Ensure ID is preserved in map content
+                                              order['order_id'] =
+                                                  activeOrderId;
 
                                               // ────────────────────────────────────────────────
                                               // Remove ALL possible merchant discount fields
@@ -6447,6 +6623,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                           }
 
                           setState(() => _isPayBtnLoading = true);
+                          // 🔥 ADD THIS LINE
+                          // await Future.delayed(Duration(milliseconds: 100));
 
                           try {
                             final int? frozenCheckoutOrderId =
@@ -6473,7 +6651,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             // =======================================================
                             final box = StorageProvider.offlineOrders;
                             final hiveKey =
-                                frozenCheckoutOrderId.toString();
+                            frozenCheckoutOrderId.toString();
 
                             double totalEbtAfterDiscount = 0.0;
 
@@ -6682,8 +6860,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                 ? Map<String, dynamic>.from(
                                 existingLocal)
                                 : <String, dynamic>{
-                              'order_id':
-                              frozenCheckoutOrderId,
+                              'order_id': frozenCheckoutOrderId,
                               'id': frozenCheckoutOrderId,
                               'products':
                               <Map<String, dynamic>>[],
@@ -6765,26 +6942,48 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             // =======================================================
                             final result = await Navigator.push(
                               context,
-                              MaterialPageRoute(
-                                builder: (_) => OrderSummaryScreen(
-                                  formattedDate: displayDate,
-                                  formattedTime: displayTime,
-                                  orderItems: summaryItems,
-                                  grossTotal: grossAfterDiscount,
-                                  orderDiscount: orderDiscount,
-                                  merchantDiscount: merchantDiscount,
-                                  orderTax: totalTaxAfterDiscount,
-                                  netPayable: (grossAfterDiscount +
-                                      totalTaxAfterDiscount),
-                                  orderId: serverOrderId ??
-                                      frozenCheckoutOrderId,
-                                  isOfflineSynced: serverOrderId != null,
-                                  offlineOrderId:
-                                  frozenCheckoutOrderId,
-                                  cashbackFee: cashbackFee,
-                                  ebtAmount: totalEbtAfterDiscount,
-                                  discountAmount: discountAmount,
-                                ),
+                              PageRouteBuilder(
+                                pageBuilder: (context, animation,
+                                    secondaryAnimation) =>
+                                    OrderSummaryScreen(
+                                      formattedDate: displayDate,
+                                      formattedTime: displayTime,
+                                      orderItems: summaryItems,
+                                      grossTotal: grossAfterDiscount,
+                                      orderDiscount: orderDiscount,
+                                      merchantDiscount: merchantDiscount,
+                                      orderTax: totalTaxAfterDiscount,
+                                      netPayable: (grossAfterDiscount +
+                                          totalTaxAfterDiscount),
+                                      orderId: serverOrderId ??
+                                          frozenCheckoutOrderId,
+                                      isOfflineSynced: serverOrderId != null,
+                                      offlineOrderId: frozenCheckoutOrderId,
+                                      cashbackFee: cashbackFee,
+                                      ebtAmount: totalEbtAfterDiscount,
+                                      discountAmount: discountAmount,
+                                    ),
+                                transitionDuration:
+                                const Duration(milliseconds: 220),
+                                transitionsBuilder: (context, animation,
+                                    secondaryAnimation, child) {
+                                  final curved = CurvedAnimation(
+                                    parent: animation,
+                                    curve: Curves.easeOutCubic,
+                                  );
+
+                                  return FadeTransition(
+                                    opacity: curved,
+                                    child: SlideTransition(
+                                      position: Tween<Offset>(
+                                        begin: const Offset(0.05,
+                                            0), // slight right → natural feel
+                                        end: Offset.zero,
+                                      ).animate(curved),
+                                      child: child,
+                                    ),
+                                  );
+                                },
                               ),
                             );
                           } catch (e, s) {

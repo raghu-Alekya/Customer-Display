@@ -108,130 +108,175 @@ class MainActivity : FlutterActivity() {
             }
 
         // Customer display channel (Flutter -> Android)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "showWelcome" -> {
-                        val ok = showWelcomeOnCustomerDisplay()
-                        if (ok) {
-                            result.success("Welcome shown")
-                        } else {
-                            result.error("NO_DISPLAY", "No secondary display found", null)
-                        }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+            Log.d("CustomerDisplay", "📢 MethodChannel call → method=${call.method}, args=${call.arguments}")
+
+            when (call.method) {
+
+                "showWelcome" -> {
+                    Log.d("CustomerDisplay", "➡ showWelcome invoked")
+                    if (showWelcomeOnCustomerDisplay()) {
+                        Log.d("CustomerDisplay", "✔ Welcome displayed")
+                        result.success("Welcome shown")
+                    } else {
+                        Log.e("CustomerDisplay", "❌ No secondary display found for Welcome")
+                        result.error("NO_DISPLAY", "No secondary display found", null)
+                    }
+                }
+
+                "showWelcomeWithStore" -> {
+                    val storeId = call.argument<String>("storeId") ?: ""
+                    val storeName = call.argument<String>("storeName") ?: ""
+                    val storeLogoUrl = call.argument<String>("storeLogoUrl")
+                    val storeBaseUrl = call.argument<String>("storeBaseUrl") ?: ""
+
+                    Log.d(
+                        "CustomerDisplay",
+                        "➡ showWelcomeWithStore invoked → storeId=$storeId, storeName=$storeName, logoUrl=$storeLogoUrl, baseUrl=$storeBaseUrl"
+                    )
+
+                    currentStoreId = storeId
+                    currentStoreName = storeName
+                    currentStoreLogoUrl = storeLogoUrl
+                    currentStoreBaseUrl = storeBaseUrl
+
+                    // --- Call the slideshow API first to see logs ---
+                    if (storeBaseUrl.isNotEmpty()) {
+                        Thread {
+                            try {
+                                val apiUrl =
+                                    "$storeBaseUrl/wp-content/plugins/pinaka-pos-wp/promotion_images.php"
+                                val json = URL(apiUrl).readText()
+                                val jsonArray = JSONArray(json)
+
+                                val imageUrls = mutableListOf<String>()
+                                for (i in 0 until jsonArray.length()) {
+                                    val obj = jsonArray.getJSONObject(i)
+                                    val url = obj.getString("url")
+                                    imageUrls.add(url)
+                                }
+
+                                Log.d(
+                                    "CustomerDisplay",
+                                    "✅ Slideshow API returned ${imageUrls.size} images for store $storeName"
+                                )
+                                for (url in imageUrls) {
+                                    Log.d("CustomerDisplay", "Slide URL: $url")
+                                }
+
+                            } catch (e: Exception) {
+                                Log.e(
+                                    "CustomerDisplay",
+                                    "❌ Failed to load slideshow for store $storeName: ${e.message}"
+                                )
+                            }
+                        }.start()
+                    } else {
+                        Log.e(
+                            "CustomerDisplay",
+                            "storeBaseUrl is empty → cannot load slideshow for store $storeName"
+                        )
                     }
 
-                    "showWelcomeWithStore" -> {
-                        val storeId = call.argument<String>("storeId") ?: ""
-                        val storeName = call.argument<String>("storeName") ?: ""
-                        val storeLogoUrl = call.argument<String>("storeLogoUrl")
-                        val storeBaseUrl = call.argument<String>("storeBaseUrl") ?: ""
+                    // --- Show Welcome layout on customer display ---
+                    if (customerDisplayPresentation == null) {
+                        showWelcomeOnCustomerDisplay()
+                    }
 
-                        currentStoreId = storeId
-                        currentStoreName = storeName
-                        currentStoreLogoUrl = storeLogoUrl
-                        currentStoreBaseUrl = storeBaseUrl
-
-                        // Ensure presentation exists before calling showWelcomeLayout()
-                        if (customerDisplayPresentation == null) {
-                            val ok = showWelcomeOnCustomerDisplay()
-                            if (!ok) {
-                                result.error("NO_DISPLAY", "No secondary display found", null)
-                                return@setMethodCallHandler
-                            }
-                        }
-
+// ✅ Prevent override during active order
+                    if (!isOrderActive) {
                         customerDisplayPresentation?.showWelcomeLayout(
                             storeId,
                             storeName,
                             storeLogoUrl,
                             storeBaseUrl
                         )
-                        result.success("Welcome updated with store")
+                    } else {
+                        Log.d("CustomerDisplay", "⛔ Skipping welcome update — order is active")
                     }
 
-                    "showCustomerData" -> {
-                        // Extract args safely (MethodChannel types can be Map<String, Any?> at runtime)
-                        val orderId = call.argument<Int>("orderId") ?: 0
-                        val grossTotal = call.argument<Double>("grossTotal") ?: 0.0
-                        val discount = call.argument<Double>("discount") ?: 0.0
-                        val merchantDiscount = call.argument<Double>("merchantDiscount") ?: 0.0
-                        val netTotal = call.argument<Double>("netTotal") ?: 0.0
-                        val tax = call.argument<Double>("tax") ?: 0.0
-                        val netPayable = call.argument<Double>("netPayable") ?: 0.0
-                        val orderDate = call.argument<String>("orderDate") ?: ""
-                        val orderTime = call.argument<String>("orderTime") ?: ""
-                        val cashbackFee = call.argument<Double>("cashbackFee") ?: 0.0
-                        val loyaltyContact = call.argument<String>("loyaltyContact") ?: ""
-                        val storeId = call.argument<String>("storeId") ?: ""
-                        val storeName = call.argument<String>("storeName") ?: ""
-                        val storeLogoUrl = call.argument<String>("storeLogoUrl")
-                        val summaryEnabled = call.argument<Boolean>("summaryEnabled") ?: true
+                    result.success("Welcome updated with store")
+                }
 
-                        // Convert items payload
-                        val argsMap = call.arguments as? Map<*, *>
-                        val itemsAny = argsMap?.get("items")
-                        val items: List<Map<String, Any>> =
-                            (itemsAny as? List<*>)?.mapNotNull { entry ->
-                                if (entry is Map<*, *>) {
-                                    entry.entries.associate { (k, v) ->
-                                        k.toString() to (v ?: "")
-                                    }
-                                } else null
-                            } ?: emptyList()
 
-                        // Keep current store fields in sync
-                        if (storeId.isNotEmpty()) currentStoreId = storeId
-                        if (storeName.isNotEmpty()) currentStoreName = storeName
-                        if (!storeLogoUrl.isNullOrEmpty()) currentStoreLogoUrl = storeLogoUrl
+                "showCustomerData" -> {
+                    val orderId = call.argument<Int>("orderId") ?: 0
+                    val items = call.argument<List<Map<String, Any>>>("items") ?: emptyList()
+                    val grossTotal = call.argument<Double>("grossTotal") ?: 0.0
+                    val discount = call.argument<Double>("discount") ?: 0.0
+                    val merchantDiscount = call.argument<Double>("merchantDiscount") ?: 0.0
+                    val netTotal = call.argument<Double>("netTotal") ?: 0.0
+                    val tax = call.argument<Double>("tax") ?: 0.0
+                    val netPayable = call.argument<Double>("netPayable") ?: 0.0
+                    val orderDate = call.argument<String>("orderDate") ?: ""
+                    val orderTime = call.argument<String>("orderTime") ?: ""
+                    val cashbackFee = call.argument<Double>("cashbackFee") ?: 0.0
+                    val loyaltyContact = call.argument<String>("loyaltyContact") ?: ""
+                    val summaryEnabled = call.argument<Boolean>("summaryEnabled") ?: true
 
-                        // updateCustomerData() builds lots of views and logs on the UI thread.
-                        // Throttle + queue to avoid "not responding"/ANR during rapid cart updates.
-                        val now = SystemClock.uptimeMillis()
-                        val minIntervalMs = 400L
-                        if (now - lastCustomerDisplayUpdateMs < minIntervalMs) {
-                            result.success("throttled")
-                            return@setMethodCallHandler
-                        }
-                        lastCustomerDisplayUpdateMs = now
+                    Log.d("CustomerDisplay", "☎ Loyalty Contact received: $loyaltyContact")
 
-                        // Return immediately to Flutter (do not block this handler).
-                        Handler(Looper.getMainLooper()).post {
-                            showDataOnCustomerDisplay(
-                                orderId = orderId,
-                                storeId = currentStoreId,
-                                storeName = currentStoreName,
-                                storeLogoUrl = currentStoreLogoUrl,
-                                items = items,
-                                grossTotal = grossTotal,
-                                discount = discount,
-                                merchantDiscount = merchantDiscount,
-                                netTotal = netTotal,
-                                tax = tax,
-                                netPayable = netPayable,
-                                orderDate = orderDate,
-                                orderTime = orderTime,
-                                cashbackFee = cashbackFee,
-                                loyaltyContact = loyaltyContact,
-                                summaryEnabled = summaryEnabled
-                            )
-                        }
+                    Log.d("CustomerDisplay", "➡ showCustomerData invoked → orderId=$orderId, items=${items.size}, grossTotal=$grossTotal, discount=$discount, merchantDiscount=$merchantDiscount, netTotal=$netTotal, tax=$tax, netPayable=$netPayable")
+                    Log.d("CustomerDisplay", "➡ orderDate='$orderDate'")
+                    Log.d("CustomerDisplay", "➡ orderTime='$orderTime'")
 
-                        result.success("queued")
+                    val success = showDataOnCustomerDisplay(
+                        orderId, currentStoreId, currentStoreName, currentStoreLogoUrl, items,
+                        grossTotal, discount, merchantDiscount, netTotal, tax, netPayable,orderDate, orderTime,cashbackFee,loyaltyContact,summaryEnabled
+                    )
+
+                    if (success) {
+                        Log.d("CustomerDisplay", "✔ Customer data displayed")
+                        result.success("Data displayed")
+                    } else {
+                        Log.e("CustomerDisplay", "❌ No secondary display found for Customer data")
+                        result.error("NO_DISPLAY", "No secondary display found", null)
+                    }
+                }
+
+                "showThankYou" -> {
+                    Log.d("CustomerDisplay", "➡ showThankYou invoked")
+                    if (showThankYouOnCustomerDisplay()) {
+                        Log.d("CustomerDisplay", "✔ Thank You displayed")
+                        result.success("Thank You shown")
+                    } else {
+                        Log.e("CustomerDisplay", "❌ No secondary display found for Thank You")
+                        result.error("NO_DISPLAY", "No secondary display found", null)
+                    }
+                }
+                "resetDisplay" -> {
+                    Log.d("CustomerDisplay", "🔥 resetDisplay called")
+
+                    isOrderActive = false
+
+                    val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+                    val displays = displayManager.displays
+
+                    if (displays.size > 1) {
+                        val secondaryDisplay = displays[1]
+
+                        customerDisplayPresentation?.dismiss()
+                        customerDisplayPresentation =
+                            CustomerDisplayPresentation(this, secondaryDisplay)
+                        customerDisplayPresentation?.show()
+
+                        customerDisplayPresentation?.showWelcomeLayout(
+                            currentStoreId,
+                            currentStoreName,
+                            currentStoreLogoUrl,
+                            currentStoreBaseUrl
+                        )
                     }
 
-                    "showThankYou" -> {
-                        val ok = showThankYouOnCustomerDisplay()
-                        if (ok) {
-                            result.success("Thank You shown")
-                        } else {
-                            result.error("NO_DISPLAY", "No secondary display found", null)
-                        }
-                    }
+                    result.success("Display reset to welcome")
+                }
 
-                    else -> result.notImplemented()
+                else -> {
+                    Log.w("CustomerDisplay", "⚠ Method not implemented: ${call.method}")
+                    result.notImplemented()
                 }
             }
-
+        }
         // Sunmi card terminal (external Payment demo app) — must stay registered here;
         // the duplicate block below is commented out and is not executed.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PAYMENT_CHANNEL)
@@ -378,6 +423,7 @@ class MainActivity : FlutterActivity() {
     private var currentStoreBaseUrl: String = ""
     private val PAYMENT_CHANNEL = "sunmi_payment_channel"
     private var saleResultCallback: MethodChannel.Result? = null
+    private var isOrderActive = false
 
     // Throttle customer display updates to avoid UI thread stalls (ANR)
     private var lastCustomerDisplayUpdateMs: Long = 0L
@@ -864,23 +910,28 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         Log.d("CustomerDisplay", "➡ onResume called")
-        showWelcomeOnCustomerDisplay()
+//        showWelcomeOnCustomerDisplay()
     }
 
     private fun showWelcomeOnCustomerDisplay(): Boolean {
+
+        // ✅ BLOCK welcome if order is active
+        if (isOrderActive) {
+            Log.d("CustomerDisplay", "⛔ Ignoring Welcome — Order is active")
+            return true
+        }
+
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val displays = displayManager.displays
         Log.d("CustomerDisplay", "Detected displays: ${displays.size}")
 
         return if (displays.size > 1) {
             val secondaryDisplay = displays[1]
-            Log.d("CustomerDisplay", "Secondary display found: ${secondaryDisplay.name}")
 
             if (customerDisplayPresentation == null || customerDisplayPresentation?.display != secondaryDisplay) {
                 customerDisplayPresentation?.dismiss()
                 customerDisplayPresentation = CustomerDisplayPresentation(this, secondaryDisplay)
                 customerDisplayPresentation?.show()
-                Log.d("CustomerDisplay", "✔ CustomerDisplayPresentation shown on secondary display")
             }
             true
         } else {
@@ -888,7 +939,6 @@ class MainActivity : FlutterActivity() {
             false
         }
     }
-
     private fun showDataOnCustomerDisplay(
         orderId: Int,
         storeId: String,
@@ -907,10 +957,21 @@ class MainActivity : FlutterActivity() {
         loyaltyContact: String,
         summaryEnabled: Boolean
     ): Boolean {
+        // 🔥 ADD THIS LINE HERE (FIRST LINE)
+        isOrderActive = true
+
 
         if (customerDisplayPresentation == null) {
-            Log.d("CustomerDisplay", "CustomerDisplayPresentation null, showing Welcome first")
-            showWelcomeOnCustomerDisplay()
+            Log.d("CustomerDisplay", "CustomerDisplayPresentation null, recreating display")
+
+            val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+            val displays = displayManager.displays
+
+            if (displays.size > 1) {
+                val secondaryDisplay = displays[1]
+                customerDisplayPresentation = CustomerDisplayPresentation(this, secondaryDisplay)
+                customerDisplayPresentation?.show()
+            }
         }
 
         customerDisplayPresentation?.updateCustomerData(
@@ -939,6 +1000,8 @@ class MainActivity : FlutterActivity() {
 
 
     private fun showThankYouOnCustomerDisplay(): Boolean {
+        isOrderActive = false
+
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val displays = displayManager.displays
         Log.d("CustomerDisplay", "Detected displays: ${displays.size} for Thank You")
@@ -1139,12 +1202,18 @@ class MainActivity : FlutterActivity() {
             storeBaseUrl: String? = null
         ) {
             stopSlideshow()
+
+            // ✅ BLOCK if order already shown
+            if (firstOrderShown) {
+                Log.d("CustomerDisplay", "⛔ Skipping welcome — order already shown")
+                return
+            }
+
             Log.d("CustomerDisplay", "➡ Switching back to Welcome layout")
 
             Handler(Looper.getMainLooper()).post {
                 setContentView(R.layout.welcome_layout)
 
-                // update current store details
                 currentStoreId = storeId
                 currentStoreName = storeName
                 currentStoreLogoUrl = storeLogoUrl
@@ -1153,12 +1222,14 @@ class MainActivity : FlutterActivity() {
                 welcomeText = findViewById(R.id.welcome_text)
                 val footerText = findViewById<TextView>(R.id.footer_text)
                 val logoView = findViewById<ImageView>(R.id.welcome_logo)
-                slideshowImageView = findViewById(R.id.slideshow_image) // <-- important
+                slideshowImageView = findViewById(R.id.slideshow_image)
 
-                welcomeText.text = if (storeName.isNotEmpty()) "Welcome to $storeName" else "👋 Welcome to Pinaka"
-                footerText.visibility = if (storeName.isNotEmpty()) View.VISIBLE else View.GONE
+                welcomeText.text =
+                    if (storeName.isNotEmpty()) "Welcome to $storeName" else "👋 Welcome to Pinaka"
 
-                // Load logo
+                footerText.visibility =
+                    if (storeName.isNotEmpty()) View.VISIBLE else View.GONE
+
                 if (!storeLogoUrl.isNullOrEmpty()) {
                     Thread {
                         try {
@@ -1166,12 +1237,10 @@ class MainActivity : FlutterActivity() {
                             val bitmap = BitmapFactory.decodeStream(input)
                             Handler(Looper.getMainLooper()).post {
                                 logoView.setImageBitmap(bitmap)
-                                Log.d("CustomerDisplay", "✅ Welcome logo loaded")
                             }
                         } catch (e: Exception) {
                             Handler(Looper.getMainLooper()).post {
                                 logoView.setImageResource(R.drawable.pinaka_logo)
-                                Log.e("CustomerDisplay", "❌ Failed to load Welcome logo: ${e.message}")
                             }
                         }
                     }.start()
@@ -1179,16 +1248,15 @@ class MainActivity : FlutterActivity() {
                     logoView.setImageResource(R.drawable.pinaka_logo)
                 }
 
-                // Stop any previous slideshow
                 slideshowHandler?.removeCallbacksAndMessages(null)
                 slideshowHandler = Handler(Looper.getMainLooper())
 
-                // Load slideshow
                 if (!currentStoreBaseUrl.isNullOrEmpty() && storeName.isNotEmpty()) {
                     loadSlideshowFromApi(currentStoreBaseUrl)
                 }
 
-                firstOrderShown = false
+                // ❌ REMOVE THIS LINE
+                // firstOrderShown = false
             }
         }
 
@@ -1270,7 +1338,7 @@ class MainActivity : FlutterActivity() {
             cashbackFee: Double,
             loyaltyContact: String,
             summaryEnabled: Boolean
-        ) {
+        ) {  firstOrderShown = true
             val defaultStoreId = "STORE001"
             val defaultStoreName = "Pinaka"
             val defaultStoreLogoUrl: String? = null
@@ -1323,9 +1391,11 @@ class MainActivity : FlutterActivity() {
                 slideshowImageView.setImageResource(R.drawable.pinaka_logo)
                 slideshowImageView.scaleType = ImageView.ScaleType.CENTER_INSIDE
             }
-
             val summaryContainer = findViewById<LinearLayout>(R.id.summary_container)
 
+            // -----------------------------------------------------
+            // CASE A: Empty cart (items empty OR grossTotal = 0.0)
+            // -----------------------------------------------------
             // -----------------------------------------------------
             // CASE A: Empty cart (items empty OR grossTotal = 0.0)
             // -----------------------------------------------------
@@ -1333,8 +1403,12 @@ class MainActivity : FlutterActivity() {
 
             if (items.isEmpty() || grossTotal == 0.0) {
                 Log.d("CustomerDisplay", "📢 Empty cart → hide summary")
+                Log.d("CustomerDisplay", "🆔 EMPTY ORDER ID = $orderId")
 
                 summaryContainer.visibility = View.GONE
+
+                // ✅ ADD THIS LINE (CRITICAL)
+                orderIdView.text = " #$orderId"
 
                 // 🔲 Frame container
                 val frameLayout = LinearLayout(context).apply {

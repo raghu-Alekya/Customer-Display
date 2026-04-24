@@ -23,12 +23,21 @@ class CustomerDisplayService {
       print("✅ [CustomerDisplayService] Thank You screen displayed");
 
       // Revert to welcome automatically
-      Future.delayed(Duration(seconds: delaySeconds), () async {
-        print("🔄 [CustomerDisplayService] Reverting to welcome screen");
-        await showWelcome();
-      });
+      // Future.delayed(Duration(seconds: delaySeconds), () async {
+      //   print("🔄 [CustomerDisplayService] Reverting to welcome screen");
+      //   await showWelcome();
+      // });
     } catch (e) {
       print("⚠️ [CustomerDisplayService] Failed to show Thank You: $e");
+    }
+  }
+  static Future<void> resetDisplay() async {
+    try {
+      print("📢 [CustomerDisplayService] resetDisplay() called");
+      await _platform.invokeMethod('resetDisplay');
+      print("✅ [CustomerDisplayService] Display reset");
+    } catch (e) {
+      print("⚠️ [CustomerDisplayService] Failed to reset display: $e");
     }
   }
 

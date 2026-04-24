@@ -8,9 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:isar/isar.dart'; // Build #1.0.104
 import '../Constants/text.dart';
 import '../Helper/Extentions/money_rounding_helper.dart';
+import '../Helper/customerdisplayhelper.dart';
 import '../Models/Category/category_product_model.dart';
 import '../Models/Orders/get_orders_model.dart' as model;
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
+import '../services/CustomerDisplayService.dart';
 import '../services/customer_services.dart';
 import 'db_helper.dart';
 import 'isar_service.dart'; // Build #1.0.104
@@ -449,11 +451,31 @@ class OrderHelper {
 
   Future<void> loadData() async {
     final prefs = await SharedPreferences.getInstance();
-    activeOrderId = prefs.getInt('activeOrderId');
+    // Use local variables to avoid race conditions with other async tasks
+    int? currentActiveOrderId = prefs.getInt('activeOrderId');
+
+    // Build #1.0.287: Try to recover from lastActiveOrderId if activeOrderId is missing (fixes navigation focus jump)
+    if (currentActiveOrderId == null ||
+        currentActiveOrderId == 0 ||
+        currentActiveOrderId == -1) {
+      currentActiveOrderId = prefs.getInt('lastActiveOrderId');
+    }
+
     activeUserId = await getUserIdFromDB();
 
-    orderIds = [];
-    orders = [];
+    // Build #1.0.312: Defensive check for user ID during transitions
+    if (activeUserId == 0) {
+      if (kDebugMode)
+        print("⚠ activeUserId is 0 in loadData, attempting one retry...");
+      // Small pause and retry once
+      await Future.delayed(const Duration(milliseconds: 100));
+      activeUserId = await getUserIdFromDB();
+      if (activeUserId == 0 && kDebugMode)
+        print("⚠ activeUserId still 0 after retry");
+    }
+
+    List<int> localOrderIds = [];
+    List<Map<String, dynamic>> localOrders = [];
 
     // Always offline
     if (kDebugMode) print("📴 Loading offline orders");
@@ -496,6 +518,17 @@ class OrderHelper {
       // ✅ Normalize the root map
       final normalized = Map<String, dynamic>.from(entry.value as Map);
 
+      // Build #1.0.287: Ensure order_id is present in the map content (fallback to Hive Key)
+      // This prevents focus jumps if some code saved the order map without an internal ID.
+      if (!normalized.containsKey('order_id') &&
+          !normalized.containsKey('id') &&
+          !normalized.containsKey(AppDBConst.orderServerId)) {
+        final keyId = int.tryParse(entry.key.toString());
+        if (keyId != null) {
+          normalized['order_id'] = keyId;
+        }
+      }
+
       // ✅ Normalize nested 'products' list if present
       if (normalized['products'] is List) {
         final rawProducts = normalized['products'] as List;
@@ -530,11 +563,11 @@ class OrderHelper {
 
     if (validEntries.isNotEmpty) {
       // ⚡ Ensure mutable list (not fixed-length)
-      orders =
+      localOrders =
       List<Map<String, dynamic>>.from(validEntries.map((e) => e.value));
 
       // ✅ Sort by created_at ascending (oldest first) so that new orders stay on the right
-      orders.sort((a, b) {
+      localOrders.sort((a, b) {
         final aTime = a['created_at']?.toString() ?? '';
         final bTime = b['created_at']?.toString() ?? '';
         final cmp = aTime.compareTo(bTime);
@@ -545,7 +578,7 @@ class OrderHelper {
       });
 
       // ✅ Extract order IDs from sorted orders (keeps orderIds in sync)
-      orderIds = orders
+      localOrderIds = localOrders
           .map((map) {
         if (map.containsKey('order_id')) return map['order_id'] as int?;
         if (map.containsKey('id')) return map['id'] as int?;
@@ -556,39 +589,55 @@ class OrderHelper {
           .toList();
 
       // Build #1.0.285: Validate if restored activeOrderId belongs to current user
-      if (activeOrderId != null) {
+      if (currentActiveOrderId != null) {
         final box = StorageProvider.offlineOrders;
-        final raw = await box.get(activeOrderId.toString());
+        final raw = await box.get(currentActiveOrderId.toString());
         if (raw != null && raw is Map) {
           final dynamic orderUserId = raw['user_id'] ?? raw[AppDBConst.userId];
-          if (orderUserId?.toString() != activeUserId.toString()) {
+          if (orderUserId?.toString() != activeUserId.toString() &&
+              activeUserId != 0) {
             if (kDebugMode)
               print(
-                  "🚫 Restored Order $activeOrderId filtered: Wrong User $orderUserId");
-            activeOrderId = null;
+                  "🚫 Restored Order $currentActiveOrderId filtered: Wrong User $orderUserId (activeUser: $activeUserId)");
+            currentActiveOrderId = null;
           }
         } else {
           // check DB if not in hive
-          final dbOrders = await getOrderById(activeOrderId!);
+          final dbOrders = await getOrderById(currentActiveOrderId);
           if (dbOrders.isEmpty) {
-            activeOrderId = null;
+            currentActiveOrderId = null;
           }
         }
       }
 
       // ✅ Set active order ID if not found or invalid
-      if (activeOrderId == null || !orderIds.contains(activeOrderId)) {
-        activeOrderId = orderIds.isNotEmpty ? orderIds.last : null;
-        if (activeOrderId != null) {
-          await prefs.setInt('activeOrderId', activeOrderId!);
+      if (currentActiveOrderId == null ||
+          !localOrderIds.contains(currentActiveOrderId)) {
+        // Build #1.0.315: Last attempt restore from checkpoint before jumping to newest
+        currentActiveOrderId = prefs.getInt('lastActiveOrderId');
+        if (currentActiveOrderId != null &&
+            !localOrderIds.contains(currentActiveOrderId)) {
+          currentActiveOrderId = null;
+        }
+
+        currentActiveOrderId ??=
+        localOrderIds.isNotEmpty ? localOrderIds.last : null;
+
+        if (currentActiveOrderId != null) {
+          await prefs.setInt('activeOrderId', currentActiveOrderId);
         }
       }
     } else {
       if (kDebugMode) print("⚠ No valid offline order maps found in Hive");
-      activeOrderId = null;
-      orderIds = [];
-      orders = [];
+      currentActiveOrderId = null;
+      localOrderIds = [];
+      localOrders = [];
     }
+
+    // Final assignment to class properties
+    orderIds = localOrderIds;
+    orders = localOrders;
+    activeOrderId = currentActiveOrderId;
 
     if (kDebugMode) {
       print("#### Offline Orders Loaded ####");
@@ -674,7 +723,7 @@ class OrderHelper {
       if (panelPayments.isEmpty) {
         if (kDebugMode) {
           print(
-              "#### BLOCKED - Order $panelOrderId still on order panel (no payments); shift close not allowed",
+            "#### BLOCKED - Order $panelOrderId still on order panel (no payments); shift close not allowed",
           );
         }
         return true;
@@ -727,7 +776,8 @@ class OrderHelper {
       // If any payment exists and no remaining balance, allow close shift.
       // Some rows can carry total=0 while still having completed payments.
       if (hasPayments && remaining <= 0) {
-        print("#### Order $orderId has payments and zero balance → allowed to close shift");
+        print(
+            "#### Order $orderId has payments and zero balance → allowed to close shift");
         continue;
       }
 
@@ -1993,9 +2043,23 @@ class OrderHelper {
       await prefs.remove('activeOrderId');
     }
 
-    // Reload the updated order list
     await loadData();
 
+// ✅ Capture final state AFTER loadData
+    final int? finalActiveId = activeOrderId;
+
+    print("🎯 Final activeOrderId after loadData: $finalActiveId");
+
+// 🔥 SYNC CUSTOMER DISPLAY AFTER DELETE
+    if (finalActiveId != null) {
+      print("🔄 Active order exists → updating display: $finalActiveId");
+
+      await CustomerDisplayHelper.updateCustomerDisplay(finalActiveId);
+    } else {
+      print("🧹 No active order → resetting display");
+
+      await CustomerDisplayService.resetDisplay();
+    }
     // Debugging logs
     if (kDebugMode) {
       print('#### Order deleted with ID: $orderId');
@@ -2271,9 +2335,8 @@ class OrderHelper {
           'item_variation': vid,
           'item_variation_id': vid,
           'variation_name': vName,
-          'is_variant': vid > 0 ||
-              itemType == 'variant' ||
-              itemType == 'variation',
+          'is_variant':
+          vid > 0 || itemType == 'variant' || itemType == 'variation',
           'sku': map['sku'] ?? '',
           AppDBConst.multipackDiscount: multipack,
           AppDBConst.autoDiscountTotal: auto,

@@ -288,7 +288,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String cancelled             = "cancelled";
   static const String completed             = "completed";
   static const String onhold                = "on-hold";
-  static const String pending               = "pending";
+  static const String pending               = "Pending";
   static const String orderCancelled        = "Order successfully cancelled";
   static const String orderCompleted        = "Order successfully completed";
   static const String orderOnHold           = "Order changed to \'On Hold\'";
