@@ -571,6 +571,23 @@ class _TopBarState extends State<TopBar> {
         return;
       }
 
+      // ── 2-B. Extract last event_version from the changes list ──────────────
+      int? lastEventVersion;
+      for (final change in changes) {
+        final dynamic rawVersion = change['event_version'];
+        if (rawVersion == null) continue;
+        final int? version = rawVersion is int
+            ? rawVersion
+            : int.tryParse(rawVersion.toString());
+        if (version != null &&
+            (lastEventVersion == null || version > lastEventVersion)) {
+          lastEventVersion = version;
+        }
+      }
+      if (kDebugMode) {
+        print('📌 Last event_version from changes: $lastEventVersion');
+      }
+
       // ── 3. Split changes by event_type ─────────────────────────────────────
       final List<Map<String, dynamic>> toUpsert = []; // created + updated
       final List<int> toDelete = [];                   // deleted product IDs
@@ -582,8 +599,6 @@ class _TopBarState extends State<TopBar> {
         (change['event_type'] as String? ?? '').toLowerCase();
 
         if (eventType == 'deleted') {
-          // For deleted events the `data` block may be absent or minimal;
-          // fall back to post_id when data.id is unavailable.
           final dynamic rawId = change['data']?['id'] ?? change['post_id'];
           final int? id = rawId is int
               ? rawId
@@ -592,7 +607,7 @@ class _TopBarState extends State<TopBar> {
             toDelete.add(id);
             if (kDebugMode) print('🗑️ Queued DELETE for product id=$id');
           }
-        } else if (eventType == 'created' || eventType == 'updated') {
+        } else if (eventType == 'created' || eventType == 'updated' ||eventType == 'restored') {
           if (change['data'] is Map) {
             toUpsert.add(Map<String, dynamic>.from(change['data'] as Map));
             if (kDebugMode) {
@@ -622,48 +637,31 @@ class _TopBarState extends State<TopBar> {
       }
 
       /// Detects the age-restriction tag and returns the minimum age (0 = none).
-      ///
-      /// Rule: tag name == "Age Restricted" (case-insensitive).
-      /// The minimum age is the numeric value of that tag's SLUG (e.g. "21").
       int minAgeFromTags(List<dynamic> tags) {
         for (final t in tags) {
           final name = (t['name'] ?? '').toString().toLowerCase().trim();
-          // Match "age restricted" by name — the slug carries the age number.
           if (name == TextConstants.age_restricted.toLowerCase().trim()) {
             final int parsed =
                 int.tryParse((t['slug'] ?? '').toString().trim()) ?? 0;
-            // If slug is non-numeric (e.g. "age-restricted"), default to 18.
             return parsed > 0 ? parsed : 18;
           }
         }
         return 0;
       }
 
-      /// Normalise one API product map into the exact shape stored in Isar and
-      /// read by CategoriesScreen, NestedGridWidget, and _handleProductTap.
-      ///
-      /// Key design decisions:
-      ///   • `tags`              – original API list, original casing.
-      ///                           _handleProductTap builds SKU.Tags from this.
-      ///   • `fast_key_item_tags`– same list but name/slug lowercased so
-      ///                           CategoriesScreen age-check works.
-      ///   • `fast_key_item_min_age` / `has_age_restriction` – pre-computed from
-      ///                           the numeric slug of the "Age Restricted" tag.
+      /// Normalise one API product map into the exact shape stored in Isar.
       Map<String, dynamic> normaliseProduct(Map<String, dynamic> p) {
-        // ── tags ──────────────────────────────────────────────────────────────
         final List<dynamic> rawTags = (p['tags'] as List?) ?? [];
 
-        // Original-case tags (used by _handleProductTap → SKU.Tags).
         final List<Map<String, dynamic>> originalTags = rawTags
             .whereType<Map>()
             .map((t) => {
           'id': t['id'],
-          'name': (t['name'] ?? '').toString(),   // ← original casing
-          'slug': (t['slug'] ?? '').toString(),   // ← original casing
+          'name': (t['name'] ?? '').toString(),
+          'slug': (t['slug'] ?? '').toString(),
         })
             .toList();
 
-        // Lowercased tags (used by CategoriesScreen / NestedGridWidget age check).
         final List<Map<String, dynamic>> lowercasedTags = rawTags
             .whereType<Map>()
             .map((t) => {
@@ -684,7 +682,6 @@ class _TopBarState extends State<TopBar> {
               '${originalTags.map((t) => '${t['name']}(${t['slug']})').toList()}');
         }
 
-        // ── images ────────────────────────────────────────────────────────────
         final List<dynamic> images = (p['images'] as List?) ?? [];
         final String imageUrl = images.isNotEmpty
             ? ((images.first is Map)
@@ -693,34 +690,23 @@ class _TopBarState extends State<TopBar> {
             : '';
 
         return {
-          // ── CategoriesScreen / NestedGridWidget keys ──────────────────────
           'fast_key_product_id': p['id'],
           'fast_key_item_name':  p['name'] ?? '',
           'fast_key_item_image': imageUrl,
           'fast_key_item_price': p['price'] ?? p['regular_price'] ?? '0',
           'fast_key_item_sku':   p['sku'] ?? '',
-
-          // Lowercased for CategoriesScreen age-restriction check
           'fast_key_item_tags':  lowercasedTags,
-
-          // Pre-computed age values
           'fast_key_item_min_age': minAge,
           'has_age_restriction':   minAge > 0,
-
           'variations': p['variations'] ?? [],
           'type':       p['type'] ?? 'simple',
-
-          // ── TopBar search overlay / _handleProductTap keys ────────────────
           'id':           p['id'],
           'name':         p['name'] ?? '',
           'price':        p['price'] ?? p['regular_price'] ?? '0',
           'regular_price':p['regular_price'] ?? '',
           'sku':          p['sku'] ?? '',
           'images':       images,
-
-          // Original-case tags so _handleProductTap → SKU.Tags works correctly
           'tags':         originalTags,
-
           'is_ebt_eligible': isEbtEligibleFromTags(rawTags),
           'tax':          p['tax'],
         };
@@ -754,7 +740,7 @@ class _TopBarState extends State<TopBar> {
               ?.toString() ==
               productId.toString(),
         );
-        if (list.length == before) return null; // wasn't in this entry
+        if (list.length == before) return null;
 
         return entry
           ..json = jsonEncode(list)
@@ -764,13 +750,12 @@ class _TopBarState extends State<TopBar> {
       // ── 5. Single Isar write transaction ───────────────────────────────────
       await isar.writeTxn(() async {
 
-        // ══════════════════════════════════════════════════════════════════════
-        // 5-A  DELETED — scrub from every cached list + all related keys
-        // ══════════════════════════════════════════════════════════════════════
+        // ════════════════════════════════════════════════════════════════════
+        // 5-A  DELETED
+        // ════════════════════════════════════════════════════════════════════
         for (final productId in toDelete) {
-          if (kDebugMode) print('🗑️  Processing DELETE for product $productId…');
+          if (kDebugMode) print('Processing DELETE for product $productId…');
 
-          // Scrub from every products_* entry
           final List<IsarCacheEntry> productEntries = await isar.isarCacheEntrys
               .where()
               .filter()
@@ -786,7 +771,6 @@ class _TopBarState extends State<TopBar> {
             }
           }
 
-          // Scrub from every indigo_products_* entry
           final List<IsarCacheEntry> indigoEntries = await isar.isarCacheEntrys
               .where()
               .filter()
@@ -802,13 +786,11 @@ class _TopBarState extends State<TopBar> {
             }
           }
 
-          // Delete sku_<id>
           await isar.isarCacheEntrys
               .filter()
               .keyEqualTo('sku_$productId')
               .deleteAll();
 
-          // Delete product_<id>_variations
           await isar.isarCacheEntrys
               .filter()
               .keyEqualTo('product_${productId}_variations')
@@ -817,11 +799,9 @@ class _TopBarState extends State<TopBar> {
           if (kDebugMode) print('  ✅ Product $productId fully deleted from Isar');
         }
 
-        // ══════════════════════════════════════════════════════════════════════
-        // 5-B  CREATED / UPDATED — upsert into matching category cache entries
-        // ══════════════════════════════════════════════════════════════════════
-
-        // Group normalised products by their category IDs.
+        // ════════════════════════════════════════════════════════════════════
+        // 5-B  CREATED / UPDATED
+        // ════════════════════════════════════════════════════════════════════
         final Map<int, List<Map<String, dynamic>>> categoryProductMap = {};
 
         for (final productData in toUpsert) {
@@ -829,7 +809,6 @@ class _TopBarState extends State<TopBar> {
               (productData['categories'] as List?) ?? [];
 
           if (apiCategories.isEmpty) {
-            // No category info — still clean up sku cache
             final int? id = productData['id'] is int
                 ? productData['id'] as int
                 : int.tryParse(productData['id']?.toString() ?? '');
@@ -861,7 +840,7 @@ class _TopBarState extends State<TopBar> {
           final int catId = mapEntry.key;
           final List<Map<String, dynamic>> updatedProducts = mapEntry.value;
 
-          // ── products_<catId> ───────────────────────────────────────────────
+          // ── products_<catId> ─────────────────────────────────────────────
           final String categoryKey = 'products_$catId';
           final IsarCacheEntry? existing = await isar.isarCacheEntrys
               .where()
@@ -887,7 +866,6 @@ class _TopBarState extends State<TopBar> {
                   productId.toString(),
             );
             if (idx >= 0) {
-              // Merge — API data wins; preserve any extra cached keys
               cachedList[idx] = {...cachedList[idx], ...updated};
               if (kDebugMode) {
                 print('♻️  Upserted $productId → $categoryKey | '
@@ -909,7 +887,7 @@ class _TopBarState extends State<TopBar> {
               ..timestamp = DateTime.now(),
           );
 
-          // ── indigo_products_<catId> ────────────────────────────────────────
+          // ── indigo_products_<catId> ──────────────────────────────────────
           final String indigoKey = 'indigo_products_$catId';
           final IsarCacheEntry? indigoExisting = await isar.isarCacheEntrys
               .where()
@@ -949,7 +927,7 @@ class _TopBarState extends State<TopBar> {
               ..timestamp = DateTime.now(),
           );
 
-          // ── Clean up sku_* for each upserted product ───────────────────────
+          // ── Clean up sku_* for each upserted product ─────────────────────
           for (final updated in updatedProducts) {
             final int productId = updated['fast_key_product_id'] as int? ?? 0;
             if (productId != 0) {
@@ -965,6 +943,44 @@ class _TopBarState extends State<TopBar> {
       if (kDebugMode) {
         print('✅ Isar sync complete — '
             'upserted: ${toUpsert.length}, deleted: ${toDelete.length}');
+      }
+
+      // ── 5-C. Acknowledge sync version to server ────────────────────────────
+      if (lastEventVersion != null) {
+        try {
+          final updateUrl = Uri.parse(
+            '${UrlHelper.baseUrl}'
+                '${UrlHelper.componentVersionUrl}'
+                'data-sync/update-data-count',
+          );
+
+          final updateResponse = await http.post(
+            updateUrl,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'device_id': 'POS-003',
+              'last_sync_version': lastEventVersion,
+            }),
+          );
+
+          if (kDebugMode) {
+            if (updateResponse.statusCode == 200) {
+              print('✅ Sync version acknowledged: '
+                  'last_sync_version=$lastEventVersion — '
+                  '${updateResponse.body}');
+            } else {
+              print('⚠️ update-data-count failed: '
+                  '${updateResponse.statusCode} — ${updateResponse.body}');
+            }
+          }
+        } catch (e) {
+          // Non-fatal — the local Isar sync already succeeded.
+          // Log and continue so the user still sees the success snackbar.
+          if (kDebugMode) print('⚠️ update-data-count error (non-fatal): $e');
+        }
       }
 
       // ── 6. Invalidate in-memory caches ─────────────────────────────────────

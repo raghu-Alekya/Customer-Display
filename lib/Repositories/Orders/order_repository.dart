@@ -795,6 +795,9 @@ class OrderRepository {
       if (localOrderIdInt == null) {
         debugPrint("❌ Cannot load payments → local order id missing");
       }
+      // final String orderDateTime =
+      //     offlineOrder['created_at']?.toString() ??
+      //         DateTime.now().toIso8601String();
 
       final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
       final int? existingWooOrderId =
@@ -1304,6 +1307,7 @@ class OrderRepository {
         "payment_method_title": "POS-CASH",
         "set_paid": true,
         "status": "processing",
+        // "date_created": orderDateTime,
         "meta_data": metaData,
         "fee_lines": feeLines,
         "line_items": lineItems,
