@@ -74,7 +74,7 @@ class StoreDetailsBloc extends Bloc<StoreDetailsEvent, StoreDetailsState> {
   ) async {
     emit(const StoreDetailsLoading());
     try {
-      final details = await _repository.fetchStoreDetails(token: event.token);
+      final details = await _repository.getStoreDetails(token: event.token);
       emit(StoreDetailsLoaded(details));
     } catch (e) {
       emit(StoreDetailsError(e.toString()));

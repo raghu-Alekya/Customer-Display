@@ -1,22 +1,26 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:keyos_app/Homescreen.dart';
 import 'package:keyos_app/cart_manger.dart';
 import 'package:keyos_app/widgets/kiosk_header_widgets.dart';
 import 'package:keyos_app/widgets/settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../repository/store_details_repository.dart';
 import 'cash_receipt.dart';
 import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart' as esc;
 import 'package:thermal_printer/thermal_printer.dart';
+import 'package:image/image.dart' as img;
 
-class CashMethodScreen extends StatelessWidget {
+class CashMethodScreen extends StatefulWidget {
   final String orderType;
   final double subtotal;
   final double tax;
   final double total;
   final int? orderId;
 
-   CashMethodScreen({
+  const CashMethodScreen({
     super.key,
     required this.orderType,
     required this.subtotal,
@@ -24,6 +28,13 @@ class CashMethodScreen extends StatelessWidget {
     required this.total,
     required this.orderId,
   });
+
+  @override
+  State<CashMethodScreen> createState() => _CashMethodScreenState();
+}
+
+class _CashMethodScreenState extends State<CashMethodScreen> {
+  bool _isPrinting = false;
 
   String _formatAmount(double amount) => '\$${amount.toStringAsFixed(2)}';
 
@@ -33,104 +44,377 @@ class CashMethodScreen extends StatelessWidget {
       return sum + qty;
     });
   }
+  // Future<List<int>> buildCashReceiptBytes({
+  //   required String orderType,
+  //   required double subtotal,
+  //   required double tax,
+  //   required double total,
+  //   required int? orderId,
+  // }) async {
+  //   final profile = await esc.CapabilityProfile.load();
+  //   final generator = esc.Generator(esc.PaperSize.mm80, profile);
+  //   final bytes = <int>[];
+  //   // Header
+  //   bytes.addAll(generator.text(
+  //     'Kiosk',
+  //     styles: const esc.PosStyles(
+  //       align: esc.PosAlign.center,
+  //       bold: true,
+  //       height: esc.PosTextSize.size2,
+  //       width: esc.PosTextSize.size2,
+  //     ),
+  //   ));
+  //   bytes.addAll(generator.text(
+  //     'Order: ${orderId ?? '--'}',
+  //     styles: const esc.PosStyles(align: esc.PosAlign.center),
+  //   ));
+  //   bytes.addAll(generator.text(
+  //     orderType,
+  //     styles: const esc.PosStyles(align: esc.PosAlign.center),
+  //   ));
+  //   bytes.addAll(generator.hr());
+  //   // Items
+  //   for (final item in CartManager.cartItems) {
+  //     final product = item['product'];
+  //     final qty = (item['qty'] as num).toInt();
+  //     final addons = (item['addons'] as List);
+  //     final price =
+  //         double.tryParse(product.price.replaceAll('₹', '')) ?? 0.0;
+  //     final addonTotal =
+  //     addons.fold<double>(0, (sum, a) => sum + (a.price as double));
+  //     final lineTotal = (price + addonTotal) * qty;
+  //     bytes.addAll(generator.row([
+  //       esc.PosColumn(
+  //         text: '${product.name}  x  $qty',
+  //         width: 8,
+  //       ),
+  //       esc.PosColumn(
+  //         text: lineTotal.toStringAsFixed(2),
+  //         width: 4,
+  //         styles: const esc.PosStyles(align: esc.PosAlign.right),
+  //       ),
+  //     ]));
+  //     for (final a in addons) {
+  //       bytes.addAll(generator.text(
+  //         '  + ${a.name}',
+  //         styles: const esc.PosStyles(align: esc.PosAlign.left),
+  //       ));
+  //     }
+  //   }
+  //   bytes.addAll(generator.hr());
+  //   // Totals
+  //   bytes.addAll(generator.row([
+  //     esc.PosColumn(text: 'Sub Total', width: 8),
+  //     esc.PosColumn(
+  //       text: subtotal.toStringAsFixed(2),
+  //       width: 4,
+  //       styles: const esc.PosStyles(align: esc.PosAlign.right),
+  //     ),
+  //   ]));
+  //   bytes.addAll(generator.row([
+  //     esc.PosColumn(text: 'Tax', width: 8),
+  //     esc.PosColumn(
+  //       text: tax.toStringAsFixed(2),
+  //       width: 4,
+  //       styles: const esc.PosStyles(align: esc.PosAlign.right),
+  //     ),
+  //   ]));
+  //   bytes.addAll(generator.row([
+  //     esc.PosColumn(text: 'Net Payable', width: 8),
+  //     esc.PosColumn(
+  //       text: total.toStringAsFixed(2),
+  //       width: 4,
+  //       styles: const esc.PosStyles(
+  //         align: esc.PosAlign.right,
+  //         bold: true,
+  //       ),
+  //     ),
+  //   ]));
+  //   bytes.addAll(generator.hr(ch: '=', linesAfter: 1));
+  //   bytes.addAll(generator.text(
+  //     'Thank you!',
+  //     styles: const esc.PosStyles(
+  //       align: esc.PosAlign.center,
+  //       bold: true,
+  //     ),
+  //   ));
+  //   bytes.addAll(generator.feed(3));
+  //   bytes.addAll(generator.cut());
+  //   return bytes;
+  // }
+  Future<void> cacheLogo(String url) async {
+    try {
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          'store_logo',
+          base64Encode(response.bodyBytes),
+        );
+      }
+    } catch (_) {}
+  }
+
   Future<List<int>> buildCashReceiptBytes({
     required String orderType,
     required double subtotal,
     required double tax,
     required double total,
     required int? orderId,
+    required String token,
   }) async {
     final profile = await esc.CapabilityProfile.load();
     final generator = esc.Generator(esc.PaperSize.mm80, profile);
     final bytes = <int>[];
-    // Header
+
+
+    // ✅ GET STORE (FROM CACHE + API)
+    final store = await StoreDetailsRepository()
+        .getStoreDetails(token: token);
+
+    // ================================
+    // 🖼 LOGO
+    // ================================
+    // ================================
+// 🖼 LOGO (CACHE + FALLBACK)
+// ================================
+    final prefs = await SharedPreferences.getInstance();
+    final logoBase64 = prefs.getString('store_logo');
+
+    img.Image? image;
+
+// ✅ 1. Try cached logo
+    if (logoBase64 != null) {
+      try {
+        final bytesImage = base64Decode(logoBase64);
+        image = img.decodeImage(bytesImage);
+      } catch (_) {}
+    }
+
+// ✅ 2. Fallback → download if not cached
+    if (image == null && store.logo.isNotEmpty) {
+      try {
+        final response = await http.get(Uri.parse(store.logo));
+
+        if (response.statusCode == 200) {
+          final bytesImage = response.bodyBytes;
+          image = img.decodeImage(bytesImage);
+
+          // 💾 Save to cache for next time
+          await prefs.setString(
+            'store_logo',
+            base64Encode(bytesImage),
+          );
+        }
+      } catch (_) {}
+    }
+
+// ✅ 3. Print logo
+    if (image != null) {
+      image = img.grayscale(image); // 🔥 better for thermal printers
+
+      final resized = img.copyResize(image, width: 380);
+
+      bytes.addAll(generator.imageRaster(
+        resized,
+        align: esc.PosAlign.center,
+      ));
+
+      bytes.addAll(generator.feed(1));
+    }
+    // ================================
+    // 🏪 STORE INFO
+    // ================================
     bytes.addAll(generator.text(
-      'My Kiosk',
+      store.name,
       styles: const esc.PosStyles(
         align: esc.PosAlign.center,
         bold: true,
         height: esc.PosTextSize.size2,
-        width: esc.PosTextSize.size2,
       ),
     ));
+
     bytes.addAll(generator.text(
-      'Order: ${orderId ?? '--'}',
+      store.address,
       styles: const esc.PosStyles(align: esc.PosAlign.center),
     ));
+
     bytes.addAll(generator.text(
-      orderType,
+      store.cityLine,
       styles: const esc.PosStyles(align: esc.PosAlign.center),
     ));
+
+    bytes.addAll(generator.text(
+      "Phone: ${store.phoneNumber}",
+      styles: const esc.PosStyles(align: esc.PosAlign.center),
+    ));
+
     bytes.addAll(generator.hr());
-    // Items
+
+    // ================================
+    // 📅 DATE & TIME
+    // ================================
+    final now = DateTime.now();
+    final date = "${now.day}/${now.month}/${now.year}";
+    final time =
+        "${now.hour}:${now.minute.toString().padLeft(2, '0')}";
+
+    bytes.addAll(generator.row([
+      esc.PosColumn(text: "Date: $date", width: 6),
+      esc.PosColumn(
+        text: "Time: $time",
+        width: 6,
+        styles: const esc.PosStyles(align: esc.PosAlign.right),
+      ),
+    ]));
+
+    bytes.addAll(generator.row([
+      esc.PosColumn(text: "Order: ${orderId ?? '--'}", width: 6),
+      esc.PosColumn(
+        text: orderType,
+        width: 6,
+        styles: const esc.PosStyles(align: esc.PosAlign.right),
+      ),
+    ]));
+
+    bytes.addAll(generator.hr());
+
+    // ================================
+    // 🧾 ITEM HEADER (80mm)
+    // ================================
+    bytes.addAll(generator.row([
+      esc.PosColumn(text: "#", width: 1, styles: esc.PosStyles(bold: true)),
+      esc.PosColumn(text: "Item", width: 5, styles: esc.PosStyles(bold: true)),
+      esc.PosColumn(
+          text: "Qty",
+          width: 2,
+          styles: esc.PosStyles(align: esc.PosAlign.center, bold: true)),
+      esc.PosColumn(
+          text: "Rate",
+          width: 2,
+          styles: esc.PosStyles(align: esc.PosAlign.right, bold: true)),
+      esc.PosColumn(
+          text: "Amt",
+          width: 2,
+          styles: esc.PosStyles(align: esc.PosAlign.right, bold: true)),
+    ]));
+
+    bytes.addAll(generator.feed(1));
+
+    // ================================
+    // 🛒 ITEMS
+    // ================================
+    int index = 1;
+
     for (final item in CartManager.cartItems) {
       final product = item['product'];
       final qty = (item['qty'] as num).toInt();
       final addons = (item['addons'] as List);
+
       final price =
           double.tryParse(product.price.replaceAll('₹', '')) ?? 0.0;
+
       final addonTotal =
       addons.fold<double>(0, (sum, a) => sum + (a.price as double));
-      final lineTotal = (price + addonTotal) * qty;
+
+      final rate = price + addonTotal;
+      final amount = rate * qty;
+
       bytes.addAll(generator.row([
+        esc.PosColumn(text: "${index++}", width: 1),
+        esc.PosColumn(text: product.name, width: 5),
         esc.PosColumn(
-          text: '${product.name}  x  $qty',
-          width: 8,
-        ),
+            text: "$qty",
+            width: 2,
+            styles: const esc.PosStyles(align: esc.PosAlign.center)),
         esc.PosColumn(
-          text: lineTotal.toStringAsFixed(2),
-          width: 4,
-          styles: const esc.PosStyles(align: esc.PosAlign.right),
-        ),
+            text: rate.toStringAsFixed(2),
+            width: 2,
+            styles: const esc.PosStyles(align: esc.PosAlign.right)),
+        esc.PosColumn(
+            text: amount.toStringAsFixed(2),
+            width: 2,
+            styles: const esc.PosStyles(align: esc.PosAlign.right)),
       ]));
+
+      // Addons
       for (final a in addons) {
-        bytes.addAll(generator.text(
-          '  + ${a.name}',
-          styles: const esc.PosStyles(align: esc.PosAlign.left),
-        ));
+        bytes.addAll(generator.row([
+          esc.PosColumn(text: "  + ${a.name}", width: 10),
+          esc.PosColumn(
+            text: (a.price as double).toStringAsFixed(2),
+            width: 2,
+            styles: const esc.PosStyles(align: esc.PosAlign.right),
+          ),
+        ]));
       }
+
+      bytes.addAll(generator.feed(1));
     }
+
     bytes.addAll(generator.hr());
-    // Totals
+
+    // ================================
+    // 💰 TOTALS
+    // ================================
     bytes.addAll(generator.row([
-      esc.PosColumn(text: 'Sub Total', width: 8),
+      esc.PosColumn(text: "Sub Total", width: 8),
       esc.PosColumn(
         text: subtotal.toStringAsFixed(2),
         width: 4,
         styles: const esc.PosStyles(align: esc.PosAlign.right),
       ),
     ]));
+
     bytes.addAll(generator.row([
-      esc.PosColumn(text: 'Tax', width: 8),
+      esc.PosColumn(text: "Tax", width: 8),
       esc.PosColumn(
         text: tax.toStringAsFixed(2),
         width: 4,
         styles: const esc.PosStyles(align: esc.PosAlign.right),
       ),
     ]));
+
     bytes.addAll(generator.row([
-      esc.PosColumn(text: 'Net Payable', width: 8),
+      esc.PosColumn(
+        text: "NET PAYABLE",
+        width: 8,
+        styles: const esc.PosStyles(
+          bold: true,
+          height: esc.PosTextSize.size2,
+        ),
+      ),
       esc.PosColumn(
         text: total.toStringAsFixed(2),
         width: 4,
         styles: const esc.PosStyles(
           align: esc.PosAlign.right,
           bold: true,
+          height: esc.PosTextSize.size2,
         ),
       ),
     ]));
+
     bytes.addAll(generator.hr(ch: '=', linesAfter: 1));
+
+    // ================================
+    // 🙏 FOOTER
+    // ================================
     bytes.addAll(generator.text(
-      'Thank you!',
+      "Thank you!",
       styles: const esc.PosStyles(
         align: esc.PosAlign.center,
         bold: true,
       ),
     ));
+
     bytes.addAll(generator.feed(3));
     bytes.addAll(generator.cut());
+
     return bytes;
   }
+
   final PrinterManager _printerManager = PrinterManager.instance;
 
   void _snack(BuildContext context, String message) {
@@ -324,7 +608,7 @@ class CashMethodScreen extends StatelessWidget {
                     onPressed: () => Navigator.pop(context),
                   ),
                   const Spacer(),
-                  KioskOrderTypeChip(orderType: orderType),
+                  KioskOrderTypeChip(orderType: widget.orderType),
                 ],
               ),
               const SizedBox(height: 16),
@@ -383,21 +667,21 @@ class CashMethodScreen extends StatelessWidget {
                             const SizedBox(height: 8),
                             _CashRow(
                               title: 'Sub Total',
-                              value: _formatAmount(subtotal),
+                              value: _formatAmount(widget.subtotal),
                             ),
                             const SizedBox(height: 8),
                             const _Dash(),
                             const SizedBox(height: 8),
                             _CashRow(
                               title: 'Tax (CGST + SGST)',
-                              value: _formatAmount(tax),
+                              value: _formatAmount(widget.tax),
                             ),
                             const SizedBox(height: 8),
                             const _Dash(),
                             const SizedBox(height: 8),
                             _CashRow(
                               title: 'Net Payable',
-                              value: _formatAmount(total),
+                              value: _formatAmount(widget.total),
                               valueBold: true,
                               emphasizeTotal: true,
                             ),
@@ -433,28 +717,41 @@ class CashMethodScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () async {
-                    final bytes = await buildCashReceiptBytes(
-                      orderType: orderType,
-                      subtotal: subtotal,
-                      tax: tax,
-                      total: total,
-                      orderId: orderId,
-                    );
-                    if (!context.mounted) return;
+                  onPressed: _isPrinting
+                      ? null // disables button
+                      : () async {
+                    setState(() => _isPrinting = true);
 
-                    final ok = await printReceiptForSelectedType(bytes, context);
-                    if (!context.mounted || !ok) return;
+                    try {
+                      final bytes = await buildCashReceiptBytes(
+                        orderType: widget.orderType,
+                        subtotal: widget.subtotal,
+                        tax: widget.tax,
+                        total: widget.total,
+                        orderId: widget.orderId,
+                        token: '',
+                      );
 
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PrintReceiptScreen(
-                          total: total,
-                          orderId: orderId,
+                      if (!context.mounted) return;
+
+                      final ok = await printReceiptForSelectedType(bytes, context);
+
+                      if (!context.mounted || !ok) return;
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => PrintReceiptScreen(
+                            total: widget.total,
+                            orderId: widget.orderId,
+                          ),
                         ),
-                      ),
-                    );
+                      );
+                    } finally {
+                      if (mounted) {
+                        setState(() => _isPrinting = false);
+                      }
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFF9900),
@@ -465,7 +762,16 @@ class CashMethodScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                  child: const Text(
+                  child: _isPrinting
+                      ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                      : const Text(
                     'Print Receipt',
                     style: TextStyle(
                       fontWeight: FontWeight.w700,

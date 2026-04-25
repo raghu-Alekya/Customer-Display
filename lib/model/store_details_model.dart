@@ -34,7 +34,20 @@ class StoreDetails {
     );
   }
 
-  /// Single line for city + state + zip when useful for display.
+  // ✅ ADD THIS
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'address': address,
+      'city': city,
+      'state': state,
+      'logo': logo,
+      'country': country,
+      'zip_code': zipCode,
+      'phone_number': phoneNumber,
+    };
+  }
+
   String get cityLine {
     final parts = <String>[];
     if (city.isNotEmpty) parts.add(city);
