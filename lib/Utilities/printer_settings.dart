@@ -73,7 +73,8 @@ class PrinterSettings {
   }
 
   Future<Generator> getTicket() async {
-    final profile = await CapabilityProfile.load(name: 'XP-N160I');
+    // Using 'default' instead of 'XP-N160I' for broader compatibility (including Star TSP100 series)
+    final profile = await CapabilityProfile.load(name: 'default');
     return Generator(PaperSize.mm80, profile);
   }
 
@@ -162,11 +163,6 @@ class PrinterSettings {
 
     var bluetoothPrinter = selectedPrinter!;
 
-    // Prepend Drawer Open commands for transaction prints (both Pin 2 and Pin 5)
-    bytes = generator.drawer(pin: PosDrawer.pin2) +
-        generator.drawer(pin: PosDrawer.pin5) +
-        bytes;
-
     switch (bluetoothPrinter.typePrinter) {
       case PrinterType.usb:
         bytes += generator.feed(2);
@@ -202,6 +198,12 @@ class PrinterSettings {
         );
         break;
     }
+
+    // Append Drawer Open commands at the end (Pin 2 and Pin 5)
+    // Moving this to the end often fixes issues with Star printers where leading commands
+    // might interrupt the print data stream.
+    bytes += generator.drawer(pin: PosDrawer.pin2);
+    bytes += generator.drawer(pin: PosDrawer.pin5);
 
     printerManager.send(type: bluetoothPrinter.typePrinter, bytes: bytes);
 

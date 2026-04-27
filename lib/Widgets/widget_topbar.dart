@@ -161,26 +161,25 @@ class SevenSegmentDisplay extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children:
-          text.split('').map((ch) {
-            final isDot = ch == '.';
-            final w = isDot ? digitHeight * 0.22 : digitHeight * 0.60;
-            return Padding(
-              padding: EdgeInsets.only(right: isDot ? 1 : spacing),
-              child: SizedBox(
-                width: w,
-                height: digitHeight,
-                child: CustomPaint(
-                  painter: _SegmentPainter(
-                    char: ch,
-                    onColor: onColor,
-                    offColor: offColor,
-                    strokeW: digitHeight * 0.088,
-                  ),
-                ),
+      children: text.split('').map((ch) {
+        final isDot = ch == '.';
+        final w = isDot ? digitHeight * 0.22 : digitHeight * 0.60;
+        return Padding(
+          padding: EdgeInsets.only(right: isDot ? 1 : spacing),
+          child: SizedBox(
+            width: w,
+            height: digitHeight,
+            child: CustomPaint(
+              painter: _SegmentPainter(
+                char: ch,
+                onColor: onColor,
+                offColor: offColor,
+                strokeW: digitHeight * 0.088,
               ),
-            );
-          }).toList(),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }
@@ -623,7 +622,9 @@ class _TopBarState extends State<TopBar> {
             toDelete.add(id);
             if (kDebugMode) print('🗑️ Queued DELETE for product id=$id');
           }
-        } else if (eventType == 'created' || eventType == 'updated' ||eventType == 'restored') {
+        } else if (eventType == 'created' ||
+            eventType == 'updated' ||
+            eventType == 'restored') {
           if (change['data'] is Map) {
             toUpsert.add(Map<String, dynamic>.from(change['data'] as Map));
             if (kDebugMode) {
@@ -673,51 +674,29 @@ class _TopBarState extends State<TopBar> {
       Map<String, dynamic> normaliseProduct(Map<String, dynamic> p) {
         final List<dynamic> rawTags = (p['tags'] as List?) ?? [];
 
-<<<<<<< HEAD
+        // Original-case tags (used by _handleProductTap → SKU.Tags).
         final List<Map<String, dynamic>> originalTags = rawTags
             .whereType<Map>()
-            .map((t) => {
-          'id': t['id'],
-          'name': (t['name'] ?? '').toString(),
-          'slug': (t['slug'] ?? '').toString(),
-        })
+            .map(
+              (t) => {
+                'id': t['id'],
+                'name': (t['name'] ?? '').toString(), // ← original casing
+                'slug': (t['slug'] ?? '').toString(), // ← original casing
+              },
+            )
             .toList();
-
-        final List<Map<String, dynamic>> lowercasedTags = rawTags
-            .whereType<Map>()
-            .map((t) => {
-          'id': t['id'],
-          'name': (t['name'] ?? '').toString().toLowerCase(),
-          'slug': (t['slug'] ?? '').toString().toLowerCase(),
-        })
-            .toList();
-=======
-        // Original-case tags (used by _handleProductTap → SKU.Tags).
-        final List<Map<String, dynamic>> originalTags =
-            rawTags
-                .whereType<Map>()
-                .map(
-                  (t) => {
-                    'id': t['id'],
-                    'name': (t['name'] ?? '').toString(), // ← original casing
-                    'slug': (t['slug'] ?? '').toString(), // ← original casing
-                  },
-                )
-                .toList();
 
         // Lowercased tags (used by CategoriesScreen / NestedGridWidget age check).
-        final List<Map<String, dynamic>> lowercasedTags =
-            rawTags
-                .whereType<Map>()
-                .map(
-                  (t) => {
-                    'id': t['id'],
-                    'name': (t['name'] ?? '').toString().toLowerCase(),
-                    'slug': (t['slug'] ?? '').toString().toLowerCase(),
-                  },
-                )
-                .toList();
->>>>>>> 45d4a0b (// printer connected to cashdrawer working)
+        final List<Map<String, dynamic>> lowercasedTags = rawTags
+            .whereType<Map>()
+            .map(
+              (t) => {
+                'id': t['id'],
+                'name': (t['name'] ?? '').toString().toLowerCase(),
+                'slug': (t['slug'] ?? '').toString().toLowerCase(),
+              },
+            )
+            .toList();
 
         final int minAge = minAgeFromTags(rawTags);
 
@@ -735,33 +714,17 @@ class _TopBarState extends State<TopBar> {
         }
 
         final List<dynamic> images = (p['images'] as List?) ?? [];
-        final String imageUrl =
-            images.isNotEmpty
-                ? ((images.first is Map)
-                    ? (images.first['src'] ?? '').toString()
-                    : images.first.toString())
-                : '';
+        final String imageUrl = images.isNotEmpty
+            ? ((images.first is Map)
+                ? (images.first['src'] ?? '').toString()
+                : images.first.toString())
+            : '';
 
         return {
           'fast_key_product_id': p['id'],
           'fast_key_item_name': p['name'] ?? '',
           'fast_key_item_image': imageUrl,
           'fast_key_item_price': p['price'] ?? p['regular_price'] ?? '0',
-<<<<<<< HEAD
-          'fast_key_item_sku':   p['sku'] ?? '',
-          'fast_key_item_tags':  lowercasedTags,
-          'fast_key_item_min_age': minAge,
-          'has_age_restriction':   minAge > 0,
-          'variations': p['variations'] ?? [],
-          'type':       p['type'] ?? 'simple',
-          'id':           p['id'],
-          'name':         p['name'] ?? '',
-          'price':        p['price'] ?? p['regular_price'] ?? '0',
-          'regular_price':p['regular_price'] ?? '',
-          'sku':          p['sku'] ?? '',
-          'images':       images,
-          'tags':         originalTags,
-=======
           'fast_key_item_sku': p['sku'] ?? '',
 
           // Lowercased for CategoriesScreen age-restriction check
@@ -784,8 +747,6 @@ class _TopBarState extends State<TopBar> {
 
           // Original-case tags so _handleProductTap → SKU.Tags works correctly
           'tags': originalTags,
-
->>>>>>> 45d4a0b (// printer connected to cashdrawer working)
           'is_ebt_eligible': isEbtEligibleFromTags(rawTags),
           'tax': p['tax'],
         };
@@ -797,21 +758,19 @@ class _TopBarState extends State<TopBar> {
         String key,
         int productId,
       ) async {
-        final IsarCacheEntry? entry =
-            await isar.isarCacheEntrys
-                .where()
-                .filter()
-                .keyEqualTo(key)
-                .findFirst();
+        final IsarCacheEntry? entry = await isar.isarCacheEntrys
+            .where()
+            .filter()
+            .keyEqualTo(key)
+            .findFirst();
         if (entry == null) return null;
 
         List<Map<String, dynamic>> list = [];
         try {
-          list =
-              (jsonDecode(entry.json) as List)
-                  .whereType<Map>()
-                  .map((m) => Map<String, dynamic>.from(m))
-                  .toList();
+          list = (jsonDecode(entry.json) as List)
+              .whereType<Map>()
+              .map((m) => Map<String, dynamic>.from(m))
+              .toList();
         } catch (_) {
           return null;
         }
@@ -832,20 +791,6 @@ class _TopBarState extends State<TopBar> {
 
       // ── 5. Single Isar write transaction ───────────────────────────────────
       await isar.writeTxn(() async {
-<<<<<<< HEAD
-
-        // ════════════════════════════════════════════════════════════════════
-        // 5-A  DELETED
-        // ════════════════════════════════════════════════════════════════════
-        for (final productId in toDelete) {
-          if (kDebugMode) print('Processing DELETE for product $productId…');
-
-          final List<IsarCacheEntry> productEntries = await isar.isarCacheEntrys
-              .where()
-              .filter()
-              .keyStartsWith('products_')
-              .findAll();
-=======
         // ══════════════════════════════════════════════════════════════════════
         // 5-A  DELETED — scrub from every cached list + all related keys
         // ══════════════════════════════════════════════════════════════════════
@@ -854,13 +799,11 @@ class _TopBarState extends State<TopBar> {
             print('🗑️  Processing DELETE for product $productId…');
 
           // Scrub from every products_* entry
-          final List<IsarCacheEntry> productEntries =
-              await isar.isarCacheEntrys
-                  .where()
-                  .filter()
-                  .keyStartsWith('products_')
-                  .findAll();
->>>>>>> 45d4a0b (// printer connected to cashdrawer working)
+          final List<IsarCacheEntry> productEntries = await isar.isarCacheEntrys
+              .where()
+              .filter()
+              .keyStartsWith('products_')
+              .findAll();
 
           for (final entry in productEntries) {
             final IsarCacheEntry? updated = await removeProductFromEntry(
@@ -874,21 +817,12 @@ class _TopBarState extends State<TopBar> {
             }
           }
 
-<<<<<<< HEAD
+          // Scrub from every indigo_products_* entry
           final List<IsarCacheEntry> indigoEntries = await isar.isarCacheEntrys
               .where()
               .filter()
               .keyStartsWith('indigo_products_')
               .findAll();
-=======
-          // Scrub from every indigo_products_* entry
-          final List<IsarCacheEntry> indigoEntries =
-              await isar.isarCacheEntrys
-                  .where()
-                  .filter()
-                  .keyStartsWith('indigo_products_')
-                  .findAll();
->>>>>>> 45d4a0b (// printer connected to cashdrawer working)
 
           for (final entry in indigoEntries) {
             final IsarCacheEntry? updated = await removeProductFromEntry(
@@ -926,17 +860,10 @@ class _TopBarState extends State<TopBar> {
               (productData['categories'] as List?) ?? [];
 
           if (apiCategories.isEmpty) {
-<<<<<<< HEAD
+            // No category info — still clean up sku cache
             final int? id = productData['id'] is int
                 ? productData['id'] as int
                 : int.tryParse(productData['id']?.toString() ?? '');
-=======
-            // No category info — still clean up sku cache
-            final int? id =
-                productData['id'] is int
-                    ? productData['id'] as int
-                    : int.tryParse(productData['id']?.toString() ?? '');
->>>>>>> 45d4a0b (// printer connected to cashdrawer working)
             if (id != null) {
               await isar.isarCacheEntrys
                   .filter()
@@ -955,10 +882,9 @@ class _TopBarState extends State<TopBar> {
           final Map<String, dynamic> normalised = normaliseProduct(productData);
 
           for (final cat in apiCategories) {
-            final int? catId =
-                cat['id'] is int
-                    ? cat['id'] as int
-                    : int.tryParse(cat['id']?.toString() ?? '');
+            final int? catId = cat['id'] is int
+                ? cat['id'] as int
+                : int.tryParse(cat['id']?.toString() ?? '');
             if (catId == null) continue;
             categoryProductMap.putIfAbsent(catId, () => []).add(normalised);
           }
@@ -970,21 +896,19 @@ class _TopBarState extends State<TopBar> {
 
           // ── products_<catId> ─────────────────────────────────────────────
           final String categoryKey = 'products_$catId';
-          final IsarCacheEntry? existing =
-              await isar.isarCacheEntrys
-                  .where()
-                  .filter()
-                  .keyEqualTo(categoryKey)
-                  .findFirst();
+          final IsarCacheEntry? existing = await isar.isarCacheEntrys
+              .where()
+              .filter()
+              .keyEqualTo(categoryKey)
+              .findFirst();
 
           List<Map<String, dynamic>> cachedList = [];
           if (existing != null) {
             try {
-              cachedList =
-                  (jsonDecode(existing.json) as List)
-                      .whereType<Map>()
-                      .map((m) => Map<String, dynamic>.from(m))
-                      .toList();
+              cachedList = (jsonDecode(existing.json) as List)
+                  .whereType<Map>()
+                  .map((m) => Map<String, dynamic>.from(m))
+                  .toList();
             } catch (_) {}
           }
 
@@ -1023,21 +947,19 @@ class _TopBarState extends State<TopBar> {
 
           // ── indigo_products_<catId> ──────────────────────────────────────
           final String indigoKey = 'indigo_products_$catId';
-          final IsarCacheEntry? indigoExisting =
-              await isar.isarCacheEntrys
-                  .where()
-                  .filter()
-                  .keyEqualTo(indigoKey)
-                  .findFirst();
+          final IsarCacheEntry? indigoExisting = await isar.isarCacheEntrys
+              .where()
+              .filter()
+              .keyEqualTo(indigoKey)
+              .findFirst();
 
           List<Map<String, dynamic>> indigoCached = [];
           if (indigoExisting != null) {
             try {
-              indigoCached =
-                  (jsonDecode(indigoExisting.json) as List)
-                      .whereType<Map>()
-                      .map((m) => Map<String, dynamic>.from(m))
-                      .toList();
+              indigoCached = (jsonDecode(indigoExisting.json) as List)
+                  .whereType<Map>()
+                  .map((m) => Map<String, dynamic>.from(m))
+                  .toList();
             } catch (_) {}
           }
 
@@ -1088,8 +1010,8 @@ class _TopBarState extends State<TopBar> {
         try {
           final updateUrl = Uri.parse(
             '${UrlHelper.baseUrl}'
-                '${UrlHelper.componentVersionUrl}'
-                'data-sync/update-data-count',
+            '${UrlHelper.componentVersionUrl}'
+            'data-sync/update-data-count',
           );
 
           final updateResponse = await http.post(
@@ -1201,8 +1123,7 @@ class _TopBarState extends State<TopBar> {
   /// `product_id` (e.g. Indigo) are indexed, not only [fast_key_product_id].
   static int? _productIdFromCacheMap(dynamic product) {
     if (product is! Map) return null;
-    final dynamic raw =
-        product["fast_key_product_id"] ??
+    final dynamic raw = product["fast_key_product_id"] ??
         product["product_id"] ??
         product["id"];
     if (raw is int) return raw;
@@ -1224,12 +1145,11 @@ class _TopBarState extends State<TopBar> {
       }
     }
 
-    final indigoEntries =
-        await isar.isarCacheEntrys
-            .where()
-            .filter()
-            .keyStartsWith("indigo_products_")
-            .findAll();
+    final indigoEntries = await isar.isarCacheEntrys
+        .where()
+        .filter()
+        .keyStartsWith("indigo_products_")
+        .findAll();
     for (final entry in indigoEntries) {
       try {
         mergeProductList(json.decode(entry.json) as List<dynamic>);
@@ -1254,12 +1174,11 @@ class _TopBarState extends State<TopBar> {
       }
     } catch (_) {}
 
-    final cachedEntries =
-        await isar.isarCacheEntrys
-            .where()
-            .filter()
-            .keyStartsWith("products_")
-            .findAll();
+    final cachedEntries = await isar.isarCacheEntrys
+        .where()
+        .filter()
+        .keyStartsWith("products_")
+        .findAll();
     for (final entry in cachedEntries) {
       try {
         mergeProductList(json.decode(entry.json) as List<dynamic>);
@@ -1379,10 +1298,9 @@ class _TopBarState extends State<TopBar> {
                 child: Container(
                   constraints: const BoxConstraints(maxHeight: 360),
                   decoration: BoxDecoration(
-                    color:
-                        theme.themeMode == ThemeMode.dark
-                            ? ThemeNotifier.secondaryBackground
-                            : Colors.white,
+                    color: theme.themeMode == ThemeMode.dark
+                        ? ThemeNotifier.secondaryBackground
+                        : Colors.white,
                     borderRadius: const BorderRadius.only(
                       bottomLeft: Radius.circular(8),
                       bottomRight: Radius.circular(8),
@@ -1420,8 +1338,7 @@ class _TopBarState extends State<TopBar> {
     }
 
     String _resolvePrice(dynamic p) {
-      final dynamic raw =
-          p["fast_key_item_price"] ??
+      final dynamic raw = p["fast_key_item_price"] ??
           p["price"] ??
           p["regular_price"] ??
           "0.00";
@@ -1445,16 +1362,16 @@ class _TopBarState extends State<TopBar> {
       }
     }
 
-    final list =
-        uniqueById.values.toList()..sort((a, b) {
-          final na = (a["fast_key_item_name"] ?? "").toString().toLowerCase();
-          final nb = (b["fast_key_item_name"] ?? "").toString().toLowerCase();
-          final sa = na.startsWith(query);
-          final sb = nb.startsWith(query);
-          if (sa && !sb) return -1;
-          if (!sa && sb) return 1;
-          return na.compareTo(nb);
-        });
+    final list = uniqueById.values.toList()
+      ..sort((a, b) {
+        final na = (a["fast_key_item_name"] ?? "").toString().toLowerCase();
+        final nb = (b["fast_key_item_name"] ?? "").toString().toLowerCase();
+        final sa = na.startsWith(query);
+        final sb = nb.startsWith(query);
+        if (sa && !sb) return -1;
+        if (!sa && sb) return 1;
+        return na.compareTo(nb);
+      });
 
     if (list.isEmpty) return const Center(child: Text("No products found"));
 
@@ -1491,25 +1408,21 @@ class _TopBarState extends State<TopBar> {
             height: 50,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child:
-                  imageUrl != null
-                      ? Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        loadingBuilder:
-                            (ctx, child, progress) =>
-                                progress == null
-                                    ? child
-                                    : const Center(
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    ),
-                        errorBuilder:
-                            (_, __, ___) =>
-                                const Icon(Icons.broken_image, size: 40),
-                      )
-                      : const Icon(Icons.image, size: 40),
+              child: imageUrl != null
+                  ? Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (ctx, child, progress) => progress == null
+                          ? child
+                          : const Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            ),
+                      errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.broken_image, size: 40),
+                    )
+                  : const Icon(Icons.image, size: 40),
             ),
           ),
           title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -1534,17 +1447,16 @@ class _TopBarState extends State<TopBar> {
             try {
               final rawTags = p["tags"];
               if (rawTags is List && rawTags.isNotEmpty) {
-                fullProduct.tags =
-                    rawTags.map((t) {
-                      if (t is Map) {
-                        return SKU.Tags(
-                          id: t["id"],
-                          name: t["name"]?.toString(),
-                          slug: t["slug"]?.toString(),
-                        );
-                      }
-                      return SKU.Tags();
-                    }).toList();
+                fullProduct.tags = rawTags.map((t) {
+                  if (t is Map) {
+                    return SKU.Tags(
+                      id: t["id"],
+                      name: t["name"]?.toString(),
+                      slug: t["slug"]?.toString(),
+                    );
+                  }
+                  return SKU.Tags();
+                }).toList();
 
                 if (kDebugMode) {
                   print(
@@ -1554,38 +1466,35 @@ class _TopBarState extends State<TopBar> {
                 }
               } else {
                 final isar = await IsarService.instance;
-                final entries =
-                    await isar.isarCacheEntrys
-                        .where()
-                        .filter()
-                        .keyStartsWith("products_")
-                        .findAll();
+                final entries = await isar.isarCacheEntrys
+                    .where()
+                    .filter()
+                    .keyStartsWith("products_")
+                    .findAll();
 
                 for (final entry in entries) {
                   final List<dynamic> cached = jsonDecode(entry.json);
                   final match = cached.firstWhere(
-                    (item) =>
-                        ((item["fast_key_product_id"] ??
-                                    item["product_id"] ??
-                                    item["id"])
-                                ?.toString() ==
-                            productId.toString()),
+                    (item) => ((item["fast_key_product_id"] ??
+                                item["product_id"] ??
+                                item["id"])
+                            ?.toString() ==
+                        productId.toString()),
                     orElse: () => null,
                   );
                   if (match != null) {
                     final fallbackTags = match["tags"];
                     if (fallbackTags is List && fallbackTags.isNotEmpty) {
-                      fullProduct.tags =
-                          fallbackTags.map((t) {
-                            if (t is Map) {
-                              return SKU.Tags(
-                                id: t["id"],
-                                name: t["name"]?.toString(),
-                                slug: t["slug"]?.toString(),
-                              );
-                            }
-                            return SKU.Tags();
-                          }).toList();
+                      fullProduct.tags = fallbackTags.map((t) {
+                        if (t is Map) {
+                          return SKU.Tags(
+                            id: t["id"],
+                            name: t["name"]?.toString(),
+                            slug: t["slug"]?.toString(),
+                          );
+                        }
+                        return SKU.Tags();
+                      }).toList();
 
                       if (kDebugMode) {
                         print(
@@ -1629,25 +1538,22 @@ class _TopBarState extends State<TopBar> {
                 (key, value) => MapEntry(key.toString(), value),
               );
               final attrs = map["attributes"];
-              final String fallbackName =
-                  attrs is List
-                      ? attrs
-                          .whereType<Map>()
-                          .map((a) => (a["option"] ?? "").toString())
-                          .where((x) => x.isNotEmpty)
-                          .join(" - ")
-                      : "";
+              final String fallbackName = attrs is List
+                  ? attrs
+                      .whereType<Map>()
+                      .map((a) => (a["option"] ?? "").toString())
+                      .where((x) => x.isNotEmpty)
+                      .join(" - ")
+                  : "";
               return {
                 "id": map["id"],
-                "name":
-                    (map["name"] ?? "").toString().isNotEmpty
-                        ? map["name"]
-                        : (fallbackName.isNotEmpty ? fallbackName : "Variant"),
+                "name": (map["name"] ?? "").toString().isNotEmpty
+                    ? map["name"]
+                    : (fallbackName.isNotEmpty ? fallbackName : "Variant"),
                 "price": map["regular_price"] ?? map["price"] ?? "0",
-                "image":
-                    (map["image"] is Map && map["image"]["src"] != null)
-                        ? map["image"]["src"]
-                        : (map["image"] is String ? map["image"] : ""),
+                "image": (map["image"] is Map && map["image"]["src"] != null)
+                    ? map["image"]["src"]
+                    : (map["image"] is String ? map["image"] : ""),
                 "sku": map["sku"] ?? "",
               };
             })
@@ -1656,12 +1562,11 @@ class _TopBarState extends State<TopBar> {
       }
 
       final isar = await IsarService.instance;
-      final entries =
-          await isar.isarCacheEntrys
-              .where()
-              .filter()
-              .keyStartsWith("products_")
-              .findAll();
+      final entries = await isar.isarCacheEntrys
+          .where()
+          .filter()
+          .keyStartsWith("products_")
+          .findAll();
 
       for (final entry in entries) {
         final List<dynamic> products = jsonDecode(entry.json);
@@ -1671,8 +1576,7 @@ class _TopBarState extends State<TopBar> {
         );
         if (match == null) continue;
 
-        final rawVariations =
-            match["variations"] ??
+        final rawVariations = match["variations"] ??
             (await productBox.get(
               "product_${productId}_variations",
             ))?["variations"];
@@ -1714,25 +1618,22 @@ class _TopBarState extends State<TopBar> {
           .map<Map<String, dynamic>>((v) {
             final map = v.map((key, value) => MapEntry(key.toString(), value));
             final attrs = map["attributes"];
-            final String fallbackName =
-                attrs is List
-                    ? attrs
-                        .whereType<Map>()
-                        .map((a) => (a["option"] ?? "").toString())
-                        .where((x) => x.isNotEmpty)
-                        .join(" - ")
-                    : "";
+            final String fallbackName = attrs is List
+                ? attrs
+                    .whereType<Map>()
+                    .map((a) => (a["option"] ?? "").toString())
+                    .where((x) => x.isNotEmpty)
+                    .join(" - ")
+                : "";
             return {
               "id": map["id"],
-              "name":
-                  (map["name"] ?? "").toString().isNotEmpty
-                      ? map["name"]
-                      : (fallbackName.isNotEmpty ? fallbackName : "Variant"),
+              "name": (map["name"] ?? "").toString().isNotEmpty
+                  ? map["name"]
+                  : (fallbackName.isNotEmpty ? fallbackName : "Variant"),
               "price": (map["price"] ?? map["regular_price"] ?? "0").toString(),
-              "image":
-                  (map["image"] is Map && map["image"]["src"] != null)
-                      ? map["image"]["src"]
-                      : (map["image"] is String ? map["image"] : ""),
+              "image": (map["image"] is Map && map["image"]["src"] != null)
+                  ? map["image"]["src"]
+                  : (map["image"] is String ? map["image"] : ""),
               "sku": map["sku"] ?? "",
             };
           })
@@ -1807,8 +1708,7 @@ class _TopBarState extends State<TopBar> {
 
       if (hasAgeRestriction) {
         final dynamic hiveAge = rawOrder["age_verified"];
-        final bool alreadyVerified =
-            hiveAge == true ||
+        final bool alreadyVerified = hiveAge == true ||
             hiveAge == 1 ||
             hiveAge?.toString().toLowerCase() == "true";
 
@@ -1843,12 +1743,11 @@ class _TopBarState extends State<TopBar> {
       bool isEbtEligible = false;
       try {
         final isar = await IsarService.instance;
-        final cachedEntries =
-            await isar.isarCacheEntrys
-                .where()
-                .filter()
-                .keyStartsWith("products_")
-                .findAll();
+        final cachedEntries = await isar.isarCacheEntrys
+            .where()
+            .filter()
+            .keyStartsWith("products_")
+            .findAll();
 
         for (final entry in cachedEntries) {
           final List<dynamic> products = jsonDecode(entry.json);
@@ -1859,8 +1758,7 @@ class _TopBarState extends State<TopBar> {
           );
           if (match != null) {
             final dynamic rawEbt = match["is_ebt_eligible"];
-            isEbtEligible =
-                rawEbt == true ||
+            isEbtEligible = rawEbt == true ||
                 rawEbt == 1 ||
                 rawEbt?.toString() == "1" ||
                 rawEbt?.toString().toLowerCase() == "true";
@@ -1888,10 +1786,9 @@ class _TopBarState extends State<TopBar> {
       if (!mounted) return;
 
       // ── 6. Parse unit price ────────────────────────────────────────────────
-      final double unitPrice =
-          (product.price is num)
-              ? (product.price as num).toDouble()
-              : double.tryParse(product.price?.toString() ?? "0") ?? 0.0;
+      final double unitPrice = (product.price is num)
+          ? (product.price as num).toDouble()
+          : double.tryParse(product.price?.toString() ?? "0") ?? 0.0;
 
       // ── 7. PRODUCE → Auto Weight & Price dialog ────────────────────────────
       final bool hasProduceTag = tags.any(
@@ -1913,14 +1810,13 @@ class _TopBarState extends State<TopBar> {
             context: context,
             barrierDismissible: false,
             useRootNavigator: true,
-            builder:
-                (dialogCtx) => ChangeNotifierProvider.value(
-                  value: Provider.of<WeightProvider>(context, listen: false),
-                  child: AutoWeightPriceDialog(
-                    productName: product.name ?? "Product",
-                    unitPrice: unitPrice,
-                  ),
-                ),
+            builder: (dialogCtx) => ChangeNotifierProvider.value(
+              value: Provider.of<WeightProvider>(context, listen: false),
+              child: AutoWeightPriceDialog(
+                productName: product.name ?? "Product",
+                unitPrice: unitPrice,
+              ),
+            ),
           );
         } finally {
           _dialogOpen = false;
@@ -2003,39 +1899,37 @@ class _TopBarState extends State<TopBar> {
             context: context,
             barrierDismissible: false,
             useRootNavigator: true,
-            builder:
-                (dialogCtx) => VariantsDialog(
-                  title: product.name ?? "Select Variant",
-                  variations: variants,
-                  onAddVariant: (selected, qty) async {
-                    final varPrice =
-                        double.tryParse(selected["price"].toString()) ?? 0.0;
+            builder: (dialogCtx) => VariantsDialog(
+              title: product.name ?? "Select Variant",
+              variations: variants,
+              onAddVariant: (selected, qty) async {
+                final varPrice =
+                    double.tryParse(selected["price"].toString()) ?? 0.0;
 
-                    await orderHelper.addItemToOrder(
-                      selected["id"],
-                      selected["name"] ?? product.name ?? 'Unknown',
-                      selected["image"] ?? '',
-                      varPrice,
-                      qty,
-                      selected["sku"] ?? product.sku ?? '',
-                      int.parse(activeOrderId),
-                      type: 'variant',
-                      productId: product.id,
-                      variationId: selected["id"],
-                      unitPrice: varPrice,
-                      salesPrice: varPrice,
-                      regularPrice: varPrice,
-                      isEbtEligible: isEbtEligible,
-                      onItemAdded: () {
-                        _removeOverlay();
-                        _clearSearch();
-                        if (mounted)
-                          setState(() => isAddingItemLoading = false);
-                        widget.onProductSelected?.call(product);
-                      },
-                    );
+                await orderHelper.addItemToOrder(
+                  selected["id"],
+                  selected["name"] ?? product.name ?? 'Unknown',
+                  selected["image"] ?? '',
+                  varPrice,
+                  qty,
+                  selected["sku"] ?? product.sku ?? '',
+                  int.parse(activeOrderId),
+                  type: 'variant',
+                  productId: product.id,
+                  variationId: selected["id"],
+                  unitPrice: varPrice,
+                  salesPrice: varPrice,
+                  regularPrice: varPrice,
+                  isEbtEligible: isEbtEligible,
+                  onItemAdded: () {
+                    _removeOverlay();
+                    _clearSearch();
+                    if (mounted) setState(() => isAddingItemLoading = false);
+                    widget.onProductSelected?.call(product);
                   },
-                ),
+                );
+              },
+            ),
           );
         } finally {
           _dialogOpen = false;
@@ -2245,10 +2139,9 @@ class _TopBarState extends State<TopBar> {
                               Expanded(
                                 child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor:
-                                        isDark
-                                            ? const Color(0xFF50535F)
-                                            : const Color(0xFFE0E0E0),
+                                    backgroundColor: isDark
+                                        ? const Color(0xFF50535F)
+                                        : const Color(0xFFE0E0E0),
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 10,
                                       vertical: 10,
@@ -2261,10 +2154,9 @@ class _TopBarState extends State<TopBar> {
                                   child: Text(
                                     "Cancel",
                                     style: TextStyle(
-                                      color:
-                                          isDark
-                                              ? Colors.white70
-                                              : Colors.black87,
+                                      color: isDark
+                                          ? Colors.white70
+                                          : Colors.black87,
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -2339,10 +2231,9 @@ class _TopBarState extends State<TopBar> {
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
     return Container(
-      color:
-          themeHelper.themeMode == ThemeMode.dark
-              ? ThemeNotifier.primaryBackground
-              : Colors.white,
+      color: themeHelper.themeMode == ThemeMode.dark
+          ? ThemeNotifier.primaryBackground
+          : Colors.white,
       height: 70,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -2363,17 +2254,15 @@ class _TopBarState extends State<TopBar> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color:
-                      themeHelper.themeMode == ThemeMode.dark
-                          ? const Color(0xFF3B3939)
-                          : const Color(0xFFEDEBEB),
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? const Color(0xFF3B3939)
+                      : const Color(0xFFEDEBEB),
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color:
-                        themeHelper.themeMode == ThemeMode.dark
-                            ? const Color(0xFF605F5F)
-                            : Colors.grey.withOpacity(0.1),
+                    color: themeHelper.themeMode == ThemeMode.dark
+                        ? const Color(0xFF605F5F)
+                        : Colors.grey.withOpacity(0.1),
                     blurRadius: 2,
                     spreadRadius:
                         themeHelper.themeMode == ThemeMode.dark ? 2 : 4,
@@ -2393,25 +2282,23 @@ class _TopBarState extends State<TopBar> {
                     Icons.search,
                     color: Theme.of(context).iconTheme.color,
                   ),
-                  suffixIcon:
-                      _searchController.text.isNotEmpty
-                          ? IconButton(
-                            icon: Icon(
-                              Icons.clear,
-                              color: Theme.of(context).iconTheme.color,
-                            ),
-                            onPressed: _clearSearch,
-                          )
-                          : null,
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: Icon(
+                            Icons.clear,
+                            color: Theme.of(context).iconTheme.color,
+                          ),
+                          onPressed: _clearSearch,
+                        )
+                      : null,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(20),
                     borderSide: BorderSide.none,
                   ),
                   filled: true,
-                  fillColor:
-                      themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.searchBarBackground
-                          : Colors.white,
+                  fillColor: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.searchBarBackground
+                      : Colors.white,
                 ),
               ),
             ),
@@ -2536,16 +2423,14 @@ class _TopBarState extends State<TopBar> {
             child: Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color:
-                    themeHelper.themeMode == ThemeMode.dark
-                        ? ThemeNotifier.secondaryBackground
-                        : Colors.white,
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.secondaryBackground
+                    : Colors.white,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color:
-                      themeHelper.themeMode == ThemeMode.dark
-                          ? const Color(0xFF3B3939)
-                          : const Color(0xFFF1F1F3),
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? const Color(0xFF3B3939)
+                      : const Color(0xFFF1F1F3),
                 ),
               ),
               child: SvgPicture.asset(
@@ -2569,16 +2454,14 @@ class _TopBarState extends State<TopBar> {
             child: Container(
               padding: const EdgeInsets.all(13),
               decoration: BoxDecoration(
-                color:
-                    themeHelper.themeMode == ThemeMode.dark
-                        ? ThemeNotifier.secondaryBackground
-                        : Colors.white,
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.secondaryBackground
+                    : Colors.white,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color:
-                      themeHelper.themeMode == ThemeMode.dark
-                          ? const Color(0xFF3B3939)
-                          : const Color(0xFFF1F1F3),
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? const Color(0xFF3B3939)
+                      : const Color(0xFFF1F1F3),
                 ),
               ),
               child: SvgPicture.asset(
@@ -2608,16 +2491,14 @@ class _TopBarState extends State<TopBar> {
             child: Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color:
-                    themeHelper.themeMode == ThemeMode.dark
-                        ? ThemeNotifier.secondaryBackground
-                        : Colors.white,
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.secondaryBackground
+                    : Colors.white,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color:
-                      themeHelper.themeMode == ThemeMode.dark
-                          ? const Color(0xFF605F5F)
-                          : const Color(0xFFF1F1F3),
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? const Color(0xFF605F5F)
+                      : const Color(0xFFF1F1F3),
                 ),
               ),
               child: SvgPicture.asset(
@@ -2638,40 +2519,36 @@ class _TopBarState extends State<TopBar> {
           // ── Notifications ────────────────────────────────────────────────────
           Container(
             decoration: BoxDecoration(
-              color:
-                  themeHelper.themeMode == ThemeMode.dark
-                      ? ThemeNotifier.secondaryBackground
-                      : Colors.white,
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.secondaryBackground
+                  : Colors.white,
               shape: BoxShape.circle,
               border: Border.all(
-                color:
-                    themeHelper.themeMode == ThemeMode.dark
-                        ? const Color(0xFF3B3939)
-                        : const Color(0xFFF1F1F3),
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? const Color(0xFF3B3939)
+                    : const Color(0xFFF1F1F3),
               ),
             ),
             padding: const EdgeInsets.all(10),
             child: Icon(
               Icons.notifications,
               size: 24,
-              color:
-                  themeHelper.themeMode == ThemeMode.dark
-                      ? Colors.white
-                      : Colors.black54,
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? Colors.white
+                  : Colors.black54,
             ),
           ),
           const SizedBox(width: 16),
 
           // ── Refresh ──────────────────────────────────────────────────────────
           IconButton(
-            icon:
-                isLoading
-                    ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                    : const Icon(Icons.refresh),
+            icon: isLoading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
             onPressed: isLoading ? null : refreshProducts,
           ),
 
@@ -2680,16 +2557,14 @@ class _TopBarState extends State<TopBar> {
             height: 45,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
             decoration: BoxDecoration(
-              color:
-                  themeHelper.themeMode == ThemeMode.dark
-                      ? ThemeNotifier.secondaryBackground
-                      : Colors.white,
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.secondaryBackground
+                  : Colors.white,
               borderRadius: BorderRadius.circular(15),
               border: Border.all(
-                color:
-                    themeHelper.themeMode == ThemeMode.dark
-                        ? const Color(0xFF3B3939)
-                        : const Color(0xFFF1F1F3),
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? const Color(0xFF3B3939)
+                    : const Color(0xFFF1F1F3),
               ),
             ),
             child: Row(
@@ -2717,10 +2592,9 @@ class _TopBarState extends State<TopBar> {
                       userDisplayName ?? "",
                       style: TextStyle(
                         fontWeight: FontWeight.w500,
-                        color:
-                            themeHelper.themeMode == ThemeMode.dark
-                                ? ThemeNotifier.textDark
-                                : ThemeNotifier.textLight,
+                        color: themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.textDark
+                            : ThemeNotifier.textLight,
                         fontSize: 14,
                       ),
                     ),
