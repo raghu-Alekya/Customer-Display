@@ -795,6 +795,9 @@ class OrderRepository {
       if (localOrderIdInt == null) {
         debugPrint("❌ Cannot load payments → local order id missing");
       }
+      // final String orderDateTime =
+      //     offlineOrder['created_at']?.toString() ??
+      //         DateTime.now().toIso8601String();
 
       final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
       final int? existingWooOrderId =
@@ -1304,6 +1307,7 @@ class OrderRepository {
         "payment_method_title": "POS-CASH",
         "set_paid": true,
         "status": "processing",
+        // "date_created": orderDateTime,
         "meta_data": metaData,
         "fee_lines": feeLines,
         "line_items": lineItems,
@@ -1550,7 +1554,7 @@ class OrderRepository {
         String orderType = "",
         String userId = "",
         String startDate = "",
-        String endDate = ""}) async {
+        String endDate = "",required String search}) async {
     final statusString = status != ""
         ? status
         : (allStatuses
@@ -1560,7 +1564,7 @@ class OrderRepository {
     orderType = orderType != "" ? orderType : "";
 
     var getOrdersParameter =
-        "?author=$userId&page=$pageNumber&per_page=$pageLimit&created_via=$orderType&after=$startDate&before=$endDate&search=&status="; //Build #1.0.134: updated new parameters startDate, endDate
+        "?author=$userId&page=$pageNumber&per_page=$pageLimit&created_via=$orderType&after=$startDate&before=$endDate&search=&status=&search=$search&status="; //Build #1.0.134: updated new parameters startDate, endDate
     // Encode for URL (spaces become '+', commas become '%2C')
     final encodedStatus = Uri.encodeQueryComponent(statusString);
     final url =

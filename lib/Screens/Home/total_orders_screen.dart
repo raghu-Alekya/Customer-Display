@@ -91,7 +91,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   bool _fetchInProgress = false;
   Timer? _loadingDelayTimer;
   final TextEditingController _searchController = TextEditingController();
-
+  Timer? _searchDebounce;
   ///Filters
   // List<String> _availableStatuses = ["All"];
   final List<OrderStatus> _filterStatuses = [
@@ -212,6 +212,9 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     }
 
     _searchController.addListener(() {
+      setState(() {}); // rebuild UI when text changes
+    });
+    _searchController.addListener(() {
       setState(() {}); // ✅ ensures UI updates when text changes or clears
     });
     _minSalesAmount = 0.0;
@@ -310,19 +313,31 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     final selectedUserId = _resolveUserFilterEntry().iD ?? "";
     final selectedOrderType = _resolveOrderTypeFilterEntry().slug ?? "";
     final format = DateFormat('yyyy-MM-dd');
+    final searchQuery = _searchController.text.trim(); // 🔥 ADD THIS
     String startDateFormatted = "";
     String endDateFormatted = "";
     if (_startDate != null && _endDate != null) {
       startDateFormatted = format.format(_startDate!);
       endDateFormatted = format.format(_endDate!);
     }
-    return '${_currentPage}_${_rowsPerPage}_${selectedStatus}_${selectedUserId}_${selectedOrderType}_${startDateFormatted}_$endDateFormatted';
+    return '${_currentPage}_${_rowsPerPage}_${selectedStatus}_${selectedUserId}_${selectedOrderType}_${startDateFormatted}_${endDateFormatted}_${searchQuery}';
   }
 
   void _fetchOrders() {
     debugPrint("OrdersScreen: Initiating fetch orders");
 
     final String fetchCacheKey = _ordersFetchCacheKey();
+    final searchQuery = _searchController.text.trim();
+    // 🔥 IMPORTANT FIX
+    if (searchQuery.isEmpty) {
+      debugPrint("Search cleared → fetching full list");
+
+      // Optional but recommended: reset paging + local lists
+      _currentPage = 1;
+      _pageOrders = [];
+      _visibleOrders = [];
+      _orders = [];
+    }
 
     _fetchOrdersSubscription?.cancel();
     _loadingDelayTimer?.cancel();
@@ -447,6 +462,9 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
       userId: selectedUserId,
       startDate: startDateFormatted,
       endDate: endDateFormatted,
+
+      // ✅ ADD THIS
+      search: searchQuery,
     );
   }
   //Build #1.0.54: added Fetch orders from API
@@ -1070,7 +1088,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                   ),
                                   label: SizedBox(
                                     width: 150,
-                                    height: double.infinity, // ✅ fill full chip height
+                                    // height: double.infinity, // ✅ fill full chip height
                                     child: TextField(
                                       controller: _searchController,
                                       keyboardType: TextInputType.number, // ✅ numeric keyboard
@@ -1079,8 +1097,15 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                       ],
                                       textAlignVertical: TextAlignVertical.center,
                                       onChanged: (value) {
-                                        setState(() {
-                                          _currentPage = 1;
+                                        _searchDebounce?.cancel();
+
+                                        _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+                                          if (!mounted) return;
+
+                                          setState(() {
+                                            _currentPage = 1;
+                                          });
+
                                           _fetchOrders();
                                         });
                                       },
@@ -1093,7 +1118,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                         fontSize: 13,
                                       ),
                                       decoration: InputDecoration(
-                                        hintText: "Search",
+                                        hintText: "Search Order ID",
                                         hintStyle: TextStyle(
                                           color: _searchController.text.isNotEmpty
                                               ? Colors.white70
@@ -1112,15 +1137,31 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                               : Colors.black,
                                         ),
                                         suffixIcon: _searchController.text.isNotEmpty
-                                            ? IconButton(
-                                          icon: const Icon(Icons.close, size: 18, color: Colors.white),
-                                          onPressed: () {
-                                            _searchController.clear();
-                                            _currentPage = 1;
-                                            setState(() {
-                                              _fetchOrders();
-                                            });
-                                          },
+                                            ? Padding(
+                                          padding: const EdgeInsets.only(right: 4),
+                                          child: IconButton(
+                                            splashRadius: 18,
+                                            icon: const Icon(Icons.close, size: 18, color: Colors.white),
+                                            onPressed: () {
+                                              _searchDebounce?.cancel();
+
+                                              _searchController.clear();
+
+                                              setState(() {
+                                                _currentPage = 1;
+
+                                                // 🔥 Clear UI immediately
+                                                _orders.clear();
+                                                _pageOrders.clear();
+                                                _visibleOrders.clear();
+                                              });
+
+                                              // 🔥 Optional: delay API call slightly
+                                              Future.delayed(const Duration(milliseconds: 100), () {
+                                                if (mounted) _fetchOrders();
+                                              });
+                                            },
+                                          ),
                                         )
                                             : null,
                                         border: InputBorder.none,
@@ -1326,109 +1367,191 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
                                   // ================= BODY =================
                                   Expanded(
-                                    child: ListView.builder(
+                                    child:  _orders.isEmpty
+                                        ? Center(
+                                      child: Text(
+                                        _searchController.text.isNotEmpty
+                                            ? "No orders found"
+                                            : "No orders available",
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                    )
+                                        :ListView.builder(
                                       controller: _tableScrollController,
                                       physics:
                                       const BouncingScrollPhysics(),
                                       itemCount: _orders.length +
                                           (_hasMoreLazyData ? 1 : 0),
+                                      // itemBuilder: (context, index) {
+                                      //   // 🔥 Lazy loader
+                                      //   if (index >= _orders.length) {
+                                      //     return const Padding(
+                                      //       padding: EdgeInsets.symmetric(
+                                      //           vertical: 12),
+                                      //       child: Center(
+                                      //         child: SizedBox(
+                                      //           height: 24,
+                                      //           width: 24,
+                                      //           child:
+                                      //           CircularProgressIndicator(
+                                      //             strokeWidth: 2.5,
+                                      //           ),
+                                      //         ),
+                                      //       ),
+                                      //     );
+                                      //   }
+                                      //
+                                      //   final order = _orders[index];
+                                      //   final date = DateTime.tryParse(
+                                      //       order.dateCreated)
+                                      //       ?.toLocal();
+                                      //   final isSelected = OrderHelper()
+                                      //       .selectedOrderId ==
+                                      //       order.id;
+                                      //
+                                      //   final double total =
+                                      //       double.tryParse(order.total
+                                      //           .toString()) ??
+                                      //           0.0;
+                                      //
+                                      //   return GestureDetector(
+                                      //     onTap: () =>
+                                      //         _onOrderRowSelected(
+                                      //             order.id),
+                                      //     child: Container(
+                                      //       padding: const EdgeInsets
+                                      //           .symmetric(vertical: 6),
+                                      //       decoration: BoxDecoration(
+                                      //         color: isSelected
+                                      //             ? (themeHelper
+                                      //             .themeMode ==
+                                      //             ThemeMode.dark
+                                      //             ? const Color(
+                                      //             0xFF383B4C)
+                                      //             : const Color(
+                                      //             0xFFDFDFDF))
+                                      //             : (themeHelper
+                                      //             .themeMode ==
+                                      //             ThemeMode.dark
+                                      //             ? const Color(
+                                      //             0xFF201F29)
+                                      //             : const Color(
+                                      //             0xFFF9F9F9)),
+                                      //         border: Border(
+                                      //           bottom: BorderSide(
+                                      //             color: themeHelper
+                                      //                 .themeMode ==
+                                      //                 ThemeMode.dark
+                                      //                 ? const Color(
+                                      //                 0xFF474646)
+                                      //                 : const Color(
+                                      //                 0xFFD8D7D7),
+                                      //           ),
+                                      //         ),
+                                      //       ),
+                                      //       child: Row(
+                                      //         children: [
+                                      //           _buildDataCell(
+                                      //               order.id.toString()),
+                                      //           _buildDataCell(
+                                      //             _orderTypeLabelForOrder(
+                                      //                 order),
+                                      //           ),
+                                      //           _buildDataCell(
+                                      //             date != null
+                                      //                 ? DateFormat(
+                                      //                 TextConstants
+                                      //                     .dateFormat)
+                                      //                 .format(date)
+                                      //                 : '',
+                                      //           ),
+                                      //           _buildDataCell(
+                                      //             date != null
+                                      //                 ? DateFormat(
+                                      //                 'HH:mm:ss')
+                                      //                 .format(date)
+                                      //                 : '',
+                                      //           ),
+                                      //           _buildDataCell(
+                                      //             '${total < 0 ? '-' : ''}${order.currencySymbol}${total.abs().toStringAsFixed(2)}',
+                                      //           ),
+                                      //           _buildDataCell(
+                                      //             order.status,
+                                      //             isStatus: true,
+                                      //           ),
+                                      //         ],
+                                      //       ),
+                                      //     ),
+                                      //   );
+                                      // },
                                       itemBuilder: (context, index) {
                                         // 🔥 Lazy loader
                                         if (index >= _orders.length) {
                                           return const Padding(
-                                            padding: EdgeInsets.symmetric(
-                                                vertical: 12),
+                                            padding: EdgeInsets.symmetric(vertical: 12),
                                             child: Center(
                                               child: SizedBox(
                                                 height: 24,
                                                 width: 24,
-                                                child:
-                                                CircularProgressIndicator(
-                                                  strokeWidth: 2.5,
-                                                ),
+                                                child: CircularProgressIndicator(strokeWidth: 2.5),
                                               ),
                                             ),
                                           );
                                         }
 
                                         final order = _orders[index];
-                                        final date = DateTime.tryParse(
-                                            order.dateCreated)
-                                            ?.toLocal();
-                                        final isSelected = OrderHelper()
-                                            .selectedOrderId ==
-                                            order.id;
 
-                                        final double total =
-                                            double.tryParse(order.total
-                                                .toString()) ??
-                                                0.0;
+                                        // --- NEW: Determine source for time column (paid > completed > created) ---
+                                        String? timeSource = order.datePaid?.isNotEmpty == true
+                                            ? order.datePaid
+                                            : (order.dateCompleted?.isNotEmpty == true
+                                            ? order.dateCompleted
+                                            : order.dateCreated);
+
+                                        DateTime? orderDateTime = DateTime.tryParse(timeSource ?? '')?.toLocal();
+                                        DateTime? orderDate = DateTime.tryParse(order.dateCreated)?.toLocal(); // unchanged for Date column
+
+                                        final isSelected = OrderHelper().selectedOrderId == order.id;
+                                        final double total = double.tryParse(order.total.toString()) ?? 0.0;
 
                                         return GestureDetector(
-                                          onTap: () =>
-                                              _onOrderRowSelected(
-                                                  order.id),
+                                          onTap: () => _onOrderRowSelected(order.id),
                                           child: Container(
-                                            padding: const EdgeInsets
-                                                .symmetric(vertical: 6),
+                                            padding: const EdgeInsets.symmetric(vertical: 6),
                                             decoration: BoxDecoration(
                                               color: isSelected
-                                                  ? (themeHelper
-                                                  .themeMode ==
-                                                  ThemeMode.dark
-                                                  ? const Color(
-                                                  0xFF383B4C)
-                                                  : const Color(
-                                                  0xFFDFDFDF))
-                                                  : (themeHelper
-                                                  .themeMode ==
-                                                  ThemeMode.dark
-                                                  ? const Color(
-                                                  0xFF201F29)
-                                                  : const Color(
-                                                  0xFFF9F9F9)),
+                                                  ? (themeHelper.themeMode == ThemeMode.dark
+                                                  ? const Color(0xFF383B4C)
+                                                  : const Color(0xFFDFDFDF))
+                                                  : (themeHelper.themeMode == ThemeMode.dark
+                                                  ? const Color(0xFF201F29)
+                                                  : const Color(0xFFF9F9F9)),
                                               border: Border(
                                                 bottom: BorderSide(
-                                                  color: themeHelper
-                                                      .themeMode ==
-                                                      ThemeMode.dark
-                                                      ? const Color(
-                                                      0xFF474646)
-                                                      : const Color(
-                                                      0xFFD8D7D7),
+                                                  color: themeHelper.themeMode == ThemeMode.dark
+                                                      ? const Color(0xFF474646)
+                                                      : const Color(0xFFD8D7D7),
                                                 ),
                                               ),
                                             ),
                                             child: Row(
                                               children: [
+                                                _buildDataCell(order.id.toString()),
+                                                _buildDataCell(_orderTypeLabelForOrder(order)),
                                                 _buildDataCell(
-                                                    order.id.toString()),
-                                                _buildDataCell(
-                                                  _orderTypeLabelForOrder(
-                                                      order),
-                                                ),
-                                                _buildDataCell(
-                                                  date != null
-                                                      ? DateFormat(
-                                                      TextConstants
-                                                          .dateFormat)
-                                                      .format(date)
+                                                  orderDate != null
+                                                      ? DateFormat(TextConstants.dateFormat).format(orderDate)
                                                       : '',
                                                 ),
                                                 _buildDataCell(
-                                                  date != null
-                                                      ? DateFormat(
-                                                      'HH:mm:ss')
-                                                      .format(date)
+                                                  orderDateTime != null
+                                                      ? DateFormat('HH:mm:ss').format(orderDateTime)
                                                       : '',
                                                 ),
                                                 _buildDataCell(
                                                   '${total < 0 ? '-' : ''}${order.currencySymbol}${total.abs().toStringAsFixed(2)}',
                                                 ),
-                                                _buildDataCell(
-                                                  order.status,
-                                                  isStatus: true,
-                                                ),
+                                                _buildDataCell(order.status, isStatus: true),
                                               ],
                                             ),
                                           ),
