@@ -164,65 +164,83 @@ class _CashMethodScreenState extends State<CashMethodScreen> {
     required int? orderId,
     required String token,
   }) async {
-    final profile = await esc.CapabilityProfile.load();
-    final generator = esc.Generator(esc.PaperSize.mm80, profile);
-    final bytes = <int>[];
-
-
-    // ✅ GET STORE (FROM CACHE + API)
+    // ✅ 1. Fetch everything FIRST
     final store = await StoreDetailsRepository()
         .getStoreDetails(token: token);
 
+    final prefs = await SharedPreferences.getInstance();
+
+    // ✅ 2. THEN build bytes
+    final profile = await esc.CapabilityProfile.load();
+    final generator = esc.Generator(esc.PaperSize.mm80, profile);
+
+    final bytes = <int>[];
+
+    bytes.addAll([27, 64]); // reset
     // ================================
     // 🖼 LOGO
     // ================================
     // ================================
 // 🖼 LOGO (CACHE + FALLBACK)
 // ================================
-    final prefs = await SharedPreferences.getInstance();
-    final logoBase64 = prefs.getString('store_logo');
+//     final prefs = await SharedPreferences.getInstance();
+//     final logoBase64 = prefs.getString('store_logo');
+//
+//     img.Image? image;
+//
+// // ✅ 1. Try cached logo
+//     if (logoBase64 != null) {
+//       try {
+//         final bytesImage = base64Decode(logoBase64);
+//         image = img.decodeImage(bytesImage);
+//       } catch (_) {}
+//     }
+//
+// // ✅ 2. Fallback → download if not cached
+//     if (image == null && store.logo.isNotEmpty) {
+//       try {
+//         final response = await http.get(Uri.parse(store.logo));
+//
+//         if (response.statusCode == 200) {
+//           final bytesImage = response.bodyBytes;
+//           image = img.decodeImage(bytesImage);
+//
+//           // 💾 Save to cache for next time
+//           await prefs.setString(
+//             'store_logo',
+//             base64Encode(bytesImage),
+//           );
+//         }
+//       } catch (_) {}
+//     }
+//
+// // ✅ 3. Print logo
+//     if (image != null) {
+//       image = img.grayscale(image);
+//       final resized = img.copyResize(image, width: 200);
+//       // final resized = img.copyResize(image, width: 200);
+//
+//       bytes.addAll(generator.imageRaster(
+//         resized,
+//         align: esc.PosAlign.center,
+//       ));
+//
+//       bytes.addAll(generator.feed(2));
+//     }
 
-    img.Image? image;
-
-// ✅ 1. Try cached logo
-    if (logoBase64 != null) {
-      try {
-        final bytesImage = base64Decode(logoBase64);
-        image = img.decodeImage(bytesImage);
-      } catch (_) {}
-    }
-
-// ✅ 2. Fallback → download if not cached
-    if (image == null && store.logo.isNotEmpty) {
-      try {
-        final response = await http.get(Uri.parse(store.logo));
-
-        if (response.statusCode == 200) {
-          final bytesImage = response.bodyBytes;
-          image = img.decodeImage(bytesImage);
-
-          // 💾 Save to cache for next time
-          await prefs.setString(
-            'store_logo',
-            base64Encode(bytesImage),
-          );
-        }
-      } catch (_) {}
-    }
-
-// ✅ 3. Print logo
-    if (image != null) {
-      image = img.grayscale(image); // 🔥 better for thermal printers
-
-      final resized = img.copyResize(image, width: 380);
-
-      bytes.addAll(generator.imageRaster(
-        resized,
+    // ✅ TOP HEADER
+    bytes.addAll(generator.text(
+      "  ****CUST_INVOICE****",
+      styles: const esc.PosStyles(
         align: esc.PosAlign.center,
-      ));
+        // bold: true,
+        height: esc.PosTextSize.size1,
+        width: esc.PosTextSize.size1,
+      ),
+    ));
 
-      bytes.addAll(generator.feed(1));
-    }
+    bytes.addAll(generator.feed(1));
+
     // ================================
     // 🏪 STORE INFO
     // ================================
@@ -234,6 +252,7 @@ class _CashMethodScreenState extends State<CashMethodScreen> {
         height: esc.PosTextSize.size2,
       ),
     ));
+    bytes.addAll(generator.feed(1)); // 1 line space
 
     bytes.addAll(generator.text(
       store.address,
@@ -260,25 +279,38 @@ class _CashMethodScreenState extends State<CashMethodScreen> {
     final time =
         "${now.hour}:${now.minute.toString().padLeft(2, '0')}";
 
+// ✅ Row 1 → Date & Time
+    // Row 1
     bytes.addAll(generator.row([
-      esc.PosColumn(text: "Date: $date", width: 6),
+      esc.PosColumn(
+        text: "Dt: $date", // 🔥 shorter
+        width: 7,
+      ),
       esc.PosColumn(
         text: "Time: $time",
-        width: 6,
+        width: 5,
         styles: const esc.PosStyles(align: esc.PosAlign.right),
       ),
     ]));
 
+// Row 2
     bytes.addAll(generator.row([
-      esc.PosColumn(text: "Order: ${orderId ?? '--'}", width: 6),
       esc.PosColumn(
-        text: orderType,
+        text: "Ord: ${orderId ?? '--'}", // 🔥 shorter
         width: 6,
-        styles: const esc.PosStyles(align: esc.PosAlign.right),
+      ),
+      esc.PosColumn(
+        text: orderType.toUpperCase(),
+        width: 6,
+        styles: const esc.PosStyles(
+          align: esc.PosAlign.right,
+        ),
       ),
     ]));
 
     bytes.addAll(generator.hr());
+
+    // bytes.addAll(generator.hr());
 
     // ================================
     // 🧾 ITEM HEADER (80mm)
@@ -382,7 +414,8 @@ class _CashMethodScreenState extends State<CashMethodScreen> {
         width: 8,
         styles: const esc.PosStyles(
           bold: true,
-          height: esc.PosTextSize.size2,
+          height: esc.PosTextSize.size1, // ✅ smaller
+          width: esc.PosTextSize.size1,  // ✅ normal width
         ),
       ),
       esc.PosColumn(
@@ -391,7 +424,8 @@ class _CashMethodScreenState extends State<CashMethodScreen> {
         styles: const esc.PosStyles(
           align: esc.PosAlign.right,
           bold: true,
-          height: esc.PosTextSize.size2,
+          height: esc.PosTextSize.size1, // 🔥 keep amount big
+          width: esc.PosTextSize.size1,
         ),
       ),
     ]));
@@ -409,7 +443,7 @@ class _CashMethodScreenState extends State<CashMethodScreen> {
       ),
     ));
 
-    bytes.addAll(generator.feed(3));
+    bytes.addAll(generator.feed(5));
     bytes.addAll(generator.cut());
 
     return bytes;
@@ -566,7 +600,7 @@ class _CashMethodScreenState extends State<CashMethodScreen> {
           prefs2.getString(PrinterPrefsKeys.type) ?? 'bluetooth',
         );
         final pt = t == AppPrinterType.bluetooth ? PrinterType.bluetooth : PrinterType.usb;
-        await Future<void>.delayed(const Duration(milliseconds: 200));
+        await Future<void>.delayed(const Duration(seconds: 2));
         await _printerManager.disconnect(
           type: pt,
           delayMs: pt == PrinterType.usb ? 150 : null,
@@ -723,13 +757,16 @@ class _CashMethodScreenState extends State<CashMethodScreen> {
                     setState(() => _isPrinting = true);
 
                     try {
+                      final prefs = await SharedPreferences.getInstance();
+                      final token = prefs.getString('token') ?? '';
+
                       final bytes = await buildCashReceiptBytes(
                         orderType: widget.orderType,
                         subtotal: widget.subtotal,
                         tax: widget.tax,
                         total: widget.total,
                         orderId: widget.orderId,
-                        token: '',
+                        token: token, // ✅ now defined
                       );
 
                       if (!context.mounted) return;
