@@ -861,6 +861,51 @@ class NavigationBar extends StatelessWidget {
             isVertical: false,
             isDisabled: isShiftScreen,
           ),
+          const SizedBox(height: 10),
+          SidebarButton(
+            imageAsset: 'assets/refund.png',
+            label: "Refund",
+            isSelected: selectedSidebarIndex == 5,
+            isDisabled: isShiftInvalid || isShiftScreen,
+            onTap: (isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5)
+                ? () {}
+                : () async {
+              if (!await _canNavigate(5)) return;
+
+              if (kDebugMode) {
+                print("##### Refund button tapped");
+              }
+
+              lastSelectedIndex = 5;
+              onSidebarItemSelected(5);
+
+              Navigator.of(context).pushAndRemoveUntil(
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      BlocProvider(
+                        create: (context) => CompletedOrdersBloc(
+                          context.read<CompletedOrdersRepository>(),
+                        )..add(
+                          FetchCompletedOrders(
+                            page: 1,
+                            perPage: 10,
+                          ),
+                        ),
+                        child: const CompletedOrdersScreen(
+                          lastSelectedIndex: 5,
+                        ),
+                      ),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                    return child; // No animation
+                  },
+                  transitionDuration: Duration.zero,
+                ),
+                    (route) => false,
+              );
+            },
+            isVertical: isVertical,
+          ),
           // Additional dynamic items can be added here.
         ];
 
@@ -870,19 +915,19 @@ class NavigationBar extends StatelessWidget {
           SidebarButton(
             svgAsset: SvgUtils.settingsIcon,
             label: TextConstants.settingsHeaderText,
-            isSelected: selectedSidebarIndex == 5,
+            isSelected: selectedSidebarIndex == 6,
             onTap:
-            isShiftScreen || selectedSidebarIndex == 5
+            isShiftScreen || selectedSidebarIndex == 6
                 ? () {}
                 : () async {
-              if (!await _canNavigate(5)) return;
+              if (!await _canNavigate(6)) return;
               if (kDebugMode) {
                 print("##### Settings button tapped");
               }
               lastSelectedIndex =
                   selectedSidebarIndex; // Store before navigating
 
-              onSidebarItemSelected(5); // Highlight settings
+              onSidebarItemSelected(6); // Highlight settings
 
               Navigator.push(
                 context,
@@ -920,14 +965,14 @@ class NavigationBar extends StatelessWidget {
           SidebarButton(
             svgAsset: SvgUtils.logoutIcon,
             label: TextConstants.logoutText,
-            isSelected: selectedSidebarIndex == 6,
+            isSelected: selectedSidebarIndex == 7,
             onTap:
             isShiftScreen
                 ? () {}
                 : () async {
-              if (!await _canNavigate(6)) return;
+              if (!await _canNavigate(7)) return;
               final previousIndex = selectedSidebarIndex;
-              onSidebarItemSelected(6);
+              onSidebarItemSelected(7);
               if (kDebugMode) {
                 print("nav logout called");
               }
@@ -1483,53 +1528,63 @@ class SidebarButton extends StatelessWidget {
 
   Widget _buildHorizontalLayout() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
-      decoration: BoxDecoration(
-        shape: BoxShape.rectangle,
-        color: isSelected ? Color(0xFFFE6464) : const Color(0xFF3B4259),
-        borderRadius: const BorderRadius.all(Radius.circular(8)),
-      ),
-      child: Row(
-        children: [
-          svgAsset != null
-              ? SvgPicture.asset(
-            svgAsset!,
-            colorFilter: ColorFilter.mode(
-              isSelected
-                  ? Colors.white
-                  : isDisabled
-                  ? Colors.grey.shade800
-                  : Colors.white70,
-              BlendMode.srcIn,
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
+        decoration: BoxDecoration(
+          shape: BoxShape.rectangle,
+          color: isSelected ? Color(0xFFFE6464) : const Color(0xFF3B4259),
+          borderRadius: const BorderRadius.all(Radius.circular(8)),
+        ),
+        child: Row(
+          children: [
+            if (svgAsset != null)
+              SvgPicture.asset(
+                svgAsset!,
+                colorFilter: ColorFilter.mode(
+                  isSelected
+                      ? Colors.white
+                      : isDisabled
+                      ? Colors.grey.shade800
+                      : Colors.white70,
+                  BlendMode.srcIn,
+                ),
+                height: 22,
+              )
+            else if (imageAsset != null)
+              Image.asset(
+                imageAsset!,
+                height: 22,
+                color: isSelected
+                    ? Colors.white
+                    : isDisabled
+                    ? Colors.grey.shade800
+                    : Colors.white70,
+              )
+            else
+              Icon(
+                icon,
+                color: isSelected
+                    ? Colors.white
+                    : isDisabled
+                    ? Colors.grey.shade800
+                    : Colors.white,
+              ),
+
+            SizedBox(width: isSelected ? 6.0 : 4.0),
+
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected
+                    ? Colors.white
+                    : isDisabled
+                    ? Colors.grey.shade800
+                    : Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: isSelected ? 16.0 : 14.0,
+              ),
             ),
-            height: 22,
-          )
-              : Icon(
-            icon,
-            color:
-            isSelected
-                ? Colors.white
-                : isDisabled
-                ? Colors.grey.shade800
-                : Colors.white,
-          ),
-          SizedBox(width: isSelected ? 6.0 : 4.0),
-          // const SizedBox(width: 6), // reduced from 10
-          Text(
-            label,
-            style: TextStyle(
-              color:
-              isSelected
-                  ? Colors.white
-                  : isDisabled
-                  ? Colors.grey.shade800
-                  : Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: isSelected ? 16.0 : 14.0, // Slight increase if selected
-            ),
-          ),
-        ],
-      ),
+          ],
+        )
     );
   }
 }

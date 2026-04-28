@@ -1107,7 +1107,7 @@ class _IndigoCategoryRepositoryWithCache {
   void _scheduleRefresh(String key, Future<void> Function() work) {
     if (_inFlightRefreshes.containsKey(key)) {
       if (kDebugMode)
-        print("⏳ [Indigo] BG refresh already in-flight for [$key], skipping");
+        print(" [Indigo] BG refresh already in-flight for [$key], skipping");
       return;
     }
     final task = work().whenComplete(() => _inFlightRefreshes.remove(key));
@@ -3497,7 +3497,8 @@ class _IndigoSubCategoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = isDark ? const Color(0xFF26253A) : const Color(0xFFF3F4F8);
+
+    final cardBg = isDark ?  Color(0xFF26253A) : const Color(0xFFF3F4F8);
     final borderColor =
     isDark ? const Color(0xFF3A3A52) : const Color(0xFFE8EAF0);
     final textColor = isDark ? Colors.white : const Color(0xFF2C3E50);
@@ -3566,7 +3567,7 @@ class _IndigoProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = isDark ? const Color(0xFF26253A) : Colors.white;
+    final cardBg = isDark ?  Color(0xFF26253A) : Colors.white;
     final borderColor =
     isDark ? const Color(0xFF3A3A52) : const Color(0xFFE3F2FD);
     final nameColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
@@ -3589,7 +3590,7 @@ class _IndigoProductCard extends StatelessWidget {
           border: Border.all(color: borderColor, width: 1),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isDark ? 0.15 : 0.04),
+              color:  Colors.blueAccent,
               blurRadius: 3,
               offset: const Offset(0, 1),
             ),

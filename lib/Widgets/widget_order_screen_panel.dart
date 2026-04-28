@@ -3257,33 +3257,33 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                               SizedBox(
                                                 height: 2,
                                               ),
-                                              if (showRefundBlock) ...[
-                                                Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment
-                                                          .spaceBetween,
-                                                  children: [
-                                                    Text(
-                                                      "Refunded Amount",
-                                                      style: TextStyle(
-                                                        fontSize: 14,
-                                                        fontWeight:
-                                                            FontWeight.w500,
-                                                        color: Colors.red,
-                                                      ),
-                                                    ),
-                                                    Text(
-                                                      "${TextConstants.currencySymbol}${alreadyRefundedAmount.toStringAsFixed(2)}",
-                                                      style: const TextStyle(
-                                                        fontSize: 16,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color: Colors.red,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
+                                              // if (showRefundBlock) ...[
+                                              //   Row(
+                                              //     mainAxisAlignment:
+                                              //         MainAxisAlignment
+                                              //             .spaceBetween,
+                                              //     children: [
+                                              //       Text(
+                                              //         "Refunded Amount",
+                                              //         style: TextStyle(
+                                              //           fontSize: 14,
+                                              //           fontWeight:
+                                              //               FontWeight.w500,
+                                              //           color: Colors.red,
+                                              //         ),
+                                              //       ),
+                                              //       Text(
+                                              //         "${TextConstants.currencySymbol}${alreadyRefundedAmount.toStringAsFixed(2)}",
+                                              //         style: const TextStyle(
+                                              //           fontSize: 16,
+                                              //           fontWeight:
+                                              //               FontWeight.w600,
+                                              //           color: Colors.red,
+                                              //         ),
+                                              //       ),
+                                              //     ],
+                                              //   ),
+                                              // ],
                                             ],
                                           ),
                                       ],

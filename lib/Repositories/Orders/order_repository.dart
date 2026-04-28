@@ -2218,7 +2218,7 @@ class OrderRepository {
         String orderType = "",
         String userId = "",
         String startDate = "",
-        String endDate = ""}) async {
+        String endDate = "",required String search}) async {
     final statusString = status != ""
         ? status
         : (allStatuses
@@ -2226,9 +2226,9 @@ class OrderRepository {
         : TextConstants.processing);
 
     orderType = orderType != "" ? orderType : "";
-
     var getOrdersParameter =
-        "?author=$userId&page=$pageNumber&per_page=$pageLimit&created_via=$orderType&after=$startDate&before=$endDate&search=&status="; //Build #1.0.134: updated new parameters startDate, endDate
+    """
+?author=$userId&page=$pageNumber&per_page=$pageLimit&created_via=$orderType&after=$startDate&before=$endDate&search=$search&status="""; //Build #1.0.134: updated new parameters startDate, endDate
     // Encode for URL (spaces become '+', commas become '%2C')
     final encodedStatus = Uri.encodeQueryComponent(statusString);
     final url =

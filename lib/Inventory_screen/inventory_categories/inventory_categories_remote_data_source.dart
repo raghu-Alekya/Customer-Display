@@ -35,41 +35,6 @@ class InventoryCategoriesRemoteDataSourceImpl implements InventoryCategoriesRemo
     return token;
   }
 
-  @override
-  // Future<List<InventoryCategoriesModel>> getCategories() async {
-  //   final token = await _getTokenFromDb();
-  //
-  //   /// Full correct URL
-  //   final String fullUrl =
-  //       "${UrlHelper.wooBaseUrl}products/categories";
-  //
-  //   final Uri url = Uri.parse(fullUrl);
-  //
-  //   if (kDebugMode) {
-  //     print("#### FULL REQUEST URL: $fullUrl");
-  //   }
-  //
-  //   final response = await client.get(
-  //     url,
-  //     headers: {
-  //       'Authorization': 'Bearer $token',
-  //       'Accept': 'application/json',
-  //     },
-  //   );
-  //
-  //   if (response.statusCode == 200) {
-  //     final List<dynamic> decoded = json.decode(response.body);
-  //     return decoded
-  //         .map((e) => InventoryCategoriesModel.fromJson(e))
-  //         .toList();
-  //   } else {
-  //     if (kDebugMode) {
-  //       print('#### API ERROR: ${response.statusCode}');
-  //       print('#### BODY: ${response.body}');
-  //     }
-  //     throw Exception('Failed to load categories');
-  //   }
-  // }
 
   @override
   Future<List<InventoryCategoriesModel>> getCategories() async {
@@ -121,5 +86,50 @@ class InventoryCategoriesRemoteDataSourceImpl implements InventoryCategoriesRemo
     }
   }
 
+// Future<void> fetchSubCategories(int categoryId) async {
+//   try {
+//     final db = await DBHelper.instance.database;
+//
+//     final result = await db.query(
+//       AppDBConst.userTable,
+//       where:
+//       '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+//       orderBy: '${AppDBConst.userId} DESC',
+//       limit: 1,
+//     );
+//
+//     if (result.isEmpty) throw Exception("No token found");
+//
+//     final token = result.first[AppDBConst.userToken] as String;
+//
+//     final Uri url = Uri.parse(
+//       "${UrlHelper.wooBaseUrl}inventories/show-category-sublist",
+//     ).replace(queryParameters: {
+//       'category_id': categoryId.toString(),
+//     });
+//
+//     final response = await http.get(
+//       url,
+//       headers: {
+//         'Authorization': 'Bearer $token',
+//         'Accept': 'application/json',
+//       },
+//     );
+//
+//     if (response.statusCode == 200) {
+//       final List decoded = json.decode(response.body);
+//
+//       setState(() {
+//         subCategories = decoded
+//             .map((e) => InventoryCategoriesModel.fromJson(e))
+//             .toList();
+//       });
+//     } else {
+//       throw Exception("Subcategory API failed");
+//     }
+//   } catch (e) {
+//     debugPrint("SUBCATEGORY ERROR: $e");
+//   }
+// }
 
 }

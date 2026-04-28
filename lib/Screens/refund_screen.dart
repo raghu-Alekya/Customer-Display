@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_svg/svg.dart';
+import 'package:intl/intl.dart';
 // import 'package:pinaka_pos/Screens/Home/refund_screen.dart';
 import 'package:provider/provider.dart';
+import 'package:syncfusion_flutter_datepicker/datepicker.dart';
 
 // import '../../Blocs/Orders/refund_order_list_bloc.dart';
 import '../../Constants/text.dart';
@@ -42,6 +45,9 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   DateTime? selectedDate;
   // final int _rowsPerPage = 10;
   List<int> quantities = [];
+  DateTime? _startDate;
+  DateTime? _endDate;
+  bool _isDateRangeApplied = false;
 // int _currentPage = 1;
   List<CompletedOrder> _allOrders = [];
   List<CompletedOrder> filteredOrders = [];
@@ -466,44 +472,19 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
 
             // CALENDAR ICON FILTER
             InkWell(
-              onTap: () async {
-                final date = await showDatePicker(
-                  context: context,
-                  initialDate: selectedDate ?? DateTime.now(),
-                  firstDate: DateTime(2023),
-                  lastDate: DateTime(2100),
-                );
-
-                if (date != null) {
-                  setState(() {
-                    selectedDate = date;
-
-                    filteredOrders = _allOrders.where((order) {
-                      DateTime orderDate = order.completedAt;
-
-                      return orderDate.year == date.year &&
-                          orderDate.month == date.month &&
-                          orderDate.day == date.day;
-                    }).toList();
-
-                    _currentPage = 1;
-                    _updatePagination();
-                  });
-                }
-              },
+              onTap: _openDateRangePickerDialog,
               child: Container(
                 padding: const EdgeInsets.all(7),
-                // decoration: BoxDecoration(
-                //   // border: Border.all(
-                //   //   color: Theme.of(context).colorScheme.outline,
-                //   // ),
-                //   borderRadius: BorderRadius.circular(6),
-                //   color: Theme.of(context).colorScheme.surface,
-                // ),
-                child: Icon(
-                  Icons.calendar_today,
-                  size: 18,
-                  color: Theme.of(context).colorScheme.onSurface,
+                child: SvgPicture.asset(
+                  'assets/svg/filter_calendar.svg',
+                  width: 32,
+                  height: 32,
+                  colorFilter: ColorFilter.mode(
+                    _isDateRangeApplied
+                        ? Colors.redAccent
+                        : Theme.of(context).colorScheme.onSurface,
+                    BlendMode.srcIn,
+                  ),
                 ),
               ),
             ),
@@ -512,7 +493,74 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
       ],
     );
   }
+  void _openDateRangePickerDialog() {
+    final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);
 
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: themeHelper.themeMode == ThemeMode.dark
+              ? ThemeNotifier.secondaryBackground
+              : null,
+          title: const Text("Select Date Range"),
+          content: SizedBox(
+            height: 400,
+            width: 350,
+            child: SfDateRangePicker(
+              selectionMode: DateRangePickerSelectionMode.range,
+              showActionButtons: true,
+              onSelectionChanged: _onDateRangeSelectionChanged,
+              initialSelectedRange: _startDate != null && _endDate != null
+                  ? PickerDateRange(_startDate, _endDate)
+                  : null,
+              onSubmit: (value) => Navigator.pop(context),
+              onCancel: () => Navigator.pop(context),
+            ),
+          ),
+        );
+      },
+    );
+  }
+  void _onDateRangeSelectionChanged(
+      DateRangePickerSelectionChangedArgs args) {
+    if (args.value is PickerDateRange) {
+      final range = args.value as PickerDateRange;
+
+      setState(() {
+        _startDate = range.startDate;
+        _endDate = range.endDate ?? range.startDate;
+
+        _isDateRangeApplied = _startDate != null && _endDate != null;
+
+        _applyDateFilter(); // 👈 important
+      });
+    }
+  }
+  void _applyDateFilter() {
+    if (!_isDateRangeApplied || _startDate == null || _endDate == null) {
+      filteredOrders = _allOrders;
+    } else {
+      filteredOrders = _allOrders.where((order) {
+        final orderDate = order.completedAt;
+
+        final dateOnly =
+        DateTime(orderDate.year, orderDate.month, orderDate.day);
+
+        final start =
+        DateTime(_startDate!.year, _startDate!.month, _startDate!.day);
+
+        final end =
+        DateTime(_endDate!.year, _endDate!.month, _endDate!.day);
+
+        return dateOnly.isAfter(start.subtract(const Duration(days: 1))) &&
+            dateOnly.isBefore(end.add(const Duration(days: 1)));
+      }).toList();
+    }
+
+    _currentPage = 1;
+    _updatePagination();
+  }
   // ================= TABLE =================
 
   Widget _buildOrderTable(ThemeNotifier themeHelper) { bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -606,8 +654,10 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                       _DataCell("#${order.orderId}"),
                       _DataCell(order.orderType),
                       _DataCell(
-                          order.completedAt.toString().split(' ').first),
+                        DateFormat('dd-MM-yyyy').format(order.completedAt),
+                      ),
                       // _DataCell(order.transactionId),
+                      const SizedBox(width:10),
                       Expanded(
                         child: GestureDetector(
                           onTap: () {},
@@ -674,10 +724,10 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                       ),
                       // const SizedBox(width:5),
                       _DataCell(order.paymentMethod),
-                      _DataCell(order.amount.toStringAsFixed(2)),
-                      _DataCell(order.tax.toStringAsFixed(2)),
-                      _DataCell(order.discount.toStringAsFixed(2)),
-                      _DataCell(order.total.toStringAsFixed(2)),
+                      _DataCell('${order.amount < 0 ? '-' : ''}\$${order.amount.abs().toStringAsFixed(2)}'),
+                      _DataCell('${order.tax < 0 ? '-' : ''}\$${order.tax.abs().toStringAsFixed(2)}'),
+                      _DataCell('${order.discount < 0 ? '-' : ''}\$${order.discount.abs().toStringAsFixed(2)}'),
+                      _DataCell('${order.total < 0 ? '-' : ''}\$${order.total.abs().toStringAsFixed(2)}'),
                       const _StatusCell(),
                     ],
                   ),

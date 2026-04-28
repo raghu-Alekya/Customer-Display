@@ -176,13 +176,12 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
 
                         _buildCard(
                           //title: TextConstants.cashier,
-                          icon: themeHelper.themeMode == ThemeMode.dark
+                          icon:
+                          themeHelper.themeMode == ThemeMode.dark
                               ? Image.asset(
-                            "assets/stock_inventory.png",
+                            "assets/stock_inventory_dark.png",
                           )
-                              : Image.asset(
-                            "assets/stock_inventory.png",
-                          ),
+                              : Image.asset("assets/img.png"),
                           cardIndex: 0,
                           onTap: () {
                             Navigator.push(
@@ -200,13 +199,12 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
 
                         _buildCard(
                           //title: TextConstants.cashier,
-                          icon: themeHelper.themeMode == ThemeMode.dark
+                          icon:
+                          themeHelper.themeMode == ThemeMode.dark
                               ? Image.asset(
-                            "assets/stock_inventory.png",
+                            "assets/stock_inventory_dark.png",
                           )
-                              : Image.asset(
-                            "assets/stock_inventory.png",
-                          ),
+                              : Image.asset("assets/img.png"),
                           cardIndex: 0,
 
                           onTap: () {

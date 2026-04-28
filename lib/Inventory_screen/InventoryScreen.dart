@@ -66,6 +66,7 @@ class _InventoryScreenState extends State<InventoryScreen>
 
   // Product Type
   String? _selectedProductType;
+  final FocusNode _skuFocusNode = FocusNode();
 
   // Category, Tag, Tax selection
   dynamic _selectedCategory;
@@ -157,6 +158,11 @@ class _InventoryScreenState extends State<InventoryScreen>
     _initializeAddProductBloc();
 
     _imageUploadRepo = ImageUploadRepository();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        FocusScope.of(context).unfocus(); // ✅ ensures no keyboard
+      }
+    });
   }
 
   void _handleUnitNameCreate() async {
@@ -233,6 +239,7 @@ class _InventoryScreenState extends State<InventoryScreen>
       controller.dispose();
     }
     super.dispose();
+    _skuFocusNode.dispose();
   }
 
   void _initializeAddProductBloc() {
@@ -599,11 +606,25 @@ class _InventoryScreenState extends State<InventoryScreen>
     }
 
     // ── Categories & Tags ─────────────────────────────────────────
-    final List<Map<String, dynamic>> categories = _selectedCategory != null
-        ? [
-      {'id': _selectedCategory.id ?? 0}
-    ]
-        : [];
+    final List<Map<String, dynamic>> categories = () {
+      if (_selectedCategory == null) return <Map<String, dynamic>>[];
+      if (_selectedCategory is Map) {
+        final catId = _selectedCategory['category_id'];
+        final subId = _selectedCategory['sub_category_id'];
+        final list = <Map<String, dynamic>>[];
+        if (catId != null) list.add({'id': catId});
+        if (subId != null) list.add({'id': subId});
+        return list;
+      }
+      if (_selectedCategory is int) {
+        return <Map<String, dynamic>>[{'id': _selectedCategory}];
+      }
+      try {
+        return <Map<String, dynamic>>[{'id': _selectedCategory.id ?? 0}];
+      } catch (_) {
+        return <Map<String, dynamic>>[];
+      }
+    }();
 
     final List<Map<String, dynamic>> tags = [];
     final Set<String> seenSlugs = {};
@@ -845,8 +866,19 @@ class _InventoryScreenState extends State<InventoryScreen>
     print('Stock Quantity: ${_qtyController.text}');
 
     if (_selectedCategory != null) {
-      print(
-          'Category: ${_selectedCategory.name} (ID: ${_selectedCategory.id})');
+      if (_selectedCategory is Map) {
+        print(
+            'Category: (Map) category_id=${_selectedCategory['category_id']}, sub_category_id=${_selectedCategory['sub_category_id']}');
+      } else if (_selectedCategory is int) {
+        print('Category ID: $_selectedCategory');
+      } else {
+        try {
+          print(
+              'Category: ${_selectedCategory.name} (ID: ${_selectedCategory.id})');
+        } catch (_) {
+          print('Category: $_selectedCategory');
+        }
+      }
     }
 
     if (_selectedTax != null) {
@@ -1064,7 +1096,7 @@ class _InventoryScreenState extends State<InventoryScreen>
           body: Column(
             children: [
               TopBar(
-                screen: Screen.SHIFT,
+                screen: Screen.ORDERS,
                 onModeChanged: () async {
                   String newLayout;
                   if (sidebarPosition == SidebarPosition.left) {
@@ -1868,6 +1900,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         Expanded(
                                           child: TextFormField(
                                             controller: _skuController,
+                                            autofocus: false,
+                                            focusNode: _skuFocusNode,
                                             style: TextStyle(
                                               color: isDark
                                                   ? Colors.white
@@ -3687,34 +3721,34 @@ class _InventoryScreenState extends State<InventoryScreen>
                               const SizedBox(width: 12),
 
                               // Selected slug display
-                              Expanded(
-                                flex: 2,
-                                child: Container(
-                                  height: 40,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                                  decoration: BoxDecoration(
-                                    color: isDark ? const Color(0xFF252837) : Colors.white70,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: isDark
-                                          ? const Color(0xFF3B4259)
-                                          : const Color(0xFFE0E0E0),
-                                    ),
-                                  ),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      attr['selectedSlug'] ?? 'Not selected',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: isDark ? Colors.white70 : Colors.black54,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
+                              // Expanded(
+                              //   flex: 2,
+                              //   child: Container(
+                              //     height: 40,
+                              //     padding: const EdgeInsets.symmetric(horizontal: 12),
+                              //     decoration: BoxDecoration(
+                              //       color: isDark ? const Color(0xFF252837) : Colors.white70,
+                              //       borderRadius: BorderRadius.circular(8),
+                              //       border: Border.all(
+                              //         color: isDark
+                              //             ? const Color(0xFF3B4259)
+                              //             : const Color(0xFFE0E0E0),
+                              //       ),
+                              //     ),
+                              //     child: Align(
+                              //       alignment: Alignment.centerLeft,
+                              //       child: Text(
+                              //         attr['selectedSlug'] ?? 'Not selected',
+                              //         style: TextStyle(
+                              //           fontSize: 12,
+                              //           color: isDark ? Colors.white70 : Colors.black54,
+                              //         ),
+                              //         overflow: TextOverflow.ellipsis,
+                              //       ),
+                              //     ),
+                              //   ),
+                              // ),
+                              // const SizedBox(width: 12),
 
                               // Add / Remove button
                               if (isLast)

@@ -556,12 +556,12 @@ class OrderBloc { // Build #1.0.25 - added by naveen
   }
 
   // Build #1.0.118: Added this function for Get Orders Total with count API call
-  Future<void> fetchTotalOrdersCount({bool allStatuses = false, int pageNumber =1, int pageLimit = 10, String status = "", String orderType = "", String userId = "", String startDate = "", String endDate = ""}) async { //Build #1.0.134: Added Start date and end date parameters
+  Future<void> fetchTotalOrdersCount({bool allStatuses = false, int pageNumber =1, int pageLimit = 10, String status = "", String orderType = "", String userId = "", String startDate = "", String endDate = "", required String search}) async { //Build #1.0.134: Added Start date and end date parameters
     if (_fetchTotalOrdersController.isClosed) return;
 
     fetchTotalOrdersSink.add(APIResponse.loading(TextConstants.loading));
     try {
-      final response = await _orderRepository.fetchTotalOrdersCount(allStatuses: allStatuses, pageNumber: pageNumber, pageLimit: pageLimit, status: status, orderType: orderType, userId: userId, startDate: startDate, endDate: endDate);
+      final response = await _orderRepository.fetchTotalOrdersCount(allStatuses: allStatuses, pageNumber: pageNumber, pageLimit: pageLimit, status: status, orderType: orderType, userId: userId, startDate: startDate, endDate: endDate,  search: search,);
 
       if (kDebugMode) {
         print("OrderBloc - Fetched ${response.ordersData.length} total orders, Total Count: ${response.orderTotalCount}");

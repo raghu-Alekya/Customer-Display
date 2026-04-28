@@ -76,7 +76,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   List<TaxModel> _taxList = [];
   TaxModel? _selectedTax;
   bool _isTaxLoading = false;
-
+  bool _isSkuGenerated = false;
   // Tax slab options
   late List<String> _taxSlabOptions = [];
   String _selectedTaxSlab = '';
@@ -129,9 +129,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
     super.initState();
     _loadCashbackLimit();
 
+
     _customItemNameController.addListener(() {
-      _customItemName = _customItemNameController.text;
-      setState(() {}); // Trigger a rebuild when the text changes
+      setState(() {
+        _customItemName = _customItemNameController.text;
+
+        // 🔥 FIX: re-enable tax + SKU when name entered
+        _isTaxDropdownEnabled = _customItemName.trim().isNotEmpty;
+        _isSkuGenerated = false; // reset SKU state for new item
+      });
     });
     _customItemPriceController.addListener(() {
       _customItemPrice = _customItemPriceController.text;
@@ -362,10 +368,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                 Divider(
                     height: 1,
                     thickness: 1,
-                    indent: 1,
-                    endIndent: 1,
+                    indent: 10,
+                    endIndent: 10,
                     color: themeHelper.themeMode == ThemeMode.dark
-                        ? Colors.black
+                        ?  Color(0xFF313441)
                         : Color(0xFF8EAAD8)),
               _buildTab(
                   1,
@@ -383,7 +389,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                     indent: 10,
                     endIndent: 10,
                     color: themeHelper.themeMode == ThemeMode.dark
-                        ? Colors.black
+                        ?  Color(0xFF313441)
                         : Color(0xFF8EAAD8)),
               _buildTab(
                   2,
@@ -401,7 +407,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                     indent: 10,
                     endIndent: 10,
                     color: themeHelper.themeMode == ThemeMode.dark
-                        ? Colors.black
+                        ?  Color(0xFF313441)
                         : Color(0xFF8EAAD8)),
               _buildTab(
                   3,
@@ -425,6 +431,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       ) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     bool isSelected = _selectedTabIndex == index;
+    final isDark = themeHelper.themeMode == ThemeMode.dark;
 
     return Expanded(
       child: GestureDetector(
@@ -453,8 +460,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
               // ),//**8Raghu modified the code below, with blue cards when selected it shows white
 
               color: isSelected
-                  ? const Color(0xFFFFFFFF) // selected light color
-                  : const Color(0xFFECF1FF), // unselected blue
+                  ? (isDark
+                  ? const Color(0xFF2A2D3E) // 🔹 dark selected (you can tweak)
+                  : const Color(0xFFFFFFFF)) // 🔹 light selected
+                  : (isDark
+                  ? const Color(0xFF1F1D2B) // 🔹 dark unselected
+                  : const Color(0xFFECF1FF)), // 🔹 light unselected
               //borderRadius: BorderRadius.circular(2.0),
               /// borderRadius: BorderRadius.circular(0), // REMOVE rounded corners for now
             ),
@@ -466,7 +477,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                   height: 32,
                   width: 32,
                   colorFilter: ColorFilter.mode(
-                    isSelected ? iconColor : iconColor.withOpacity(0.8),
+                    isDark
+                        ? (isSelected ? Colors.white : Colors.white70)
+                        : (isSelected ? iconColor : iconColor.withOpacity(0.8)),
                     BlendMode.srcIn,
                   ),
                 ),
@@ -478,15 +491,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                   text,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    //color: isSelected
-                    //? textColor
-                    //: textColor.withOpacity(0.8),
-                    //fontSize: isSelected ? 18 : 16,
-                    color: textColor,
+                    color: isDark
+                        ? Colors.white
+                        : textColor, // keep your existing color for light mode
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    // fontWeight:
-                    //isSelected ? FontWeight.bold : FontWeight.bold,
                   ),
                 ),
               ],
@@ -496,7 +505,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       ),
     );
   }
-
   Widget _buildTabContent() {
     switch (_selectedTabIndex) {
       case 0:
@@ -1450,7 +1458,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
               Padding(
                 padding: const EdgeInsets.all(6.0),
                 child: ElevatedButton(
-                  onPressed: _isGenerateSkuEnabled() ? _generateSku : null,
+                  onPressed: (_isItemNameEmpty() || _isSkuGenerated) ? null : _generateSku,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _isGenerateSkuEnabled()
                         ? Colors.redAccent
@@ -1535,7 +1543,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                 ),
               );
             }).toList(),
-            onChanged: _isTaxDropdownEnabled
+            onChanged: _customItemNameController.text.trim().isNotEmpty
                 ? (value) {
               if (kDebugMode) {
                 print(
@@ -1705,6 +1713,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
     setState(() {
       _sku = "$prefix-$timestamp";
       _skuController.text = _sku;
+      _isSkuGenerated = true;
     });
 
     // Show confirmation snackbar
@@ -3461,9 +3470,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         _customItemNameController.clear();
         _customItemPriceController.clear();
         _skuController.clear();
+        _isSkuGenerated = false;
+        _selectedTax = null;
         _selectedTaxSlab =
         _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
-        _isTaxDropdownEnabled = false;
+        _isTaxDropdownEnabled = true;
       });
 
       await _orderHelper.loadData();

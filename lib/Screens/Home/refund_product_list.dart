@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 
 import 'package:dotted_line/dotted_line.dart';
@@ -45,9 +44,9 @@ class _RefundScreenState extends State<RefundScreen> {
 // Add this at the top of your State class
   List<Map<String, dynamic>> selectedItems = [];
   late CompletedOrder selectedOrder;
-  bool isAllSelected = false;
   bool _showFullSummary = true;
   double? editedRefundAmount;
+  bool _isProcessingPayment = false;
   // double merchantDiscount = 0;
   void _toggleSummary() {
     setState(() {
@@ -55,7 +54,8 @@ class _RefundScreenState extends State<RefundScreen> {
     });
   }
 
-  bool isReasonEnabled = false;
+  bool get isReasonEnabled =>
+      selectedItems.isNotEmpty && selectedPayment != null;
   double get grossTotal => selectedOrder.amount;
 
   double get taxTotal => selectedOrder.tax;
@@ -147,6 +147,33 @@ class _RefundScreenState extends State<RefundScreen> {
         editedRefundAmount != null ||
         isConfirmEnabled ||
         isReasonEnabled;
+  }
+
+  bool _lineItemSelectableForRefund(LineItem item) {
+    final String itemName = item.name.toLowerCase();
+    if (itemName.contains("discount")) return false;
+    final normalized = itemName.trim();
+    if (normalized == "payout" || normalized == "cashback") return false;
+    return true;
+  }
+
+  int _selectableRefundCount(List<LineItem> visibleItems) {
+    int count = 0;
+    for (final item in visibleItems) {
+      if (_lineItemSelectableForRefund(item)) count++;
+    }
+    return count;
+  }
+
+  int _selectedSelectableCount(List<LineItem> visibleItems) {
+    int count = 0;
+    for (final item in visibleItems) {
+      if (!_lineItemSelectableForRefund(item)) continue;
+      if (selectedItems.any((selected) => selected['order_item_id'] == item.id)) {
+        count++;
+      }
+    }
+    return count;
   }
 
   Future<bool> _confirmDiscardChangesIfNeeded() async {
@@ -265,6 +292,10 @@ class _RefundScreenState extends State<RefundScreen> {
     final visibleItems = selectedOrder.items
         .where((item) => !item.name.toLowerCase().contains("discount"))
         .toList();
+    final int selectableRefundCount = _selectableRefundCount(visibleItems);
+    final int selectedSelectableCount = _selectedSelectableCount(visibleItems);
+    final bool headerAllSelected = selectableRefundCount > 0 &&
+        selectedSelectableCount == selectableRefundCount;
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final layout = PinakaPreferences.layoutSelectionNotifier.value;
 
@@ -301,36 +332,42 @@ class _RefundScreenState extends State<RefundScreen> {
           child: Column(
             children: [
               TopBar(
-                screen: Screen.ORDERS,
-                onModeChanged: () async {
-                  String newLayout;
+                  screen: Screen.ORDERS,
+                  onModeChanged: () async {
+                    String newLayout;
 
-                  if (sidebarPosition == SidebarPosition.left) {
-                    newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
+                    switch (layout) {
+                      case SharedPreferenceTextConstants.navLeftOrderRight:
+                        newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
+                        break;
+
+                      case SharedPreferenceTextConstants.navRightOrderLeft:
+                        newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
+                        break;
+
+                      case SharedPreferenceTextConstants.navBottomOrderLeft:
+                        newLayout = SharedPreferenceTextConstants.navBottomOrderRight;
+                        break;
+
+                      case SharedPreferenceTextConstants.navBottomOrderRight:
+                        newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                        break;
+
+                      default:
+                        newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+                    }
+
+                    PinakaPreferences.layoutSelectionNotifier.value = newLayout;
+
+                    await UserDbHelper().saveUserSettings(
+                      {AppDBConst.layoutSelection: newLayout},
+                      modeChange: true,
+                    );
+
+                    setState(() {});
                   }
-                  else if (sidebarPosition == SidebarPosition.right) {
-                    newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
-                  }
-                  else {
-                    newLayout = orderPanelPosition == OrderPanelPosition.left
-                        ? SharedPreferenceTextConstants.navBottomOrderRight
-                        : SharedPreferenceTextConstants.navLeftOrderRight;
-                  }
-
-                  // Update layout notifier
-                  PinakaPreferences.layoutSelectionNotifier.value = newLayout;
-
-                  // Save layout in DB
-                  await UserDbHelper().saveUserSettings(
-                    {AppDBConst.layoutSelection: newLayout},
-                    modeChange: true,
-                  );
-
-                  // Refresh UI
-                  setState(() {});
-                },
               ),
-              const SizedBox(height: 10),
+              // const SizedBox(height: 10),
               // const Divider(
               //   color: Colors.grey,
               //   thickness: 0.4,
@@ -366,6 +403,7 @@ class _RefundScreenState extends State<RefundScreen> {
                               children: [
                                 Expanded(
                                   child: Container(
+                                    margin: const EdgeInsets.only(top: 10),
                                     padding: const EdgeInsets.all(16),
                                     decoration: _boxDecoration(),
                                     child: Column(
@@ -418,20 +456,16 @@ class _RefundScreenState extends State<RefundScreen> {
                                               GestureDetector(
                                                 onTap: () {
                                                   setState(() {
-                                                    isAllSelected = !isAllSelected;
-
-                                                    if (isAllSelected) {
+                                                    final bool allSelected = selectableRefundCount > 0 &&
+                                                        selectedSelectableCount == selectableRefundCount;
+                                                    if (allSelected) {
+                                                      // Unselect all
+                                                      selectedItems.clear();
+                                                    } else {
                                                       selectedItems.clear();
 
                                                       for (var item in visibleItems) {
-
-                                                        final String itemName = item.name.toLowerCase();
-
-                                                        final bool isDiscount = itemName.contains("discount");
-                                                        final bool isPayoutOrCashback =
-                                                            itemName.trim() == "payout" || itemName.trim() == "cashback";
-                                                        // 🚫 Skip these items
-                                                        if (isDiscount || isPayoutOrCashback) {
+                                                        if (!_lineItemSelectableForRefund(item)) {
                                                           continue;
                                                         }
 
@@ -447,9 +481,10 @@ class _RefundScreenState extends State<RefundScreen> {
                                                         });
                                                       }
                                                     }
-                                                    else {
-                                                      // Unselect all
-                                                      selectedItems.clear();
+                                                    /// 🔥 ADD THIS
+                                                    if (selectedItems.isEmpty) {
+                                                      selectedPayment = null;
+                                                      selectedReason = null; // 🔥 important
                                                     }
                                                   });
                                                 },
@@ -457,17 +492,17 @@ class _RefundScreenState extends State<RefundScreen> {
                                                   width: 17,
                                                   height: 17,
                                                   decoration: BoxDecoration(
-                                                    color: isAllSelected ? Colors.red : Colors.transparent,
+                                                    color: headerAllSelected ? Colors.red : Colors.transparent,
                                                     borderRadius: BorderRadius.circular(4), // border radius added
                                                     border: Border.all(
                                                       color: const Color(0xFFFBFBFC),
                                                       width: 1,
                                                     ),
                                                   ),
-                                                  child: isAllSelected
+                                                  child: headerAllSelected
                                                       ? const Icon(
                                                     Icons.check,
-                                                    size: 12,
+                                                    size: 16,
                                                     color: Colors.white,
                                                   )
                                                       : null,
@@ -541,23 +576,52 @@ class _RefundScreenState extends State<RefundScreen> {
                                                 final bool isDiscount = itemName.contains("discount");
                                                 final bool isPayoutOrCashback =
                                                     itemName.trim() == "payout" || itemName.trim() == "cashback";
-                                                final unitPrice =
-                                                (item.total / item.quantity).toStringAsFixed(2);
+                                                final double unitPrice = item.total / item.quantity;
 
                                                 return Opacity(
-                                                  opacity: isPayoutOrCashback ? 0.4 : 1, // grey only payout & cashback
+                                                  opacity: isPayoutOrCashback ? 0.4 : 1,
                                                   child: IgnorePointer(
-                                                    ignoring: isDiscount || isPayoutOrCashback, // disable all three// prevents selecting
-                                                    child: _refundRow(
-                                                      isDark,
-                                                      item.id,
-                                                      item.name,
-                                                      "\$$unitPrice ×${item.quantity}",
-                                                      "\$${item.totalTax.toStringAsFixed(2)}",
-                                                      item.quantity,
-                                                      "\$${(item.total + item.totalTax).toStringAsFixed(2)}",
-                                                      hasDiscount: item.isItemsHasDiscount == "Yes",
-                                                      discountType: item.itemDiscountType,
+                                                    ignoring: isDiscount || isPayoutOrCashback,
+                                                    child: InkWell(
+                                                      onTap: () {
+                                                        setState(() {
+                                                          final existingIndex = selectedItems.indexWhere(
+                                                                  (e) => e['order_item_id'] == item.id);
+
+                                                          if (existingIndex != -1) {
+                                                            // Remove if already selected
+                                                            selectedItems.removeAt(existingIndex);
+                                                          } else {
+                                                            // Add if not selected
+                                                            final double unitPrice = item.total / item.quantity;
+
+                                                            selectedItems.add({
+                                                              'order_item_id': item.id,
+                                                              'name': item.name,
+                                                              'unit_price': unitPrice,
+                                                              'qty': item.quantity,
+                                                              'tax': item.totalTax,
+                                                              'amount': item.total + item.totalTax,
+                                                            });
+                                                          }
+                                                          /// 🔥 ADD THIS
+                                                          if (selectedItems.isEmpty) {
+                                                            selectedPayment = null;
+                                                            selectedReason = null; // 🔥 important
+                                                          }
+                                                        });
+                                                      },
+                                                      child: _refundRow(
+                                                        isDark,
+                                                        item.id,
+                                                        item.name,
+                                                        '${unitPrice < 0 ? '-' : ''}\$${unitPrice.abs().toStringAsFixed(2)} ×${item.quantity}',
+                                                        '${item.totalTax < 0 ? '-' : ''}\$${item.totalTax.abs().toStringAsFixed(2)}',
+                                                        item.quantity,
+                                                        '${(item.total + item.totalTax) < 0 ? '-' : ''}\$${(item.total + item.totalTax).abs().toStringAsFixed(2)}',
+                                                        hasDiscount: item.isItemsHasDiscount == "Yes",
+                                                        discountType: item.itemDiscountType,
+                                                      ),
                                                     ),
                                                   ),
                                                 );
@@ -576,19 +640,17 @@ class _RefundScreenState extends State<RefundScreen> {
                                 ),
                                 const SizedBox(height: 10),
                                 // Enter Reason
-                                // Enter Reason
                                 Container(
+                                  height: 65,
                                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                   decoration: BoxDecoration(
                                     color: isReasonEnabled
-                                        ? Colors.white
-                                        : Colors.grey.shade200, // ✅ Grey when disabled
+                                        ? Theme.of(context).colorScheme.surface
+                                        : Theme.of(context).colorScheme.surfaceContainerHighest, // ✅ disabled bg
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: isReasonEnabled
-                                          ? Colors.grey
-                                          : Colors.grey.shade300,
-                                    ),
+                                    // border: Border.all(
+                                    //   color: Theme.of(context).colorScheme.outline, // ✅ adaptive border
+                                    // ),
                                   ),
                                   child: Row(
                                     children: [
@@ -598,49 +660,85 @@ class _RefundScreenState extends State<RefundScreen> {
                                           fontWeight: FontWeight.bold,
                                           fontSize: 16,
                                           color: isReasonEnabled
-                                              ? Colors.black
-                                              : Colors.grey, // ✅ Grey text when disabled
+                                              ? Theme.of(context).colorScheme.onSurface
+                                              : Theme.of(context).colorScheme.onSurface.withOpacity(0.5), // ✅ disabled text
                                         ),
                                       ),
                                       const SizedBox(width: 16),
 
                                       SizedBox(
-                                        width: MediaQuery.of(context).size.width * 0.42,
+                                        width: MediaQuery.of(context).size.width * 0.40,
                                         child: DropdownButtonFormField<String>(
                                           value: selectedReason,
-                                          hint: const Text("Select Reason"),
-                                          style: TextStyle(
-                                            color: Theme.of(context).colorScheme.onSurface,
+                                          hint: Text(
+                                            "Select Reason",
+                                            style: TextStyle(
+                                              color: isDark
+                                                  ? const Color(0xFF9CA3AF) // 🔥 dark hint (soft grey)
+                                                  : const Color(0xFF6B7280), // 🔥 light hint
+                                            ),
                                           ),
-                                          dropdownColor: Theme.of(context).colorScheme.surface,
-                                          iconEnabledColor: Theme.of(context).colorScheme.onSurface,
+                                          style: TextStyle(
+                                            color: isDark
+                                                ? const Color(0xFFFFFFFF) // 🔥 white text
+                                                : const Color(0xFF111827), // 🔥 near black
+                                          ),
+                                          dropdownColor: isDark
+                                              ? const Color(0xFF1F2937) // 🔥 dark dropdown bg
+                                              : const Color(0xFFFFFFFF), // 🔥 white dropdown
+                                          iconEnabledColor: isDark
+                                              ? const Color(0xFFFFFFFF)
+                                              : const Color(0xFF111827),
+
                                           decoration: InputDecoration(
                                             isDense: true,
                                             contentPadding:
                                             const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+
                                             filled: true,
                                             fillColor: isReasonEnabled
-                                                ? Theme.of(context).colorScheme.surface
-                                                : Theme.of(context).colorScheme.surfaceContainerHighest,
+                                                ? (isDark
+                                                ? const Color(0xFF1F2937) // 🔥 enabled dark
+                                                : const Color(0xFFFFFFFF)) // 🔥 enabled light
+                                                : (isDark
+                                                ? const Color(0xFF2F3241) // 🔥 disabled dark
+                                                : const Color(0xFFE5E7EB)), // 🔥 disabled light
+
                                             border: OutlineInputBorder(
                                               borderRadius: BorderRadius.circular(10),
                                             ),
+
                                             enabledBorder: OutlineInputBorder(
                                               borderRadius: BorderRadius.circular(10),
                                               borderSide: BorderSide(
-                                                color: Theme.of(context).colorScheme.outline,
+                                                color: isDark
+                                                    ? const Color(0xFF374151) // 🔥 dark border
+                                                    : const Color(0xFFD1D5DB), // 🔥 light border
+                                                width: 1,
+                                              ),
+                                            ),
+
+                                            focusedBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                              borderSide: BorderSide(
+                                                color: isDark
+                                                    ? const Color(0xFF60A5FA) // 🔥 blue focus dark
+                                                    : const Color(0xFF2563EB), // 🔥 blue focus light
+                                                width: 1.5,
                                               ),
                                             ),
                                           ),
+
                                           items: [
                                             "Customer changed Opinion",
-                                            "Expired product"
+                                            "Product Expired"
                                           ]
                                               .map((e) => DropdownMenuItem(
                                             value: e,
                                             child: Text(e),
                                           ))
                                               .toList(),
+
                                           onChanged: isReasonEnabled
                                               ? (val) => setState(() => selectedReason = val)
                                               : null,
@@ -649,6 +747,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                     ],
                                   ),
                                 ),
+                                const SizedBox(height: 10),
                               ],
                             ),
                           ),
@@ -659,6 +758,8 @@ class _RefundScreenState extends State<RefundScreen> {
                           Expanded(
                             flex: 2,
                             child: Container(
+                              margin: const EdgeInsets.only(top: 10, right: 10),
+                              height: MediaQuery.of(context).size.height * 0.99,
                               padding: const EdgeInsets.all(8),
                               decoration: _boxDecoration(),
                               child: Column(
@@ -732,126 +833,122 @@ class _RefundScreenState extends State<RefundScreen> {
                                   ),
                                   const SizedBox(height: 10),
                                   // Locate the Stack inside the Summary Panel (around line 348)
-                                  Container(
-                                    width: double.infinity,
-                                    height: 280,
-                                    clipBehavior: Clip.antiAlias,
-                                    decoration: BoxDecoration(
-                                      color: isDark
-                                          ? const Color(0xFF252525)
-                                          : const Color(0xFFF1F1F3),
-                                      borderRadius: BorderRadius.circular(7),
-                                      boxShadow: const [
-                                        BoxShadow(
-                                          color: Color(0x26000000),
-                                          blurRadius: 15,
-                                          offset: Offset(0, 2),
-                                        )
-                                      ],
-                                    ),
-                                    child: Column( // Changed Stack to Column for easier scrolling
-                                      children: [
-                                        /// Header (Already exists in your code)
-                                        Container(
-                                          height: 35,
-                                          color: isDark
-                                              ? const Color(0xFF293142)
-                                              : const Color(0xFF989292),
-                                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                                          child: Row(
-                                            children: const [
-                                              Expanded(flex: 3, child: Text("Item Name", style: TextStyle(color: Colors.white, fontSize: 12))),
-                                              Expanded(flex: 2, child: Text("Price/Qty", style: TextStyle(color: Colors.white, fontSize: 12))),
-                                              Expanded(flex: 1, child: Text("Tax", style: TextStyle(color: Colors.white, fontSize: 12))),
-                                              Expanded(flex: 1, child: Text("Amount", style: TextStyle(color: Colors.white, fontSize: 12))),
-                                            ],
-                                          ),
-                                        ),
-
-                                        /// Dynamic List of Selected Items
-                                        Expanded(
-                                          child: selectedItems.isEmpty
-                                              ? const Center(
-                                            child: Text(
-                                              "No Item Selected",
-                                              style: TextStyle(
-                                                color: Color(0xFF9A9A9A),
-                                                fontSize: 12,
-                                              ),
-                                            ),
+                                  Flexible(
+                                    child: Container(
+                                      width: double.infinity,
+                                      clipBehavior: Clip.antiAlias,
+                                      decoration: BoxDecoration(
+                                        color: isDark
+                                            ? const Color(0xFF252525)
+                                            : const Color(0xFFF1F1F3),
+                                        borderRadius: BorderRadius.circular(7),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Color(0x26000000),
+                                            blurRadius: 15,
+                                            offset: Offset(0, 2),
                                           )
-                                              : ListView.builder(
-                                            itemCount: selectedItems.length,
-                                            itemBuilder: (context, index) {
-                                              final item = selectedItems[index];
-
-                                              return Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                    horizontal: 10, vertical: 8),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white, // ✅ WHITE BACKGROUND
-                                                  border: Border(
-                                                    bottom:
-                                                    BorderSide(color: Colors.grey.shade300),
-                                                  ),
-                                                ),
-                                                child: Row(
-                                                  children: [
-                                                    /// Item Name
-                                                    Expanded(
-                                                      flex: 3,
-                                                      child: Text(
-                                                        item['name'],
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: isDark ? Colors.black : Colors.black, // always black
-                                                        ),
-                                                      ),
-                                                    ),
-
-                                                    /// Price × Qty
-                                                    Expanded(
-                                                      flex: 2,
-                                                      child: Text(
-                                                        "₹${item['unit_price'].toStringAsFixed(2)} ×${item['qty']}",
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: isDark ? Colors.black : Colors.black,
-                                                        ),
-                                                      ),
-                                                    ),
-
-                                                    /// Tax
-                                                    Expanded(
-                                                      flex: 1,
-                                                      child: Text(
-                                                        "₹${item['tax'].toStringAsFixed(2)}",
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: isDark ? Colors.black : Colors.black,
-                                                        ),
-                                                      ),
-                                                    ),
-
-                                                    /// Amount
-                                                    Expanded(
-                                                      flex: 1,
-                                                      child: Text(
-                                                        "₹${item['amount'].toStringAsFixed(2)}",
-                                                        textAlign: TextAlign.right,
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: isDark ? Colors.black : Colors.black,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              );
-                                            },
+                                        ],
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          /// HEADER
+                                          Container(
+                                            height: 35,
+                                            color: isDark
+                                                ? const Color(0xFF293142)
+                                                : const Color(0xFF989292),
+                                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                                            child: Row(
+                                              children: const [
+                                                Expanded(flex: 3, child: Text("Item Name", style: TextStyle(color: Colors.white, fontSize: 12))),
+                                                Expanded(flex: 2, child: Text("Price/Qty", style: TextStyle(color: Colors.white, fontSize: 12))),
+                                                Expanded(flex: 1, child: Text("Tax", style: TextStyle(color: Colors.white, fontSize: 12))),
+                                                Expanded(flex: 1, child: Text("Amount", style: TextStyle(color: Colors.white, fontSize: 12))),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                      ],
+
+                                          /// LIST (auto adjusts now)
+                                          Expanded(
+                                            child: selectedItems.isEmpty
+                                                ? const Center(
+                                              child: Text(
+                                                "No Item Selected",
+                                                style: TextStyle(
+                                                  color: Color(0xFF9A9A9A),
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            )
+                                                : ListView.builder(
+                                              itemCount: selectedItems.length,
+                                              itemBuilder: (context, index) {
+                                                final item = selectedItems[index];
+
+                                                return Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                      horizontal: 10, vertical: 8),
+                                                  decoration: BoxDecoration(
+                                                    color: Theme.of(context).brightness == Brightness.dark
+                                                        ? const Color(0xFF121212)
+                                                        : const Color(0xFFFFFFFF),
+                                                    border: Border(
+                                                      bottom: BorderSide(color: Colors.grey.shade800),
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      Expanded(
+                                                        flex: 3,
+                                                        child: Text(
+                                                          item['name'],
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: isDark ? Colors.white : Colors.black,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Expanded(
+                                                        flex: 2,
+                                                        child: Text(
+                                                          '${item['unit_price'] < 0 ? '-' : ''}\$${item['unit_price'].abs().toStringAsFixed(2)} ×${item['qty']}',
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: isDark ? Colors.white : Colors.black,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Expanded(
+                                                        flex: 1,
+                                                        child: Text(
+                                                          '${item['tax'] < 0 ? '-' : ''}\$${item['tax'].abs().toStringAsFixed(2)}',
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: isDark ? Colors.white : Colors.black,
+                                                          ),
+                                                        ),
+                                                      ),
+
+                                                      Expanded(
+                                                        flex: 1,
+                                                        child: Text(
+                                                          '${item['amount'] < 0 ? '-' : ''}\$${item['amount'].abs().toStringAsFixed(2)}',
+                                                          textAlign: TextAlign.right,
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: isDark ? Colors.white : Colors.black,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 10),
@@ -860,8 +957,8 @@ class _RefundScreenState extends State<RefundScreen> {
                                     mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
                                     crossAxisAlignment: CrossAxisAlignment.center,
-                                    children: const [
-                                      Text(
+                                    children: [
+                                      const Text(
                                         "Select Payment Type",
                                         style: TextStyle(
                                           fontWeight: FontWeight.w500,
@@ -874,7 +971,9 @@ class _RefundScreenState extends State<RefundScreen> {
                                             '*Refund will be issued to the only original payment method.',
                                             textAlign: TextAlign.right,
                                             style: TextStyle(
-                                              color: Color(0xFF0753C5),
+                                              color: isDark
+                                                  ? const Color(0xFF96DBF3) // 🔥 lighter blue for dark mode
+                                                  : const Color(0xFF0753C5), // 🔥 your original light mode blue
                                               fontSize: 10,
                                               fontWeight: FontWeight.w400,
                                             ),
@@ -897,20 +996,23 @@ class _RefundScreenState extends State<RefundScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Container(
-                                        margin: const EdgeInsets.only(
-                                            top: 4, right: 6),
+                                        margin: const EdgeInsets.only(top: 4, right: 6),
                                         width: 6,
                                         height: 6,
-                                        decoration: const BoxDecoration(
-                                          color: Color(0xFFD97D00),
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? const Color(0xFFFFB74D) // 🔥 softer orange for dark
+                                              : const Color(0xFFD97D00), // 🔥 original for light
                                           shape: BoxShape.circle,
                                         ),
                                       ),
-                                      const Expanded(
+                                      Expanded(
                                         child: Text(
                                           'Refund amount is calculated after discount application',
                                           style: TextStyle(
-                                            color: Color(0xFFD97D00),
+                                            color: isDark
+                                                ? const Color(0xFFD1AA76) // 🔥 readable in dark
+                                                : const Color(0xFFD97D00),
                                             fontSize: 12,
                                             fontWeight: FontWeight.w500,
                                           ),
@@ -918,26 +1020,31 @@ class _RefundScreenState extends State<RefundScreen> {
                                       ),
                                     ],
                                   ),
+
                                   const SizedBox(height: 6),
+
                                   Row(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Container(
-                                        margin: const EdgeInsets.only(
-                                            top: 4, right: 6),
+                                        margin: const EdgeInsets.only(top: 4, right: 6),
                                         width: 6,
                                         height: 6,
-                                        decoration: const BoxDecoration(
-                                          color: Color(0xFFBF3333),
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? const Color(0xFFEF5350) // 🔥 softer red for dark
+                                              : const Color(0xFFBF3333),
                                           shape: BoxShape.circle,
                                         ),
                                       ),
-                                      const Expanded(
+                                      Expanded(
                                         child: Text(
                                           'For card payments, only the exact paid amount can be refunded. '
                                               'Partial or excess refunds are not allowed.',
                                           style: TextStyle(
-                                            color: Color(0xFFBF3333),
+                                            color: isDark
+                                                ? const Color(0xFFCE8383)
+                                                : const Color(0xFFBF3333),
                                             fontSize: 12,
                                             fontWeight: FontWeight.w500,
                                             height: 1.4,
@@ -959,28 +1066,32 @@ class _RefundScreenState extends State<RefundScreen> {
                                         child: Container(
                                           width: double.infinity,
                                           height: 40,
-                                          decoration: const BoxDecoration(
-                                            color: Color(0xFFE5EFFF),
-                                            borderRadius: BorderRadius.only(
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context).brightness == Brightness.dark
+                                                ? const Color(0xFF5D7EB2) // dark bluish tone
+                                                : const Color(0xFFE5EFFF),
+                                            borderRadius: const BorderRadius.only(
                                               bottomLeft: Radius.circular(8),
                                               bottomRight: Radius.circular(8),
                                             ),
                                             boxShadow: [
                                               BoxShadow(
-                                                color: Color(0x26000000), // soft black
+                                                color: Theme.of(context).brightness == Brightness.dark
+                                                    ? Colors.black.withOpacity(0.6)
+                                                    : const Color(0x26000000),
                                                 blurRadius: 6,
-                                                offset: Offset(0, 4), // 👈 shadow only at bottom
+                                                offset: const Offset(0, 4),
                                               ),
                                             ],
                                           ),
                                           child: Row(
                                             children: [
                                               const SizedBox(width: 15),
-                                              const Expanded(
+                                              Expanded(
                                                 child: Text(
                                                   'Payment Summary',
                                                   style: TextStyle(
-                                                    color: Color(0xFF222222),
+                                                    color: Theme.of(context).colorScheme.onSurface, // ✅ adaptive text
                                                     fontSize: 12,
                                                     fontWeight: FontWeight.w600,
                                                   ),
@@ -992,13 +1103,13 @@ class _RefundScreenState extends State<RefundScreen> {
                                                   isExpanded
                                                       ? Icons.keyboard_arrow_up
                                                       : Icons.keyboard_arrow_down,
+                                                  color: Theme.of(context).colorScheme.onSurface, // ✅ adaptive icon
                                                 ),
                                               ),
                                             ],
                                           ),
                                         ),
                                       ),
-
 
 
                                       // 🔥 Expand UPWARD
@@ -1016,7 +1127,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                                 padding: const EdgeInsets.symmetric(
                                                     horizontal: 15, vertical: 10),
                                                 decoration: BoxDecoration(
-                                                  color: const Color(0xFFFFFFFF),
+                                                  color: Theme.of(context).colorScheme.surface,
                                                   borderRadius: const BorderRadius.only(
                                                     topLeft: Radius.circular(8),
                                                     topRight: Radius.circular(8),
@@ -1034,16 +1145,19 @@ class _RefundScreenState extends State<RefundScreen> {
                                                   children: [
 
                                                     /// ===== ORIGINAL ORDER =====
-                                                    _buildRow("Gross Total", "₹${grossTotal.toStringAsFixed(2)}"),
-                                                    _buildRow("Tax", "₹${taxTotal.toStringAsFixed(2)}"),
+                                                    _buildRow("Gross Total", "\$${grossTotal.toStringAsFixed(2)}"),
+                                                    // _buildRow("Tax", "\$${taxTotal.toStringAsFixed(2)}"),
 
                                                     if (couponTotal > 0)
                                                       _buildRow(
                                                         "Coupons",
-                                                        "- ₹${couponTotal.toStringAsFixed(2)}",
+                                                        "-\$${couponTotal.toStringAsFixed(2)}",
                                                         valueColor: Colors.green,
                                                       ),
-
+                                                    _buildRow(
+                                                      "Tax",
+                                                      '${taxTotal < 0 ? '-' : ''}\$${taxTotal.abs().toStringAsFixed(2)}',
+                                                    ),
                                                     ShaderMask(
                                                       shaderCallback: (Rect bounds) {
                                                         final isDark =
@@ -1078,12 +1192,14 @@ class _RefundScreenState extends State<RefundScreen> {
                                                             : Colors.black,
                                                       ),
                                                     ),
-                                                    _buildRow("Net Total", "₹${netTotal.toStringAsFixed(2)}"),
-
+                                                    _buildRow(
+                                                      "Net Total",
+                                                      '${netTotal < 0 ? '-' : ''}\$${netTotal.abs().toStringAsFixed(2)}',
+                                                    ),
                                                     if (merchantDiscount > 0)
                                                       _buildRow(
                                                         "Merchant Discount",
-                                                        "- ₹${merchantDiscount.toStringAsFixed(2)}",
+                                                        "-\$${merchantDiscount.toStringAsFixed(2)}",
                                                         valueColor: Colors.blue,
                                                       ),
 
@@ -1124,7 +1240,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                                     _buildRow(
                                                       "Total Net Payable",
-                                                      "₹${totalNetPayable.toStringAsFixed(2)}",
+                                                      "${totalNetPayable < 0 ? "-" : ""}\$${totalNetPayable.abs().toStringAsFixed(2)}",
                                                       isBold: true,
                                                     ),
 
@@ -1167,7 +1283,7 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                                       _buildRow(
                                                         "Refund Amount",
-                                                        "₹${(editedRefundAmount ?? totalRefund).toStringAsFixed(2)}",
+                                                        '${(editedRefundAmount ?? totalRefund) < 0 ? '-' : ''}\$${(editedRefundAmount ?? totalRefund).abs().toStringAsFixed(2)}',
                                                         isBold: true,
                                                       ),
                                                     ],
@@ -1179,7 +1295,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                     ],
                                   ),
 
-                                  const SizedBox(height: 10),
+                                  const SizedBox(height: 15),
                                   GestureDetector(
                                     onTap: () async {
                                       if (selectedItems.isEmpty) {
@@ -1301,6 +1417,8 @@ class _RefundScreenState extends State<RefundScreen> {
   }
   Widget _buildRow(String title, String value,
       {bool isBold = false, Color? valueColor}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
@@ -1311,6 +1429,7 @@ class _RefundScreenState extends State<RefundScreen> {
             style: TextStyle(
               fontSize: 14,
               fontWeight: isBold ? FontWeight.bold : FontWeight.w400,
+              color: valueColor ?? (isDark ? Colors.white : Colors.black),
             ),
           ),
           Text(
@@ -1318,7 +1437,7 @@ class _RefundScreenState extends State<RefundScreen> {
             style: TextStyle(
               fontSize: 14,
               fontWeight: isBold ? FontWeight.bold : FontWeight.w400,
-              color: valueColor ?? Colors.black,
+              color: valueColor ?? (isDark ? Colors.white : Colors.black),
             ),
           ),
         ],
@@ -1388,7 +1507,7 @@ class _RefundScreenState extends State<RefundScreen> {
                       });
                     } else {
                       selectedItems.removeWhere(
-                              (item) => item['name'] == itemName);
+                              (item) => item['order_item_id'] == orderItemId);
                     }
                   });
                 },
@@ -1464,143 +1583,114 @@ class _RefundScreenState extends State<RefundScreen> {
     return Expanded(
       child: GestureDetector(
         onTap: () async {
-          print("=========== REFUND DEBUG START ===========");
+          if (_isProcessingPayment) return;
 
-          print("Order ID: ${selectedOrder.orderId}");
-          print("Selected Payment (Before Set): $selectedPayment");
+          _isProcessingPayment = true;
 
-          print("Selected Items Count: ${selectedItems.length}");
-          print("Total Order Items: ${selectedOrder.items.length}");
+          try {
+            print("=========== REFUND DEBUG START ===========");
 
-          print("Gross Total: $grossTotal");
-          print("Tax Total: $taxTotal");
-          print("Net Total: $netTotal");
-          print("Merchant Discount: $merchantDiscount");
-          print("Total Net Payable: $totalNetPayable");
+            if (type == "Cash") {
 
-          print("Refund Gross: $refundGross");
-          print("Refund Tax: $refundTax");
-          print("Refund Discount: $refundDiscount");
-          print("Total Refund: $totalRefund");
-
-          setState(() => selectedPayment = type);
-          print("Selected Payment (After Set): $selectedPayment");
-
-          if (type == "Cash") {
-            print("---- CASH REFUND FLOW START ----");
-
-            // Require at least one selected item before proceeding to cash refund
-            if (selectedItems.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content:
-                  Text('Please select at least one product to refund.'),
-                ),
-              );
-              print("❌ No items selected for cash refund, aborting.");
-              return;
-            }
-
-            final bool isFullRefund =
-                selectedItems.length == selectedOrder.items.length;
-
-            final bool isPartialRefund = !isFullRefund;
-
-            print("Is Full Refund: $isFullRefund");
-            print("Is Partial Refund: $isPartialRefund");
-
-            List<RefundItem>? refundItems;
-
-            /// Build refund items ONLY for partial refund
-            if (isPartialRefund) {
-              print("---- PARTIAL REFUND ITEM MAPPING START ----");
-
-              refundItems = selectedItems.map((item) {
-
-                final lineItem = selectedOrder.items
-                    .firstWhere((e) => e.id == item['order_item_id']);
-
-                final double refundAmount = double.parse(
-                  (lineItem.total + lineItem.totalTax).toStringAsFixed(2),
+              if (selectedItems.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please select at least one product to refund.'),
+                  ),
                 );
+                return;
+              }
 
-                print("---- Mapping Item ----");
-                print("Item Name: ${item['name']}");
-                print("Matched LineItem ID: ${lineItem.id}");
-                print("LineItem Total: ${lineItem.total}");
-                print("LineItem Tax: ${lineItem.totalTax}");
-                print("Final Refund Amount: $refundAmount");
-                print("-------------------------------");
+              setState(() => selectedPayment = type);
 
-                return RefundItem(
-                  orderItemId: lineItem.id,
-                  orderItemAmount: refundAmount,
-                );
+              final bool isFullRefund =
+                  selectedItems.length == selectedOrder.items.length;
 
-              }).toList();
+              final bool isPartialRefund = !isFullRefund;
 
-              print("Refund Items JSON: ${jsonEncode(refundItems.map((e) => e.toJson()).toList())}");
-              print("---- PARTIAL REFUND ITEM MAPPING END ----");
-            }
+              List<RefundItem>? refundItems;
 
-            final refundType = isFullRefund ? "Full" : "Partial";
+              if (isPartialRefund) {
+                refundItems = selectedItems.map((item) {
+                  final lineItem = selectedOrder.items
+                      .firstWhere((e) => e.id == item['order_item_id']);
 
-            final refundRequest = RefundRequestModel(
-              orderId: selectedOrder.orderId,
-              refundType: refundType,
-              items: refundItems,
-            );
+                  final double refundAmount = double.parse(
+                    (lineItem.total + lineItem.totalTax).toStringAsFixed(2),
+                  );
 
-            print("---- FINAL REFUND REQUEST JSON ----");
-            print(jsonEncode(refundRequest.toJson()));
+                  return RefundItem(
+                    orderItemId: lineItem.id,
+                    orderItemAmount: refundAmount,
+                  );
+                }).toList();
+              }
 
-            /// 🔥 BACKEND VALIDATION
-            final result = await CompletedOrdersRepository(baseUrl: '').refundOrder(
-              orderId: selectedOrder.orderId,
-              refundType: refundType,
-              items: refundItems?.map((e) => e.toJson()).toList(),
-            );
+              final refundType = isFullRefund ? "Full" : "Partial";
 
-            /// ❌ Backend blocked refund
-            if (result["success"] == false) {
-              print("❌ Backend blocked refund: ${result["message"]}");
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(result["message"] ?? "Refund not allowed"),
-                  backgroundColor: Colors.red,
-                ),
-              );
-
-              return;
-            }
-
-            print("✅ Backend validation passed");
-
-            /// ✅ Open dialog only if backend allows
-            final refundAmount = await showDialog<double>(
-              context: context,
-              builder: (_) => CashRefundDialog(
-                refundRequest: refundRequest,
-                refundAmount: totalRefund,
-              ),
-            );
-
-            if (refundAmount != null) {
-              setState(() {
-                editedRefundAmount = refundAmount;
-                isConfirmEnabled = true;
-                isReasonEnabled = true;   // ✅ enable reason here
-              });
-              OrderHelper.setManualRefundAmount(
+              final refundRequest = RefundRequestModel(
                 orderId: selectedOrder.orderId,
-                amount: refundAmount,
+                refundType: refundType,
+                items: refundItems,
               );
-            }
-            print("---- CASH REFUND FLOW END ----");
-          }
+              /// ✅ SHOW LOADER
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+              );
 
-          print("=========== REFUND DEBUG END ===========");
+              final result = await CompletedOrdersRepository(baseUrl: '').refundOrder(
+                orderId: selectedOrder.orderId,
+                refundType: refundType,
+                items: refundItems?.map((e) => e.toJson()).toList(),
+              );
+              /// ✅ HIDE LOADER
+              Navigator.pop(context);
+
+              if (result["success"] == false) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(result["message"] ?? "Refund not allowed"),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+
+              final refundAmount = await showDialog<double>(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => CashRefundDialog(
+                  refundRequest: refundRequest,
+                  refundAmount: totalRefund,
+                ),
+              );
+
+              if (refundAmount != null) {
+                await showDialog<void>(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => PaymentSuccessDialog(amount: refundAmount),
+                );
+
+                setState(() {
+                  editedRefundAmount = refundAmount;
+                  isConfirmEnabled = true;
+                });
+
+                OrderHelper.setManualRefundAmount(
+                  orderId: selectedOrder.orderId,
+                  amount: refundAmount,
+                );
+              }
+            }
+
+          } finally {
+            _isProcessingPayment = false; // ✅ ALWAYS resets (even on return/error)
+          }
         },
         child: Container(
           height: 45,
