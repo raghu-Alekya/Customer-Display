@@ -1856,6 +1856,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     if (isPaymentComplete && !_successPopupShown) {
       _successPopupShown = true;
+      // ✅ ADD THIS LINE (CRITICAL FIX)
+      await CustomerDisplayService.showThankYou();
+      // ✅ STEP 2: CLEAR ACTIVE ORDER (CRITICAL)
+      await orderHelper.setActiveOrder(null);
+
+      // ✅ STEP 3: RESET DISPLAY (FINAL STATE)
+      await CustomerDisplayService.resetDisplay();
+
+      print("✅ Payment complete → display reset");
       // ✅ SHOW SUCCESS SNACKBAR
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1925,7 +1934,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       notes: payment.notes,
     );
 
-    paymentBloc.createPayment(paymentRequest);
+    // paymentBloc.createPayment(paymentRequest);
 
     StreamSubscription? subscription;
     subscription = paymentBloc.createPaymentStream.listen(
@@ -6708,7 +6717,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       textInputAction:
                                                       TextInputAction.done,
                                                       enabled: true,
-                                                      readOnly: false,
+                                                      readOnly: true,
                                                       textAlign:
                                                       TextAlign.right,
                                                       autofocus: false,
@@ -8451,146 +8460,162 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     showDialog(
       context: context,
-      barrierDismissible: true,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.10),
       builder: (context) {
-        return WillPopScope(
-          onWillPop: () async {
-            ScannerGuard.isCouponPopupOpen = false; // 🔓 enable scanner again
-            return true;
-          },
-          child: BarcodeKeyboardListener(
-            bufferDuration: const Duration(milliseconds: 600),
-            onBarcodeScanned: (barcode) {
-              final code = barcode.trim();
-              print("🎯 Coupon QR/Barcode scanned → $code");
-
-              _couponCtrl.text = code; // ✅ Correct prefill
-            },
-            child: Dialog(
-              backgroundColor: dialogBg,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(26),
-                width: MediaQuery.of(context).size.width * 0.30,
-                decoration: BoxDecoration(
-                  color: dialogBg,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    if (!isDark)
-                      BoxShadow(
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                        color: Colors.black.withOpacity(0.15),
-                      ),
-                  ],
+        return Stack(
+            children: [
+              /// 🔹 WHITE BACKGROUND when keyboard opens
+              if (MediaQuery.of(context).viewInsets.bottom > 0)
+                Positioned.fill(
+                  child: Container(
+                    color: isDark
+                        ? const Color(0xFF1F1D2B) // match your dark dialog bg
+                        : Colors.white,
+                  ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Text(
-                        "Apply Coupon",
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: redPrimary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: _couponCtrl,
-                      keyboardType: TextInputType.number,
-                      style: TextStyle(color: textPrimary),
-                      decoration: InputDecoration(
-                        labelText: "Enter Coupon Code",
-                        labelStyle: TextStyle(color: textSecondary),
-                        hintStyle: TextStyle(color: hintColor),
-                        filled: true,
-                        fillColor:
-                        isDark ? const Color(0xFF2C2C2C) : Colors.white,
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: redPrimary, width: 1),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide:
-                          BorderSide(color: borderColor, width: 1.0),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 25),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: redPrimary,
-                            side: BorderSide(color: redPrimary, width: 1),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 10,
-                            ),
-                          ),
-                          onPressed: () {
-                            ScannerGuard.isCouponPopupOpen =
-                            false; // CLOSE FLAG
-                            Navigator.pop(context);
-                          },
-                          child: const Text(
-                            "Cancel",
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: redPrimary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 12,
-                            ),
-                          ),
-                          onPressed: () async {
-                            final code = _couponCtrl.text.trim();
 
-                            if (code.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content:
-                                  const Text("Please enter coupon code"),
-                                  backgroundColor: Colors.redAccent,
+              /// 🔹 YOUR EXISTING DIALOG
+              Center(
+                  child: WillPopScope(
+                    onWillPop: () async {
+                      ScannerGuard.isCouponPopupOpen = false;
+                      return true;
+                    },
+                    child: BarcodeKeyboardListener(
+                      bufferDuration: const Duration(milliseconds: 600),
+                      onBarcodeScanned: (barcode) {
+                        final code = barcode.trim();
+                        print("🎯 Coupon QR/Barcode scanned → $code");
+
+                        _couponCtrl.text = code; // ✅ Correct prefill
+                      },
+                      child: Dialog(
+                        backgroundColor: dialogBg,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.all(26),
+                          width: MediaQuery.of(context).size.width * 0.30,
+                          decoration: BoxDecoration(
+                            color: dialogBg,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              if (!isDark)
+                                BoxShadow(
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                  color: Colors.black.withOpacity(0.15),
                                 ),
-                              );
-                              return;
-                            }
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Center(
+                                child: Text(
+                                  "Apply Coupon",
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: redPrimary,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              TextField(
+                                controller: _couponCtrl,
+                                keyboardType: TextInputType.number,
+                                style: TextStyle(color: textPrimary),
+                                decoration: InputDecoration(
+                                  labelText: "Enter Coupon Code",
+                                  labelStyle: TextStyle(color: textSecondary),
+                                  hintStyle: TextStyle(color: hintColor),
+                                  filled: true,
+                                  fillColor:
+                                  isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(color: redPrimary, width: 1),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderSide:
+                                    BorderSide(color: borderColor, width: 1.0),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 25),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton(
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: redPrimary,
+                                      side: BorderSide(color: redPrimary, width: 1),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 18,
+                                        vertical: 10,
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      ScannerGuard.isCouponPopupOpen =
+                                      false; // CLOSE FLAG
+                                      Navigator.pop(context);
+                                    },
+                                    child: const Text(
+                                      "Cancel",
+                                      style: TextStyle(fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: redPrimary,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 24,
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                    onPressed: () async {
+                                      final code = _couponCtrl.text.trim();
 
-                            ScannerGuard.isCouponPopupOpen =
-                            false; // CLOSE FLAG
-                            Navigator.pop(context);
-                            await _applyCoupon(code);
-                          },
-                          child: const Text("Apply"),
+                                      if (code.isEmpty) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content:
+                                            const Text("Please enter coupon code"),
+                                            backgroundColor: Colors.redAccent,
+                                          ),
+                                        );
+                                        return;
+                                      }
+
+                                      ScannerGuard.isCouponPopupOpen =
+                                      false; // CLOSE FLAG
+                                      Navigator.pop(context);
+                                      await _applyCoupon(code);
+                                    },
+                                    child: const Text("Apply"),
+                                  ),
+                                ],
+                              )
+                            ],
+                          ),
                         ),
-                      ],
-                    )
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
+                      ),
+                    ),
+                  ))
+            ]);
       },
     ).then((_) {
       ScannerGuard.isCouponPopupOpen = false; // 🔓 Ensure scanner re-enables

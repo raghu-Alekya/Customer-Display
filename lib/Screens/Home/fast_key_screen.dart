@@ -706,7 +706,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     for (final raw in items) {
       final item = Map<String, dynamic>.from(raw);
-      final tagsCol = item[AppDBConst.fastKeyItemTags];
+      final tagsCol = item["fast_key_item_tags"];
       if (tagsCol is String && tagsCol.isNotEmpty) {
         try {
           final decoded = jsonDecode(tagsCol);
@@ -1528,7 +1528,6 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     Timer? _dialogSearchDebounce;
     bool _dialogSearchPending = false;
-    final ScrollController _dialogScrollController = ScrollController();
 
     // ── NEW: the filtered subset shown in the right-side ListView ───────────
     List<dynamic> _filteredList = [];
@@ -1555,11 +1554,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
 
     String _resolveName(dynamic p) {
-      final dynamic rawName = p['fast_key_item_name'] ?? p['name'];
-      if (rawName is Map && rawName['rendered'] != null) {
-        return rawName['rendered'].toString();
-      }
-      return (rawName ?? 'Unknown').toString();
+      return (p['fast_key_item_name'] ?? p['name'] ?? 'Unknown').toString();
     }
 
     String _resolvePrice(dynamic p) {
@@ -1574,35 +1569,6 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       return (p['sku'] ?? p['fast_key_item_sku'] ?? '').toString();
     }
 
-    String _normalize(String input) {
-      return input
-          .toLowerCase()
-          .replaceAll(RegExp(r'[^a-z0-9]'), '');
-    }
-
-    bool _matchesCachedProduct(String q, dynamic p) {
-      final normalizedQuery = _normalize(q);
-      if (normalizedQuery.isEmpty) return true;
-
-      final normalizedName = _normalize(_resolveName(p));
-      final normalizedSku = _normalize(_resolveSku(p));
-
-      if (normalizedName.contains(normalizedQuery) ||
-          normalizedSku.contains(normalizedQuery)) {
-        return true;
-      }
-
-      final parts = q
-          .toLowerCase()
-          .split(RegExp(r'\s+'))
-          .map((e) => _normalize(e))
-          .where((e) => e.isNotEmpty)
-          .toList();
-      if (parts.isEmpty) return false;
-      return parts.every((part) =>
-      normalizedName.contains(part) || normalizedSku.contains(part));
-    }
-
     // ── NEW: build sorted + deduplicated filtered list (mirrors TopBar) ─────
     List<dynamic> _buildFiltered(String query) {
       final searchQuery = query.toLowerCase().trim();
@@ -1615,15 +1581,19 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       for (final p in _allCached) {
         final int? pid = _resolveProductId(p);
         if (pid == null) continue;
-        if (!_matchesCachedProduct(searchQuery, p)) continue;
+
+        final name = _resolveName(p).trim().toLowerCase();
+        final sku = _resolveSku(p).trim().toLowerCase();
+
+        if (!name.contains(searchQuery) && !sku.contains(searchQuery)) continue;
 
         unique[pid] = p;
       }
 
       final result = unique.values.toList()
         ..sort((a, b) {
-          final na = _resolveName(a).toLowerCase();
-          final nb = _resolveName(b).toLowerCase();
+          final na = (a['fast_key_item_name'] ?? '').toString().toLowerCase();
+          final nb = (b['fast_key_item_name'] ?? '').toString().toLowerCase();
 
           final sa = na.startsWith(searchQuery);
           final sb = nb.startsWith(searchQuery);
@@ -1734,7 +1704,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                   children: [
                                     const CircularProgressIndicator(),
                                     const SizedBox(height: 12),
-                                    Text(TextConstants.searchPausedSearchingHint),
+                                    const Text('Searching products...'),
                                   ],
                                 ),
                               ),
@@ -1759,11 +1729,11 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                             ),
                             height: size.height * 0.5,
                             child: Scrollbar(
-                              controller: _dialogScrollController,
+                              controller: _scrollController,
                               thumbVisibility: true,
                               radius: const Radius.circular(8),
                               child: ListView.builder(
-                                controller: _dialogScrollController,
+                                controller: _scrollController,
                                 itemCount: _filteredList.length,
                                 itemBuilder: (context, index) {
                                   final p = _filteredList[index];
@@ -1967,18 +1937,24 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           },
         );
       },
-    ).whenComplete(() {
-      _dialogSearchDebounce?.cancel();
-      _dialogScrollController.dispose();
-    });
+    ).whenComplete(() => _dialogSearchDebounce?.cancel());
   }
 
   void _showCategoryDialog({required BuildContext context, int? index}) {
     bool isEditing = index != null;
     TextEditingController nameController = TextEditingController(
         text: isEditing ? fastKeyTabs[index!].fastkeyTitle : '');
-    String imagePath =
-    isEditing ? fastKeyTabs[index!].fastkeyImage : 'assets/default.png';
+    String imagePath;
+
+    if (isEditing) {
+      final existingImage = fastKeyTabs[index!].fastkeyImage;
+
+      imagePath = (existingImage != null && existingImage.isNotEmpty)
+          ? existingImage
+          : 'assets/default.png'; // 👈 SAME default as before
+    } else {
+      imagePath = 'assets/default.png';
+    }
     bool showError = false;
     final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);
     bool isLoading = false;
@@ -2098,7 +2074,9 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                         }
 
                                         setStateDialog(() {
-                                          imagePath = image;
+                                          if (image != null && image.isNotEmpty) {
+                                            imagePath = image;   // ✅ only update if user selected
+                                          }
                                           isLoading = false;
                                         });
                                       },
@@ -2774,7 +2752,6 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       );
     }
   }
-
   // Build #1.0.104: updated delete dialog with this new implementation
   void _showDeleteConfirmationDialog({
     int? tabIndex,
@@ -2937,7 +2914,6 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     _fastKeyBloc.dispose();
     orderBloc.dispose(); // Build 1.0.171
     _fastKeyProductBloc.dispose();
-    _autoSuggest.dispose();
     _productSearchController.dispose();
     fastKeyTabIdNotifier.dispose();
     super.dispose();

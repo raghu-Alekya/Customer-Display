@@ -69,7 +69,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPrinterSettings();
     });
-     _addThemeListener();   // Build #1.0.207: Fixed -> theme options is not updating in settings screen when updated from other screen top bar
+    _addThemeListener();   // Build #1.0.207: Fixed -> theme options is not updating in settings screen when updated from other screen top bar
   }
 
   // Build #1.0.226: Added this method to load printer settings
@@ -372,8 +372,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-///  Build #1.0.226: TESTING FUNCTION - REMOVE IN PRODUCTION
-/// This bypasses actual printer connection for testing
+  ///  Build #1.0.226: TESTING FUNCTION - REMOVE IN PRODUCTION
+  /// This bypasses actual printer connection for testing
 //   Future<void> _addTestPrinter() async {
 //     if (kDebugMode) {
 //       print("#### [TEST] Adding test printer for development...");
@@ -415,7 +415,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
- //   final themeHelper = Provider.of<ThemeNotifier>(context);  // Build #1.0.207
+    //   final themeHelper = Provider.of<ThemeNotifier>(context);  // Build #1.0.207
 
     return Scaffold(
       backgroundColor: _themeHelper.getTheme(context).scaffoldBackgroundColor,
@@ -877,7 +877,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           groupValue: layoutSelection,
           onChanged: (value) {
             setState(() => layoutSelection = value.toString());
-          //  _preferences.saveLayoutSelection(value.toString()); // This updates the notifier
+            //  _preferences.saveLayoutSelection(value.toString()); // This updates the notifier
             if (PinakaPreferences.layoutSelectionNotifier.value != layoutSelection) {
               PinakaPreferences.layoutSelectionNotifier.value = layoutSelection;
             }
@@ -1063,21 +1063,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Text(TextConstants.cacheDurationText, style: TextStyle(fontSize: 14, color: Colors.white)),
             DropdownButton<String>(
-              value: cacheDuration,
-              dropdownColor: Colors.grey[800], // Dropdown background color
-              onChanged: (String? newValue) {
-                setState(() => cacheDuration = newValue!);
-              },
-              items:
-              ["Never", "1 Day", "1 Week", "1 Month"].map((String value) {
-                return DropdownMenuItem(
-                  value: value,
-                  child: Text(
-                    value,
-                    style: TextStyle(color: Colors.white), // Dropdown item text color
-                  ),
-                );
-              }).toList(),
+                value: cacheDuration,
+                dropdownColor: Colors.grey[800], // Dropdown background color
+                onChanged: (String? newValue) {
+                  setState(() => cacheDuration = newValue!);
+                },
+                items:
+                ["Never", "1 Day", "1 Week", "1 Month"].map((String value) {
+                  return DropdownMenuItem(
+                    value: value,
+                    child: Text(
+                      value,
+                      style: TextStyle(color: Colors.white), // Dropdown item text color
+                    ),
+                  );
+                }).toList(),
                 icon: Icon(Icons.arrow_drop_down, color: Colors.white)
             ),
           ],
@@ -1226,7 +1226,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               final newTheme = appearance == TextConstants.lightText ? ThemeMode.light : ThemeMode.dark; // # Build 1.0.182(option automatically change when tapped in top bar)
               themeManager.setThemeMode(newTheme);
 
-             // _preferences.saveAppThemeMode(themeManager.themeMode);
+              // _preferences.saveAppThemeMode(themeManager.themeMode);
             });
           },
           fillColor: WidgetStateProperty.resolveWith<Color>((states) {

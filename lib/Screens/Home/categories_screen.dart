@@ -54,6 +54,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:pinaka_pos/Helper/Extentions/theme_notifier.dart';
 import 'package:provider/provider.dart';
 
+import 'isar_payments/local_payments_db_helper.dart';
+
 // ✅ FIX: Minimum age of a cached Indigo entry before a background refresh is
 // allowed.  Prevents a refresh from firing on every single cache hit.
 const _indigoBgRefreshThreshold = Duration(minutes: 30);
@@ -1355,6 +1357,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
 
   /// Prevents stacked add-to-order work when the user taps products very quickly.
   bool _productAddTapInFlight = false;
+  List<Map<String, dynamic>> tabs = [];
+  List<Map<String, dynamic>> orderItems = [];  //
 
   // ─────────────────────────────────────────────────────────────────────────
   // ── NEW: Default category product helpers ─────────────────────────────────
@@ -1370,6 +1374,84 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   /// Finds any category with slug == "default" or name == "Default",
   /// fetches its products via the Indigo product repo, and stores them
   /// in Isar under [_defaultCatIsarKey].
+
+
+  /// STRONG FIX: Preserve selected order when returning from Orders tab
+  Future<void> _preserveSelectedOrder() async {
+    if (!mounted) return;
+
+    final int? currentlyActive = orderHelper.activeOrderId;
+    if (currentlyActive == null) return;
+
+    await orderHelper.loadData();
+
+    // Build visible orders (exclude paid ones)
+    final List<int> visibleOrderIds = [];
+    for (final order in orderHelper.orders) {
+      final int? orderId = _normalizeOrderId(
+        order[AppDBConst.orderServerId] ?? order['order_id'] ?? order['id'],
+      );
+      if (orderId == null || orderId <= 0) continue;
+
+      // Hide if payment has started
+      final payments = await LocalPaymentDBHelper.instance
+          .getPaymentsByOrderId(orderId, userId: orderHelper.activeUserId);
+
+      if (payments.isEmpty) {
+        visibleOrderIds.add(orderId);
+      }
+    }
+
+    // If previously selected order is still visible → KEEP IT
+    if (visibleOrderIds.contains(currentlyActive)) {
+      if (kDebugMode) {
+        print("✅ _preserveSelectedOrder: Successfully kept Order $currentlyActive");
+      }
+      OrderHelper.notifyOrderPanelToRefresh();   // Force RightOrderPanel to respect it
+      return;
+    }
+
+    // Fallback only if selected order disappeared
+    if (visibleOrderIds.isNotEmpty) {
+      final fallbackId = visibleOrderIds.last;
+      await orderHelper.setActiveOrder(fallbackId);
+      await orderHelper.saveLastActiveOrderId(fallbackId);
+      if (kDebugMode) {
+        print("⚠️ Order $currentlyActive no longer valid → fallback to $fallbackId");
+      }
+    } else {
+      await orderHelper.setActiveOrder(null);
+      if (mounted) setState(() => orderItems.clear());
+    }
+
+    OrderHelper.notifyOrderPanelToRefresh();
+  }
+
+  // =============================================================
+  // ORDER PANEL INTEGRATION HELPERS (Added for CategoriesScreen)
+  // =============================================================
+
+  int? _normalizeOrderId(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    return null;
+  }
+
+  List<int> _getVisibleOrderIds() {
+    final List<int> visibleOrderIds = [];
+    for (final t in tabs) {           // ← 'tabs' will be declared below
+      final id = _normalizeOrderId(t['orderId']);
+      if (id != null && id > 0) {
+        visibleOrderIds.add(id);
+      }
+    }
+    return visibleOrderIds;
+  }
+
   Future<void> _preLoadDefaultCategoryProducts(
       List<CategoryModel> cats) async {
     try {
@@ -1855,6 +1937,13 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     _categoryBloc = CategoryBloc(CategoryRepository());
     reorderedIndices = List.filled(categoryProducts.length, null);
     _loadTopLevelCategories();
+
+    // Preserve selected order AFTER everything is loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(milliseconds: 1200)); // give time for RightOrderPanel to init
+      if (mounted) await _preserveSelectedOrder();
+    });
+
   }
 
   @override
@@ -3567,12 +3656,6 @@ class _IndigoProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = isDark ?  Color(0xFF26253A) : Colors.white;
-    final borderColor =
-    isDark ? const Color(0xFF3A3A52) : const Color(0xFFE3F2FD);
-    final nameColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-    final priceColor = isDark ? Colors.grey.shade500 : const Color(0xFF1A1A1A);
-
     final bool isEbt = product.tags.any((t) {
       final name = t.name.toLowerCase();
       final slug = t.slug.toLowerCase();
@@ -3581,80 +3664,90 @@ class _IndigoProductCard extends StatelessWidget {
 
     final bool hasVariants = product.type == 'variable';
 
+    final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);
+
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: cardBg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderColor, width: 1),
-          boxShadow: [
-            BoxShadow(
-              color:  Colors.blueAccent,
-              blurRadius: 3,
-              offset: const Offset(0, 1),
-            ),
-          ],
+      child: Card(
+        color: themeHelper.themeMode == ThemeMode.dark
+            ? ThemeNotifier.secondaryBackground
+            : Colors.white,
+        elevation: 5,
+        shadowColor: Colors.blueAccent,
+        clipBehavior: Clip.antiAliasWithSaveLayer,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(
+            color: Colors.blueAccent,
+            width: 0.5,
+          ),
+          borderRadius: BorderRadius.circular(15.0),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
+          padding: const EdgeInsets.all(5.0),
+          child: Row(
             children: [
-              Text(
-                product.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: nameColor,
-                  fontFamily: 'poppins',
-                  height: 1.2,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                "\$${product.price}",
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: priceColor,
-                  fontFamily: 'poppins',
-                ),
-              ),
-              const SizedBox(height: 5),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (hasVariants) ...[
-                    SvgPicture.asset(
-                      SvgUtils.variationIcon,
-                      height: 10,
-                      width: 10,
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                  if (isEbt)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade600,
-                        borderRadius: BorderRadius.circular(4),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.textDark
+                            : ThemeNotifier.textLight,
                       ),
-                      child: const Text(
-                        'EBT',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 8,
-                          fontWeight: FontWeight.bold,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Text(
+                          '\$${double.tryParse(product.price)?.toStringAsFixed(2) ?? "0.00"}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: themeHelper.themeMode == ThemeMode.dark
+                                ? ThemeNotifier.textDark
+                                : ThemeNotifier.textLight,
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 6),
+                        if (hasVariants) ...[
+                          SvgPicture.asset(
+                            SvgUtils.variationIcon,
+                            height: 10,
+                            width: 10,
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        if (isEbt)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade600,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'EBT',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                ],
-              ),
+                  ],
+                ),
+              )
             ],
           ),
         ),

@@ -12,6 +12,7 @@ import 'package:pinaka_pos/Widgets/weighing_scale_widget.dart';
 import 'package:pinaka_pos/Widgets/widget_variants_dialog.dart';
 import 'package:provider/provider.dart';
 
+import '../Blocs/Auth/logout_bloc.dart';
 import '../Blocs/Orders/order_bloc.dart';
 import '../Blocs/Search/product_search_bloc.dart';
 import '../Constants/text.dart';
@@ -24,9 +25,12 @@ import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/url_helper.dart';
 import '../Helper/api_response.dart';
 import '../Models/Search/product_search_model.dart';
+import '../Preferences/pinaka_preferences.dart';
 import '../Providers/Age/age_verification_provider.dart';
+import '../Repositories/Auth/logout_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
+import '../Screens/Auth/login_screen.dart' show LoginScreen;
 import '../Utilities/printer_settings.dart';
 import '../Utilities/svg_images_utility.dart';
 import 'ManualPriceDialog.dart';
@@ -1906,6 +1910,66 @@ class _TopBarState extends State<TopBar> {
               );
             },
           ),
+          if (widget.screen == Screen.SHIFT) ...[
+            const SizedBox(width: 10),
+
+            GestureDetector(
+              onTap: () async {
+                if (kDebugMode) {
+                  print("Logout from TopBar");
+                }
+
+                // 🔹 Show loader
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+
+                // 🔹 Perform logout
+                await LogoutBloc(LogoutRepository()).performLogout();
+
+                await UserDbHelper().logout();
+                await PinakaPreferences.clearUserPreferences();
+                TopBar.clearUserCache();
+
+                if (kDebugMode) {
+                  print("#### User data cleared during logout");
+                }
+
+                // 🔹 Close loader
+                Navigator.of(context).pop();
+
+                // 🔹 Navigate to login
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => LoginScreen()),
+                );
+              },
+
+              child: Container(
+                padding: const EdgeInsets.all(13),
+                decoration: BoxDecoration(
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.secondaryBackground
+                      : Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: themeHelper.themeMode == ThemeMode.dark
+                        ? const Color(0xFF3B3939)
+                        : const Color(0xFFF1F1F3),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.logout,
+                  size: 24,
+                  color: Colors.grey, // 🔹 subtle red, not full button
+                ),
+              ),
+            ),
+          ],
 
           const SizedBox(width: 16),
 

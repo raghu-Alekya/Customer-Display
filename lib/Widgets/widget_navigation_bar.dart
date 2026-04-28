@@ -328,13 +328,11 @@ class NavigationBar extends StatelessWidget {
               lastSelectedIndex = 3;
               onSidebarItemSelected(3);
 
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
+              // OrderHelper.isOrderPanelLoaded = false;
+              // OrderHelper.notifyOrderPanelToRefresh();
               // Save current POS order before switching to Orders tab
-              final oh = OrderHelper();
-              if (oh.activeOrderId != null) {
-                oh.saveLastActiveOrderId(oh.activeOrderId!);
-              }
+
+
 
               /// OrdersScreen
               Navigator.of(context).pushAndRemoveUntil(

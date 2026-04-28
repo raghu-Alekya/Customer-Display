@@ -570,7 +570,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
         child: Column(
           children: [
             TopBar(
-              screen: Screen.ORDERS,
+              screen: Screen.SHIFT,
               onModeChanged: () async{ /// Build #1.0.192: Fixed -> Exception -> setState() callback argument returned a Future. (onModeChanged in all screens)
                 String newLayout;
                 if (sidebarPosition == SidebarPosition.left) {

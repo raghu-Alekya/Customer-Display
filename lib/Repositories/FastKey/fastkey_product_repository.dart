@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../../Constants/text.dart';
+import '../../Helper/CacheHelper.dart';
 import '../../Helper/api_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/FastKey/fastkey_product_model.dart';
@@ -40,33 +41,39 @@ class FastKeyProductRepository {  // Build #1.0.15
 
   // GET: Fetch products by FastKey ID
   Future<FastKeyProductsResponse> getProductsByFastKeyId(int fastKeyId) async {
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.fastKeys}${EndUrlConstants.getFastKeyProductsEndUrl}$fastKeyId";
+    final cacheKey = "fastkey_products_$fastKeyId";
 
-    if (kDebugMode) {
-      print("FastKeyProductRepository - GET URL: $url");
+    //  1. Always check cache first
+    final cachedData = await CacheHelper.getData(cacheKey);
+
+    if (cachedData != null) {
+      if (kDebugMode) print("✅ Loaded FastKey $fastKeyId from CACHE");
+      return FastKeyProductsResponse.fromJson(cachedData);
     }
+
+    //  Only if cache NOT found → call API
+    if (kDebugMode) print("🌐 Calling API for FastKey $fastKeyId");
+
+    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.fastKeys}${EndUrlConstants.getFastKeyProductsEndUrl}$fastKeyId";
 
     final response = await _helper.get(url, true);
 
-    if (kDebugMode) {
-      print("FastKeyProductRepository - GET Raw Response: $response");
-    }
-
     if (response is String) {
-      try {
-        final responseData = json.decode(response);
-        return FastKeyProductsResponse.fromJson(responseData);
-      } catch (e) {
-        if (kDebugMode) print("Error parsing GET response: $e");
-        throw Exception("Failed to parse FastKey products GET response");
-      }
+      final responseData = json.decode(response);
+
+      // ✅ Save separately per FastKey
+      await CacheHelper.saveData(cacheKey, responseData);
+
+      return FastKeyProductsResponse.fromJson(responseData);
     } else if (response is Map<String, dynamic>) {
+
+      await CacheHelper.saveData(cacheKey, response);
+
       return FastKeyProductsResponse.fromJson(response);
     } else {
       throw Exception("Unexpected response type in GET");
     }
   }
-
   // Build #1.0.89: Added this method for deleteProductFromFastKey API
   Future<FastKeyProductResponse> deleteProductFromFastKey(int fastkeyId, int productId) async {
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.fastKeys}${EndUrlConstants.deleteProductFromFastKeyEndUrl}";
