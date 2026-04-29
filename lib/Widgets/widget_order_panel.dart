@@ -480,7 +480,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final int? activeId = orderHelper.activeOrderId;
 
 // 🔥 HANDLE ALL INVALID ACTIVE ORDER CASES
-    if (activeId != null && !visibleOrderIds.contains(activeId)) {
+    if (activeId != null && !visibleOrderIds.contains(activeId) && _initialRestoreDone) {
       if (kDebugMode) {
         print("🟥 Active order $activeId is no longer visible → resetting");
       }

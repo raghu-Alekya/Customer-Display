@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
+import 'package:pinaka_pos/Widgets/widget_alert_popup_dialogs.dart';
 import 'package:provider/provider.dart';
 import '../../Blocs/Auth/shift_bloc.dart';
 import '../../Constants/text.dart';
@@ -118,9 +119,9 @@ class _InventoryScreenState extends State<InventoryScreen>
   List<TextEditingController> _attributeControllers = [];
 
   bool _showUnitNameInput = false;
-  int  _activeAddItemAttrIdx = -1;
+  int _activeAddItemAttrIdx = -1;
   final TextEditingController _unitNameInputController =
-  TextEditingController();
+      TextEditingController();
 
   // Validation & Loading
   final Map<String, String?> _fieldErrors = {};
@@ -138,8 +139,42 @@ class _InventoryScreenState extends State<InventoryScreen>
 
   late final ImageUploadRepository _imageUploadRepo;
 
+  bool _hasEnteredValues() {
+    return _variantNameController.text.isNotEmpty ||
+        _stockController.text.isNotEmpty ||
+        _variantRegularPriceController.text.isNotEmpty ||
+        _variantSalePriceController.text.isNotEmpty ||
+        _selectedCategory != null || // ✅ ADD THIS
+        _selectedTags.isNotEmpty || // (optional but good)
+        _selectedTax != null; // (optional)
+  }
 
+  Future<bool> _handleBack() async {
+    if (_hasEnteredValues()) {
+      bool shouldProceed = false;
 
+      await CustomDialog.showAreYouSure(
+        context,
+        description:
+            "You have entered cash values. Do you want to discard and go back?",
+        confirmText: "Yes, Confirm",
+        cancelText: "No, Keep it",
+        confirm: () {
+          shouldProceed = true;
+          Navigator.of(context).pop();
+        },
+      );
+
+      if (shouldProceed) {
+        Navigator.of(context).maybePop(); // for back button
+      }
+
+      return shouldProceed;
+    } else {
+      Navigator.of(context).maybePop();
+      return true;
+    }
+  }
 
   @override
   void initState() {
@@ -189,10 +224,10 @@ class _InventoryScreenState extends State<InventoryScreen>
           slug: slug,
         );
 
-        if (kDebugMode) print('Term created: ${newTerm.name} (${newTerm.slug})');
+        if (kDebugMode)
+          print('Term created: ${newTerm.name} (${newTerm.slug})');
       } catch (e) {
         if (kDebugMode) print('Failed to create term: $e');
-
       }
     }
 
@@ -252,7 +287,7 @@ class _InventoryScreenState extends State<InventoryScreen>
 
   Future<void> _pickImage() async {
     final XFile? image =
-    await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+        await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
     if (image == null) return;
 
     final bytes = await image.readAsBytes();
@@ -326,7 +361,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     if (_selectedProductType?.toLowerCase() == 'variable') {
       if (_variants.isEmpty) {
         _fieldErrors['variants'] =
-        'At least one variant is required for variable products';
+            'At least one variant is required for variable products';
       }
     } else {
       final cleanReg = _regularPriceController.text
@@ -617,10 +652,14 @@ class _InventoryScreenState extends State<InventoryScreen>
         return list;
       }
       if (_selectedCategory is int) {
-        return <Map<String, dynamic>>[{'id': _selectedCategory}];
+        return <Map<String, dynamic>>[
+          {'id': _selectedCategory}
+        ];
       }
       try {
-        return <Map<String, dynamic>>[{'id': _selectedCategory.id ?? 0}];
+        return <Map<String, dynamic>>[
+          {'id': _selectedCategory.id ?? 0}
+        ];
       } catch (_) {
         return <Map<String, dynamic>>[];
       }
@@ -660,7 +699,7 @@ class _InventoryScreenState extends State<InventoryScreen>
       String cleanReg = (_regularPriceController.text.trim())
           .replaceAll(RegExp(r'[^0-9.]'), '');
       String cleanSale =
-      (_salePriceController.text.trim()).replaceAll(RegExp(r'[^0-9.]'), '');
+          (_salePriceController.text.trim()).replaceAll(RegExp(r'[^0-9.]'), '');
 
       double regPrice = double.tryParse(cleanReg) ?? 0.0;
       double? salePrice = double.tryParse(cleanSale);
@@ -721,7 +760,7 @@ class _InventoryScreenState extends State<InventoryScreen>
 
     // 2. Build top-level product.attributes (required!)
     final List<Map<String, dynamic>> productAttributes =
-    attributeOptionsMap.entries.map((entry) {
+        attributeOptionsMap.entries.map((entry) {
       final slug = entry.key;
       final cleanName = slug.replaceFirst('pa_', '').replaceAll('-', ' ');
       final capitalized = cleanName
@@ -808,7 +847,7 @@ class _InventoryScreenState extends State<InventoryScreen>
           variantImageUrl = await _uploadImageForProduct(
             variant['imageFile'] as File,
             customFileName:
-            'variant-${DateTime.now().millisecondsSinceEpoch}.jpg',
+                'variant-${DateTime.now().millisecondsSinceEpoch}.jpg',
           );
           if (variantImageUrl != null) {
             variation['image'] = {'src': variantImageUrl};
@@ -1039,8 +1078,8 @@ class _InventoryScreenState extends State<InventoryScreen>
             color: isSelected
                 ? Colors.white
                 : (themeHelper.themeMode == ThemeMode.dark
-                ? Colors.white70
-                : Colors.black54),
+                    ? Colors.white70
+                    : Colors.black54),
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
           ),
@@ -1048,7 +1087,6 @@ class _InventoryScreenState extends State<InventoryScreen>
       ),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -1123,6 +1161,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                     if (sidebarPosition == SidebarPosition.left)
                       custom_widgets.NavigationBar(
                         selectedSidebarIndex: _selectedSidebarIndex,
+                        onWillNavigate: (_) => _handleBack(),
                         onSidebarItemSelected: (index) =>
                             setState(() => _selectedSidebarIndex = index),
                         isVertical: true,
@@ -1138,17 +1177,21 @@ class _InventoryScreenState extends State<InventoryScreen>
                           children: [
                             Padding(
                               padding: EdgeInsets.symmetric(
-                                  horizontal: isSmallScreen ? 8.0 : 16.0, vertical: 10),
+                                  horizontal: isSmallScreen ? 8.0 : 16.0,
+                                  vertical: 10),
                               child: Row(
                                 children: [
                                   // Back button
                                   Container(
                                     height: 38,
                                     decoration: BoxDecoration(
-                                        color: isDark ? Color(0xFF3B4259) : Color(0xFF3B4259),
-                                        borderRadius: BorderRadius.circular(8.0)),
+                                        color: isDark
+                                            ? Color(0xFF3B4259)
+                                            : Color(0xFF3B4259),
+                                        borderRadius:
+                                            BorderRadius.circular(8.0)),
                                     child: TextButton.icon(
-                                      onPressed: () => Navigator.pop(context),
+                                      onPressed: _handleBack,
                                       icon: const Icon(Icons.arrow_back_rounded,
                                           color: Colors.white, size: 15),
                                       label: const Text('Back',
@@ -1169,7 +1212,9 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       style: TextStyle(
                                         fontSize: 22,
                                         fontWeight: FontWeight.w700,
-                                        color: isDark ? Colors.white : Colors.black87,
+                                        color: isDark
+                                            ? Colors.white
+                                            : Colors.black87,
                                       ),
                                     ),
                                   ),
@@ -1177,11 +1222,13 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   OutlinedButton(
                                     onPressed: _clearForm,
                                     style: OutlinedButton.styleFrom(
-                                      side: const BorderSide(color: Color(0xFFE53935), width: 1.5),
+                                      side: const BorderSide(
+                                          color: Color(0xFFE53935), width: 1.5),
                                       shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8)),
-                                      padding:
-                                      const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                                          borderRadius:
+                                              BorderRadius.circular(8)),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 24, vertical: 10),
                                       foregroundColor: Color(0xFFE53935),
                                     ),
                                     child: const Text(
@@ -1200,27 +1247,29 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: const Color(0xFF2E7D32),
                                       shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8)),
-                                      padding:
-                                      const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                                          borderRadius:
+                                              BorderRadius.circular(8)),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 24, vertical: 10),
                                     ),
                                     child: _isSaving
                                         ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor:
-                                          AlwaysStoppedAnimation<Color>(Colors.white)),
-                                    )
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<
+                                                        Color>(Colors.white)),
+                                          )
                                         : const Text(
-                                      'Save & Update',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
+                                            'Save & Update',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
                                   ),
                                 ],
                               ),
@@ -1228,7 +1277,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                             Expanded(
                               child: _selectedTab == 0
                                   ? _buildAddProductTab(
-                                  isDark, isSmallScreen, isMediumScreen)
+                                      isDark, isSmallScreen, isMediumScreen)
                                   : _buildAuditListTab(isDark, isSmallScreen),
                             ),
                           ],
@@ -1238,6 +1287,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                     if (sidebarPosition == SidebarPosition.right)
                       custom_widgets.NavigationBar(
                         selectedSidebarIndex: _selectedSidebarIndex,
+                        onWillNavigate: (_) => _handleBack(),
                         onSidebarItemSelected: (index) =>
                             setState(() => _selectedSidebarIndex = index),
                         isVertical: true,
@@ -1248,6 +1298,7 @@ class _InventoryScreenState extends State<InventoryScreen>
               if (sidebarPosition == SidebarPosition.bottom)
                 custom_widgets.NavigationBar(
                   selectedSidebarIndex: _selectedSidebarIndex,
+                  onWillNavigate: (_) => _handleBack(),
                   onSidebarItemSelected: (index) =>
                       setState(() => _selectedSidebarIndex = index),
                   isVertical: false,
@@ -1263,15 +1314,13 @@ class _InventoryScreenState extends State<InventoryScreen>
       bool isDark, bool isSmallScreen, bool isMediumScreen) {
     return SingleChildScrollView(
       padding:
-      EdgeInsets.symmetric(horizontal: isSmallScreen ? 8 : 16, vertical: 8),
+          EdgeInsets.symmetric(horizontal: isSmallScreen ? 8 : 16, vertical: 8),
       child: Form(
         key: _formKey,
         child: Column(
           children: [
             _buildDesktopLayout(isDark),
-
             const SizedBox(height: 32),
-
             ..._buildValidationErrors(),
           ],
         ),
@@ -1584,7 +1633,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                           child: SingleChildScrollView(
                             child: Padding(
                               padding:
-                              const EdgeInsets.symmetric(horizontal: 20),
+                                  const EdgeInsets.symmetric(horizontal: 20),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -1734,7 +1783,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   // ),
 
                                   Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       GestureDetector(
                                         onTap: _pickImage,
@@ -1752,55 +1802,71 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                 width: 70,
                                                 height: 70,
                                                 decoration: BoxDecoration(
-                                                  borderRadius: BorderRadius.circular(8),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
                                                   // ❌ removed solid border here
                                                   color: isDark
                                                       ? const Color(0xFF252837)
                                                       : Colors.white,
                                                   image: _imageFile != null
                                                       ? DecorationImage(
-                                                    image: FileImage(_imageFile!),
-                                                    fit: BoxFit.cover,
-                                                  )
+                                                          image: FileImage(
+                                                              _imageFile!),
+                                                          fit: BoxFit.cover,
+                                                        )
                                                       : null,
                                                 ),
                                                 child: _imageFile == null
                                                     ? Column(
-                                                  mainAxisAlignment: MainAxisAlignment.center,
-                                                  children: [
-                                                    Container(
-                                                      padding: EdgeInsets.all(6),
-                                                      decoration: BoxDecoration(
-                                                        color: Color(0xFF2196F3).withOpacity(0.1),
-                                                        shape: BoxShape.circle,
-                                                      ),
-                                                      child: Icon(
-                                                        Icons.image_outlined,
-                                                        size: 12,
-                                                        color: Color(0xFF2196F3),
-                                                      ),
-                                                    ),
-
-                                                    const SizedBox(height: 2),
-
-                                                    Padding(
-                                                      padding: const EdgeInsets.only(left: 16.0),
-                                                      child: Text(
-                                                        'Upload Image',
-                                                        style: TextStyle(
-                                                          fontSize: 10,
-                                                          color: isDark
-                                                              ? Colors.white70
-                                                              : Colors.black54,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                )
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .center,
+                                                        children: [
+                                                          Container(
+                                                            padding:
+                                                                EdgeInsets.all(
+                                                                    6),
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              color: Color(
+                                                                      0xFF2196F3)
+                                                                  .withOpacity(
+                                                                      0.1),
+                                                              shape: BoxShape
+                                                                  .circle,
+                                                            ),
+                                                            child: Icon(
+                                                              Icons
+                                                                  .image_outlined,
+                                                              size: 12,
+                                                              color: Color(
+                                                                  0xFF2196F3),
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                              height: 2),
+                                                          Padding(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .only(
+                                                                    left: 16.0),
+                                                            child: Text(
+                                                              'Upload Image',
+                                                              style: TextStyle(
+                                                                fontSize: 10,
+                                                                color: isDark
+                                                                    ? Colors
+                                                                        .white70
+                                                                    : Colors
+                                                                        .black54,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      )
                                                     : null,
                                               ),
                                             ),
-
                                             if (_imageFile != null)
                                               Positioned(
                                                 top: 4,
@@ -1812,8 +1878,10 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                     });
                                                   },
                                                   child: Container(
-                                                    padding: const EdgeInsets.all(4),
-                                                    decoration: const BoxDecoration(
+                                                    padding:
+                                                        const EdgeInsets.all(4),
+                                                    decoration:
+                                                        const BoxDecoration(
                                                       color: Colors.black54,
                                                       shape: BoxShape.circle,
                                                     ),
@@ -1828,15 +1896,16 @@ class _InventoryScreenState extends State<InventoryScreen>
                                           ],
                                         ),
                                       ),
-
                                       const SizedBox(width: 10),
-
                                       Flexible(
                                         child: Padding(
-                                          padding: const EdgeInsets.only(left: 8.0),
+                                          padding:
+                                              const EdgeInsets.only(left: 8.0),
                                           child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
                                             children: [
                                               Text(
                                                 'Please upload a clear image of the item',
@@ -1895,7 +1964,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     ),
                                     child: Row(
                                       crossAxisAlignment:
-                                      CrossAxisAlignment.center,
+                                          CrossAxisAlignment.center,
                                       children: [
                                         Expanded(
                                           child: TextFormField(
@@ -1919,42 +1988,47 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               border: InputBorder.none,
                                               isDense: true,
                                               contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 14),
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 14),
                                             ),
                                           ),
                                         ),
 
                                         /// GENERATE BUTTON (Centered, disabled when SKU present)
                                         InkWell(
-                                          onTap: _skuController.text.trim().isEmpty
-                                              ? () {
-                                            setState(() {
-                                              _skuController.text =
-                                              'SKU${DateTime.now().millisecondsSinceEpoch}';
-                                            });
-                                          }
-                                              : null,
+                                          onTap:
+                                              _skuController.text.trim().isEmpty
+                                                  ? () {
+                                                      setState(() {
+                                                        _skuController.text =
+                                                            'SKU${DateTime.now().millisecondsSinceEpoch}';
+                                                      });
+                                                    }
+                                                  : null,
                                           child: Container(
                                             height: double.infinity,
                                             alignment: Alignment.center,
-                                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 20),
                                             decoration: BoxDecoration(
-                                              gradient: _skuController.text.trim().isEmpty
+                                              gradient: _skuController.text
+                                                      .trim()
+                                                      .isEmpty
                                                   ? LinearGradient(
-                                                colors: [
-                                                  Color(0xFFE91E63),
-                                                  Color(0xFFFF8A80),
-                                                ],
-                                                begin: Alignment.topLeft,
-                                                end: Alignment.bottomRight,
-                                              )
+                                                      colors: [
+                                                        Color(0xFFE91E63),
+                                                        Color(0xFFFF8A80),
+                                                      ],
+                                                      begin: Alignment.topLeft,
+                                                      end:
+                                                          Alignment.bottomRight,
+                                                    )
                                                   : LinearGradient(
-                                                colors: [
-                                                  Colors.grey.shade400,
-                                                  Colors.grey.shade500,
-                                                ],
-                                              ),
+                                                      colors: [
+                                                        Colors.grey.shade400,
+                                                        Colors.grey.shade500,
+                                                      ],
+                                                    ),
                                               borderRadius: BorderRadius.only(
                                                 topRight: Radius.circular(8),
                                                 bottomRight: Radius.circular(8),
@@ -2001,13 +2075,15 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       // ✅ DEFAULT BORDER
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(6),
-                                        borderSide: BorderSide(color: Colors.grey),
+                                        borderSide:
+                                            BorderSide(color: Colors.grey),
                                       ),
 
                                       // ✅ WHEN NOT FOCUSED
                                       enabledBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(6),
-                                        borderSide: BorderSide(color: Colors.grey),
+                                        borderSide:
+                                            BorderSide(color: Colors.grey),
                                       ),
 
                                       // ✅ WHEN FOCUSED
@@ -2025,7 +2101,9 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       ),
                                     ),
                                     style: TextStyle(
-                                      color: isDark ? Colors.white : Colors.black87,
+                                      color: isDark
+                                          ? Colors.white
+                                          : Colors.black87,
                                     ),
                                   ),
 
@@ -2156,12 +2234,14 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     height: 1.2,
                                     color: isPriceStockDisabled
                                         ? disabledText
-                                        : (isDark ? Colors.white : Colors.black87),
+                                        : (isDark
+                                            ? Colors.white
+                                            : Colors.black87),
                                   );
 
                                   return Column(
                                     crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                     children: [
                                       // Prices Row
                                       // 🔥 Common style (ADD THIS ABOVE)
@@ -2179,7 +2259,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                                           // Regular Price
                                           Expanded(
                                             child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
                                               children: [
                                                 Text(
                                                   'Regular Price',
@@ -2188,41 +2269,71 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                     fontWeight: FontWeight.w500,
                                                     color: isPriceStockDisabled
                                                         ? Colors.grey
-                                                        : (isDark ? Colors.white70 : Colors.black87),
+                                                        : (isDark
+                                                            ? Colors.white70
+                                                            : Colors.black87),
                                                   ),
                                                 ),
                                                 const SizedBox(height: 2),
                                                 SizedBox(
                                                   height: fieldHeight,
                                                   child: TextFormField(
-                                                    controller: _regularPriceController,
-                                                    enabled: !isPriceStockDisabled,
-                                                    keyboardType: TextInputType.number,
+                                                    controller:
+                                                        _regularPriceController,
+                                                    enabled:
+                                                        !isPriceStockDisabled,
+                                                    keyboardType:
+                                                        TextInputType.number,
                                                     textAlign: TextAlign.right,
                                                     inputFormatters: [
-                                                      TextInputFormatter.withFunction((oldValue, newValue) {
-                                                        final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-                                                        if (text.isEmpty) return const TextEditingValue(text: '');
-                                                        final value = int.parse(text) / 100;
-                                                        final newText = value.toStringAsFixed(2);
+                                                      TextInputFormatter
+                                                          .withFunction(
+                                                              (oldValue,
+                                                                  newValue) {
+                                                        final text = newValue
+                                                            .text
+                                                            .replaceAll(
+                                                                RegExp(
+                                                                    r'[^0-9]'),
+                                                                '');
+                                                        if (text.isEmpty)
+                                                          return const TextEditingValue(
+                                                              text: '');
+                                                        final value =
+                                                            int.parse(text) /
+                                                                100;
+                                                        final newText = value
+                                                            .toStringAsFixed(2);
                                                         return TextEditingValue(
                                                           text: newText,
-                                                          selection: TextSelection.collapsed(offset: newText.length),
+                                                          selection: TextSelection
+                                                              .collapsed(
+                                                                  offset: newText
+                                                                      .length),
                                                         );
                                                       }),
                                                     ],
-                                                    style: priceTextStyle, // ✅ SAME STYLE
+                                                    style:
+                                                        priceTextStyle, // ✅ SAME STYLE
                                                     decoration: InputDecoration(
                                                       prefixText: '\$ ',
                                                       hintText: '0.00',
-                                                      hintStyle: priceTextStyle.copyWith(color: Colors.grey), // ✅ FIX
+                                                      hintStyle: priceTextStyle
+                                                          .copyWith(
+                                                              color: Colors
+                                                                  .grey), // ✅ FIX
                                                       isDense: true,
                                                       filled: true,
-                                                      fillColor: isPriceStockDisabled
-                                                          ? disabledFill
-                                                          : Colors.transparent,
-                                                      border: const OutlineInputBorder(),
-                                                      contentPadding: const EdgeInsets.symmetric(
+                                                      fillColor:
+                                                          isPriceStockDisabled
+                                                              ? disabledFill
+                                                              : Colors
+                                                                  .transparent,
+                                                      border:
+                                                          const OutlineInputBorder(),
+                                                      contentPadding:
+                                                          const EdgeInsets
+                                                              .symmetric(
                                                         horizontal: 8,
                                                         vertical: 8,
                                                       ),
@@ -2238,7 +2349,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                                           // Sale Price
                                           Expanded(
                                             child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
                                               children: [
                                                 Text(
                                                   'Sale Price',
@@ -2247,41 +2359,71 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                     fontWeight: FontWeight.w500,
                                                     color: isPriceStockDisabled
                                                         ? Colors.grey
-                                                        : (isDark ? Colors.white70 : Colors.black87),
+                                                        : (isDark
+                                                            ? Colors.white70
+                                                            : Colors.black87),
                                                   ),
                                                 ),
                                                 const SizedBox(height: 2),
                                                 SizedBox(
                                                   height: fieldHeight,
                                                   child: TextFormField(
-                                                    controller: _salePriceController,
-                                                    enabled: !isPriceStockDisabled,
-                                                    keyboardType: TextInputType.number,
+                                                    controller:
+                                                        _salePriceController,
+                                                    enabled:
+                                                        !isPriceStockDisabled,
+                                                    keyboardType:
+                                                        TextInputType.number,
                                                     textAlign: TextAlign.right,
                                                     inputFormatters: [
-                                                      TextInputFormatter.withFunction((oldValue, newValue) {
-                                                        final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-                                                        if (text.isEmpty) return const TextEditingValue(text: '');
-                                                        final value = int.parse(text) / 100;
-                                                        final newText = value.toStringAsFixed(2);
+                                                      TextInputFormatter
+                                                          .withFunction(
+                                                              (oldValue,
+                                                                  newValue) {
+                                                        final text = newValue
+                                                            .text
+                                                            .replaceAll(
+                                                                RegExp(
+                                                                    r'[^0-9]'),
+                                                                '');
+                                                        if (text.isEmpty)
+                                                          return const TextEditingValue(
+                                                              text: '');
+                                                        final value =
+                                                            int.parse(text) /
+                                                                100;
+                                                        final newText = value
+                                                            .toStringAsFixed(2);
                                                         return TextEditingValue(
                                                           text: newText,
-                                                          selection: TextSelection.collapsed(offset: newText.length),
+                                                          selection: TextSelection
+                                                              .collapsed(
+                                                                  offset: newText
+                                                                      .length),
                                                         );
                                                       }),
                                                     ],
-                                                    style: priceTextStyle, // ✅ SAME STYLE
+                                                    style:
+                                                        priceTextStyle, // ✅ SAME STYLE
                                                     decoration: InputDecoration(
                                                       prefixText: '\$ ',
                                                       hintText: '0.00',
-                                                      hintStyle: priceTextStyle.copyWith(color: Colors.grey), // ✅ FIX
+                                                      hintStyle: priceTextStyle
+                                                          .copyWith(
+                                                              color: Colors
+                                                                  .grey), // ✅ FIX
                                                       filled: true,
                                                       isDense: true,
-                                                      fillColor: isPriceStockDisabled
-                                                          ? disabledFill
-                                                          : Colors.transparent,
-                                                      border: const OutlineInputBorder(),
-                                                      contentPadding: const EdgeInsets.symmetric(
+                                                      fillColor:
+                                                          isPriceStockDisabled
+                                                              ? disabledFill
+                                                              : Colors
+                                                                  .transparent,
+                                                      border:
+                                                          const OutlineInputBorder(),
+                                                      contentPadding:
+                                                          const EdgeInsets
+                                                              .symmetric(
                                                         horizontal: 8,
                                                         vertical: 8,
                                                       ),
@@ -2301,7 +2443,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         ignoring: isProductTypeVariable,
                                         child: Opacity(
                                           opacity:
-                                          isProductTypeVariable ? 0.5 : 1,
+                                              isProductTypeVariable ? 0.5 : 1,
                                           child: VariablePriceCheckboxWidget(
                                             value: _hasVariablePrice,
                                             isDark: isDark,
@@ -2319,12 +2461,12 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                 const slug = 'variable-product';
                                                 if (checked) {
                                                   if (!_selectedTags.any(
-                                                          (t) => t.slug == slug)) {
+                                                      (t) => t.slug == slug)) {
                                                     _selectedTags.add(
                                                       const Inventory_Tag_Entity(
                                                         id: 0,
                                                         name:
-                                                        'Variable Product',
+                                                            'Variable Product',
                                                         slug: slug,
                                                         description: '',
                                                         count: 0,
@@ -2333,7 +2475,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                   }
                                                 } else {
                                                   _selectedTags.removeWhere(
-                                                          (t) => t.slug == slug);
+                                                      (t) => t.slug == slug);
                                                 }
                                               });
                                             },
@@ -2351,11 +2493,11 @@ class _InventoryScreenState extends State<InventoryScreen>
                                           fontWeight: FontWeight.w500,
                                           color: isProductTypeVariable
                                               ? (isDark
-                                              ? Colors.grey.shade300
-                                              : Colors.black87)
+                                                  ? Colors.grey.shade300
+                                                  : Colors.black87)
                                               : (isDark
-                                              ? Colors.white70
-                                              : Colors.black87),
+                                                  ? Colors.white70
+                                                  : Colors.black87),
                                         ),
                                       ),
                                       const SizedBox(height: 4),
@@ -2378,11 +2520,11 @@ class _InventoryScreenState extends State<InventoryScreen>
                                           fontWeight: FontWeight.w500,
                                           color: isPriceStockDisabledStock
                                               ? (isDark
-                                              ? Colors.grey.shade500
-                                              : Colors.grey)
+                                                  ? Colors.grey.shade500
+                                                  : Colors.grey)
                                               : (isDark
-                                              ? Colors.white70
-                                              : Colors.black87),
+                                                  ? Colors.white70
+                                                  : Colors.black87),
                                         ),
                                       ),
                                       const SizedBox(height: 2),
@@ -2399,7 +2541,9 @@ class _InventoryScreenState extends State<InventoryScreen>
                                           style: TextStyle(
                                             color: isPriceStockDisabledStock
                                                 ? disabledText
-                                                : (isDark ? Colors.white : Colors.black87),
+                                                : (isDark
+                                                    ? Colors.white
+                                                    : Colors.black87),
                                             fontSize: 13,
                                           ),
 
@@ -2410,28 +2554,34 @@ class _InventoryScreenState extends State<InventoryScreen>
                                             fillColor: isPriceStockDisabledStock
                                                 ? disabledFill
                                                 : Colors.transparent,
-
                                             border: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(6),
-                                              borderSide: BorderSide(color: Colors.grey.shade400),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              borderSide: BorderSide(
+                                                  color: Colors.grey.shade400),
                                             ),
                                             enabledBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(6),
-                                              borderSide: BorderSide(color: Colors.grey.shade400),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              borderSide: BorderSide(
+                                                  color: Colors.grey.shade400),
                                             ),
                                             focusedBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(6),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
                                               borderSide: BorderSide(
                                                 color: Colors.grey.shade600,
                                                 width: 2.5,
                                               ),
                                             ),
                                             disabledBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(6),
-                                              borderSide: BorderSide(color: Colors.grey.shade900),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              borderSide: BorderSide(
+                                                  color: Colors.grey.shade900),
                                             ),
-
-                                            contentPadding: EdgeInsets.symmetric(
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
                                               horizontal: 8,
                                               vertical: 8,
                                             ),
@@ -2450,8 +2600,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                                           color: isProductTypeVariable
                                               ? Colors.grey
                                               : (isDark
-                                              ? Colors.white70
-                                              : Colors.black87),
+                                                  ? Colors.white70
+                                                  : Colors.black87),
                                         ),
                                       ),
                                       const SizedBox(height: 6),
@@ -2511,7 +2661,6 @@ class _InventoryScreenState extends State<InventoryScreen>
                       ),
                     ],
                   ),
-
                   child: Column(
                     children: [
                       // 🔷 HEADER
@@ -2554,10 +2703,11 @@ class _InventoryScreenState extends State<InventoryScreen>
                             const Spacer(),
                             if (_variants.isNotEmpty)
                               Container(
-                                padding:
-                                const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF2196F3).withOpacity(0.15),
+                                  color:
+                                      const Color(0xFF2196F3).withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
@@ -2585,7 +2735,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                     ],
                   ),
                 ),
-              )],
+              )
+            ],
           ),
         ),
 
@@ -2669,23 +2820,23 @@ class _InventoryScreenState extends State<InventoryScreen>
                   color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0)),
               image: _imageFile != null
                   ? DecorationImage(
-                image: FileImage(_imageFile!),
-                fit: BoxFit.cover,
-              )
+                      image: FileImage(_imageFile!),
+                      fit: BoxFit.cover,
+                    )
                   : null,
             ),
             child: _imageFile == null
                 ? Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.image_outlined,
-                    size: 10, color: Color(0xFF2196F3)),
-                SizedBox(height: 8),
-                Text('Upload Image',
-                    style: TextStyle(
-                        color: Color(0xFF2196F3), fontSize: 10)),
-              ],
-            )
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.image_outlined,
+                          size: 10, color: Color(0xFF2196F3)),
+                      SizedBox(height: 8),
+                      Text('Upload Image',
+                          style: TextStyle(
+                              color: Color(0xFF2196F3), fontSize: 10)),
+                    ],
+                  )
                 : null,
           ),
         ),
@@ -2720,7 +2871,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                 decoration: InputDecoration(
                   hintText: 'Generate the Sku',
                   hintStyle:
-                  TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                      TextStyle(color: Colors.grey.shade400, fontSize: 13),
                   filled: true,
                   fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
                   border: OutlineInputBorder(
@@ -2729,7 +2880,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                         color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0)),
                   ),
                   contentPadding:
-                  EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 ),
               ),
             ),
@@ -2739,13 +2890,13 @@ class _InventoryScreenState extends State<InventoryScreen>
               decoration: BoxDecoration(
                 gradient: canGenerateSku
                     ? const LinearGradient(
-                  colors: [
-                    Color(0xFFF6339A),
-                    Color(0xFFFF2056),
-                  ],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                )
+                        colors: [
+                          Color(0xFFF6339A),
+                          Color(0xFFFF2056),
+                        ],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      )
                     : null,
                 color: canGenerateSku ? null : Colors.grey.shade400,
                 borderRadius: BorderRadius.circular(6),
@@ -2753,10 +2904,11 @@ class _InventoryScreenState extends State<InventoryScreen>
               child: ElevatedButton(
                 onPressed: canGenerateSku
                     ? () => setState(() => _skuController.text =
-                'SKU${DateTime.now().millisecondsSinceEpoch}')
+                        'SKU${DateTime.now().millisecondsSinceEpoch}')
                     : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent, // ✅ keeps gradient visible
+                  backgroundColor:
+                      Colors.transparent, // ✅ keeps gradient visible
                   shadowColor: Colors.transparent,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(6),
@@ -2909,8 +3061,8 @@ class _InventoryScreenState extends State<InventoryScreen>
           final niceValue = selectedSlug
               .split('-')
               .map((w) => w.isNotEmpty
-              ? w[0].toUpperCase() + w.substring(1).toLowerCase()
-              : '')
+                  ? w[0].toUpperCase() + w.substring(1).toLowerCase()
+                  : '')
               .join(' ');
 
           parts.add('$attrName: $niceValue');
@@ -3021,17 +3173,17 @@ class _InventoryScreenState extends State<InventoryScreen>
                               ),
                               child: variant['imageFile'] != null
                                   ? ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.file(
-                                  variant['imageFile'],
-                                  fit: BoxFit.cover,
-                                ),
-                              )
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(
+                                        variant['imageFile'],
+                                        fit: BoxFit.cover,
+                                      ),
+                                    )
                                   : Icon(
-                                Icons.image_outlined,
-                                size: 32,
-                                color: Colors.grey.shade400,
-                              ),
+                                      Icons.image_outlined,
+                                      size: 32,
+                                      color: Colors.grey.shade400,
+                                    ),
                             ),
                             if (variant['imageFile'] != null)
                               Positioned(
@@ -3097,17 +3249,19 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   Builder(
                                     builder: (context) {
                                       final regValue = double.tryParse(
-                                        (variant['regularPrice'] ?? '0')
-                                            .toString()
-                                            .replaceAll(RegExp(r'[^0-9.]'), ''),
-                                      ) ??
+                                            (variant['regularPrice'] ?? '0')
+                                                .toString()
+                                                .replaceAll(
+                                                    RegExp(r'[^0-9.]'), ''),
+                                          ) ??
                                           0.0;
 
                                       final saleValue = double.tryParse(
-                                        (variant['salePrice'] ?? '')
-                                            .toString()
-                                            .replaceAll(RegExp(r'[^0-9.]'), ''),
-                                      ) ??
+                                            (variant['salePrice'] ?? '')
+                                                .toString()
+                                                .replaceAll(
+                                                    RegExp(r'[^0-9.]'), ''),
+                                          ) ??
                                           0.0;
 
                                       final hasSale = saleValue > 0;
@@ -3122,9 +3276,12 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               fontWeight: FontWeight.w600,
                                               color: hasSale
                                                   ? Colors.grey.shade600
-                                                  : (isDark ? Colors.white70 : Colors.black54),
-                                              decoration:
-                                              hasSale ? TextDecoration.lineThrough : null,
+                                                  : (isDark
+                                                      ? Colors.white70
+                                                      : Colors.black54),
+                                              decoration: hasSale
+                                                  ? TextDecoration.lineThrough
+                                                  : null,
                                             ),
                                           ),
 
@@ -3135,7 +3292,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               '\$${saleValue.toStringAsFixed(2)}',
                                               style: TextStyle(
                                                 fontSize: 12,
-                                                fontWeight: FontWeight.w600, // SAME weight
+                                                fontWeight: FontWeight
+                                                    .w600, // SAME weight
                                                 color: isDark
                                                     ? Colors.orange.shade300
                                                     : Colors.orange.shade700,
@@ -3171,16 +3329,16 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       (variant['attributes'] as List)
                                           .isNotEmpty) {
                                     _variantAttributes =
-                                    List<Map<String, dynamic>>.from(
-                                        variant['attributes']);
+                                        List<Map<String, dynamic>>.from(
+                                            variant['attributes']);
                                   } else {
                                     _variantAttributes = [
                                       {
                                         'attribute': variant['attribute'],
                                         'attributeItem':
-                                        variant['attributeItem'],
+                                            variant['attributeItem'],
                                         'selectedSlug': variant['attributeItem']
-                                        ?['slug'],
+                                            ?['slug'],
                                       }
                                     ];
                                   }
@@ -3200,7 +3358,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
                                       color:
-                                      Color(0xFF2196F3).withOpacity(0.3)),
+                                          Color(0xFF2196F3).withOpacity(0.3)),
                                 ),
                                 child: Icon(Icons.edit_outlined,
                                     size: 20, color: Color(0xFF2196F3)),
@@ -3220,7 +3378,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
                                       color:
-                                      Color(0xFFEF5350).withOpacity(0.3)),
+                                          Color(0xFFEF5350).withOpacity(0.3)),
                                 ),
                                 child: Icon(Icons.delete_outline,
                                     size: 20, color: Color(0xFFEF5350)),
@@ -3271,7 +3429,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                 InkWell(
                                   onTap: () async {
                                     final XFile? pickedFile =
-                                    await _picker.pickImage(
+                                        await _picker.pickImage(
                                       source: ImageSource.gallery,
                                       maxWidth: 200,
                                       maxHeight: 200,
@@ -3300,32 +3458,32 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     ),
                                     child: _currentImageFile != null
                                         ? ClipRRect(
-                                      borderRadius:
-                                      BorderRadius.circular(8),
-                                      child: Image.file(
-                                        _currentImageFile!,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    )
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            child: Image.file(
+                                              _currentImageFile!,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          )
                                         : Column(
-                                      mainAxisAlignment:
-                                      MainAxisAlignment.center,
-                                      children: const [
-                                        Icon(
-                                          Icons.cloud_upload_outlined,
-                                          size: 24,
-                                          color: Color(0xFF2196F3),
-                                        ),
-                                        SizedBox(height: 4),
-                                        Text(
-                                          'Upload',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: Color(0xFF2196F3),
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: const [
+                                              Icon(
+                                                Icons.cloud_upload_outlined,
+                                                size: 24,
+                                                color: Color(0xFF2196F3),
+                                              ),
+                                              SizedBox(height: 4),
+                                              Text(
+                                                'Upload',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: Color(0xFF2196F3),
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                        ),
-                                      ],
-                                    ),
                                   ),
                                 ),
                                 if (_currentImageFile != null)
@@ -3366,7 +3524,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Variant Name',
@@ -3388,7 +3546,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                 ? Color(0xFF2A2D3E)
                                                 : Colors.grey.shade100,
                                             borderRadius:
-                                            BorderRadius.circular(6),
+                                                BorderRadius.circular(6),
                                             border: Border.all(
                                               color: isDark
                                                   ? Color(0xFF3B4259)
@@ -3404,18 +3562,18 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               style: TextStyle(
                                                 fontSize: 14,
                                                 color: _generateVariantName()
-                                                    .isNotEmpty
+                                                        .isNotEmpty
                                                     ? (isDark
-                                                    ? Colors.white70
-                                                    : Colors.black54)
+                                                        ? Colors.white70
+                                                        : Colors.black54)
                                                     : (isDark
-                                                    ? Colors.grey.shade500
-                                                    : Colors.grey.shade600),
+                                                        ? Colors.grey.shade500
+                                                        : Colors.grey.shade600),
                                                 fontStyle:
-                                                _generateVariantName()
-                                                    .isEmpty
-                                                    ? FontStyle.italic
-                                                    : null,
+                                                    _generateVariantName()
+                                                            .isEmpty
+                                                        ? FontStyle.italic
+                                                        : null,
                                               ),
                                               overflow: TextOverflow.ellipsis,
                                             ),
@@ -3429,7 +3587,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     width: 100,
                                     child: Column(
                                       crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Stock',
@@ -3446,7 +3604,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                           child: TextField(
                                             controller: _stockController,
                                             onChanged: (value) =>
-                                            _currentStock = value,
+                                                _currentStock = value,
                                             keyboardType: TextInputType.number,
                                             decoration: InputDecoration(
                                               hintText: '0',
@@ -3456,11 +3614,11 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                   : Color(0xFFF8F9FA),
                                               border: OutlineInputBorder(
                                                   borderRadius:
-                                                  BorderRadius.circular(6)),
+                                                      BorderRadius.circular(6)),
                                               contentPadding:
-                                              EdgeInsets.symmetric(
-                                                  horizontal: 12,
-                                                  vertical: 0),
+                                                  EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 0),
                                             ),
                                             style: TextStyle(fontSize: 14),
                                           ),
@@ -3476,7 +3634,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Regular Price',
@@ -3500,26 +3658,26 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               FilteringTextInputFormatter
                                                   .digitsOnly,
                                               TextInputFormatter.withFunction(
-                                                      (oldValue, newValue) {
-                                                    final rawText = newValue.text
-                                                        .replaceAll(
+                                                  (oldValue, newValue) {
+                                                final rawText = newValue.text
+                                                    .replaceAll(
                                                         RegExp(r'[^0-9]'), '');
-                                                    if (rawText.isEmpty)
-                                                      return const TextEditingValue(
-                                                          text: '');
-                                                    final cents =
-                                                        int.tryParse(rawText) ?? 0;
-                                                    final dollars = cents / 100;
-                                                    final formatted =
+                                                if (rawText.isEmpty)
+                                                  return const TextEditingValue(
+                                                      text: '');
+                                                final cents =
+                                                    int.tryParse(rawText) ?? 0;
+                                                final dollars = cents / 100;
+                                                final formatted =
                                                     dollars.toStringAsFixed(2);
-                                                    return TextEditingValue(
-                                                      text: formatted,
-                                                      selection:
+                                                return TextEditingValue(
+                                                  text: formatted,
+                                                  selection:
                                                       TextSelection.collapsed(
                                                           offset:
-                                                          formatted.length),
-                                                    );
-                                                  }),
+                                                              formatted.length),
+                                                );
+                                              }),
                                             ],
                                             decoration: InputDecoration(
                                               prefixText: '\$ ',
@@ -3530,11 +3688,11 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                   : Color(0xFFF8F9FA),
                                               border: OutlineInputBorder(
                                                   borderRadius:
-                                                  BorderRadius.circular(6)),
+                                                      BorderRadius.circular(6)),
                                               contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 12,
-                                                  vertical: 0),
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 0),
                                             ),
                                             style: TextStyle(
                                                 fontSize: 12,
@@ -3542,7 +3700,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                     ? Colors.white
                                                     : Colors.black87),
                                             onChanged: (value) =>
-                                            _currentRegularPrice = value,
+                                                _currentRegularPrice = value,
                                           ),
                                         ),
                                       ],
@@ -3552,7 +3710,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Sale Price',
@@ -3576,26 +3734,26 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               FilteringTextInputFormatter
                                                   .digitsOnly,
                                               TextInputFormatter.withFunction(
-                                                      (oldValue, newValue) {
-                                                    final rawText = newValue.text
-                                                        .replaceAll(
+                                                  (oldValue, newValue) {
+                                                final rawText = newValue.text
+                                                    .replaceAll(
                                                         RegExp(r'[^0-9]'), '');
-                                                    if (rawText.isEmpty)
-                                                      return const TextEditingValue(
-                                                          text: '');
-                                                    final cents =
-                                                        int.tryParse(rawText) ?? 0;
-                                                    final dollars = cents / 100;
-                                                    final formatted =
+                                                if (rawText.isEmpty)
+                                                  return const TextEditingValue(
+                                                      text: '');
+                                                final cents =
+                                                    int.tryParse(rawText) ?? 0;
+                                                final dollars = cents / 100;
+                                                final formatted =
                                                     dollars.toStringAsFixed(2);
-                                                    return TextEditingValue(
-                                                      text: formatted,
-                                                      selection:
+                                                return TextEditingValue(
+                                                  text: formatted,
+                                                  selection:
                                                       TextSelection.collapsed(
                                                           offset:
-                                                          formatted.length),
-                                                    );
-                                                  }),
+                                                              formatted.length),
+                                                );
+                                              }),
                                             ],
                                             decoration: InputDecoration(
                                               prefixText: '\$ ',
@@ -3606,11 +3764,11 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                   : Color(0xFFF8F9FA),
                                               border: OutlineInputBorder(
                                                   borderRadius:
-                                                  BorderRadius.circular(6)),
+                                                      BorderRadius.circular(6)),
                                               contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 12,
-                                                  vertical: 0),
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 0),
                                             ),
                                             style: TextStyle(
                                                 fontSize: 12,
@@ -3618,7 +3776,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                     ? Colors.white
                                                     : Colors.black87),
                                             onChanged: (value) =>
-                                            _currentSalePrice = value,
+                                                _currentSalePrice = value,
                                           ),
                                         ),
                                       ],
@@ -3660,7 +3818,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                                 width: 28,
                                 height: 28,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF2196F3).withOpacity(0.1),
+                                  color:
+                                      const Color(0xFF2196F3).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Center(
@@ -3689,14 +3848,18 @@ class _InventoryScreenState extends State<InventoryScreen>
                                           'name': attribute.name,
                                           'slug': attribute.slug,
                                         };
-                                        _variantAttributes[idx]['attributeItem'] = null;
-                                        _variantAttributes[idx]['selectedSlug'] = null;
+                                        _variantAttributes[idx]
+                                            ['attributeItem'] = null;
+                                        _variantAttributes[idx]
+                                            ['selectedSlug'] = null;
                                       });
                                     },
                                     onItemSlugSelected: (attribute, slug) {
                                       setState(() {
-                                        _variantAttributes[idx]['attributeItem'] = {'slug': slug};
-                                        _variantAttributes[idx]['selectedSlug'] = slug;
+                                        _variantAttributes[idx]
+                                            ['attributeItem'] = {'slug': slug};
+                                        _variantAttributes[idx]
+                                            ['selectedSlug'] = slug;
                                         // Hide unit name input if it was open for this row
                                         if (_activeAddItemAttrIdx == idx) {
                                           _showUnitNameInput = false;
@@ -3762,7 +3925,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       });
                                     });
                                   },
-                                  icon: const Icon(Icons.add_circle_outline, size: 18, color: Color(0xFF2196F3)),
+                                  icon: const Icon(Icons.add_circle_outline,
+                                      size: 18, color: Color(0xFF2196F3)),
                                   label: const Text(
                                     'Add',
                                     style: TextStyle(
@@ -3774,7 +3938,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     ),
                                   ),
                                   style: TextButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 4, vertical: 4),
                                   ),
                                 ),
                               if (!isLast && _variantAttributes.length > 1)
@@ -3793,10 +3958,12 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     child: Container(
                                       padding: const EdgeInsets.all(10),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFEF5350).withOpacity(0.1),
+                                        color: const Color(0xFFEF5350)
+                                            .withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(8),
                                         border: Border.all(
-                                            color: const Color(0xFFEF5350).withOpacity(0.3)),
+                                            color: const Color(0xFFEF5350)
+                                                .withOpacity(0.3)),
                                       ),
                                       child: const Icon(Icons.delete_outline,
                                           size: 20, color: Color(0xFFEF5350)),
@@ -3811,8 +3978,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                         if (_showUnitNameInput && _activeAddItemAttrIdx == idx)
                           Container(
                             margin: const EdgeInsets.only(bottom: 12),
-                            padding:
-                            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 12),
                             decoration: BoxDecoration(
                               color: isDark
                                   ? const Color(0xFF1A2535)
@@ -3831,7 +3998,9 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
-                                    color: isDark ? Colors.white70 : Colors.black87,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : Colors.black87,
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -3854,13 +4023,16 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       autofocus: true,
                                       style: TextStyle(
                                         fontSize: 13,
-                                        color: isDark ? Colors.white : Colors.black87,
+                                        color: isDark
+                                            ? Colors.white
+                                            : Colors.black87,
                                       ),
                                       decoration: InputDecoration(
                                         border: InputBorder.none,
                                         isDense: true,
-                                        contentPadding: const EdgeInsets.symmetric(
-                                            horizontal: 12, vertical: 10),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 12, vertical: 10),
                                         hintText: 'e.g. blue, XL, 500ml...',
                                         hintStyle: TextStyle(
                                           fontSize: 12,
@@ -3869,7 +4041,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               : Colors.grey.shade400,
                                         ),
                                       ),
-                                      onSubmitted: (_) => _handleUnitNameCreate(),
+                                      onSubmitted: (_) =>
+                                          _handleUnitNameCreate(),
                                     ),
                                   ),
                                 ),
@@ -3883,9 +4056,10 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       foregroundColor: const Color(0xFF1B8A3A),
                                       elevation: 0,
                                       shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8)),
-                                      padding:
-                                      const EdgeInsets.symmetric(horizontal: 22),
+                                          borderRadius:
+                                              BorderRadius.circular(8)),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 22),
                                     ),
                                     child: const Text(
                                       'Create',
@@ -3909,75 +4083,75 @@ class _InventoryScreenState extends State<InventoryScreen>
                       child: ElevatedButton(
                         onPressed: isVariantsEnabled
                             ? () {
-                          final generatedName =
-                          _generateVariantName().trim();
-                          if (generatedName.isEmpty) {
-                            return;
-                          }
+                                final generatedName =
+                                    _generateVariantName().trim();
+                                if (generatedName.isEmpty) {
+                                  return;
+                                }
 
-                          setState(() {
-                            _currentVariantName = generatedName;
+                                setState(() {
+                                  _currentVariantName = generatedName;
 
-                            Map<String, dynamic>? singleAttribute;
-                            Map<String, dynamic>? singleAttributeItem;
+                                  Map<String, dynamic>? singleAttribute;
+                                  Map<String, dynamic>? singleAttributeItem;
 
-                            for (var attr in _variantAttributes) {
-                              if (attr['attribute'] != null &&
-                                  attr['attributeItem'] != null) {
-                                singleAttribute = attr['attribute'];
-                                singleAttributeItem =
-                                attr['attributeItem'];
-                                break;
+                                  for (var attr in _variantAttributes) {
+                                    if (attr['attribute'] != null &&
+                                        attr['attributeItem'] != null) {
+                                      singleAttribute = attr['attribute'];
+                                      singleAttributeItem =
+                                          attr['attributeItem'];
+                                      break;
+                                    }
+                                  }
+
+                                  Map<String, dynamic> newVariant = {
+                                    'name': _currentVariantName,
+                                    'stock': _currentStock.isNotEmpty
+                                        ? _currentStock
+                                        : '0',
+                                    'regularPrice':
+                                        _currentRegularPrice.isNotEmpty
+                                            ? _currentRegularPrice
+                                            : '0.00',
+                                    'salePrice': _currentSalePrice.isNotEmpty
+                                        ? _currentSalePrice
+                                        : '',
+                                    'imageFile': _currentImageFile,
+                                    'attribute': singleAttribute,
+                                    'attributeItem': singleAttributeItem,
+                                    'attributes':
+                                        List<Map<String, dynamic>>.from(
+                                            _variantAttributes),
+                                  };
+
+                                  if (_currentVariantIndex >= 0) {
+                                    _variants[_currentVariantIndex] =
+                                        newVariant;
+                                  } else {
+                                    _variants.add(newVariant);
+                                  }
+
+                                  _currentVariantName = '';
+                                  _currentStock = '';
+                                  _currentRegularPrice = '';
+                                  _currentSalePrice = '';
+                                  _currentImageFile = null;
+                                  _currentVariantIndex = -1;
+                                  _variantNameController.clear();
+                                  _stockController.clear();
+                                  _regularPriceController.clear();
+                                  _salePriceController.clear();
+
+                                  _variantAttributes = [
+                                    {
+                                      'attribute': null,
+                                      'attributeItem': null,
+                                      'selectedSlug': null,
+                                    }
+                                  ];
+                                });
                               }
-                            }
-
-                            Map<String, dynamic> newVariant = {
-                              'name': _currentVariantName,
-                              'stock': _currentStock.isNotEmpty
-                                  ? _currentStock
-                                  : '0',
-                              'regularPrice':
-                              _currentRegularPrice.isNotEmpty
-                                  ? _currentRegularPrice
-                                  : '0.00',
-                              'salePrice': _currentSalePrice.isNotEmpty
-                                  ? _currentSalePrice
-                                  : '',
-                              'imageFile': _currentImageFile,
-                              'attribute': singleAttribute,
-                              'attributeItem': singleAttributeItem,
-                              'attributes':
-                              List<Map<String, dynamic>>.from(
-                                  _variantAttributes),
-                            };
-
-                            if (_currentVariantIndex >= 0) {
-                              _variants[_currentVariantIndex] =
-                                  newVariant;
-                            } else {
-                              _variants.add(newVariant);
-                            }
-
-                            _currentVariantName = '';
-                            _currentStock = '';
-                            _currentRegularPrice = '';
-                            _currentSalePrice = '';
-                            _currentImageFile = null;
-                            _currentVariantIndex = -1;
-                            _variantNameController.clear();
-                            _stockController.clear();
-                            _regularPriceController.clear();
-                            _salePriceController.clear();
-
-                            _variantAttributes = [
-                              {
-                                'attribute': null,
-                                'attributeItem': null,
-                                'selectedSlug': null,
-                              }
-                            ];
-                          });
-                        }
                             : null,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isVariantsEnabled

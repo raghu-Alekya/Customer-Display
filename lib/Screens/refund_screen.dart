@@ -29,7 +29,8 @@ enum OrderPanelPosition { left, right }
 List<String> allData = List.generate(27, (i) => "Item ${i + 1}");
 
 class CompletedOrdersScreen extends StatefulWidget {
-  const CompletedOrdersScreen({super.key, required int lastSelectedIndex});
+  final int lastSelectedIndex;
+  const CompletedOrdersScreen({super.key, required this.lastSelectedIndex});
 
   @override
   State<CompletedOrdersScreen> createState() => _CompletedOrdersScreenState();
@@ -111,6 +112,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedSidebarIndex = widget.lastSelectedIndex;
     // _allOrders = widget.orders; // or loaded data
     filteredOrders = _allOrders;
 
@@ -122,6 +124,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
     );
   }
 
+  @override
   Widget build(BuildContext context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final layout = PinakaPreferences.layoutSelectionNotifier.value;

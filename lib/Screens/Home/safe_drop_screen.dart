@@ -224,7 +224,37 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
     _safeDropBloc.dispose();
     super.dispose();
   }
+bool _hasEnteredValues() {
+  return _denomControllers.values.any((controller) {
+    final value = double.tryParse(controller.text) ?? 0;
+    return value > 0;
+  });
+}
+Future<bool> _handleBack() async {
+  if (_hasEnteredValues()) {
+    bool shouldProceed = false;
 
+    await CustomDialog.showAreYouSure(
+      context,
+      description: "You have entered cash values. Do you want to discard and go back?",
+      confirmText: "Yes, Confirm",
+      cancelText: "No, Keep it",
+      confirm: () {
+        shouldProceed = true;
+        Navigator.of(context).pop();
+      },
+    );
+
+    if (shouldProceed) {
+      Navigator.of(context).maybePop(); // for back button
+    }
+
+    return shouldProceed;
+  } else {
+    Navigator.of(context).maybePop();
+    return true;
+  }
+}
   // Modified: Calculate totals based on dynamic denominations
   void _calculateTotals() {
     int notes = 0;
@@ -840,6 +870,7 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
                     if (sidebarPosition == SidebarPosition.left)
                       custom_widgets.NavigationBar(
                         selectedSidebarIndex: _selectedSidebarIndex,
+                        onWillNavigate: (_) => _handleBack(),
                         onSidebarItemSelected: (index) {
                           setState(() {
                             _selectedSidebarIndex = index;
@@ -987,6 +1018,7 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
                     if (sidebarPosition == SidebarPosition.right)
                       custom_widgets.NavigationBar(
                         selectedSidebarIndex: _selectedSidebarIndex,
+                        onWillNavigate: (_) => _handleBack(),
                         onSidebarItemSelected: (index) {
                           setState(() {
                             _selectedSidebarIndex = index;
@@ -1001,6 +1033,7 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
               if (sidebarPosition == SidebarPosition.bottom)
                 custom_widgets.NavigationBar(
                   selectedSidebarIndex: _selectedSidebarIndex,
+                  onWillNavigate: (_) => _handleBack(),
                   onSidebarItemSelected: (index) {
                     setState(() {
                       _selectedSidebarIndex = index;

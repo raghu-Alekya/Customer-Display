@@ -612,16 +612,21 @@ class OrderHelper {
 
       // ✅ Set active order ID if not found or invalid
       if (currentActiveOrderId == null ||
+          currentActiveOrderId <= 0 ||
           !localOrderIds.contains(currentActiveOrderId)) {
-        // Build #1.0.315: Last attempt restore from checkpoint before jumping to newest
-        currentActiveOrderId = prefs.getInt('lastActiveOrderId');
-        if (currentActiveOrderId != null &&
-            !localOrderIds.contains(currentActiveOrderId)) {
-          currentActiveOrderId = null;
+        
+        // Build #1.0.316: Prioritize lastActiveOrderId for focus persistence across screens
+        final checkpointId = prefs.getInt('lastActiveOrderId');
+        if (checkpointId != null && 
+            checkpointId > 0 && 
+            localOrderIds.contains(checkpointId)) {
+          if (kDebugMode) print("🔄 loadData: Restoring focus from lastActiveOrderId: $checkpointId");
+          currentActiveOrderId = checkpointId;
+        } else if (localOrderIds.isNotEmpty) {
+          // Final fallback to newest order ONLY if no valid checkpoint exists
+          currentActiveOrderId = localOrderIds.last;
+          if (kDebugMode) print("🔄 loadData: Fallback to newest order: $currentActiveOrderId");
         }
-
-        currentActiveOrderId ??=
-        localOrderIds.isNotEmpty ? localOrderIds.last : null;
 
         if (currentActiveOrderId != null) {
           await prefs.setInt('activeOrderId', currentActiveOrderId);
@@ -2092,9 +2097,11 @@ class OrderHelper {
   Future<void> saveLastActiveOrderId(int orderId) async {
     activeOrderId = orderId;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('lastActiveOrderId', activeOrderId!);
+    await prefs.setInt('lastActiveOrderId', orderId);
+    // Build #1.0.316: Also sync with activeOrderId to ensure consistency during transitions
+    await prefs.setInt('activeOrderId', orderId);
     if (kDebugMode) {
-      print("##### Saved last active order ID: $activeOrderId");
+      print("##### Saved last active order ID: $orderId (synced with activeOrderId)");
     }
   }
 

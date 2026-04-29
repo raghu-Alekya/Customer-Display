@@ -10,41 +10,49 @@ import '../../Database/fast_key_db_helper.dart';
 import '../../Database/db_helper.dart';
 import '../../Utilities/global_utility.dart';
 
-String _encodeFastKeyTagsJson(List<Tags>? tags) {
-  if (tags == null || tags.isEmpty) return '[]';
-  return jsonEncode(tags.map((t) => t.toJson()).toList());
-}
-
-class FastKeyBloc { // Build #1.0.15
+class FastKeyBloc {
+  // Build #1.0.15
   final FastKeyRepository _fastKeyRepository;
 
   // Stream Controllers
-  final StreamController<APIResponse<FastKeyResponse>> _createFastKeyController =
-  StreamController<APIResponse<FastKeyResponse>>.broadcast();
+  final StreamController<APIResponse<FastKeyResponse>>
+      _createFastKeyController =
+      StreamController<APIResponse<FastKeyResponse>>.broadcast();
 
-  final StreamController<APIResponse<FastKeyListResponse>> _getFastKeysController =
-  StreamController<APIResponse<FastKeyListResponse>>.broadcast();
+  final StreamController<APIResponse<FastKeyListResponse>>
+      _getFastKeysController =
+      StreamController<APIResponse<FastKeyListResponse>>.broadcast();
 
   // Getters for Streams
-  StreamSink<APIResponse<FastKeyResponse>> get createFastKeySink => _createFastKeyController.sink;
-  Stream<APIResponse<FastKeyResponse>> get createFastKeyStream => _createFastKeyController.stream;
+  StreamSink<APIResponse<FastKeyResponse>> get createFastKeySink =>
+      _createFastKeyController.sink;
+  Stream<APIResponse<FastKeyResponse>> get createFastKeyStream =>
+      _createFastKeyController.stream;
 
-  StreamSink<APIResponse<FastKeyListResponse>> get getFastKeysSink => _getFastKeysController.sink;
-  Stream<APIResponse<FastKeyListResponse>> get getFastKeysStream => _getFastKeysController.stream;
+  StreamSink<APIResponse<FastKeyListResponse>> get getFastKeysSink =>
+      _getFastKeysController.sink;
+  Stream<APIResponse<FastKeyListResponse>> get getFastKeysStream =>
+      _getFastKeysController.stream;
 
   // Build #1.0.19: Fast Key Delete API Code
-  final StreamController<APIResponse<FastKeyResponse>> _deleteFastKeyController =
-  StreamController<APIResponse<FastKeyResponse>>.broadcast();
+  final StreamController<APIResponse<FastKeyResponse>>
+      _deleteFastKeyController =
+      StreamController<APIResponse<FastKeyResponse>>.broadcast();
 
-  StreamSink<APIResponse<FastKeyResponse>> get deleteFastKeySink => _deleteFastKeyController.sink;
-  Stream<APIResponse<FastKeyResponse>> get deleteFastKeyStream => _deleteFastKeyController.stream;
+  StreamSink<APIResponse<FastKeyResponse>> get deleteFastKeySink =>
+      _deleteFastKeyController.sink;
+  Stream<APIResponse<FastKeyResponse>> get deleteFastKeyStream =>
+      _deleteFastKeyController.stream;
 
   // Build #1.0.89: Added StreamController for updateFastKey
-  final StreamController<APIResponse<FastKeyResponse>> _updateFastKeyController =
-  StreamController<APIResponse<FastKeyResponse>>.broadcast();
+  final StreamController<APIResponse<FastKeyResponse>>
+      _updateFastKeyController =
+      StreamController<APIResponse<FastKeyResponse>>.broadcast();
 
-  StreamSink<APIResponse<FastKeyResponse>> get updateFastKeySink => _updateFastKeyController.sink;
-  Stream<APIResponse<FastKeyResponse>> get updateFastKeyStream => _updateFastKeyController.stream;
+  StreamSink<APIResponse<FastKeyResponse>> get updateFastKeySink =>
+      _updateFastKeyController.sink;
+  Stream<APIResponse<FastKeyResponse>> get updateFastKeyStream =>
+      _updateFastKeyController.stream;
 
   FastKeyBloc(this._fastKeyRepository) {
     if (kDebugMode) {
@@ -53,7 +61,11 @@ class FastKeyBloc { // Build #1.0.15
   }
 
   // POST: Create FastKey
-  Future<void> createFastKey({required String title, required int index, required String imageUrl, required int userId}) async {
+  Future<void> createFastKey(
+      {required String title,
+      required int index,
+      required String imageUrl,
+      required int userId}) async {
     if (_createFastKeyController.isClosed) return;
 
     createFastKeySink.add(APIResponse.loading(TextConstants.loading));
@@ -81,7 +93,8 @@ class FastKeyBloc { // Build #1.0.15
         response.fastkeyId,
       );
       if (kDebugMode) {
-        print("### FastKeyBloc: Added tab to DB with local ID: $newTabId, server ID: ${response.fastkeyId}");
+        print(
+            "### FastKeyBloc: Added tab to DB with local ID: $newTabId, server ID: ${response.fastkeyId}");
       }
       await fastKeyDBHelper.saveActiveFastKeyTab(response.fastkeyId);
       if (kDebugMode) {
@@ -90,12 +103,12 @@ class FastKeyBloc { // Build #1.0.15
       createFastKeySink.add(APIResponse.completed(response));
     } catch (e) {
       if (e.toString().contains('Unauthorised')) {
-        createFastKeySink.add(APIResponse.error("Unauthorised. Session is expired."));
-      }
-      else {
-        createFastKeySink.add(
-            APIResponse.error(GlobalUtility.extractErrorMessage(e)));
-      }//Build #1.0.189: Proper error not showing while getting error in create fast key
+        createFastKeySink
+            .add(APIResponse.error("Unauthorised. Session is expired."));
+      } else {
+        createFastKeySink
+            .add(APIResponse.error(GlobalUtility.extractErrorMessage(e)));
+      } //Build #1.0.189: Proper error not showing while getting error in create fast key
       if (kDebugMode) print("Exception in createFastKey: $e");
     }
   }
@@ -116,7 +129,8 @@ class FastKeyBloc { // Build #1.0.15
       ///insert into DB
 
       final FastKeyDBHelper fastKeyDBHelper = FastKeyDBHelper();
-      final fastKeyTabs = await fastKeyDBHelper.getFastKeyTabsByUserId(userId ?? 0);
+      final fastKeyTabs =
+          await fastKeyDBHelper.getFastKeyTabsByUserId(userId ?? 0);
       if (kDebugMode) {
         print("#### fastKeyTabs : $fastKeyTabs");
       }
@@ -125,6 +139,7 @@ class FastKeyBloc { // Build #1.0.15
       // Build #1.0.200: Clear existing data "await" added, everywhere we have added await while deleting data!
       // Code Updated : Empty fastkey folders show at first logon to multiple fastkeys loaded on created by the user
       await fastKeyDBHelper.deleteAllFastKeyTab(userId);
+
       /// TESTED : We have to delete all products of each exiting tab, otherwise creating duplicate items
       // Build #1.0.204: Fixed -> Getting Duplicate Items After Login selecting new fastKey tab
       for (var tab in fastKeyTabs) {
@@ -133,19 +148,31 @@ class FastKeyBloc { // Build #1.0.15
           await fastKeyDBHelper.deleteAllFastKeyProductItems(tabServerId);
         }
       }
-      for(var fastkey in response.fastkeys){ // Build #1.0.207: updated fastKey itemCount value from api response
-        await fastKeyDBHelper.addFastKeyTab(userId, fastkey.fastkeyTitle, fastkey.fastkeyImage, fastkey.itemCount, int.parse(fastkey.fastkeyIndex), fastkey.fastkeyServerId );
+      for (var fastkey in response.fastkeys) {
+        // Build #1.0.207: updated fastKey itemCount value from api response
+        await fastKeyDBHelper.addFastKeyTab(
+            userId,
+            fastkey.fastkeyTitle,
+            fastkey.fastkeyImage,
+            fastkey.itemCount,
+            int.parse(fastkey.fastkeyIndex),
+            fastkey.fastkeyServerId);
 
         // Build #1.0.197: Fixed [SCRUM - 328] -> At first logon Empty items shows in fast keys for the selected folder
         /// Added FastKey items for this tab from API response
         if (kDebugMode) {
-          print("#### Processing ${fastkey.products?.length} products for FastKey serverId: ${fastkey.fastkeyServerId}");
+          print(
+              "#### Processing ${fastkey.products?.length} products for FastKey serverId: ${fastkey.fastkeyServerId}");
         }
         for (var product in fastkey.products ?? []) {
-          var tagg = product.tags?.firstWhere((element) => element.name == TextConstants.age_restricted, orElse: () => Tags());
-          var hasAgeRestriction = tagg?.name?.contains(TextConstants.age_restricted) ?? false;
+          var tagg = product.tags?.firstWhere(
+              (element) => element.name == TextConstants.age_restricted,
+              orElse: () => Tags());
+          var hasAgeRestriction =
+              tagg?.name?.contains(TextConstants.age_restricted) ?? false;
           if (kDebugMode) {
-            print("#### Adding FastKey item: ${product.name}, productId: ${product.productId}, hasAgeRestriction: $hasAgeRestriction");
+            print(
+                "#### Adding FastKey item: ${product.name}, productId: ${product.productId}, hasAgeRestriction: $hasAgeRestriction");
           }
           await fastKeyDBHelper.addFastKeyItem(
             fastkey.fastkeyServerId,
@@ -153,12 +180,9 @@ class FastKeyBloc { // Build #1.0.15
             product.image,
             product.price,
             product.productId,
-            // minAge: int.parse(tagg?.slug ?? "0"),
-            minAge: int.tryParse(tagg?.slug ?? "") ?? 0,
+            minAge: int.parse(tagg?.slug ?? "0"),
             slNumber: product.slNumber,
             hasVariant: product.hasVariant ?? false,
-            sku: product.sku,
-            tagsJson: _encodeFastKeyTagsJson(product.tags),
           );
         }
       }
@@ -193,12 +217,14 @@ class FastKeyBloc { // Build #1.0.15
       getFastKeysSink.add(APIResponse.completed(response));
     } catch (e, s) {
       if (e.toString().contains('Unauthorised')) {
-        getFastKeysSink.add(APIResponse.error("Unauthorised. Session is expired."));
-      }
-      else if (e.toString().contains('SocketException')) {
-        getFastKeysSink.add(APIResponse.error("Network error. Please check your connection."));
+        getFastKeysSink
+            .add(APIResponse.error("Unauthorised. Session is expired."));
+      } else if (e.toString().contains('SocketException')) {
+        getFastKeysSink.add(
+            APIResponse.error("Network error. Please check your connection."));
       } else {
-        getFastKeysSink.add(APIResponse.error("Failed to fetch FastKeys: ${e.toString()}"));
+        getFastKeysSink.add(
+            APIResponse.error("Failed to fetch FastKeys: ${e.toString()}"));
       }
       if (kDebugMode) print("Exception in fetchFastKeysByUser: $e , Stack: $s");
     }
@@ -221,9 +247,11 @@ class FastKeyBloc { // Build #1.0.15
       if (activeTabId == fastkeyServerId) {
         final tabs = await FastKeyDBHelper().getFastKeyTabsByUserId(userId);
         if (tabs.isNotEmpty) {
-          await FastKeyDBHelper().saveActiveFastKeyTab(tabs.first[AppDBConst.fastKeyServerId]);
+          await FastKeyDBHelper()
+              .saveActiveFastKeyTab(tabs.first[AppDBConst.fastKeyServerId]);
           if (kDebugMode) {
-            print("FastKeyBloc - Updated active tab to: ${tabs.first[AppDBConst.fastKeyServerId]}");
+            print(
+                "FastKeyBloc - Updated active tab to: ${tabs.first[AppDBConst.fastKeyServerId]}");
           }
         } else {
           await FastKeyDBHelper().saveActiveFastKeyTab(null);
@@ -235,25 +263,26 @@ class FastKeyBloc { // Build #1.0.15
       deleteFastKeySink.add(APIResponse.completed(response));
     } catch (e) {
       if (e.toString().contains('Unauthorised')) {
-        deleteFastKeySink.add(APIResponse.error("Unauthorised. Session is expired."));
-      }
-      else if (e.toString().contains('SocketException')) {
-        deleteFastKeySink.add(APIResponse.error("Network error. Please check your connection."));
+        deleteFastKeySink
+            .add(APIResponse.error("Unauthorised. Session is expired."));
+      } else if (e.toString().contains('SocketException')) {
+        deleteFastKeySink.add(
+            APIResponse.error("Network error. Please check your connection."));
       } else {
-        deleteFastKeySink.add(APIResponse.error("Failed to delete FastKey: ${e.toString()}"));
+        deleteFastKeySink.add(
+            APIResponse.error("Failed to delete FastKey: ${e.toString()}"));
       }
       if (kDebugMode) print("Exception in deleteFastKey: $e");
     }
   }
 
   // Build #1.0.89: Added updateFastKey API method
-  Future<void> updateFastKey({
-    required String title,
-    required int index,
-    required String imageUrl,
-    required int fastKeyServerId,
-    required int userId
-  }) async {
+  Future<void> updateFastKey(
+      {required String title,
+      required int index,
+      required String imageUrl,
+      required int fastKeyServerId,
+      required int userId}) async {
     if (_updateFastKeyController.isClosed) return;
 
     updateFastKeySink.add(APIResponse.loading(TextConstants.loading));
@@ -280,7 +309,8 @@ class FastKeyBloc { // Build #1.0.15
       //   AppDBConst.fastKeyTabIndex: response.fastkeyIndex.toString(),
       // });
       if (kDebugMode) {
-        print("### FastKeyBloc: Updated tab in DB with server ID: ${response.fastkeyId}");
+        print(
+            "### FastKeyBloc: Updated tab in DB with server ID: ${response.fastkeyId}");
       }
 
       await fetchFastKeysByUser(userId);
@@ -288,12 +318,12 @@ class FastKeyBloc { // Build #1.0.15
       //no need of user id to pass
     } catch (e, s) {
       if (e.toString().contains('Unauthorised')) {
-        updateFastKeySink.add(APIResponse.error("Unauthorised. Session is expired."));
-      }
-      else {
-        updateFastKeySink.add(
-            APIResponse.error(GlobalUtility.extractErrorMessage(e)));
-      }//Build #1.0.189: Proper error not showing while getting error in update fast key
+        updateFastKeySink
+            .add(APIResponse.error("Unauthorised. Session is expired."));
+      } else {
+        updateFastKeySink
+            .add(APIResponse.error(GlobalUtility.extractErrorMessage(e)));
+      } //Build #1.0.189: Proper error not showing while getting error in update fast key
       if (kDebugMode) print("Exception in updateFastKey: $e, Stack: $s");
     }
   }
@@ -306,10 +336,12 @@ class FastKeyBloc { // Build #1.0.15
     if (!_getFastKeysController.isClosed) {
       _getFastKeysController.close();
     }
-    if (!_deleteFastKeyController.isClosed) { // Build #1.0.19
+    if (!_deleteFastKeyController.isClosed) {
+      // Build #1.0.19
       _deleteFastKeyController.close();
     }
-    if (!_updateFastKeyController.isClosed) { // Build #1.0.89
+    if (!_updateFastKeyController.isClosed) {
+      // Build #1.0.89
       _updateFastKeyController.close();
     }
     if (kDebugMode) print("FastKeyBloc disposed");

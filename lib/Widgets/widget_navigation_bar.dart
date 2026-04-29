@@ -168,19 +168,18 @@ class NavigationBar extends StatelessWidget {
                     0 // Build #1.0.240 : Disabled Multiple tap on same SidebarButton
                 ? () {}
                 : () async {
-              if (!await _canNavigate(0)) return;
-              if (kDebugMode) {
-                print("##### Fast Keys button tapped");
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                await oh.saveLastActiveOrderId(oh.activeOrderId!);
               }
-              lastSelectedIndex = 0; // Store last selection
+              if (!await _canNavigate(0)) return;
+              lastSelectedIndex = 0;
               onSidebarItemSelected(0);
               if (callbackOnlyIndices?.contains(0) == true) return;
 
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
-
-              /// POSHomeScreen (Fast Keys tab)
-              Navigator.of(context).pushAndRemoveUntil(
+              Future.microtask(() {
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
                 // Build #1.0.254 : Fixed - Push and replace is showing jump animation for nav bar
                 PageRouteBuilder(
                   pageBuilder:
@@ -198,7 +197,8 @@ class NavigationBar extends StatelessWidget {
                   Duration.zero, // Instant transition
                 ),
                     (route) => false,
-              );
+                );
+              });
               // Build #1.0.247 : Updated pushReplacement TO pushAndRemoveUntil
               // Navigator.of(context).pushAndRemoveUntil(
               //   MaterialPageRoute(builder: (context) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex)),
@@ -217,24 +217,21 @@ class NavigationBar extends StatelessWidget {
             svgAsset: SvgUtils.categoriesIcon,
             label: TextConstants.categoriesText,
             isSelected: selectedSidebarIndex == 1,
-            onTap:
-            isShiftScreen || selectedSidebarIndex == 1
+            onTap: (isShiftScreen || selectedSidebarIndex == 1)
                 ? () {}
                 : () async {
-              if (!await _canNavigate(1)) return;
-              if (kDebugMode) {
-                print("##### Categories button tapped");
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                await oh.saveLastActiveOrderId(oh.activeOrderId!);
               }
-              lastSelectedIndex =
-              1; //Build #1.0.7: Store last selection
+              if (!await _canNavigate(1)) return;
+              lastSelectedIndex = 1;
               onSidebarItemSelected(1);
               if (callbackOnlyIndices?.contains(1) == true) return;
 
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
-
-              /// POSHomeScreen (Categories tab)
-              Navigator.of(context).pushAndRemoveUntil(
+              Future.microtask(() {
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
                   pageBuilder:
                       (context, animation, secondaryAnimation) =>
@@ -251,7 +248,8 @@ class NavigationBar extends StatelessWidget {
                   Duration.zero, // Instant transition
                 ),
                     (route) => false,
-              );
+                );
+              });
               // Navigator.of(context).pushAndRemoveUntil(
               //   MaterialPageRoute(builder: (context) => CategoriesScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
@@ -269,22 +267,21 @@ class NavigationBar extends StatelessWidget {
             svgAsset: SvgUtils.addIcon,
             label: TextConstants.addText,
             isSelected: selectedSidebarIndex == 2,
-            onTap:
-            isShiftScreen || selectedSidebarIndex == 2
+            onTap: (isShiftScreen || selectedSidebarIndex == 2)
                 ? () {}
                 : () async {
-              if (!await _canNavigate(2)) return;
-              if (kDebugMode) {
-                print("##### AddScreen button tapped");
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                await oh.saveLastActiveOrderId(oh.activeOrderId!);
               }
+              if (!await _canNavigate(2)) return;
               lastSelectedIndex = 2;
               onSidebarItemSelected(2);
               if (callbackOnlyIndices?.contains(2) == true) return;
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
 
-              /// POSHomeScreen (Add tab)
-              Navigator.of(context).pushAndRemoveUntil(
+              Future.microtask(() {
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
                   pageBuilder:
                       (context, animation, secondaryAnimation) =>
@@ -301,7 +298,8 @@ class NavigationBar extends StatelessWidget {
                   Duration.zero, // Instant transition
                 ),
                     (route) => false,
-              );
+                );
+              });
               // Navigator.of(context).pushAndRemoveUntil(
               //   MaterialPageRoute(builder: (context) => AddScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
@@ -317,44 +315,42 @@ class NavigationBar extends StatelessWidget {
             svgAsset: SvgUtils.ordersIcon,
             label: TextConstants.ordersText,
             isSelected: selectedSidebarIndex == 3,
-            onTap:
-            isShiftScreen || selectedSidebarIndex == 3
+            onTap: (isShiftScreen || selectedSidebarIndex == 3)
                 ? () {}
                 : () async {
-              if (!await _canNavigate(3)) return;
-              if (kDebugMode) {
-                print("##### OrdersScreen button tapped");
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                await oh.saveLastActiveOrderId(oh.activeOrderId!);
               }
+              if (!await _canNavigate(3)) return;
               lastSelectedIndex = 3;
               onSidebarItemSelected(3);
-
-              // OrderHelper.isOrderPanelLoaded = false;
-              // OrderHelper.notifyOrderPanelToRefresh();
-              // Save current POS order before switching to Orders tab
-
-
+              if (callbackOnlyIndices?.contains(3) == true) return;
 
               /// OrdersScreen
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder:
-                      (context, animation, secondaryAnimation) =>
-                      TotalOrdersScreen(
-                        lastSelectedIndex: lastSelectedIndex,
-                      ),
-                  transitionsBuilder: (
-                      context,
-                      animation,
-                      secondaryAnimation,
-                      child,
-                      ) {
-                    return child; // No transition animation
-                  },
-                  transitionDuration:
-                  Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
+              Future.microtask(() {
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  PageRouteBuilder(
+                    pageBuilder:
+                        (context, animation, secondaryAnimation) =>
+                        TotalOrdersScreen(
+                          lastSelectedIndex: 3,
+                        ),
+                    transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                        ) {
+                      return child; // No transition animation
+                    },
+                    transitionDuration:
+                    Duration.zero, // Instant transition
+                  ),
+                      (route) => false,
+                );
+              });
               // Build #1.0.245: Fixed Re-Opened [SCRUM - 356] Issue -> Order items not displaying in Bottom Mode
               // -> the processing order is showing when we switch to bottom mode
               // -> Empty Cart/ Items shown for pending orders when move navigation bar to bottom mode.
@@ -375,38 +371,42 @@ class NavigationBar extends StatelessWidget {
             svgAsset: SvgUtils.appsIcon,
             label: TextConstants.appsText,
             isSelected: selectedSidebarIndex == 4,
-            onTap:
-            selectedSidebarIndex == 4
+            onTap: (selectedSidebarIndex == 4)
                 ? () {}
                 : () async {
-              if (!await _canNavigate(4)) return;
-              if (kDebugMode) {
-                print("##### AppsScreen button tapped");
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                await oh.saveLastActiveOrderId(oh.activeOrderId!);
               }
+              if (!await _canNavigate(4)) return;
               lastSelectedIndex = 4;
               onSidebarItemSelected(4);
+              if (callbackOnlyIndices?.contains(4) == true) return;
 
               /// AppsDashboardScreen
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder:
-                      (context, animation, secondaryAnimation) =>
-                      AppsDashboardScreen(
-                        lastSelectedIndex: lastSelectedIndex,
-                      ),
-                  transitionsBuilder: (
-                      context,
-                      animation,
-                      secondaryAnimation,
-                      child,
-                      ) {
-                    return child; // No transition animation
-                  },
-                  transitionDuration:
-                  Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
+              Future.microtask(() {
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  PageRouteBuilder(
+                    pageBuilder:
+                        (context, animation, secondaryAnimation) =>
+                        AppsDashboardScreen(
+                          lastSelectedIndex: 4,
+                        ),
+                    transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                        ) {
+                      return child; // No transition animation
+                    },
+                    transitionDuration:
+                    Duration.zero, // Instant transition
+                  ),
+                      (route) => false,
+                );
+              });
               // Navigator.of(context).pushAndRemoveUntil(
               //   MaterialPageRoute(builder: (context) => AppsDashboardScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
@@ -430,39 +430,32 @@ class NavigationBar extends StatelessWidget {
             onTap: (isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5)
                 ? () {}
                 : () async {
-              if (!await _canNavigate(5)) return;
-
-              if (kDebugMode) {
-                print("##### Refund button tapped");
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                await oh.saveLastActiveOrderId(oh.activeOrderId!);
               }
-
+              if (!await _canNavigate(5)) return;
               lastSelectedIndex = 5;
               onSidebarItemSelected(5);
+              if (callbackOnlyIndices?.contains(5) == true) return;
 
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      BlocProvider(
-                        create: (context) => CompletedOrdersBloc(
-                          context.read<CompletedOrdersRepository>(),
-                        )..add(
-                          FetchCompletedOrders(
-                            page: 1,
-                            perPage: 10,
-                          ),
-                        ),
-                        child: const CompletedOrdersScreen(
+              Future.microtask(() {
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  PageRouteBuilder(
+                    pageBuilder: (context, animation, secondaryAnimation) =>
+                        const CompletedOrdersScreen(
                           lastSelectedIndex: 5,
                         ),
-                      ),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No animation
-                  },
-                  transitionDuration: Duration.zero,
-                ),
-                    (route) => false,
-              );
+                    transitionsBuilder:
+                        (context, animation, secondaryAnimation, child) {
+                      return child; // No animation
+                    },
+                    transitionDuration: Duration.zero,
+                  ),
+                      (route) => false,
+                );
+              });
             },
             isVertical: isVertical,
           ),
@@ -608,19 +601,19 @@ class NavigationBar extends StatelessWidget {
                     0 // Build #1.0.240 : Disabled Multiple tap on same SidebarButton
                 ? () {}
                 : () async {
-              if (!await _canNavigate(0)) return;
-              if (kDebugMode) {
-                print("##### Fast Keys button tapped");
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                await oh.saveLastActiveOrderId(oh.activeOrderId!);
               }
-              lastSelectedIndex = 0; // Store last selection
+              if (!await _canNavigate(0)) return;
+              lastSelectedIndex = 0;
               onSidebarItemSelected(0);
               if (callbackOnlyIndices?.contains(0) == true) return;
 
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
-
               /// POSHomeScreen (Fast Keys tab)
-              Navigator.of(context).pushAndRemoveUntil(
+              Future.microtask(() {
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
                 // Build #1.0.254 : Fixed - Push and replace is showing jump animation for nav bar
                 PageRouteBuilder(
                   pageBuilder:
@@ -638,7 +631,8 @@ class NavigationBar extends StatelessWidget {
                   Duration.zero, // Instant transition
                 ),
                     (route) => false,
-              );
+                );
+              });
               // Navigator.of(context).pushAndRemoveUntil(
               //   MaterialPageRoute(builder: (context) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
@@ -656,39 +650,40 @@ class NavigationBar extends StatelessWidget {
             svgAsset: SvgUtils.categoriesIcon,
             label: TextConstants.categoriesText,
             isSelected: selectedSidebarIndex == 1,
-            onTap:
-            isShiftScreen || selectedSidebarIndex == 1
+            onTap: (isShiftScreen || selectedSidebarIndex == 1)
                 ? () {}
                 : () async {
-              if (!await _canNavigate(1)) return;
-              if (kDebugMode) {
-                print("##### Categories button tapped");
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                await oh.saveLastActiveOrderId(oh.activeOrderId!);
               }
-              lastSelectedIndex = 1; // Store last selection
+              if (!await _canNavigate(1)) return;
+              lastSelectedIndex = 1;
               onSidebarItemSelected(1);
               if (callbackOnlyIndices?.contains(1) == true) return;
 
-              /// CategoriesScreen
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder:
-                      (context, animation, secondaryAnimation) =>
-                      CategoriesScreen(
-                        lastSelectedIndex: lastSelectedIndex,
-                      ),
-                  transitionsBuilder: (
-                      context,
-                      animation,
-                      secondaryAnimation,
-                      child,
-                      ) {
-                    return child; // No transition animation
-                  },
-                  transitionDuration:
-                  Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
+              /// POSHomeScreen (Categories tab)
+              Future.microtask(() {
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  PageRouteBuilder(
+                    pageBuilder:
+                        (context, animation, secondaryAnimation) =>
+                        POSHomeScreen(lastSelectedIndex: 1),
+                    transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                        ) {
+                      return child; // No transition animation
+                    },
+                    transitionDuration:
+                    Duration.zero, // Instant transition
+                  ),
+                      (route) => false,
+                );
+              });
               // Navigator.of(context).pushAndRemoveUntil(
               //   MaterialPageRoute(builder: (context) => CategoriesScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
@@ -708,22 +703,22 @@ class NavigationBar extends StatelessWidget {
             svgAsset: SvgUtils.addIcon,
             label: TextConstants.addText,
             isSelected: selectedSidebarIndex == 2,
-            onTap:
-            isShiftScreen || selectedSidebarIndex == 2
+            onTap: (isShiftScreen || selectedSidebarIndex == 2)
                 ? () {}
                 : () async {
-              if (!await _canNavigate(2)) return;
-              if (kDebugMode) {
-                print("##### AddScreen button tapped");
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                await oh.saveLastActiveOrderId(oh.activeOrderId!);
               }
+              if (!await _canNavigate(2)) return;
               lastSelectedIndex = 2;
               onSidebarItemSelected(2);
               if (callbackOnlyIndices?.contains(2) == true) return;
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
 
               /// POSHomeScreen (Add tab)
-              Navigator.of(context).pushAndRemoveUntil(
+              Future.microtask(() {
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
                 PageRouteBuilder(
                   pageBuilder:
                       (context, animation, secondaryAnimation) =>
@@ -740,7 +735,8 @@ class NavigationBar extends StatelessWidget {
                   Duration.zero, // Instant transition
                 ),
                     (route) => false,
-              );
+                );
+              });
               // Navigator.pushReplacement(
               //   context,
               //   MaterialPageRoute(builder: (context) => AddScreen()),
@@ -758,46 +754,42 @@ class NavigationBar extends StatelessWidget {
             svgAsset: SvgUtils.ordersIcon,
             label: TextConstants.ordersText,
             isSelected: selectedSidebarIndex == 3,
-            onTap:
-            isShiftScreen || selectedSidebarIndex == 3
+            onTap: (isShiftScreen || selectedSidebarIndex == 3)
                 ? () {}
                 : () async {
-              if (!await _canNavigate(3)) return;
-              if (kDebugMode) {
-                print("##### OrdersScreen button tapped");
-              }
-              lastSelectedIndex = 3;
-              onSidebarItemSelected(3);
-
-              OrderHelper.isOrderPanelLoaded = false;
-              OrderHelper.notifyOrderPanelToRefresh();
-              // Save current POS order before switching to Orders tab
               final oh = OrderHelper();
               if (oh.activeOrderId != null) {
-                oh.saveLastActiveOrderId(oh.activeOrderId!);
+                await oh.saveLastActiveOrderId(oh.activeOrderId!);
               }
+              if (!await _canNavigate(3)) return;
+              lastSelectedIndex = 3;
+              onSidebarItemSelected(3);
+              if (callbackOnlyIndices?.contains(3) == true) return;
 
               /// OrdersScreen
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder:
-                      (context, animation, secondaryAnimation) =>
-                      TotalOrdersScreen(
-                        lastSelectedIndex: lastSelectedIndex,
-                      ),
-                  transitionsBuilder: (
-                      context,
-                      animation,
-                      secondaryAnimation,
-                      child,
-                      ) {
-                    return child; // No transition animation
-                  },
-                  transitionDuration:
-                  Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
+              Future.microtask(() {
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  PageRouteBuilder(
+                    pageBuilder:
+                        (context, animation, secondaryAnimation) =>
+                        TotalOrdersScreen(
+                          lastSelectedIndex: 3,
+                        ),
+                    transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                        ) {
+                      return child; // No transition animation
+                    },
+                    transitionDuration:
+                    Duration.zero, // Instant transition
+                  ),
+                      (route) => false,
+                );
+              });
               // Navigator.of(context).pushAndRemoveUntil(
               //   MaterialPageRoute(builder: (context) => TotalOrdersScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
@@ -815,38 +807,42 @@ class NavigationBar extends StatelessWidget {
             svgAsset: SvgUtils.appsIcon,
             label: TextConstants.appsText,
             isSelected: selectedSidebarIndex == 4,
-            onTap:
-            selectedSidebarIndex == 4
+            onTap: (selectedSidebarIndex == 4)
                 ? () {}
                 : () async {
-              if (!await _canNavigate(4)) return;
-              if (kDebugMode) {
-                print("##### AppsScreen button tapped");
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                await oh.saveLastActiveOrderId(oh.activeOrderId!);
               }
+              if (!await _canNavigate(4)) return;
               lastSelectedIndex = 4;
               onSidebarItemSelected(4);
+              if (callbackOnlyIndices?.contains(4) == true) return;
 
-              ///
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder:
-                      (context, animation, secondaryAnimation) =>
-                      AppsDashboardScreen(
-                        lastSelectedIndex: lastSelectedIndex,
-                      ),
-                  transitionsBuilder: (
-                      context,
-                      animation,
-                      secondaryAnimation,
-                      child,
-                      ) {
-                    return child; // No transition animation
-                  },
-                  transitionDuration:
-                  Duration.zero, // Instant transition
-                ),
-                    (route) => false,
-              );
+              /// AppsDashboardScreen
+              Future.microtask(() {
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  PageRouteBuilder(
+                    pageBuilder:
+                        (context, animation, secondaryAnimation) =>
+                        AppsDashboardScreen(
+                          lastSelectedIndex: 4,
+                        ),
+                    transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                        ) {
+                      return child; // No transition animation
+                    },
+                    transitionDuration:
+                    Duration.zero, // Instant transition
+                  ),
+                      (route) => false,
+                );
+              });
               // Navigator.of(context).pushAndRemoveUntil(
               //   MaterialPageRoute(builder: (context) => AppsDashboardScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
@@ -868,39 +864,32 @@ class NavigationBar extends StatelessWidget {
             onTap: (isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5)
                 ? () {}
                 : () async {
-              if (!await _canNavigate(5)) return;
-
-              if (kDebugMode) {
-                print("##### Refund button tapped");
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                await oh.saveLastActiveOrderId(oh.activeOrderId!);
               }
-
+              if (!await _canNavigate(5)) return;
               lastSelectedIndex = 5;
               onSidebarItemSelected(5);
+              if (callbackOnlyIndices?.contains(5) == true) return;
 
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      BlocProvider(
-                        create: (context) => CompletedOrdersBloc(
-                          context.read<CompletedOrdersRepository>(),
-                        )..add(
-                          FetchCompletedOrders(
-                            page: 1,
-                            perPage: 10,
-                          ),
-                        ),
-                        child: const CompletedOrdersScreen(
+              Future.microtask(() {
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  PageRouteBuilder(
+                    pageBuilder: (context, animation, secondaryAnimation) =>
+                        const CompletedOrdersScreen(
                           lastSelectedIndex: 5,
                         ),
-                      ),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    return child; // No animation
-                  },
-                  transitionDuration: Duration.zero,
-                ),
-                    (route) => false,
-              );
+                    transitionsBuilder:
+                        (context, animation, secondaryAnimation, child) {
+                      return child; // No animation
+                    },
+                    transitionDuration: Duration.zero,
+                  ),
+                      (route) => false,
+                );
+              });
             },
             isVertical: isVertical,
           ),

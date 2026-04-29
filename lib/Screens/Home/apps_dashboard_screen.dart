@@ -21,7 +21,6 @@ import 'package:flutter/services.dart';
 
 import 'Nmi_payments.dart';
 
-
 class AppsDashboardScreen extends StatefulWidget {
   // Build #1.0.6 - Updated Horizontal & Vertical Scrolling
   final int? lastSelectedIndex; // Make it nullable
@@ -33,10 +32,11 @@ class AppsDashboardScreen extends StatefulWidget {
   State<AppsDashboardScreen> createState() => _AppsDashboardScreenState();
 }
 
-class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSelectionMixin {
+class _AppsDashboardScreenState extends State<AppsDashboardScreen>
+    with LayoutSelectionMixin {
   final List<String> items = List.generate(18, (index) => 'Bud Light');
   int _selectedSidebarIndex =
-  4; //Build #1.0.2 : By default fast key should be selected after login
+      4; //Build #1.0.2 : By default fast key should be selected after login
   DateTime now = DateTime.now();
   List<int> quantities = [1, 1, 1, 1];
   bool isLoading = true; // Add a loading state
@@ -49,27 +49,18 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
   @override
   void initState() {
     super.initState();
-    _loadSafeEnable();
-    _loadSafeDropEnable();
-    _selectedSidebarIndex = widget.lastSelectedIndex ??
-        4; // Build #1.0.7: Restore previous selection
-    // Simulate a loading delay
-    Future.delayed(const Duration(seconds: 3), () {
-      setState(() {
-        isLoading = false; // Set loading to false after 3 seconds
-      });
-    });
-  }
-  Future<void> _loadSafeEnable() async {
-    _isSafeEnabled = await SafeStorageHelper.getSafeEnable();
-    if (mounted) setState(() {});
+    _selectedSidebarIndex = widget.lastSelectedIndex ?? 4;
+    _initApps();
   }
 
-  Future<void> _loadSafeDropEnable() async {
-    final value = await SafeStorageHelper.getSafeEnableDrop();
+  Future<void> _initApps() async {
+    final isSafeEnabled = await SafeStorageHelper.getSafeEnable();
+    final isSafeDropEnabled = await SafeStorageHelper.getSafeEnableDrop();
     if (mounted) {
       setState(() {
-        _isSafeDropEnabled = value;
+        _isSafeEnabled = isSafeEnabled;
+        _isSafeDropEnabled = isSafeDropEnabled;
+        isLoading = false;
       });
     }
   }
@@ -84,7 +75,8 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
           // Top Bar
           TopBar(
             screen: Screen.APPS,
-            onModeChanged: () async{ /// Build #1.0.192: Fixed -> Exception -> setState() callback argument returned a Future. (onModeChanged in all screens)
+            onModeChanged: () async {
+              /// Build #1.0.192: Fixed -> Exception -> setState() callback argument returned a Future. (onModeChanged in all screens)
               String newLayout;
               if (sidebarPosition == SidebarPosition.left) {
                 newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
@@ -101,7 +93,9 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
               // No need to call saveLayoutSelection here as it's handled in the notifier
               // _preferences.saveLayoutSelection(newLayout);
               //Build #1.0.122: update layout mode change selection to DB
-              await UserDbHelper().saveUserSettings({AppDBConst.layoutSelection: newLayout}, modeChange: true);
+              await UserDbHelper().saveUserSettings(
+                  {AppDBConst.layoutSelection: newLayout},
+                  modeChange: true);
               // update UI
               setState(() {});
             },
@@ -135,103 +129,102 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.all(8.0),
-                    child: GridView.count(
-                      crossAxisCount: 4,
-                      childAspectRatio: 1,
-                      children: [
-                        _buildCard(
-                          //title: TextConstants.cashier,
-                          icon: themeHelper.themeMode == ThemeMode.dark
-                              ? Image.asset(
-                            "assets/cashier_dark.png",
-                          )
-                              : Image.asset(
-                            "assets/cashier_lite.png",
+                    child: isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : GridView.count(
+                            crossAxisCount: 4,
+                            childAspectRatio: 1,
+                            children: [
+                              _buildCard(
+                                //title: TextConstants.cashier,
+                                icon: themeHelper.themeMode == ThemeMode.dark
+                                    ? Image.asset(
+                                        "assets/cashier_dark.png",
+                                      )
+                                    : Image.asset(
+                                        "assets/cashier_lite.png",
+                                      ),
+                                cardIndex: 0,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            ShiftHistoryDashboardScreen() //Build #1.0.74
+                                        //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
+                                        ),
+                                  );
+                                },
+                              ),
+                              if (_isSafeDropEnabled)
+                                _buildCard(
+                                  icon: themeHelper.themeMode == ThemeMode.dark
+                                      ? Image.asset("assets/safedrop_dark.png")
+                                      : Image.asset("assets/safedrop_lite.png"),
+                                  cardIndex: 1,
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) => SafeDropScreen()),
+                                    );
+                                  },
+                                ),
+
+                              _buildCard(
+                                //title: TextConstants.cashier,
+                                icon: themeHelper.themeMode == ThemeMode.dark
+                                    ? Image.asset(
+                                        "assets/stock_inventory_dark.png",
+                                      )
+                                    : Image.asset("assets/img.png"),
+                                cardIndex: 0,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            InventoryScreen() //Build #1.0.386
+                                        //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
+                                        ),
+                                  );
+                                },
+                              ),
+
+                              ///////
+
+                              _buildCard(
+                                //title: TextConstants.cashier,
+                                icon: themeHelper.themeMode == ThemeMode.dark
+                                    ? Image.asset(
+                                        "assets/stock_inventory_dark.png",
+                                      )
+                                    : Image.asset("assets/img.png"),
+                                cardIndex: 0,
+
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            NmiPaymentScreen() //Build #1.0.386
+                                        //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
+                                        ),
+                                  );
+                                },
+
+                                // onTap: () async {
+                                //   final response =
+                                //       await VP3350Service.startTransaction("10.00");
+                                //
+                                //   ScaffoldMessenger.of(context).showSnackBar(
+                                //     SnackBar(content: Text(response)),
+                                //   );
+                                //
+                                // },  NmiPaymentScreen
+                              ),
+                            ],
                           ),
-                          cardIndex: 0,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) =>
-                                      ShiftHistoryDashboardScreen() //Build #1.0.74
-                                //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
-                              ),
-                            );
-                          },
-                        ),
-                        if (_isSafeDropEnabled)
-                          _buildCard(
-                            icon: themeHelper.themeMode == ThemeMode.dark
-                                ? Image.asset("assets/safedrop_dark.png")
-                                : Image.asset("assets/safedrop_lite.png"),
-                            cardIndex: 1,
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => SafeDropScreen()),
-                              );
-                            },
-                          ),
-
-                        _buildCard(
-                          //title: TextConstants.cashier,
-                          icon:
-                          themeHelper.themeMode == ThemeMode.dark
-                              ? Image.asset(
-                            "assets/stock_inventory_dark.png",
-                          )
-                              : Image.asset("assets/img.png"),
-                          cardIndex: 0,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) =>
-                                      InventoryScreen() //Build #1.0.386
-                                //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
-                              ),
-                            );
-                          },
-                        ),
-
-                        ///////
-
-                        _buildCard(
-                          //title: TextConstants.cashier,
-                          icon:
-                          themeHelper.themeMode == ThemeMode.dark
-                              ? Image.asset(
-                            "assets/stock_inventory_dark.png",
-                          )
-                              : Image.asset("assets/img.png"),
-                          cardIndex: 0,
-
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) =>
-                                      NmiPaymentScreen() //Build #1.0.386
-                                //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
-                              ),
-                            );
-                          },
-
-                          // onTap: () async {
-                          //   final response =
-                          //       await VP3350Service.startTransaction("10.00");
-                          //
-                          //   ScaffoldMessenger.of(context).showSnackBar(
-                          //     SnackBar(content: Text(response)),
-                          //   );
-                          //
-                          // },  NmiPaymentScreen
-
-                        ),
-
-                      ],
-                    ),
                   ),
                 ),
 
@@ -275,7 +268,7 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen> with LayoutSe
   }) {
     return GestureDetector(
       onTap: onTap,
-      child:  SizedBox(
+      child: SizedBox(
         width: 330,
         height: 330,
         child: icon,
